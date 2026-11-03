@@ -15,7 +15,7 @@ import traceback
 
 from ... import i18n, journal, msapi
 from ...qt import QtCore, cursor_pos, event_global_pos, modifiers
-from . import dataset, detection, history, photos
+from . import dataset, detection, history, photos, snap
 
 # True : un clic gauche simple pose le point, Maj + clic aussi. False : seul
 # Maj + clic pose (ancien comportement).
@@ -33,6 +33,30 @@ _DEDUP_WINDOW_S = 0.25
 def _refuse(message):
     journal.write("Pointage ignore : " + message)
     return False
+
+
+def _snapped(state, camera, label, x, y):
+    """Position a poser : le clic recale sur le centre de la cible s'il y en a un
+    tout pres, sinon le clic lui-meme. Ne leve jamais."""
+    try:
+        limit = getattr(state, "snap_px", 0.0)
+        if limit <= 0:
+            return x, y
+        result = snap.snap_click(camera, x, y, limit)
+        if result[0] is None:
+            # Une seule ligne par photo ne serait pas plus utile : le motif du
+            # non-recalage aide a comprendre une cible mal reconnue.
+            journal.write("{} : clic garde tel quel ({})".format(label, result[1]))
+            return x, y
+        nx, ny, shift = result
+        journal.write("{} : recale de {:.1f} px sur le centre de la cible".format(label, shift))
+        return nx, ny
+    except Exception as exc:
+        try:
+            journal.write("recalage : {!r}".format(exc))
+        except Exception:
+            pass
+        return x, y
 
 
 def place_at(state, global_pos):
@@ -70,7 +94,8 @@ def place_at(state, global_pos):
     coords, reason = msapi.image_coords_at(global_pos)
     if coords is None:
         return _refuse(reason or "position illisible")
-    x, y = coords
+    click_x, click_y = coords
+    x, y = _snapped(state, camera, label, click_x, click_y)
 
     camera_name = msapi.camera_label(camera)
 
@@ -101,6 +126,8 @@ def place_at(state, global_pos):
             "image_h": height,
             "x": x,
             "y": y,
+            "x_click": click_x,
+            "y_click": click_y,
             "source": "manual",
         }
         written = dataset.record_pin(state, record)

@@ -125,3 +125,15 @@ def test_photo_tab_named_like_a_blacklisted_word_is_still_a_photo(ms):
     assert msapi._title_is_photo("DEM_0001.JPG", chunk) is True
     assert msapi._title_is_photo("DEM", chunk) is False
     assert msapi._title_is_photo("Model", chunk) is False
+
+
+def test_central_tab_under_survives_a_widget_whose_parent_is_not_callable(monkeypatch):
+    """La console Python de Metashape masque `parent` : pas d'exception."""
+    from aerotools import msapi
+
+    class Odd(object):
+        parent = None
+
+    monkeypatch.setattr(msapi.QtWidgets.QApplication, "widgetAt",
+                        staticmethod(lambda pos: Odd()))
+    assert msapi.central_tab_under(object()) == (None, False)

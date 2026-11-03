@@ -17,7 +17,9 @@ Cles d'une ligne (schema 1) :
     image_path  str    chemin de l'image source tel que Metashape le connait
     image_w     int    largeur du capteur en pixels (0 si inconnue)
     image_h     int    hauteur du capteur en pixels (0 si inconnue)
-    x, y        float  position pointee, en pixels, origine en haut a gauche
+    x, y        float  position posee, en pixels, origine en haut a gauche
+                       (apres recalage sur le centre de la cible, voir snap.py)
+    x_click, y_click  float  clic brut de l'operateur, avant recalage (facultatif)
     source      str    "manual" pour un pointage a la souris
 
 Un script d'entrainement relit le fichier ligne par ligne (json.loads), ignore
@@ -78,6 +80,10 @@ def record_pin(state, record):
             "y": round(float(record["y"]), 2),
             "source": record.get("source", "manual"),
         }
+        # Clic brut de l'operateur, avant recalage sur la cible (facultatif).
+        if record.get("x_click") is not None and record.get("y_click") is not None:
+            row["x_click"] = round(float(record["x_click"]), 2)
+            row["y_click"] = round(float(record["y_click"]), 2)
         os.makedirs(dataset_dir(), exist_ok=True)
         with open(dataset_path(), "a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")

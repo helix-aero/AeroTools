@@ -62,6 +62,30 @@ def read_zoom_px(stored):
     return float(ZOOM_DEFAULT_PX)
 
 
+# Reglage cache : decalage maximal, en pixels, du recalage du clic sur le centre
+# de la cible (voir snap.py). 0 (defaut) coupe le recalage. A ecrire a la main
+# dans settings.json, section fastgcp : "recalage_max_px": 3.5.
+#
+# Coupe par defaut : mesure du 3 novembre 2026 sur CITADELLE_Pompeani (93
+# pointages manuels, 11 recales). Par rapport a la reprojection du point 3D, les
+# pointages a la main sont a 0,76 px en moyenne, apres recalage a 1,83 px. Dans
+# une vue zoomee le clic est deja plus juste que le croisement de damier retrouve
+# sur ces cibles.
+SNAP_KEY = "recalage_max_px"
+SNAP_DEFAULT_PX = 0.0
+SNAP_MAX_PX = 20.0
+
+
+def read_snap_px(stored):
+    """Decalage maximal du recalage, lu dans les reglages ; repli sur 0 (coupe)."""
+    value = stored.get(SNAP_KEY)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return SNAP_DEFAULT_PX
+    if 0 <= value <= SNAP_MAX_PX:
+        return float(value)
+    return SNAP_DEFAULT_PX
+
+
 class Session(object):
     def __init__(self):
         self.enabled = True
@@ -82,6 +106,7 @@ class Session(object):
         # au plus recent : voir photos.zoom_on_marker.
         self.zoomed = []
         self.zoom_px = float(ZOOM_DEFAULT_PX)
+        self.snap_px = SNAP_DEFAULT_PX
         self.options = dict(DEFAULTS)
         self.load_options()
 
@@ -96,6 +121,7 @@ class Session(object):
             self.options[key] = value
         self.options.update(FIXED)
         self.zoom_px = read_zoom_px(stored)
+        self.snap_px = read_snap_px(stored)
 
     def option(self, key):
         return self.options.get(key, DEFAULTS.get(key))

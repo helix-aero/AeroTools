@@ -621,7 +621,13 @@ def central_tab_under(global_pos):
             break
         if tabs is None and isinstance(node, QtWidgets.QTabWidget):
             tabs = node
-        node = node.parent()
+        # Certains widgets de Metashape (la console Python) masquent `parent`
+        # par un attribut qui n'est pas appelable : on s'arrete la, sans lever.
+        try:
+            getter = node.parent
+            node = getter() if callable(getter) else None
+        except RuntimeError:
+            node = None
         depth += 1
     if in_dock or tabs is None:
         return None, in_dock

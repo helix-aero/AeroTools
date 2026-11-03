@@ -83,3 +83,13 @@ To add a language (Spanish, say):
 
 When the "AI Training" switch is on, FastGCP appends one line per click (image path, clicked position, image size, marker)
 to a file in a visible folder. No image is copied. The file format is documented in `aerotools/tools/fastgcp/dataset.py`.
+
+## Hidden settings
+
+Written by hand in `settings.json`, section `fastgcp`. There is no switch for them in the panel.
+
+- `zoom_fenetre_px` (default 400): image width, in pixels, shown around the marker when FastGCP zooms the photo view.
+- `recalage_max_px` (default 0, off): maximum distance, in pixels, for snapping a click onto the centre of a 2x2 checker
+  target (`tools/fastgcp/snap.py`). Off by default: on CITADELLE_Pompeani (93 manual pins, 11 snapped) the manual pins sat
+  0.76 px from the reprojected 3D point on average, and the snapped ones 1.83 px. When on, the raw click is kept next to the
+  snapped position in the training file (`x_click`, `y_click`).
