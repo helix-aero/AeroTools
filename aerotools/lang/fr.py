@@ -1,0 +1,196 @@
+"""Catalogue francais : langue de reference et de repli d'AeroTools.
+
+Toute cle ajoutee ici doit exister dans les autres langues avec les memes
+champs `{nom}` (un test le verifie). Les textes des boites de dialogue de
+Metashape (menu, A propos, outil indisponible) restent sans accents, comme
+avant : ils passent par l'API de Metashape.
+"""
+
+FORMATS = {
+    "decimal": ",",
+    "date": "%d/%m/%Y",
+    "csv_delimiter": ";",
+}
+
+TEXTES = {
+    # -- Menu Aero et boites de Metashape (bootstrap.py, tool.py) ----------
+    "menu.reload": "Recharger AeroTools",
+    "menu.about": "A propos",
+    "menu.soon": "(a venir)",
+    "boot.unknown_tool": "AeroTools : outil inconnu « {tool} ».",
+    "boot.not_ready": "{title} n'est pas encore disponible.",
+    "boot.load_failed": "AeroTools : impossible de charger {tool}.\n\n{error}",
+    "boot.start_failed": (
+        "AeroTools : {tool} s'est charge mais n'a pas demarre.\n\n{error}"
+    ),
+    "boot.about": (
+        "AeroTools {version}\n"
+        "Suite d'outils {vendor} pour Agisoft Metashape.\n\n"
+        "Outils :\n{tools}\n\n"
+        "Code partage : {root}\n"
+        "Reglages du poste : {settings}\n\n"
+        "Le menu Aero est pose a chaque demarrage par le lanceur installe "
+        "dans le dossier scripts de Metashape. « Recharger AeroTools » relit "
+        "le code du serveur sans redemarrer Metashape."
+    ),
+    "tool.fastgcp.subtitle": "Pointage GCP assisté",
+    "tool.aigcp.subtitle": "Détection automatique des cibles",
+    "tool.no_window": (
+        "FastGCP a besoin de l'interface de Metashape : "
+        "la fenetre principale n'a pas ete trouvee."
+    ),
+    "tool.chunk_status": "Chunk « {name} »",
+    "tool.chunk_unnamed": "sans nom",
+
+    # -- Panneau (panel.py, marking.py) ------------------------------------
+    "panel.state_on": "Tool actif",
+    "panel.state_off": "Tool inactif",
+    "panel.active_marker": "Marqueur actif",
+    "panel.search": "Rechercher",
+    "panel.col.id": "ID",
+    "panel.col.x": "Erreur X",
+    "panel.col.y": "Erreur Y",
+    "panel.col.z": "Erreur Z",
+    "panel.col.proj": "Proj.",
+    "panel.tip_pointed": "Photos où ce marqueur est pointé",
+    "panel.tip_seen": "Photos qui voient ce marqueur",
+    "panel.save_picks": "Enregistrer les pointages",
+    "panel.log": "Journal",
+    "panel.export": "Exporter",
+    "panel.export.pdf": "Rapport PDF",
+    "panel.export.csv": "Tableau CSV",
+    "panel.status.reread_failed": "Relecture impossible",
+    "panel.status.list_reread": "Liste relue",
+    "panel.status.export_unavailable": "Export indisponible",
+    "panel.status.export_failed": "Export impossible",
+    "undo.nothing": "Rien à annuler",
+    "undo.failed": "Annulation impossible",
+    "undo.done": "Annulé : {label}",
+
+    # -- Rapport PDF : page 1 ----------------------------------------------
+    "report.title": "Rapport de pointage GCP",
+    "report.no_project": "Projet non enregistré",
+    "report.band.project": "Projet",
+    "report.band.chunk": "Chunk",
+    "report.band.date": "Date",
+    "report.band.metashape": "Metashape",
+    "report.kpi.markers": "Marqueurs",
+    "report.kpi.markers_sub": "dans le chunk",
+    "report.kpi.pointed": "Pointés",
+    "report.kpi.pointed_sub": "{pct} % des marqueurs",
+    "report.kpi.projections": "Projections",
+    "report.kpi.projections_sub": "{mean} par marqueur",
+    "report.kpi.rms_xy": "RMS plan",
+    "report.kpi.rms_z": "RMS Z",
+    "report.kpi.rms_z_sub": "RMS total {value}",
+    "report.kpi.worst": "Pire écart",
+    "report.empty": "Pas de mesure disponible",
+    "report.bar.title": "Erreur totale par marqueur",
+    "report.bar.sub": "Écart total entre position estimée et référence",
+    "report.bar.sub_top": "Les {shown} plus grands écarts sur {total} marqueurs",
+    "report.bar.legend_total": "Erreur totale",
+    "report.bar.legend_over": "Au-delà de 2 × RMS",
+    "report.bar.legend_rms": "RMS {value}",
+    "report.scatter.title": "Dispersion en plan",
+    "report.scatter.sub": "Erreur X en abscisse, erreur Y en ordonnée",
+    "report.scatter.legend_rms": "RMS plan {value}",
+    "report.scatter.unit": "en mètres",
+    "report.axis.title": "RMS par axe",
+    "report.axis.xy": "Plan",
+    "report.axis.total": "Total",
+    "report.note.title": "Lecture",
+    "report.note.none_1": "Aucune erreur disponible.",
+    "report.note.none_2": (
+        "Les marqueurs n'ont pas de référence ou ne sont pas encore triangulés."
+    ),
+    "report.note.errors": (
+        "Erreurs en mètres : écart entre la position estimée de chaque "
+        "marqueur et sa référence."
+    ),
+    "report.note.threshold": (
+        "En orange : écart supérieur à 2 × RMS ({value} pour l'erreur totale)."
+    ),
+    "report.note.no_threshold": (
+        "Moins de 3 marqueurs avec erreur : aucun seuil de mise en évidence."
+    ),
+
+    # -- Rapport PDF : tableau et histogramme -------------------------------
+    "report.table.title": "Détail par marqueur",
+    "report.table.sub": "{n} marqueurs",
+    "report.table.sub_next": "suite",
+    "report.table.sub_page": "suite, {page} sur {pages}",
+    "report.table.id": "ID",
+    "report.table.x": "Erreur X (m)",
+    "report.table.y": "Erreur Y (m)",
+    "report.table.z": "Erreur Z (m)",
+    "report.table.total": "Total (m)",
+    "report.table.proj": "Proj.",
+    "report.table.legend": (
+        "En orange : valeur au-delà de 2 × RMS de la colonne. "
+        "Marqueurs sans projection : tiret."
+    ),
+    "report.table.legend_plain": "Marqueurs sans projection : tiret.",
+    "report.hist.page_title": "Projections par marqueur",
+    "report.hist.title": "Répartition des projections",
+    "report.hist.sub": "Nombre de marqueurs selon leur nombre de projections",
+    "report.hist.axis": "Projections par marqueur",
+    "report.hist.mean": "Moyenne",
+    "report.hist.median": "Médiane",
+    "report.hist.min": "Minimum",
+    "report.hist.max": "Maximum",
+    "report.hist.low": "Moins de 3 projections",
+    "report.hist.none": "Sans projection",
+
+    # -- Rapport PDF : captures ---------------------------------------------
+    "report.shots.title": "Captures",
+    "report.shots.sub": "Vue photo, panneau FastGCP",
+    "report.shots.sub_crops": (
+        "Vue photo, vignettes des marqueurs les plus écartés "
+        "(cercle vert : point posé, croix orange : position estimée), "
+        "panneau FastGCP"
+    ),
+    "report.shots.photo": "Vue photo",
+    "report.shots.photo_cam": "Vue photo {camera}",
+    "report.shots.photo_marker": "{caption} · marqueur courant {marker}",
+    "report.shots.fallback": "{camera} · marqueur {marker}",
+    "report.shots.crop_error": "{label} · erreur {value}",
+    "report.shots.crop_gap": "{camera} · écart image {gap} px",
+    "report.shots.panel": "Panneau FastGCP",
+    "report.footer.page": "Page {page} / {total}",
+    "report.doc_title": "Rapport de pointage GCP {chunk}",
+
+    # -- Export : fichiers, dialogues et messages ----------------------------
+    "file.report": "Rapport_GCP",
+    "file.table": "Tableau_GCP",
+    "dlg.title": "Rapport GCP",
+    "dlg.no_chunk": "Aucun chunk ouvert dans Metashape.",
+    "dlg.no_markers": "Ce chunk ne contient aucun marqueur.",
+    "dlg.save_pdf": "Exporter le rapport PDF",
+    "dlg.save_csv": "Exporter le tableau en CSV",
+    "dlg.filter_pdf": "Fichiers PDF (*.pdf)",
+    "dlg.filter_csv": "Fichiers CSV (*.csv)",
+    "dlg.saved": "Fichier enregistré :\n{path}",
+    "dlg.open": "Ouvrir",
+    "dlg.close": "Fermer",
+    "dlg.pdf_done": "Rapport PDF exporté",
+    "dlg.csv_done": "Tableau CSV exporté",
+    "err.pdf": "Export PDF impossible",
+    "err.csv": "Export CSV impossible",
+    "err.denied": (
+        "Écriture refusée. Le fichier est peut-être ouvert dans un autre "
+        "programme ou le dossier est protégé."
+    ),
+    "err.no_qt": "Qt n'est pas initialisé",
+    "err.cannot_write": "écriture impossible : {path}",
+
+    # -- Export CSV ----------------------------------------------------------
+    "csv.id": "ID",
+    "csv.x": "Erreur X (m)",
+    "csv.y": "Erreur Y (m)",
+    "csv.z": "Erreur Z (m)",
+    "csv.total": "Erreur totale (m)",
+    "csv.projections": "Projections",
+    "csv.ref_x": "X référence",
+    "csv.ref_y": "Y référence",
+    "csv.ref_z": "Z référence",
+}

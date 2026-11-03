@@ -1,0 +1,87 @@
+"""Point d'accroche de la detection automatique des cibles (AIGCP).
+
+Ce module n'implemente aucune IA. Il fixe seulement les types et le registre
+par lesquels un detecteur se branchera plus tard, sans qu'il faille toucher a
+marking.py : le pointage manuel appelle `notify_pin(record)`, et un futur
+detecteur lit ces pointages (ou propose les siens) via la classe `Detector`.
+
+Contrat fichier prevu pour AIGCP (pour memoire, rien n'est code ici) :
+  - FastGCP ecrit un `work.json` : poids du modele, seuil de confiance, et une
+    liste d'items {id, image_path, boite du crop, x_estime, y_estime}.
+  - Un executable separe, dans un environnement Python externe, lit ce fichier
+    et ecrit `hits.json` : liste de {id, x, y, conf}.
+  - torch, ultralytics et CUDA ne sont JAMAIS importes dans le Python de
+    Metashape : tout le calcul passe par cet executable et ces deux fichiers.
+  - Une projection posee par l'IA doit l'etre avec `pinned=False`, une
+    projection manuelle avec `pinned=True` (cote msapi.set_projection, un
+    parametre `pinned` reste a ajouter : aujourd'hui il pose toujours True).
+
+Un detecteur se branche ainsi :
+    from aerotools.tools.fastgcp import detection
+    detection.register(MonDetecteur())
+"""
+
+import collections
+
+from ... import journal
+
+# Une proposition de pointage faite par un detecteur.
+#   marker_label : etiquette du marqueur concerne
+#   camera_key   : cle (camera.key) de la photo
+#   x, y         : pixels capteur
+#   confidence   : 0.0 a 1.0
+#   source       : nom du detecteur qui l'a produite
+Proposal = collections.namedtuple(
+    "Proposal", ["marker_label", "camera_key", "x", "y", "confidence", "source"]
+)
+
+
+class Detector(object):
+    """Base d'un detecteur de cibles. Ne fait rien par defaut."""
+
+    name = "detecteur"
+
+    def status(self):
+        """(ok, message) : le detecteur est-il pret a servir ?"""
+        return True, ""
+
+    def propose(self, chunk, marker, cameras):
+        """Liste de `Proposal` pour ce marqueur sur ces photos (vide ici)."""
+        return []
+
+    def on_pin_placed(self, record):
+        """Appele apres chaque pointage manuel. `record` : dict, voir dataset.py."""
+        return None
+
+
+class NullDetector(Detector):
+    """Detecteur par defaut : aucun, tant qu'AIGCP n'est pas installe."""
+
+    name = "aucun"
+
+    def status(self):
+        return False, "Aucun detecteur installe (AIGCP a venir)"
+
+
+_NULL = NullDetector()
+_active = _NULL
+
+
+def register(detector):
+    """Installe `detector` comme detecteur courant. `None` revient au NullDetector."""
+    global _active
+    _active = detector if detector is not None else _NULL
+    return _active
+
+
+def active():
+    """Detecteur courant (NullDetector si aucun n'est enregistre)."""
+    return _active
+
+
+def notify_pin(record):
+    """Previent le detecteur courant d'un pointage manuel. Ne leve jamais."""
+    try:
+        active().on_pin_placed(record)
+    except Exception as exc:
+        journal.write("detecteur : {!r}".format(exc))

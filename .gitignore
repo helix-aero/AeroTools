@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.bak
+_sources_reference/
+*.pt
+diag_*.py
+diag_*.txt
+docs/2026-11-03_pistes-amelioration.html
+*.psx
+*.log
