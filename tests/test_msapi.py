@@ -137,3 +137,31 @@ def test_central_tab_under_survives_a_widget_whose_parent_is_not_callable(monkey
     monkeypatch.setattr(msapi.QtWidgets.QApplication, "widgetAt",
                         staticmethod(lambda pos: Odd()))
     assert msapi.central_tab_under(object()) == (None, False)
+
+
+def test_main_window_wrapper_is_kept_alive_and_renewed_when_dead(monkeypatch):
+    """Sans reference durable, PySide2 invalide les wrappers des enfants."""
+    class Window(object):
+        dead = False
+
+        def objectName(self):
+            if self.dead:
+                raise RuntimeError("Internal C++ object already deleted")
+            return ""
+
+    first, second = Window(), Window()
+    queue = [first, second]
+
+    class Instance(object):
+        def topLevelWidgets(self):
+            return [queue[0]]
+
+    monkeypatch.setattr(msapi.QtWidgets, "QMainWindow", Window)
+    monkeypatch.setattr(msapi.QtWidgets.QApplication, "instance",
+                        staticmethod(lambda: Instance()))
+    monkeypatch.setattr(msapi, "_MAIN_WINDOW", None)
+    assert msapi.main_window() is first
+    queue.pop(0)
+    assert msapi.main_window() is first
+    first.dead = True
+    assert msapi.main_window() is second

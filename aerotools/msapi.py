@@ -94,12 +94,27 @@ def refresh():
         pass
 
 
+# Le wrapper Python de la fenetre principale doit rester vivant : des qu'il est
+# libere (variable locale d'une fonction terminee), PySide2 invalide les wrappers
+# de tous ses enfants (« Internal C++ object already deleted » alors que les
+# widgets existent toujours), et le clic dans la vue photo n'est plus reconnu.
+_MAIN_WINDOW = None
+
+
 def main_window():
+    global _MAIN_WINDOW
+    if _MAIN_WINDOW is not None:
+        try:
+            _MAIN_WINDOW.objectName()
+            return _MAIN_WINDOW
+        except RuntimeError:
+            _MAIN_WINDOW = None
     instance = QtWidgets.QApplication.instance()
     if instance is None:
         return None
     for widget in instance.topLevelWidgets():
         if isinstance(widget, QtWidgets.QMainWindow):
+            _MAIN_WINDOW = widget
             return widget
     return None
 
