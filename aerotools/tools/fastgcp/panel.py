@@ -1123,8 +1123,12 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
     def _on_lang_clicked(self, code, _checked=False):
         """Un clic sur FR / EN : change la langue, `retranslate` suit par abonnement."""
+        # Abonnement (re)pose a chaque clic : un abonnement perdu ne doit pas
+        # rendre le selecteur muet jusqu'au prochain redemarrage de l'outil.
+        if self._lang_cb is not None:
+            i18n.subscribe(self._lang_cb)
         if code == i18n.lang():
-            self._refresh_lang_buttons()
+            self.retranslate()
             return
         if not i18n.set_lang(code):
             return
@@ -1156,29 +1160,62 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         marqueur, grille) sont relus ; le statut revient au nombre de marqueurs.
         """
         try:
-            self._eyebrow_active.set_full_text(i18n.t("panel.active_marker").upper())
-            self.search.setPlaceholderText(i18n.t("panel.search"))
-            head = self.grid.headerItem()
-            for column, title in enumerate(column_titles()):
-                head.setText(column, title)
-            self._header.viewport().update()
-            for box in self._checks.values():
-                box.set_full_text(i18n.t("panel.save_picks"))
-            self.log_button.set_full_text(i18n.t("panel.log"))
-            self.count_pointed.set_tip(i18n.t("panel.tip_pointed"))
-            self.count_photos.set_tip(i18n.t("panel.tip_seen"))
-            self._set_export_text()
-            for kind, text_key in EXPORTS:
-                action = self._export_actions.get(kind)
-                if action is not None:
-                    action.setText(i18n.t(text_key))
-            self._refresh_lang_buttons()
-            self._apply_toggle(self._running)
-            self.refresh_markers()
-            self.update_active_card()
+            self.objectName()
         except RuntimeError:
             # Panneau deja detruit par Qt : plus rien a traduire.
             i18n.unsubscribe(self._lang_cb)
+            return
+        # Le surlignage FR / EN d'abord : il suit la langue meme si une etape
+        # plus bas echoue. Chaque etape est isolee, et une erreur (Metashape
+        # leve des RuntimeError pour des objets perimes) ne coupe ni les etapes
+        # suivantes ni l'abonnement : sinon le selecteur resterait muet.
+        for name, step in (
+            ("lang_buttons", self._refresh_lang_buttons),
+            ("eyebrow", self._retranslate_eyebrow),
+            ("search", self._retranslate_search),
+            ("grid", self._retranslate_grid),
+            ("checks", self._retranslate_checks),
+            ("bottom_buttons", self._retranslate_buttons),
+            ("export", self._retranslate_export),
+            ("state", lambda: self._apply_toggle(self._running)),
+            ("markers", self.refresh_markers),
+            ("card", self.update_active_card),
+        ):
+            try:
+                step()
+            except Exception as exc:
+                try:
+                    journal.write("Langue : etape {} en erreur : {!r}".format(name, exc))
+                except Exception:
+                    pass
+
+    def _retranslate_eyebrow(self):
+        self._eyebrow_active.set_full_text(i18n.t("panel.active_marker").upper())
+
+    def _retranslate_search(self):
+        self.search.setPlaceholderText(i18n.t("panel.search"))
+
+    def _retranslate_grid(self):
+        head = self.grid.headerItem()
+        for column, title in enumerate(column_titles()):
+            head.setText(column, title)
+        self._header.viewport().update()
+
+    def _retranslate_checks(self):
+        for box in self._checks.values():
+            box.set_full_text(i18n.t("panel.save_picks"))
+
+    def _retranslate_buttons(self):
+        self.log_button.set_full_text(i18n.t("panel.log"))
+        self.count_pointed.set_tip(i18n.t("panel.tip_pointed"))
+        self.count_photos.set_tip(i18n.t("panel.tip_seen"))
+
+    def _retranslate_export(self):
+        self._set_export_text()
+        for kind, text_key in EXPORTS:
+            action = self._export_actions.get(kind)
+            if action is not None:
+                action.setText(i18n.t(text_key))
 
     # ------------------------------------------------------------------
     # Options
