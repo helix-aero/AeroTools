@@ -168,13 +168,42 @@ def filter_for_marker(state, marker, force=False):
                     label, diagnostic["erreur"]
                 ))
         panel_call(state, "update_active_card")
-        # Une photo est deja ouverte : on la zoome sur le marqueur choisi.
-        zoom_on_marker(state, marker)
+        _show_marker(state, chunk, marker, cameras)
     except Exception as exc:
         try:
             journal.write("filtre photos : {!r}".format(exc))
         except Exception:
             pass
+
+
+def _show_marker(state, chunk, marker, cameras):
+    """Montre le marqueur choisi : zoom sur la photo ouverte, sinon ouvre la meilleure.
+
+    Un clic sur un marqueur est toujours une demande de zoom, meme si ce couple
+    (photo, marqueur) a deja ete zoome : c'est l'operateur qui le redemande.
+    Si le point ne tombe pas dans la photo ouverte, on ouvre la premiere photo
+    de la liste sans projection du marqueur (a defaut la premiere de la liste).
+    """
+    if not getattr(state, "enabled", False):
+        return
+    current = msapi.current_camera()
+    anchor = None
+    if current is not None:
+        anchor, _how = msapi.marker_anchor(chunk, marker, current)
+    if anchor is not None:
+        zoom_on_marker(state, marker, current, force=True)
+        return
+    if not cameras:
+        return
+    pinned = set(msapi.camera_key(cam) for cam in msapi.projection_cameras(marker))
+    target = next((cam for cam in cameras if msapi.camera_key(cam) not in pinned), cameras[0])
+    ok, message = msapi.open_photo(target)
+    if ok:
+        journal.write("{} : photo ouverte {}".format(msapi.marker_label(marker), message))
+        zoom_on_marker(state, marker, target, force=True)
+    else:
+        journal.write("{} : ouverture de la photo refusee ({})".format(
+            msapi.marker_label(marker), message))
 
 
 def reset_filter(state):

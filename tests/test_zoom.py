@@ -472,9 +472,11 @@ def test_filter_for_marker_zooms_the_open_photo(ms, world, sched):
     assert view.scale == pytest.approx(4.0)
     assert (1, "GCP1") in state.zoomed
     sets = len(view.scale_sets)
+    view.scale = 9.0                                       # l'operateur a zoome a la main
     photos.filter_for_marker(state, marker, force=True)   # re-clic sur le meme marqueur
     sched.run_all()
-    assert len(view.scale_sets) == sets                    # zoom de l'operateur preserve
+    assert len(view.scale_sets) > sets                     # un clic redemande le zoom
+    assert view.scale == pytest.approx(4.0)
 
 
 def test_undo_reopens_photo_and_zooms(ms, world, sched):
