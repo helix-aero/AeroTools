@@ -901,6 +901,13 @@ ZOOM_DELAYS_MS = (60, 150)
 _ZOOM_CENTER_TOL_PX = 2.0
 _ZOOM_SCALE_TOL = 0.05
 
+# Vue deja zoomee par l'operateur (ou par Metashape, qui recentre lui-meme sur le
+# marqueur en gardant l'echelle) : echelle courante > ajuster-a-la-fenetre x ce
+# facteur. Le zoom automatique ne touche alors qu'au centre, jamais a l'echelle :
+# ni double zoom, ni dezoom. Sur une photo encore « ajustee » (premiere photo),
+# l'echelle automatique s'applique.
+ZOOM_KEEP_FACTOR = 1.5
+
 # La ligne detaillee zoom : centre=... n'est ecrite qu'une fois par session.
 _ZOOM_LOGGED = [False]
 
@@ -1079,14 +1086,26 @@ def _zoom_attempt(camera, x, y, scale, window_px, last):
             return "abandon", "la photo {} n'est pas ouverte".format(camera_label(camera))
         return "retry", "photo pas encore ouverte"
 
-    target_scale = scale if scale is not None else zoom_scale(camera, window_px)
+    keep = False
+    if scale is not None:
+        target_scale = scale
+    else:
+        before = view_state(view)
+        fit = fit_scale(camera, before["width"], before["height"])
+        if (before["scale"] is not None and fit is not None
+                and before["scale"] > fit * ZOOM_KEEP_FACTOR):
+            keep = True
+            target_scale = before["scale"]
+        else:
+            target_scale = zoom_scale(camera, window_px)
     form, read_center, error = _apply_center(view, x, y)
     if form is None:
         return "fail", "centre refuse ({!r})".format(error)
-    try:
-        view.scale = target_scale
-    except Exception as exc:
-        return "fail", "echelle refusee ({!r})".format(exc)
+    if not keep:
+        try:
+            view.scale = target_scale
+        except Exception as exc:
+            return "fail", "echelle refusee ({!r})".format(exc)
 
     after = view_state(view)
     # Changer l'echelle peut deplacer le centre : on le repose une fois.
@@ -1103,6 +1122,8 @@ def _zoom_attempt(camera, x, y, scale, window_px, last):
         "({:.1f}, {:.1f})".format(*after["center"]) if after["center"] else "illisible",
         "{:.4f}".format(after["scale"]) if after["scale"] is not None else "illisible",
         form)
+    if keep:
+        detail += " ; echelle de l'operateur gardee"
     if not (scale_ok and center_ok) and not last:
         return "retry", detail
     if not _ZOOM_LOGGED[0] or not (scale_ok and center_ok):

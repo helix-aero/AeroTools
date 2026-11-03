@@ -10,8 +10,12 @@ Zoom (msapi.zoom_to_point) : quand FastGCP ouvre une photo pour un marqueur
 (passage a la photo suivante, annulation d'un pointage), ou quand le marqueur
 courant change alors qu'une photo est deja ouverte, la vue est centree sur le
 marqueur (projection posee, sinon projection estimee) avec environ 400 px
-d'image visibles (reglage cache fastgcp.zoom_fenetre_px). Un couple (photo,
-marqueur) n'est zoome qu'une fois, pour ne pas ecraser le zoom de l'operateur.
+d'image visibles (reglage cache fastgcp.zoom_fenetre_px). Si la vue est deja
+zoomee (par l'operateur, ou par Metashape qui recentre lui-meme sur le marqueur
+en gardant l'echelle), seul le centre est repose : l'echelle de l'operateur est
+conservee, ni double zoom ni dezoom ; l'echelle automatique ne s'applique que
+sur une photo encore ajustee a la fenetre (premiere photo). Un couple (photo,
+marqueur) n'est recentre qu'une fois hors demande explicite.
 Rien n'est fait quand l'outil est en pause.
 """
 

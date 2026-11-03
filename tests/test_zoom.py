@@ -357,7 +357,7 @@ def test_zoom_on_marker_does_not_override_manual_zoom(world, sched):
     assert view.scale == 9.0 and len(view.scale_sets) == sets
     assert photos.zoom_on_marker(state, marker, force=True) is True
     sched.run_all()
-    assert view.scale == pytest.approx(4.0)
+    assert view.scale == 9.0 and len(view.scale_sets) == sets   # recentre, echelle gardee
 
 
 def test_zoom_on_marker_new_marker_on_same_photo_zooms(ms, world, sched):
@@ -471,12 +471,12 @@ def test_filter_for_marker_zooms_the_open_photo(ms, world, sched):
     sched.run_all()
     assert view.scale == pytest.approx(4.0)
     assert (1, "GCP1") in state.zoomed
-    sets = len(view.scale_sets)
     view.scale = 9.0                                       # l'operateur a zoome a la main
+    sets = len(view.scale_sets)
     photos.filter_for_marker(state, marker, force=True)   # re-clic sur le meme marqueur
     sched.run_all()
-    assert len(view.scale_sets) > sets                     # un clic redemande le zoom
-    assert view.scale == pytest.approx(4.0)
+    assert len(view.scale_sets) == sets                    # le zoom de l'operateur est garde
+    assert view.scale == 9.0
 
 
 def test_undo_reopens_photo_and_zooms(ms, world, sched):
@@ -601,3 +601,29 @@ def test_session_options_unchanged_by_zoom_setting(local_appdata):
     state.forget_chunk()
     assert state.zoomed == []
     session_mod.reset()
+
+
+def test_zoom_keeps_the_operator_scale_and_only_recenters(world, sched):
+    _chunk, _marker, cam, _other, view = world
+    view._scale = 9.0                      # bien au-dessus de l'ajuste (0.3)
+    msapi.zoom_to_point(cam, 1200.0, 800.0, window_px=400)
+    sched.run_all()
+    assert (view.center.x, view.center.y) == (1200.0, 800.0)
+    assert view.scale_sets == [] and view.scale == 9.0
+    assert "echelle de l'operateur gardee" in _zoom_lines()[-1]
+
+
+def test_zoom_applies_its_scale_on_a_view_that_is_still_fitted(world, sched):
+    _chunk, _marker, cam, _other, view = world
+    view._scale = 0.3                      # photo entiere dans la fenetre
+    msapi.zoom_to_point(cam, 1200.0, 800.0, window_px=400)
+    sched.run_all()
+    assert view.scale == pytest.approx(4.0)
+
+
+def test_zoom_explicit_scale_ignores_the_operator_scale(world, sched):
+    _chunk, _marker, cam, _other, view = world
+    view._scale = 9.0
+    msapi.zoom_to_point(cam, 500.0, 400.0, scale=10.0)
+    sched.run_all()
+    assert view.scale == 10.0
