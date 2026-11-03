@@ -76,8 +76,13 @@ Issues, ideas and pull requests are welcome.
 - `main` and `dev` are protected. Fork the repository, work on a branch, and open a pull request against `dev`.
 - Code runs in Metashape's embedded Python 3.9 with PySide2, and also under PySide6. No extra dependency, please.
 - Run the tests with `python -m pytest tests -q`. They do not need Metashape.
+- By sending a pull request you agree that your contribution is released under the AGPL-3.0.
 - More details in [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Made by HELIX AERO.
+GNU AGPL-3.0, see [LICENSE](LICENSE). Copyright 2026 HELIX AERO.
+
+You are free to use and modify AeroTools, including at work. If you distribute a modified version, or let others use
+it over a network, you must publish your changes under the same license. The simplest way is to send them back
+here as a pull request. If that does not suit you, get in touch and we can talk about other terms.
