@@ -1246,3 +1246,146 @@ def message_box(text):
         Metashape.app.messageBox(text)
     except Exception:
         print(text)
+
+
+# --------------------------------------------------------------------------
+# Controle des residus
+# --------------------------------------------------------------------------
+
+def worst_projection(marker):
+    """(camera, ecart en pixels) de la projection posee a la main la plus
+    eloignee de la reprojection du point 3D du marqueur, ou None.
+
+    Sert a ouvrir d'un clic la photo qui explique un gros residu. Ne leve jamais.
+    """
+    try:
+        position = marker.position
+    except Exception:
+        return None
+    if position is None:
+        return None
+    worst = None
+    for camera in projection_cameras(marker):
+        projection = get_projection(marker, camera)
+        if projection is None or not projection[2]:
+            continue
+        try:
+            reprojected = _xy(camera.project(position))
+        except Exception:
+            continue
+        if reprojected is None:
+            continue
+        gap = math.hypot(projection[0] - reprojected[0], projection[1] - reprojected[1])
+        if worst is None or gap > worst[1]:
+            worst = (camera, gap)
+    return worst
+
+
+# --------------------------------------------------------------------------
+# Import de GCP depuis un fichier texte
+# --------------------------------------------------------------------------
+
+def marker_crs(chk):
+    """Systeme de coordonnees des marqueurs du chunk (a defaut celui du chunk), ou None."""
+    try:
+        return getattr(chk, "marker_crs", None) or chk.crs
+    except Exception:
+        return None
+
+
+def crs_name(crs):
+    try:
+        return str(crs.name) if crs is not None else ""
+    except Exception:
+        return ""
+
+
+def same_crs(first, second):
+    """Deux systemes de coordonnees identiques (meme WKT, a defaut meme nom)."""
+    if first is None or second is None:
+        return first is second
+    try:
+        return str(first.wkt) == str(second.wkt)
+    except Exception:
+        return crs_name(first) == crs_name(second)
+
+
+def choose_crs(caption, current=None):
+    """Boite « systeme de coordonnees » de Metashape. Renvoie le choix, ou None."""
+    try:
+        if current is not None:
+            return Metashape.app.getCoordinateSystem(caption, current)
+        return Metashape.app.getCoordinateSystem(caption)
+    except Exception:
+        try:
+            return Metashape.app.getCoordinateSystem()
+        except Exception:
+            return None
+
+
+def find_crs(name_or_wkt):
+    """Systeme de coordonnees depuis un code (« EPSG::2154 ») ou un WKT, ou None."""
+    try:
+        return Metashape.CoordinateSystem(name_or_wkt)
+    except Exception:
+        return None
+
+
+def import_gcps(chk, records, source_crs):
+    """Cree ou met a jour les marqueurs d'apres `records` (dicts label, x, y, z).
+
+    Les coordonnees sont dans `source_crs`. Si le chunk a deja un systeme de
+    coordonnees pour ses marqueurs et qu'il differe, elles sont converties vers
+    lui : on ne touche jamais au systeme d'un chunk qui en a un (cela
+    reinterpreterait les references des autres marqueurs). Un chunk sans systeme
+    prend celui du fichier. Un marqueur du meme nom voit sa reference remplacee.
+
+    Renvoie {"created", "updated", "errors": [(nom, motif)], "converted",
+    "crs_set"}. Ne leve jamais.
+    """
+    result = {"created": 0, "updated": 0, "errors": [], "converted": False,
+              "crs_set": False}
+    try:
+        target = marker_crs(chk)
+        if target is None:
+            if source_crs is None:
+                result["errors"].append(("", "no_crs"))
+                return result
+            chk.marker_crs = source_crs
+            target = source_crs
+            result["crs_set"] = True
+        convert = source_crs is not None and not same_crs(source_crs, target)
+        result["converted"] = convert
+        index = {}
+        for marker in markers(chk):
+            index[marker_label(marker)] = marker
+        for record in records:
+            label = record.get("label", "")
+            try:
+                x, y = float(record["x"]), float(record["y"])
+                z = record.get("z")
+                height = 0.0 if z is None else float(z)
+                if convert:
+                    moved = Metashape.CoordinateSystem.transform(
+                        Metashape.Vector([x, y, height]), source_crs, target)
+                    x, y, height = float(moved.x), float(moved.y), float(moved.z)
+                marker = index.get(label)
+                created = marker is None
+                if created:
+                    marker = chk.addMarker()
+                    marker.label = label
+                    index[label] = marker
+                marker.reference.location = Metashape.Vector([x, y, height])
+                marker.reference.enabled = True
+                if z is None:
+                    try:
+                        marker.reference.location_enabled = (True, True, False)
+                    except Exception:
+                        pass
+                result["created" if created else "updated"] += 1
+            except Exception as exc:
+                result["errors"].append((label, repr(exc)))
+    except Exception as exc:
+        result["errors"].append(("", repr(exc)))
+    refresh()
+    return result

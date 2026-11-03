@@ -169,13 +169,10 @@ def _tick(state):
         state.last_chunk_key = key
         state.forget_chunk()
         try:
+            # Le nom du chunk suit la progression dans le statut du panneau.
+            state.panel.set_chunk_name(
+                msapi.chunk_label(chunk) or i18n.t("tool.chunk_unnamed"))
             state.panel.refresh_markers()
-            state.panel.set_status(
-                i18n.t(
-                    "tool.chunk_status",
-                    name=msapi.chunk_label(chunk) or i18n.t("tool.chunk_unnamed"),
-                )
-            )
         except Exception as exc:
             journal.write("relecture apres changement de chunk : {!r}".format(exc))
         return

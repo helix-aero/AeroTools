@@ -28,7 +28,7 @@ import time
 
 from ... import config, i18n, journal, msapi, theme
 from ...qt import QtCore, QtGui, QtWidgets
-from . import history
+from . import history, qc
 
 # Lignes visibles dans le journal deplie.
 LOG_VISIBLE_LINES = 6
@@ -663,12 +663,17 @@ class _NumberDelegate(QtWidgets.QStyledItemDelegate):
         selected = bool(opt.state & QtWidgets.QStyle.State_Selected)
         brush = index.data(QtCore.Qt.ForegroundRole)
         muted = False
+        warn = False
         if brush is not None:
             try:
-                muted = brush.color().name().lower() == _qcolor(theme.FG_3).name().lower()
+                name = brush.color().name().lower()
+                muted = name == _qcolor(theme.FG_3).name().lower()
+                warn = name == _qcolor(theme.OFF_TEXT).name().lower()
             except Exception:
-                muted = False
-        if selected:
+                muted = warn = False
+        if warn:
+            color = _qcolor(theme.OFF_TEXT)
+        elif selected:
             color = _qcolor(theme.FG_1 if muted else theme.FG_0)
         else:
             color = _qcolor(theme.FG_3 if muted else theme.FG_1)
@@ -750,6 +755,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._lang_cb = None
         # Tri du tableau : (cle, decroissant) ou None = ordre du projet.
         self._sort = None
+        # Nom du chunk affiche a la suite de la progression (pose par tool.py).
+        self._chunk_name = ""
 
         self.setObjectName("AeroFastGcpDock")
         # L'en-tete maison fait office de barre : la barre native disparait.
@@ -808,6 +815,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.addWidget(self._build_active_card())
         layout.addWidget(self._build_search())
         layout.addWidget(self._build_list(), 1)
+        layout.addLayout(self._build_tools())
         layout.addWidget(self._build_more())
         layout.addLayout(self._build_footer())
         column.addWidget(content, 1)
@@ -995,6 +1003,26 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         # Ancien nom du widget, garde pour les appelants existants.
         self.list = grid
         return box
+
+    def _build_tools(self):
+        """Deux boutons sous le tableau : controle des residus, import de GCP."""
+        row = QtWidgets.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(theme.PAD)
+        self.qc_button = self._tool_button("panel.qc", self._show_qc_menu)
+        self.import_button = self._tool_button("panel.import", self._on_import)
+        row.addWidget(self.qc_button, 1)
+        row.addWidget(self.import_button, 1)
+        return row
+
+    def _tool_button(self, text_key, handler):
+        button = _ElidedButton(i18n.t(text_key))
+        button.setObjectName("aeroGhost")
+        button.setProperty("pill", True)
+        button.setCursor(QtCore.Qt.PointingHandCursor)
+        button.setFixedHeight(32)
+        button.clicked.connect(handler)
+        return button
 
     def _build_more(self):
         """Carte « Plus » : enregistrement des pointages et journal. Repliee au depart."""
@@ -1207,6 +1235,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
     def _retranslate_buttons(self):
         self.log_button.set_full_text(i18n.t("panel.log"))
+        self.qc_button.set_full_text(i18n.t("panel.qc"))
+        self.import_button.set_full_text(i18n.t("panel.import"))
         self.count_pointed.set_tip(i18n.t("panel.tip_pointed"))
         self.count_photos.set_tip(i18n.t("panel.tip_seen"))
 
@@ -1483,7 +1513,13 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         elif needle:
             self.set_status("{}/{}".format(len(rows), total))
         else:
-            self.set_status(str(total))
+            # Avancement : marqueurs avec au moins 3 photos pointees.
+            done, count = qc.progress(rows)
+            if self._chunk_name:
+                self.set_status(i18n.t("panel.status.progress_chunk", done=done,
+                                       total=count, name=self._chunk_name))
+            else:
+                self.set_status(i18n.t("panel.status.progress", done=done, total=count))
         self.update_active_card()
 
     @staticmethod
@@ -1516,13 +1552,15 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         item.setForeground(0, QtGui.QBrush(_qcolor(theme.FG_0)))
         muted = QtGui.QBrush(_qcolor(theme.FG_3))
         normal = QtGui.QBrush(_qcolor(theme.FG_1))
+        warn = QtGui.QBrush(_qcolor(theme.OFF_TEXT))
         for column, (_title, key, _width) in enumerate(COLUMNS):
             if column == 0:
                 continue
             value = row.get(key)
             if key == "proj":
                 item.setText(column, str(int(value)))
-                item.setForeground(column, normal)
+                # Moins de 3 photos pointees : a completer, en couleur d'alerte.
+                item.setForeground(column, warn if qc.is_few(row) else normal)
             else:
                 item.setText(column, format_error(value))
                 item.setForeground(column, muted if value is None else normal)
@@ -1647,6 +1685,90 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._update_undo_button()
 
     # ------------------------------------------------------------------
+    # Controle des residus et marqueurs a surveiller
+    # ------------------------------------------------------------------
+
+    def _all_rows(self):
+        """Lignes de tous les marqueurs du chunk (pas seulement ceux de la recherche)."""
+        chunk = msapi.chunk()
+        rows = []
+        for marker in msapi.markers(chunk):
+            label = msapi.marker_label(marker)
+            if label:
+                rows.append(self._row_data(chunk, marker, label))
+        return rows
+
+    def _show_qc_menu(self, _checked=False):
+        """Menu des marqueurs a surveiller : residu eleve, puis moins de 3 photos."""
+        try:
+            rows = self._all_rows()
+            result = qc.watchlist(rows)
+            by_label = {row["label"]: row for row in rows}
+            menu = QtWidgets.QMenu(self)
+            if not result["residual"] and not result["few"]:
+                menu.addAction(i18n.t("qc.none")).setEnabled(False)
+            if result["residual"]:
+                title = i18n.t("qc.title_residual", limit=format_error(result["limit"]))
+                menu.addAction(title).setEnabled(False)
+                for item in result["residual"]:
+                    worst = msapi.worst_projection(by_label[item["label"]]["marker"])
+                    total = format_error(item["total"])
+                    if worst is None:
+                        text = i18n.t("qc.item_residual_plain", label=item["label"], total=total)
+                    else:
+                        text = i18n.t("qc.item_residual", label=item["label"], total=total,
+                                      px="{:.1f}".format(worst[1]))
+                    action = menu.addAction(text)
+                    action.triggered.connect(
+                        functools.partial(self._on_qc_pick, item["label"], True))
+            if result["few"]:
+                if result["residual"]:
+                    menu.addSeparator()
+                menu.addAction(i18n.t("qc.title_few", n=qc.MIN_PHOTOS)).setEnabled(False)
+                for item in result["few"]:
+                    action = menu.addAction(
+                        i18n.t("qc.item_few", label=item["label"], n=item["proj"]))
+                    action.triggered.connect(
+                        functools.partial(self._on_qc_pick, item["label"], False))
+            self._qc_menu = menu
+            size = menu.sizeHint()
+            button = self.qc_button
+            menu.popup(button.mapToGlobal(
+                QtCore.QPoint(0, -size.height() - theme.PAD_S)))
+        except Exception as exc:
+            journal.write("FastGCP : controle des residus : {!r}".format(exc))
+
+    def _on_qc_pick(self, label, open_worst, _checked=False):
+        """Un clic dans le menu : marqueur courant ; pour un residu, ouvre la pire photo."""
+        try:
+            if not self.set_active_marker_by_label(label) or not open_worst:
+                return
+            state = self._state
+            marker = self._find_marker(label)
+            worst = msapi.worst_projection(marker) if marker is not None else None
+            if worst is None:
+                return
+            ok, _message = msapi.open_photo(worst[0])
+            if ok:
+                from . import photos
+                photos.zoom_on_marker(state, marker, worst[0], force=True)
+                self.set_status(i18n.t("qc.opened", label=label))
+        except Exception as exc:
+            journal.write("FastGCP : choix dans le controle : {!r}".format(exc))
+
+    # ------------------------------------------------------------------
+    # Import de GCP
+    # ------------------------------------------------------------------
+
+    def _on_import(self, _checked=False):
+        try:
+            from . import gcp_import
+            gcp_import.run(self._state, self)
+        except Exception as exc:
+            self.set_status(i18n.t("imp.failed"))
+            journal.write("FastGCP : import de GCP : {!r}".format(exc))
+
+    # ------------------------------------------------------------------
     # Exporter
     # ------------------------------------------------------------------
 
@@ -1680,6 +1802,10 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     # ------------------------------------------------------------------
     # Statut
     # ------------------------------------------------------------------
+
+    def set_chunk_name(self, name):
+        """Nom du chunk courant, repris dans le statut au prochain rafraichissement."""
+        self._chunk_name = str(name or "")
 
     def set_status(self, texte):
         """Ligne de statut du pied du panneau."""
