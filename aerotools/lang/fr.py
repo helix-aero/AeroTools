@@ -357,7 +357,7 @@ TEXTES = {
     "redo.nothing": "Rien à rétablir",
     "redo.failed": "Rétablissement impossible",
     "redo.done": "Rétabli : {label}",
-    "panel.ad": "Drone, LiDAR, bathymétrie · {site}",
+    "panel.ad": "Complex flight made easy",
 
     # -- Dossier de stockage -----------------------------------------------
     "settings.open_folder": "Ouvrir",
