@@ -27,12 +27,19 @@ metres de cette position est une fausse detection (toiture, arbre, objet
 voisin) : elle est ecartee, et la recherche elargie autour de l'estimation est
 coupee pour ce marqueur.
 
+Coherence entre photos : les detections d'un meme marqueur doivent se recouper
+en un meme point 3D (voir consensus.py). Celles qui tombent a plus de
+CONSENSUS_M metres de ce point sont ecartees ; sans point commun, tout l'est.
+Cela protege aussi un marqueur sans aucune projection, ou le garde-fou
+ci-dessus n'a rien a comparer.
+
 Reglages caches (settings.json, section `aigcp`) :
   python      chemin du Python qui a torch + ultralytics
               (defaut : variable AIGCP_PYTHON, puis ~/AIGCP/_env/Scripts/python.exe)
   models_dir  dossier des poids damier.pt et bombe.pt (defaut : <depot>/models)
   conf_damier, conf_bombe   seuils de confiance (defauts 0,25 et 0,30)
   gate_min_m (0,30), gate_factor (5)   garde-fou ; gate_min_m tres grand = coupe
+  consensus_m (0,25)   tolerance de la coherence entre photos ; tres grand = coupe
   type, scope   derniers choix du panneau
 """
 
@@ -44,7 +51,7 @@ import subprocess
 import time
 
 from ... import config, i18n, journal, msapi
-from . import detection, photos
+from . import consensus, detection, photos
 
 SECTION = "aigcp"
 TYPES = ("damier", "bombe")
@@ -61,6 +68,7 @@ MAX_SHIFT_FRACTION = 0.7
 # Garde-fou geometrique : voir l'en-tete du module.
 GATE_MIN_M = 0.30
 GATE_FACTOR = 5.0
+CONSENSUS_M = 0.25
 RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aigcp_runner.py")
 KEEP_RUNS = 5
 
@@ -108,6 +116,10 @@ def gate_min_m():
 
 def gate_factor():
     return _number("gate_factor", GATE_FACTOR, 0.0, 1e6)
+
+
+def consensus_m():
+    return _number("consensus_m", CONSENSUS_M, 0.0, 1e9)
 
 
 def selected_type():
@@ -259,6 +271,7 @@ class Job(object):
         self.work_path = os.path.join(run_dir, "work.json")
         self.hits_path = os.path.join(run_dir, "hits.json")
         self.log_path = os.path.join(run_dir, "runner.log")
+        self.progress_path = os.path.join(run_dir, "progress.json")
         with open(self.work_path, "w", encoding="utf-8") as handle:
             json.dump(work, handle, ensure_ascii=False)
         self._python = python or python_path()
@@ -277,6 +290,15 @@ class Job(object):
 
     def running(self):
         return self._process is not None and self._process.poll() is None
+
+    def progress(self):
+        """(photos traitees, photos au total) lu dans progress.json, ou None."""
+        try:
+            with open(self.progress_path, "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            return int(data["done"]), int(data["total"])
+        except Exception:
+            return None
 
     def cancel(self):
         if self._process is not None and self._process.poll() is None:
@@ -456,6 +478,7 @@ class _Running(object):
     def __init__(self, job, kind, scope, label, chunk_key, items, markers):
         self.job, self.kind, self.scope, self.label = job, kind, scope, label
         self.chunk_key, self.items, self.markers = chunk_key, items, markers
+        self.progress = None
 
 
 def _status(state, text):
@@ -471,6 +494,12 @@ def _refresh_panel(state):
 
 def busy(state):
     return getattr(state, "aigcp_run", None) is not None
+
+
+def progress_of(state):
+    """(photos traitees, total) du calcul en cours, ou None (pas de calcul, ou pas encore demarre)."""
+    run = getattr(state, "aigcp_run", None)
+    return None if run is None else run.progress
 
 
 def start(state, kind=None, scope=None):
@@ -542,6 +571,12 @@ def poll(state):
         _refresh_panel(state)
         return
     if result is None:
+        seen = run.job.progress()
+        if seen is not None and seen != run.progress:
+            run.progress = seen
+            photos.panel_call(state, "set_status", i18n.t(
+                "aigcp.progress", kind=run.kind, done=seen[0], total=seen[1]))
+            photos.panel_call(state, "update_aigcp")
         return
     state.aigcp_run = None
     try:
@@ -562,17 +597,27 @@ def _apply(state, run, hits, errors):
     conf = conf_for(run.kind)
     by_id = {it["id"]: it for it in run.items}
     placed, gated, with_proposal = [], 0, set()
+    accepted = {}
     for hit in hits:
         item = by_id.get(str(hit.get("id")))
         if item is None:
             continue
         ok, reason = check_hit(hit, item, conf)
-        if not ok:
-            if reason == "gate":
-                gated += 1
-                journal.write("IA : {} ecarte sur {} : a {:.1f} m de la position attendue (limite {:.2f} m)".format(
-                    item["label"], msapi.camera_label(item["camera"]), gap_m(hit, item), item["gate_m"]))
-            continue
+        if ok:
+            accepted.setdefault(item["label"], []).append((item, hit))
+        elif reason == "gate":
+            gated += 1
+            journal.write("IA : {} ecarte sur {} : a {:.1f} m de la position attendue (limite {:.2f} m)".format(
+                item["label"], msapi.camera_label(item["camera"]), gap_m(hit, item), item["gate_m"]))
+    to_place = []
+    for label, group in accepted.items():
+        kept, dropped = _consistent(chk, group)
+        for item, hit in dropped:
+            gated += 1
+            journal.write("IA : {} ecarte sur {} : pas de point 3D commun avec les autres photos".format(
+                label, msapi.camera_label(item["camera"])))
+        to_place.extend(kept)
+    for item, hit in to_place:
         marker, camera = item["marker"], item["camera"]
         current = msapi.get_projection(marker, camera)
         if current != item["seen"]:
@@ -592,6 +637,23 @@ def _apply(state, run, hits, errors):
         applied = state.aigcp_applied = []
     applied.extend(placed)
     _status(state, _summary(run, len(placed), len(run.items), gated, len(with_proposal)))
+
+
+def _consistent(chk, group):
+    """Separe les detections d'un marqueur en (retenues, ecartees) selon leur recoupement 3D.
+
+    `group` : liste de (item, hit). Avec moins de MIN_RAYS rayons utilisables on ne
+    peut pas juger : tout est garde. Si aucun point 3D ne reunit au moins MIN_RAYS
+    detections, aucune n'est fiable : tout est ecarte.
+    """
+    rays = [msapi.pixel_ray(item["camera"], hit["x"], hit["y"]) for item, hit in group]
+    flags, _point = consensus.consensus(rays, consensus_m() / msapi.chunk_scale(chk))
+    if flags is None:
+        return list(group), []
+    kept = [pair for pair, ok in zip(group, flags) if ok]
+    if len(kept) < consensus.MIN_RAYS:
+        return [], list(group)
+    return kept, [pair for pair, ok in zip(group, flags) if not ok]
 
 
 def _summary(run, placed, tested, gated, markers):

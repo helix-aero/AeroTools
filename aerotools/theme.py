@@ -194,6 +194,7 @@ def stylesheet():
       #aeroValue      valeur mise en avant (marqueur courant)
       #aeroMeta       ligne secondaire
       #aeroCard       bloc de reglages
+      #aeroProgress   barre de progression de la detection IA
       #aeroPlayOn / #aeroPlayOff  bouton rond Pause / Play
       #aeroState / #aeroStateOff  texte « Tool actif » / « Tool inactif »
       #aeroCounter    pastille-compteur
@@ -254,6 +255,17 @@ def stylesheet():
         background: {ground_2};
         border: 1px solid {border_faint};
         border-radius: {radius}px;
+    }}
+    #aeroPanel QProgressBar#aeroProgress {{
+        background: {ground_3};
+        border: none;
+        border-radius: 3px;
+        min-height: 6px;
+        max-height: 6px;
+    }}
+    #aeroPanel QProgressBar#aeroProgress::chunk {{
+        background: {green};
+        border-radius: 3px;
     }}
 
     /* Play / Pause : bouton rond (l'icone est peinte) + etat en clair */

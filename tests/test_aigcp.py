@@ -1,4 +1,5 @@
 import json
+import math
 import sys
 import time
 import types
@@ -19,6 +20,10 @@ hits = [{"id": it["id"], "found": True, "x": it["x_est"] + 1.0, "y": it["y_est"]
 json.dump({"version": 1, "hits": hits, "errors": []}, open(args.out, "w"))
 '''
 STUB_FAR = STUB_OK.replace('it["x_est"] + 1.0', 'it["x_est"] + 40.0')
+STUB_SLOW = STUB_OK.replace(
+    "hits = [", "import os, time\n"
+    "json.dump({'done': 2, 'total': 5}, open(os.path.join(os.path.dirname(args.out), 'progress.json'), 'w'))\n"
+    "time.sleep(1.5)\nhits = [", 1)
 STUB_FAIL = "import sys\nsys.stderr.write('boom')\nsys.exit(3)\n"
 
 
@@ -541,3 +546,121 @@ def test_blue_points_stay_untouched_when_checked(install, world):
     wait_done(state)
     assert msapi.get_projection(marker, cams[1]) == (1990.0, 1490.0, False)   # intact
     assert msapi.get_projection(marker, cams[2])[2] is False                   # photo vierge : proposition
+
+
+# -- coherence entre photos ----------------------------------------------------
+
+@pytest.fixture
+def ring(ms):
+    """Six photos en couronne autour d'un marqueur sans aucune projection."""
+    V, C = ms.Vector, ms.Camera
+    cams = []
+    for k in range(6):
+        angle = 2 * math.pi * k / 6
+        cam = C(k + 1, V(30 * math.cos(angle), 30 * math.sin(angle), -40))
+        cam.sensor.calibration = types.SimpleNamespace(f=1000.0)
+        cam.photo = types.SimpleNamespace(path="r_{}.jpg".format(k + 1))
+        cams.append(cam)
+    marker = ms.Marker("RING", position=V(0, 0, 0))
+    chunk = ms.Chunk(cams, [marker])
+    ms.app.document.chunk = chunk
+    return chunk, marker, cams
+
+
+def rays_to(monkeypatch, shifts):
+    """Les detections visent (0, 0, 0) sauf pour les photos de `shifts` : {cle: cible}."""
+    def fake(camera, x, y):
+        c = camera.center
+        t = shifts.get(camera.key, (0.0, 0.0, 0.0))
+        return (c.x, c.y, c.z), (t[0] - c.x, t[1] - c.y, t[2] - c.z)
+    monkeypatch.setattr(msapi, "pixel_ray", fake)
+
+
+def test_detections_off_the_common_point_are_dropped(install, ring, monkeypatch):
+    chunk, marker, cams = ring
+    rays_to(monkeypatch, {2: (6.0, 0.0, 0.0), 5: (0.0, 7.0, 0.0)})
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    assert [msapi.get_projection(marker, c) is not None for c in cams] == [True, False, True, True, False, True]
+    assert len(state.aigcp_applied) == 4
+    assert "2 écartée" in state.panel.statuses[-1] or "2 ecartee" in state.panel.statuses[-1]
+
+
+def test_no_common_point_rejects_every_detection(install, ring, monkeypatch):
+    chunk, marker, cams = ring
+    rays_to(monkeypatch, {1: (6.0, 0.0, 0.0), 2: (0.0, 6.0, 0.0), 3: (-6.0, 0.0, 0.0),
+                          4: (0.0, -6.0, 0.0), 5: (0.0, 0.0, 6.0), 6: (3.0, 3.0, 3.0)})
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    assert all(msapi.get_projection(marker, c) is None for c in cams)
+    assert state.aigcp_applied == []
+    assert "garde-fou" in state.panel.statuses[-1]
+
+
+def test_two_detections_cannot_be_judged_and_are_kept(install, ring, monkeypatch):
+    chunk, marker, cams = ring
+    chunk.cameras = cams[:2]
+    rays_to(monkeypatch, {2: (6.0, 0.0, 0.0)})
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    assert len(state.aigcp_applied) == 2
+
+
+def test_missing_rays_never_block_the_detections(install, ring, monkeypatch):
+    chunk, marker, cams = ring
+    monkeypatch.setattr(msapi, "pixel_ray", lambda camera, x, y: None)
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    assert len(state.aigcp_applied) == 6
+
+
+def test_consensus_tolerance_is_a_setting(install, ring, monkeypatch):
+    chunk, marker, cams = ring
+    config.put(aigcp.SECTION, "consensus_m", 50.0)
+    rays_to(monkeypatch, {2: (6.0, 0.0, 0.0)})
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    assert len(state.aigcp_applied) == 6
+
+
+def test_pixel_ray_goes_from_the_camera_to_the_pixel(ms):
+    camera = types.SimpleNamespace(
+        center=ms.Vector(1.0, 2.0, 3.0),
+        sensor=types.SimpleNamespace(calibration=types.SimpleNamespace(
+            unproject=lambda point: ms.Vector((point.x - 2000.0) / 1000.0, (point.y - 1500.0) / 1000.0, 1.0))),
+        transform=types.SimpleNamespace(mulv=lambda v: v))
+    origin, direction = msapi.pixel_ray(camera, 3000.0, 1500.0)
+    assert origin == (1.0, 2.0, 3.0) and direction == (1.0, 0.0, 1.0)
+    assert msapi.pixel_ray(ms.Camera(1, ms.Vector(0, 0, 0)), 10.0, 10.0) is None
+
+
+# -- progression -----------------------------------------------------------------
+
+def test_job_progress_is_none_until_the_runner_reports(install, tmp_path):
+    job = aigcp.Job("damier", {"items": []}, str(tmp_path))
+    assert job.progress() is None
+    (tmp_path / "progress.json").write_text(json.dumps({"done": 3, "total": 9}))
+    assert job.progress() == (3, 9)
+    (tmp_path / "progress.json").write_text("pas du json")
+    assert job.progress() is None
+
+
+def test_progress_reaches_the_status_line_while_running(install, world):
+    install.write_text(STUB_SLOW)
+    _chunk, marker, _cams = world
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")
+    assert aigcp.progress_of(state) is None            # le runner n'a encore rien dit
+    end = time.time() + 15
+    while aigcp.progress_of(state) is None and time.time() < end:
+        aigcp.poll(state)
+        time.sleep(0.05)
+    assert aigcp.progress_of(state) == (2, 5)
+    assert any("2/5" in text for text in state.panel.statuses)
+    wait_done(state)
+    assert aigcp.progress_of(state) is None

@@ -84,6 +84,7 @@ TEXTES = {
     "aigcp.no_python": "AI: AIGCP Python not found ({path})",
     "aigcp.no_weights": "AI: {kind} weights not found ({path})",
     "aigcp.no_runner": "AI: runner not found ({path})",
+    "aigcp.progress": "AI ({kind}): {done}/{total} photo(s)…",
     "aigcp.skip_green": "AI: skip photos already marked (green)",
     "aigcp.skip_blue": "AI: skip photos with a blue point",
     "aigcp.type_damier": "Checker",

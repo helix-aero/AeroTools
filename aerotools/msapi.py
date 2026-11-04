@@ -1081,6 +1081,33 @@ def marker_ground_scale(chk, marker, camera):
         return None
 
 
+def chunk_scale(chk):
+    """Metres par unite interne du chunk (1.0 si inconnu)."""
+    try:
+        return float(chk.transform.scale) or 1.0
+    except Exception:
+        return 1.0
+
+
+def pixel_ray(camera, x, y):
+    """Rayon qui part de la camera vers le pixel (x, y) de la photo.
+
+    Renvoie (origine, direction) en coordonnees internes du chunk, ou None.
+    Sert a verifier que des detections sur plusieurs photos se recoupent en un
+    meme point 3D. Ne leve jamais.
+    """
+    try:
+        direction = camera.sensor.calibration.unproject(Metashape.Vector([x, y]))
+        world = camera.transform.mulv(direction)
+        origin = _components(camera.center)
+        vector = _components(world)
+        if origin is None or vector is None or not _finite(origin + vector):
+            return None
+        return origin, vector
+    except Exception:
+        return None
+
+
 def marker_estimate(chk, marker, camera):
     """Projection du point 3D du marqueur sur cette photo : (x, y) ou None.
 

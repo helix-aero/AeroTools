@@ -102,6 +102,14 @@ The choices are saved per machine.
   `msapi.marker_spread_m` measures how far they sit from the reprojection of the marker's 3D point. A detection further than
   `max(gate_min_m, gate_factor x spread)` metres from the expected position is rejected (roof, tree, a neighbouring object) and
   counted in the status line. Defaults: 0.30 m and 5. A marker with fewer projections has no guard, and the **All** scope skips it.
+- **Agreement between photos.** Each detection is a ray from the camera to the detected pixel (`msapi.pixel_ray`). True
+  detections of one target meet at a single 3D point, a roof or a tree does not. `consensus.py` finds the point that gathers the most
+  rays (RANSAC on pairs, then least squares) and every detection further than `consensus_m` (0.25 m) from it is rejected. If no
+  point gathers at least 3 detections, all are rejected; with fewer than 3 usable rays nothing can be judged and all are kept.
+  This works for a marker without any projection, where the guard above has nothing to compare with. Unvalidated proposals
+  do move the marker's estimated position in Metashape, which is why a wrong one matters: validate them or clear them.
+- **Progress bar.** The runner writes `progress.json` next to `hits.json`; the panel shows a bar under the buttons (moving back and
+  forth while the model loads, then proportional to the photos done) and the count in the status line.
 - **Already marked photos.** The settings card ("More") has two checkboxes, both checked by default: *AI: skip photos already
   marked (green)* and *AI: skip photos with a blue point*. Checked means the AI leaves those photos alone. Unchecking one lets the
   AI go over it, and **Clear proposals** then puts the previous point back (a green one comes back green). A proposal from an
@@ -115,7 +123,7 @@ The choices are saved per machine.
   git-ignored: copy them by hand next to the code.
 - Hidden settings, section `aigcp`: `python` (path of the Python with torch and ultralytics; default: `AIGCP_PYTHON`, then
   `~/AIGCP/_env/Scripts/python.exe`), `models_dir`, `conf_damier` (0.25), `conf_bombe` (0.30), `gate_min_m` (0.30),
-  `gate_factor` (5), and the last `type` and `scope`.
+  `gate_factor` (5), `consensus_m` (0.25), and the last `type` and `scope`.
 - Limits: at most 200 photos per marker and 3000 per run, a marker needs a 3D position and an aligned photo. Measured by script
   on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and 40 px): 98 to 100 % within 3 px.
   The guard is covered by tests but not measured on real roof false positives yet.

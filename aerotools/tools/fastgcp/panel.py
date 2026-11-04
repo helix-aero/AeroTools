@@ -937,6 +937,13 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         actions.addWidget(self.aigcp_button, 1)
         actions.addWidget(self.aigcp_clear_button, 1)
         layout.addLayout(actions)
+
+        self.aigcp_progress = QtWidgets.QProgressBar()
+        self.aigcp_progress.setObjectName("aeroProgress")
+        self.aigcp_progress.setTextVisible(False)
+        self.aigcp_progress.setRange(0, 100)
+        self.aigcp_progress.setVisible(False)
+        layout.addWidget(self.aigcp_progress)
         self._retranslate_aigcp()
         return card
 
@@ -1853,6 +1860,16 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         proposals = state is not None and bool(getattr(state, "aigcp_applied", None))
         self.aigcp_button.setEnabled(not running)
         self.aigcp_clear_button.setEnabled(proposals and not running)
+        # Barre : pleine largeur et en va-et-vient tant que le runner charge son modele,
+        # puis au prorata des photos traitees.
+        progress = aigcp.progress_of(state) if running else None
+        if progress is not None and progress[1] > 0:
+            self.aigcp_progress.setRange(0, progress[1])
+            self.aigcp_progress.setValue(min(progress[0], progress[1]))
+        else:
+            self.aigcp_progress.setRange(0, 0 if running else 100)
+            self.aigcp_progress.setValue(0)
+        self.aigcp_progress.setVisible(bool(running))
 
     def _on_aigcp_choice(self, key, value, _checked=False):
         aigcp.set_choice(key, value)

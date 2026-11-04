@@ -169,6 +169,17 @@ def pick_device(wanted):
         return "cpu"
 
 
+def write_progress(out_path, done, total):
+    """progress.json a cote de hits.json : la barre de progression de FastGCP le relit."""
+    path = os.path.join(os.path.dirname(os.path.abspath(out_path)), "progress.json")
+    try:
+        with open(path + ".tmp", "w", encoding="utf-8") as handle:
+            json.dump({"done": done, "total": total}, handle)
+        os.replace(path + ".tmp", path)
+    except OSError:
+        pass            # lecture en cours cote FastGCP : la prochaine ecriture passera
+
+
 def run(work_path, out_path):
     started = time.time()
     with open(work_path, "r", encoding="utf-8") as handle:
@@ -178,8 +189,14 @@ def run(work_path, out_path):
     device = pick_device(work.get("device", "auto"))
     detector = Detector(work["weights"], device)
     hits, errors = [], []
+    items = work.get("items", [])
+    write_progress(out_path, 0, len(items))
+    last_write = time.time()
     last_path, image = None, None     # les items d'une meme photo se suivent : un seul decodage
-    for item in work.get("items", []):
+    for count, item in enumerate(items):
+        if time.time() - last_write >= 0.25:
+            write_progress(out_path, count, len(items))
+            last_write = time.time()
         try:
             if item["image_path"] != last_path:
                 last_path, image = item["image_path"], None
@@ -191,6 +208,7 @@ def run(work_path, out_path):
             hits.append(row)
         except Exception as exc:
             errors.append("{} : {!r}".format(item.get("id"), exc))
+    write_progress(out_path, len(items), len(items))
     result = {"version": 1, "seconds": round(time.time() - started, 2),
               "device": str(device), "hits": hits, "errors": errors}
     tmp = out_path + ".tmp"
