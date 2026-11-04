@@ -1,4 +1,8 @@
 <p align="center">
+  <a href="https://github.com/helix-aero/AeroTools/archive/refs/heads/main.zip"><img alt="Download latest version" src="https://img.shields.io/badge/%E2%AC%87%20Download-latest%20version-1eca59?style=for-the-badge&labelColor=06241a"></a>
+</p>
+
+<p align="center">
   <a href="https://helix.aero">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logo/helix-aero-AERO-blanc-512px.png">
@@ -73,7 +77,7 @@ again. So we wrote a tool for ourselves. It saved us enough time that we decided
 
 You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 
-1. Download or clone this repository anywhere you like.
+1. Click **Download latest version** at the top of this page (or clone this repository), and unzip it anywhere you like.
 2. Double-click `install\installer_aerotools.bat`.
 3. Restart Metashape. The **Aero** menu is there.
 

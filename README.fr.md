@@ -1,4 +1,8 @@
 <p align="center">
+  <a href="https://github.com/helix-aero/AeroTools/archive/refs/heads/main.zip"><img alt="Télécharger la dernière version" src="https://img.shields.io/badge/%E2%AC%87%20T%C3%A9l%C3%A9charger-derni%C3%A8re%20version-1eca59?style=for-the-badge&labelColor=06241a"></a>
+</p>
+
+<p align="center">
   <a href="https://helix.aero">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="assets/logo/helix-aero-AERO-blanc-512px.png">
@@ -75,7 +79,7 @@ manuel** et la **détection IA**, qui propose les pointés pour que vous les pas
 
 Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Metashape 2.2.
 
-1. Téléchargez ou clonez ce dépôt où vous voulez.
+1. Cliquez sur **Télécharger la dernière version** en haut de cette page (ou clonez ce dépôt), puis décompressez-le où vous voulez.
 2. Double-cliquez sur `install\installer_aerotools.bat`.
 3. Redémarrez Metashape. Le menu **Aero** est là.
 
