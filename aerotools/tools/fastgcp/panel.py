@@ -38,7 +38,7 @@ GITHUB_URL = "https://github.com/helix-aero/AeroTools"
 SETTLE_MS = (500, 2000)               # relectures du tableau apres une modification en masse
 HEADER_BUTTON = 26                    # boutons ronds du haut : Annuler, Retablir, parametres
 HEADER_ICON = 14
-LANG_WIDTH = 60                       # liste des langues : le drapeau seul
+LANG_WIDTH = 80                       # liste des langues : le drapeau seul
 LOGO_SCALE = 2                        # le logo est dessine en double resolution
 LOGO_WIDTH = 96                       # largeur affichee du logo AERO (le kit demande 64 px au minimum)
 LOGO_FILE = "helix-aero-AERO-degrade-512px.png"
@@ -52,7 +52,7 @@ MIN_PANEL_WIDTH = 420
 
 # Meme hauteur pour tous les boutons et listes du panneau ; Run est un petit bouton.
 CONTROL_HEIGHT = 30
-RUN_WIDTH = 72
+RUN_WIDTH = 92
 
 # Texte de chaque case de la carte Parametres (cle de l'option : cle de texte).
 CHECK_TEXTS = {
