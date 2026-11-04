@@ -237,6 +237,26 @@ L'**engrenage** de l'en-tête ouvre la fenêtre Paramètres.
   visible, pour un futur entraînement. Aucune image n'est copiée.
 - **Journal** : le journal de l'outil. Si quelque chose casse, collez ses dernières lignes dans une issue.
 
+**Mises à jour**
+
+**Rechercher les mises à jour…** (aussi dans le menu **Aero**) ouvre la liste des modules installés avec leur version et la date de
+la dernière mise à jour. Elle interroge GitHub et dit, pour chacun, combien de fichiers ont changé et combien il y a à télécharger.
+Clique sur **Mettre à jour** sur la ligne, ou sur **Tout mettre à jour** en bas à droite. Ne ferme pas la fenêtre pendant ce temps :
+chaque fichier est d'abord téléchargé et vérifié, puis remplacé (si quelque chose échoue, les anciens fichiers sont remis), puis les
+fichiers installés sont relus pour confirmer. À la fin AeroTools se recharge tout seul, sans redémarrer Metashape. Les nouvelles
+entrées du menu Aero, s'il y en a, apparaissent au démarrage suivant. Une copie de développement (un dossier avec `.git`) n'est
+jamais mise à jour : rien n'est écrasé.
+
+**Moteur de détection**
+
+- **Léger** : ONNX Runtime sur le processeur, environ 100 Mo, tout ordinateur. **Précis** : le moteur d'origine (PyTorch, environ
+  3 Go), carte graphique utilisée s'il y en a une. **Automatique** prend le précis s'il est installé, sinon le léger. Sur notre
+  test (569 cibles), les deux placent 99 % des cibles à moins de 0,05 px l'une de l'autre.
+- Les trois lignes dessous disent ce qui est installé (*Moteur léger*, *Moteur précis*, *Outils de réentraînement*). Quand
+  quelque chose manque, **Installer** le fait à ta place : une fenêtre noire montre l'avancement (ne la ferme pas), puis la ligne
+  passe à *installé*. C'est pareil si tu lances une détection ou un réentraînement sans ce qu'il faut : une boîte propose de
+  l'installer.
+
 **Modèles IA**
 
 - *Utiliser mes affinages manuels pour construire le jeu d'entraînement* : cochée, chaque décision prise dans le Review panel
@@ -275,6 +295,16 @@ moins bien qu'Aero V1.0 sur les données mises de côté, la fenêtre vous le di
 > modèle et de 0,9784 pour Aero V1.0. La différence n'est pas mesurable : ce n'est pas une amélioration. Le réentraînement est
 > une expérience : nous ne promettons pas qu'il améliore la détection. Essayez le nouveau modèle sur un projet que vous connaissez,
 > et cliquez sur **Revenir à Aero V1.0** s'il ne fait pas mieux.
+
+### Le diagnostic complet
+
+Sous la liste des marqueurs, le bouton **Contrôle des résidus** liste les marqueurs à surveiller. Sa dernière ligne, **Diagnostic complet du
+pointage…**, ouvre une fenêtre qui va plus loin. Pour chaque pointage manuel (point vert), elle recalcule la position 3D du marqueur
+**sans cette photo**, la reprojette et dit à combien de pixels elle tombe de ton pointage. Quelques pixels, c'est normal. Elle liste les
+pointages douteux (écart de plus de 3 px, ou 4 fois la médiane du projet), les photos décalées sur plusieurs marqueurs, et les
+marqueurs qui ont trop peu de pointages ou des propositions de l'IA pas encore validées. Double-clique une ligne pour ouvrir la photo,
+zoomée sur le marqueur. Un pointage très décalé fait paraître ses voisins fautifs : on met donc le pire de côté et on rejuge les
+autres, jusqu'à ce que plus rien ne dépasse.
 
 ## 9. Dépannage
 

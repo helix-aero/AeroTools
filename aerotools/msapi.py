@@ -1140,6 +1140,14 @@ def pixel_ray(camera, x, y):
         return None
 
 
+def project_point(camera, point):
+    """Pixel (x, y) ou le point 3D (coordonnees internes du chunk) tombe sur cette photo, ou None."""
+    try:
+        return _xy(camera.project(Metashape.Vector(list(_components(point)))))
+    except Exception:
+        return None
+
+
 def marker_estimate(chk, marker, camera):
     """Projection du point 3D du marqueur sur cette photo : (x, y) ou None.
 

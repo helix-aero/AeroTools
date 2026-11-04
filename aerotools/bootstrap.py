@@ -85,6 +85,7 @@ def install_menu(force=False):
         if msapi.add_menu_item(label, callback, entry.get("raccourci")):
             added += 1
 
+    msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.update")), update_plugins)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.reload")), reload_all)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.about")), about)
 
@@ -186,6 +187,22 @@ def reload_all():
     if last:
         return module.launch(last)
     return True
+
+
+# --------------------------------------------------------------------------
+# Mises a jour
+# --------------------------------------------------------------------------
+
+def update_plugins():
+    """Menu Aero > Mises a jour : ouvre la fenetre, recharge le code si quelque chose a change."""
+    ensure_on_path()
+    from . import i18n, journal, msapi
+    try:
+        from . import update_dialog
+        update_dialog.open_and_reload(msapi.main_window())
+    except Exception as exc:
+        journal.write("echec de la fenetre de mises a jour : {!r}".format(exc))
+        msapi.message_box(i18n.t("boot.update_failed", error=repr(exc)))
 
 
 # --------------------------------------------------------------------------

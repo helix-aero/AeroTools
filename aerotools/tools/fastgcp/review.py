@@ -55,15 +55,25 @@ class Review(object):
         self.entries = list(entries)
 
     def labels(self):
-        """Etiquettes des marqueurs, dans l'ordre de la detection."""
-        seen = []
+        """Etiquettes des marqueurs, les plus douteux d'abord : la detection la plus faible de chacun
+        decide (a egalite, l'ordre de la detection)."""
+        weakest, order = {}, []
         for entry in self.entries:
-            if entry["label"] not in seen:
-                seen.append(entry["label"])
-        return seen
+            label = entry["label"]
+            if label not in weakest:
+                order.append(label)
+                weakest[label] = entry["conf"]
+            else:
+                weakest[label] = min(weakest[label], entry["conf"])
+        return sorted(order, key=lambda label: weakest[label])
+
+    def weakest(self, label):
+        """Plus faible confiance parmi les detections de ce marqueur (1.0 s'il n'en a pas)."""
+        return min([entry["conf"] for entry in self.entries if entry["label"] == label] or [1.0])
 
     def entries_for(self, label):
-        return [entry for entry in self.entries if entry["label"] == label]
+        """Detections d'un marqueur, les moins sures d'abord."""
+        return sorted((entry for entry in self.entries if entry["label"] == label), key=lambda entry: entry["conf"])
 
     def counts(self):
         out = {KEPT: 0, REMOVED: 0, REFINED: 0, ACCEPTED: 0}

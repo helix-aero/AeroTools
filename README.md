@@ -81,6 +81,10 @@ You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). One installer does everything: it adds the **Aero** menu to Metashape and sets up the AI detection (Python and a light detection engine, about 100 MB, a minute or two). A window shows "Please wait..." with the progress; do not close it.
 3. Restart Metashape. The **Aero** menu is there.
 
+Later, **Aero > Check for updates...** brings the latest version from GitHub (with the list of changes and their size).
+The installer asks which detection engine you want (light, precise, or both) and whether to add the retraining tools; the
+FastGCP settings can install any of them afterwards with one click.
+
 The installer writes one small launcher into `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Nothing else is touched.
 `install\desinstaller_aerotools.bat` removes it.
 

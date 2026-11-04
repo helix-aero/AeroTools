@@ -51,7 +51,7 @@ import subprocess
 import time
 
 from ... import config, i18n, journal, msapi
-from . import consensus, detection, photos, review
+from . import consensus, detection, engines, photos, review
 
 SECTION = "aigcp"
 TYPES = ("damier", "bombe")
@@ -173,7 +173,22 @@ def check(kind):
         return False, i18n.t("aigcp.no_weights", kind=kind, path=weights)
     if not os.path.isfile(RUNNER):
         return False, i18n.t("aigcp.no_runner", path=RUNNER)
+    wanted = engines.missing()
+    if wanted is not None:
+        return False, i18n.t(engines.MISSING_TEXT[wanted])
     return True, ""
+
+
+def setup_target():
+    """Ce que l'installeur sait poser pour que la detection marche : "light", "precise", ou None.
+
+    None quand le defaut n'est pas dans l'environnement standard (Python choisi a la main) ou
+    quand il ne manque pas un moteur (poids absents, par exemple)."""
+    if not engines.can_install():
+        return None
+    if not os.path.isfile(python_path()):
+        return "precise" if engines.selected() == "precise" else "light"
+    return engines.missing()
 
 
 # --------------------------------------------------------------------------
@@ -215,6 +230,7 @@ def build_work(kind, items, conf=None, crops_dir=None):
         "conf": conf_for(kind) if conf is None else float(conf),
         "scales_m": list(SCALES_M),
         "device": "auto",
+        "engine": engines.runner_engine(),
         "items": [
             {"id": it["id"], "image_path": it["image_path"],
              "x_est": float(it["x_est"]), "y_est": float(it["y_est"]),
@@ -572,8 +588,13 @@ def _start(state, kind, scope, labels=None):
     ok, message = check(kind)
     if not ok:
         _status(state, message)
-        photos.panel_call(state, "show_ai_setup", i18n.t(
-            "aigcp.setup_needed", detail=message, script=installer_path()))
+        target = setup_target()
+        if target is None:
+            text = i18n.t("aigcp.setup_needed", detail=message, script=installer_path())
+        else:
+            text = i18n.t("aigcp.setup_offer", detail=message,
+                          what=i18n.t(engines.WHAT_TEXT[target]))
+        photos.panel_call(state, "show_ai_setup", text, target)
         return False
     chk = msapi.chunk()
     if chk is None:

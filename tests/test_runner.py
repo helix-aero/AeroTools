@@ -100,7 +100,7 @@ def test_batching_makes_far_fewer_model_calls(tmp_path):
 
 
 def run_work(tmp_path, monkeypatch, items, crops=False):
-    monkeypatch.setattr(runner, "make_detector", lambda weights, device: FakeDetector())
+    monkeypatch.setattr(runner, "make_detector", lambda weights, device, engine="auto": FakeDetector())
     work = {"version": 1, "type": "damier", "weights": "unused.pt", "conf": 0.25, "scales_m": [0.3, 0.5, 0.8],
             "device": "auto", "items": items}
     if crops:

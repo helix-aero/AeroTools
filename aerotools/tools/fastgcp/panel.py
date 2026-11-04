@@ -2119,6 +2119,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                         i18n.t("qc.item_few", label=item["label"], n=item["proj"]))
                     action.triggered.connect(
                         functools.partial(self._on_qc_pick, item["label"], False))
+            menu.addSeparator()
+            menu.addAction(i18n.t("diag.menu")).triggered.connect(self._open_diagnostic)
             self._qc_menu = menu
             size = menu.sizeHint()
             button = self.qc_button
@@ -2126,6 +2128,35 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 QtCore.QPoint(0, -size.height() - theme.PAD_S)))
         except Exception as exc:
             journal.write("FastGCP : controle des residus : {!r}".format(exc))
+
+    def _open_diagnostic(self, _checked=False):
+        """Fenetre du diagnostic complet du pointage (voir diagnostic.py)."""
+        try:
+            from . import diagnostic, diagnostic_dialog
+
+            def compute():
+                return diagnostic.analyze(diagnostic.collect(msapi.chunk()), self._all_rows())
+
+            self._diag_dialog = diagnostic_dialog.show(
+                self, compute, self._on_diag_open, getattr(self, "_diag_dialog", None))
+        except Exception as exc:
+            journal.write("FastGCP : diagnostic du pointage : {!r}".format(exc))
+
+    def _on_diag_open(self, item):
+        """Un element du diagnostic : marqueur courant, puis la photo concernee si on la connait."""
+        try:
+            label, camera = item.get("label"), item.get("camera")
+            if label and not self.set_active_marker_by_label(label):
+                return
+            if camera is None:
+                return
+            ok, _message = msapi.open_photo(camera)
+            marker = self._find_marker(label) if label else None
+            if ok and marker is not None:
+                from . import photos
+                photos.zoom_on_marker(self._state, marker, camera, force=True)
+        except Exception as exc:
+            journal.write("FastGCP : ouverture depuis le diagnostic : {!r}".format(exc))
 
     def _on_qc_pick(self, label, open_worst, _checked=False):
         """Un clic dans le menu : marqueur courant ; pour un residu, ouvre la pire photo."""
@@ -2188,11 +2219,18 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     def _on_aigcp_review(self, _checked=False):
         self.open_review()
 
-    def show_ai_setup(self, text):
-        """Explique, dans une boite, ce qu'il manque pour la detection IA et comment l'installer."""
+    def show_ai_setup(self, text, target=None):
+        """Explique ce qu'il manque pour la detection IA. Avec `target` (moteur que l'installeur sait
+        poser), la boite propose de l'installer tout de suite ; sans, elle dit comment faire."""
         try:
             from . import dialogs
-            dialogs.inform(self, i18n.t("aigcp.setup_title"), text)
+            if target is None:
+                dialogs.inform(self, i18n.t("aigcp.setup_title"), text)
+                return
+            if dialogs.ask(self, i18n.t("aigcp.setup_title"), text):
+                from . import install_ui
+                install_ui.run(self, target, confirm=False)
+                self.update_aigcp()
         except Exception as exc:
             journal.write("FastGCP : message d'installation de l'IA : {!r}".format(exc))
 

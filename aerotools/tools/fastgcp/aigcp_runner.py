@@ -13,6 +13,7 @@ Les deux donnent les memes detections (a 0,2 px et 0,01 de confiance pres).
 `work.json` (ecrit par aigcp.py) :
     {"version": 1, "type": "damier", "weights": "...pt", "conf": 0.25,
      "scales_m": [0.3, 0.5, 0.8], "device": "auto",
+     "engine": "onnx" (leger) | "torch" (precis) | "auto",
      "items": [{"id": "...", "image_path": "...", "x_est": 123.4,
                 "y_est": 456.7, "px_per_m": 210.0, "rescue": true}, ...],
      "crops_dir": "dossier des vignettes de revue (facultatif)"}
@@ -199,9 +200,19 @@ def onnx_path(weights):
     return os.path.splitext(weights)[0] + ".onnx"
 
 
-def make_detector(weights, device):
-    """ONNX Runtime si possible (leger, rapide au demarrage), sinon ultralytics."""
+def make_detector(weights, device, engine="auto"):
+    """Le moteur demande : "onnx" (ONNX Runtime, leger), "torch" (ultralytics, le precis, carte graphique
+    si presente) ou "auto" (ONNX si possible et sur processeur, sinon ultralytics).
+
+    Un moteur choisi expressement n'est jamais remplace en silence : s'il manque, l'erreur le dit."""
     path = onnx_path(weights)
+    if engine == "onnx":
+        if not os.path.isfile(path):
+            raise RuntimeError("le moteur leger demande le fichier {} (absent) : reinstalle le modele ou "
+                               "choisis le moteur precis".format(os.path.basename(path)))
+        return OnnxDetector(path)
+    if engine == "torch":
+        return Detector(weights, pick_device(device))
     if device in (None, "auto", "cpu") and os.path.isfile(path):
         try:
             return OnnxDetector(path)
@@ -384,7 +395,7 @@ def run(work_path, out_path):
         work = json.load(handle)
     scales = [float(s) for s in work.get("scales_m") or (0.3, 0.5, 0.8)]
     conf = float(work.get("conf", 0.25))
-    detector = make_detector(work["weights"], work.get("device", "auto"))
+    detector = make_detector(work["weights"], work.get("device", "auto"), work.get("engine", "auto"))
     items = work.get("items", [])
     crops_dir = work.get("crops_dir")
     if crops_dir:

@@ -3,22 +3,32 @@
 #   1. ajoute le menu Aero a Metashape (petit lanceur dans le dossier scripts de Metashape)
 #   2. cherche un Python 3.10 a 3.13, ou installe Python 3.12 avec winget
 #   3. cree l'environnement %USERPROFILE%\AIGCP\_env (c'est la que FastGCP le cherche)
-#   4. installe le moteur de detection : onnxruntime, numpy, opencv (environ 100 Mo, sans torch)
-#   5. verifie que tout s'importe et que les modeles models\*.pt et models\*.onnx sont la
-#   (option -Training) installe aussi torch, ultralytics et onnx (environ 3 Go) : seulement pour
-#   reentrainer le modele ("Refine my model" dans les parametres), jamais pour detecter.
+#   4. installe le(s) moteur(s) de detection au choix :
+#        leger   (onnxruntime, numpy, opencv : environ 100 Mo, rapide, tout PC)  [conseille]
+#        precis  (torch + ultralytics : environ 3 Go, le moteur d'origine, carte graphique si presente)
+#        les deux
+#   5. en option, les outils de reentrainement (package onnx, plus torch s'il manque)
+#   6. verifie que tout s'importe et que les modeles models\*.pt et models\*.onnx sont la
 #
+# Sans option, la fenetre pose les questions (moteur ? reentrainement ?). Les memes choix se refont
+# plus tard depuis Aero > FastGCP > Parametres, qui lance cet installeur a la place de l'utilisateur.
 # Relancer ne refait que ce qui manque. Pendant les longues etapes la fenetre affiche
 # "Please wait..." (points animes), le temps ecoule et la derniere ligne de la commande.
 #
-# Options : -NoAI (menu seulement, sans internet), -Training, -Check (dit ce qui manque,
-#           n'installe rien), -DryRun (montre les commandes sans les lancer).
+# Options : -Engine light|precise|both|none|ask (defaut ask), -Training (outils de reentrainement),
+#           -Yes (ne pose aucune question : moteur leger si rien d'autre n'est demande),
+#           -PauseOnError (attend une touche en cas d'echec : pour la fenetre lancee depuis Metashape),
+#           -NoAI (menu seulement, sans internet), -Check (dit ce qui manque, n'installe rien),
+#           -DryRun (montre les commandes sans les lancer).
 # Messages en ASCII : PowerShell 5.1 lit mal l'UTF-8 sans BOM.
 
 param(
     [string]$Root = (Split-Path -Parent $PSScriptRoot),
-    [switch]$NoAI,
+    [ValidateSet('ask', 'light', 'precise', 'both', 'none')][string]$Engine = 'ask',
     [switch]$Training,
+    [switch]$Yes,
+    [switch]$PauseOnError,
+    [switch]$NoAI,
     [switch]$Check,
     [switch]$DryRun
 )
@@ -34,7 +44,7 @@ $ScriptsDir = Join-Path $env:LOCALAPPDATA 'Agisoft\Metashape Pro\scripts'
 $Launcher = Join-Path $ScriptsDir 'aerotools_launcher.py'
 $Template = Join-Path $Root 'install\aerotools_launcher.py.tpl'
 
-$TotalSteps = if ($NoAI) { 2 } elseif ($Training) { 6 } else { 5 }
+$script:TotalSteps = 2
 $script:StepNo = 0
 
 
@@ -46,9 +56,9 @@ function Say($text, $color) {
 function Show-Step($title) {
     $script:StepNo++
     $done = [int]$script:StepNo - 1
-    $bar = ('#' * $done) + '>' + ('.' * ($TotalSteps - $done - 1))
+    $bar = ('#' * $done) + '>' + ('.' * [Math]::Max(0, $script:TotalSteps - $done - 1))
     Say ''
-    Say ("  [{0}]  Step {1} of {2} : {3}" -f $bar, $script:StepNo, $TotalSteps, $title) 'Green'
+    Say ("  [{0}]  Step {1} of {2} : {3}" -f $bar, $script:StepNo, $script:TotalSteps, $title) 'Green'
 }
 
 
@@ -138,6 +148,7 @@ function Test-Imports($modules) {
 
 
 function Test-EngineInstalled { return (Test-Imports @('onnxruntime', 'cv2', 'numpy')) }
+function Test-PreciseInstalled { return (Test-Imports @('torch', 'ultralytics')) }
 function Test-TrainingInstalled { return (Test-Imports @('torch', 'ultralytics', 'onnx')) }
 
 
@@ -172,35 +183,123 @@ function Install-Launcher {
 }
 
 
+function Exit-With($code) {
+    # En cas d'echec, garde la fenetre ouverte si on la lance depuis Metashape : on y lit l'erreur.
+    if ($PauseOnError -and $code -ne 0) {
+        Say ''
+        Read-Host '  Press Enter to close this window' | Out-Null
+    }
+    exit $code
+}
+
+
+function Test-Interactive {
+    try { return ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected -and -not $Yes) } catch { return $false }
+}
+
+
+function Ask-Engine {
+    # Renvoie light, precise ou both.
+    $tag = @{ light = ''; precise = ''; both = '' }
+    if (Test-EngineInstalled) { $tag.light = '  (already installed)' }
+    if (Test-PreciseInstalled) { $tag.precise = '  (already installed)' }
+    Say ''
+    Say '  Which detection engine do you want to install?' 'Cyan'
+    Say ('    1  Light    about 100 MB. Fast, works on any computer. Recommended.' + $tag.light)
+    Say ('    2  Precise  about 3 GB (PyTorch). The original engine; uses the graphics card if there is one.' + $tag.precise)
+    Say '    3  Both     about 3 GB. You choose which one to use in the FastGCP settings.'
+    while ($true) {
+        $answer = (Read-Host '  Your choice [1]').Trim()
+        if (-not $answer -or $answer -eq '1') { return 'light' }
+        if ($answer -eq '2') { return 'precise' }
+        if ($answer -eq '3') { return 'both' }
+        Say '  Please type 1, 2 or 3.' 'Yellow'
+    }
+}
+
+
+function Ask-Training($willHaveTorch) {
+    Say ''
+    Say '  Install the retraining tools?' 'Cyan'
+    Say '    They let you improve the model with your own corrections (FastGCP > Settings > Refine my model).'
+    if ($willHaveTorch) {
+        Say '    They only add a small package, because the Precise engine tools are already included.'
+    } else {
+        Say '    They need PyTorch: about 3 GB more.'
+    }
+    if (Test-TrainingInstalled) { Say '    (already installed)' }
+    $answer = (Read-Host '  Install them? [y/N]').Trim().ToLower()
+    return ($answer -eq 'y' -or $answer -eq 'yes' -or $answer -eq 'o' -or $answer -eq 'oui')
+}
+
+
 function Show-Status {
     $ok = $true
     if (Test-LauncherCurrent) { Say 'Aero menu              : installed' } else { Say 'Aero menu              : NOT installed'; $ok = $false }
     if (-not $NoAI) {
         if (Test-Path -LiteralPath $EnvPython) { Say "Python environment    : $EnvPython" } else { Say "Python environment    : MISSING ($EnvPython)"; $ok = $false }
-        if (Test-EngineInstalled) { Say 'Detection engine      : installed (onnxruntime, numpy, opencv)' } else { Say 'Detection engine      : MISSING'; $ok = $false }
+        $light = Test-EngineInstalled
+        $precise = Test-PreciseInstalled
+        $training = Test-TrainingInstalled
+        if ($light) { Say 'Light engine          : installed (onnxruntime, numpy, opencv)' }
+        elseif ($script:WantLight) { Say 'Light engine          : MISSING'; $ok = $false }
+        else { Say 'Light engine          : not installed' }
+        if ($precise) { Say 'Precise engine        : installed (torch, ultralytics)' }
+        elseif ($script:WantTorch) { Say 'Precise engine        : MISSING'; $ok = $false }
+        else { Say 'Precise engine        : not installed' }
+        if ($training) { Say 'Retraining tools      : installed' }
+        elseif ($Training) { Say 'Retraining tools      : MISSING'; $ok = $false }
+        else { Say 'Retraining tools      : not installed (optional)' }
+        if (-not $light -and -not $precise) { Say 'No detection engine installed yet.' 'Yellow'; $ok = $false }
         foreach ($name in $Models) {
             foreach ($ext in @('pt', 'onnx')) {
                 $path = Join-Path $Root ("models\$name.$ext")
                 if (Test-Path -LiteralPath $path) { Say ("Model {0}.{1} : present" -f $name, $ext) } else { Say ("Model {0}.{1} : MISSING ({2})" -f $name, $ext, $path); $ok = $false }
             }
         }
-        if (Test-TrainingInstalled) {
-            Say 'Training tools        : installed'
-        } elseif ($Training) {
-            Say 'Training tools        : MISSING'; $ok = $false
-        } else {
-            Say 'Training tools        : not installed (optional, only to retrain the model)'
-        }
     }
     return $ok
 }
 
 
+# ---- ce qu'il faut installer
+$script:WantLight = $false
+$script:WantTorch = $false
+$wantTraining = [bool]$Training
+
+if (-not $NoAI) {
+    $choice = $Engine
+    if ($choice -eq 'ask') {
+        if ($Check -or -not (Test-Interactive)) {
+            # Sans question possible : le moteur leger, sauf si seul le reentrainement est demande.
+            $choice = if ($Training -and -not $Check) { 'none' } elseif ((Test-EngineInstalled) -or (Test-PreciseInstalled)) { 'none' } else { 'light' }
+        } else {
+            $choice = Ask-Engine
+        }
+    }
+    $script:WantLight = ($choice -eq 'light' -or $choice -eq 'both')
+    $script:WantTorch = ($choice -eq 'precise' -or $choice -eq 'both')
+    if (-not $Training -and $Engine -eq 'ask' -and -not $Check -and (Test-Interactive)) {
+        $wantTraining = Ask-Training ($script:WantTorch)
+    }
+    if ($wantTraining) { $script:WantTorch = $true }
+    $Training = [switch]$wantTraining
+}
+
+# Nombre d'etapes affichees : menu, [python, environnement, moteurs...], controle final.
+$script:TotalSteps = 2
+if (-not $NoAI) {
+    $script:TotalSteps += 2
+    if ($script:WantLight) { $script:TotalSteps++ }
+    if ($script:WantTorch) { $script:TotalSteps++ }
+    if ($Training) { $script:TotalSteps++ }
+}
+
 Say ''
 Say '  ============================================================' 'Green'
 Say '    AeroTools - installation' 'Green'
-if ($Training) {
-    Say '    Please wait: this can take 5 to 15 minutes (training tools, about 3 GB).' 'Green'
+if ($script:WantTorch) {
+    Say '    Please wait: this can take 5 to 15 minutes (about 3 GB).' 'Green'
 } else {
     Say '    Please wait: this takes a few minutes the first time (about 100 MB).' 'Green'
 }
@@ -217,10 +316,10 @@ try {
     Install-Launcher
 
     if (-not $NoAI) {
-        $engineReady = (Test-EngineInstalled) -and -not $DryRun
         $python = $null
+        $envReady = (Test-Path -LiteralPath $EnvPython) -and -not $DryRun
         Show-Step 'Python for the AI detection'
-        if ($engineReady) {
+        if ($envReady) {
             Say '  Already installed.'
         } else {
             $python = Find-SystemPython
@@ -247,27 +346,42 @@ try {
             Run-Long 'Environment creation' $python @('-m', 'venv', $EnvDir)
         }
 
-        Show-Step 'Detection engine (onnxruntime, numpy, opencv: about 100 MB)'
-        if ($engineReady) {
-            Say '  Already installed.'
-        } else {
-            Run-Long 'pip update' $EnvPython @('-m', 'pip', 'install', '--upgrade', 'pip', '--progress-bar', 'off', '--disable-pip-version-check')
-            Run-Long 'Detection engine installation' $EnvPython @('-m', 'pip', 'install', 'numpy', 'opencv-python-headless', 'onnxruntime', '--progress-bar', 'off', '--disable-pip-version-check')
-        }
-
-        if ($Training) {
-            Show-Step 'Training tools (torch, ultralytics, onnx: about 3 GB)'
-            if ((Test-TrainingInstalled) -and -not $DryRun) {
+        if ($script:WantLight) {
+            Show-Step 'Light engine (onnxruntime, numpy, opencv: about 100 MB)'
+            if ((Test-EngineInstalled) -and -not $DryRun) {
                 Say '  Already installed.'
             } else {
+                Run-Long 'pip update' $EnvPython @('-m', 'pip', 'install', '--upgrade', 'pip', '--progress-bar', 'off', '--disable-pip-version-check')
+                # opencv-python-headless a cote d'un opencv deja la (celui d'ultralytics) les ferait se marcher dessus.
+                $packages = @('numpy', 'onnxruntime')
+                if (-not (Test-Imports @('cv2'))) { $packages += 'opencv-python-headless' }
+                Run-Long 'Light engine installation' $EnvPython (@('-m', 'pip', 'install') + $packages + @('--progress-bar', 'off', '--disable-pip-version-check'))
+            }
+        }
+
+        if ($script:WantTorch) {
+            Show-Step 'Precise engine (torch, ultralytics: about 3 GB)'
+            if ((Test-PreciseInstalled) -and -not $DryRun) {
+                Say '  Already installed.'
+            } else {
+                Run-Long 'pip update' $EnvPython @('-m', 'pip', 'install', '--upgrade', 'pip', '--progress-bar', 'off', '--disable-pip-version-check')
                 if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
                     Say '  NVIDIA graphics card found: torch with CUDA.'
                     Run-Long 'torch installation' $EnvPython @('-m', 'pip', 'install', 'torch', 'torchvision', '--index-url', $TorchGpuIndex, '--progress-bar', 'off', '--disable-pip-version-check')
                 } else {
-                    Say '  No NVIDIA card: torch for the processor (training will be slow).'
+                    Say '  No NVIDIA card: torch for the processor.'
                     Run-Long 'torch installation' $EnvPython @('-m', 'pip', 'install', 'torch', 'torchvision', '--progress-bar', 'off', '--disable-pip-version-check')
                 }
-                Run-Long 'ultralytics installation' $EnvPython @('-m', 'pip', 'install', 'ultralytics', 'onnx', '--progress-bar', 'off', '--disable-pip-version-check')
+                Run-Long 'ultralytics installation' $EnvPython @('-m', 'pip', 'install', 'ultralytics', '--progress-bar', 'off', '--disable-pip-version-check')
+            }
+        }
+
+        if ($Training) {
+            Show-Step 'Retraining tools (onnx)'
+            if ((Test-TrainingInstalled) -and -not $DryRun) {
+                Say '  Already installed.'
+            } else {
+                Run-Long 'onnx installation' $EnvPython @('-m', 'pip', 'install', 'onnx', '--progress-bar', 'off', '--disable-pip-version-check')
             }
         }
     }
@@ -279,15 +393,15 @@ try {
     Say ''
     if ($ready) {
         Say '  ============================================================' 'Green'
-        Say '    All done. Restart Metashape: Aero menu > FastGCP.' 'Green'
+        Say '    All done. Restart Metashape if it is open: Aero menu > FastGCP.' 'Green'
         Say '  ============================================================' 'Green'
         exit 0
     }
     Say '  Something is still missing (see above).' 'Yellow'
-    exit 2
+    Exit-With 2
 } catch {
     Say ''
     Say ('  ERROR : ' + $_.Exception.Message) 'Red'
     Say '  Nothing is lost: run this installer again, it only redoes what is missing.' 'Yellow'
-    exit 1
+    Exit-With 1
 }

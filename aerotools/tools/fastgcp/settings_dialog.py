@@ -13,11 +13,12 @@ produits s'appellent « Local 1.1 », « Local 1.2 »... et on peut revenir au m
 """
 
 import datetime
+import functools
 import os
 
 from ... import i18n, journal, theme
 from ...qt import QtCore, QtGui, QtWidgets
-from . import aigcp, dialogs, training
+from . import aigcp, dialogs, engines, install_ui, training
 from .review_dialog import _button, _exec, _restyle, _styled_root
 
 POLL_MS = 700
@@ -145,6 +146,10 @@ class SettingsDialog(QtWidgets.QDialog):
         panel.more.setParent(body)
         layout.addWidget(panel.more)
         panel.more.show()
+        self._add_title(layout, "settings.update_title")
+        layout.addWidget(self._build_update())
+        self._add_title(layout, "settings.engine_title")
+        layout.addWidget(self._build_engine())
         self._add_title(layout, "settings.ai_models")
         layout.addWidget(self._build_models())
         layout.addStretch(1)
@@ -162,6 +167,92 @@ class SettingsDialog(QtWidgets.QDialog):
 
     def _add_title(self, layout, text_key):
         layout.addWidget(_section(text_key))
+
+    # -- construction du bloc Mises a jour ---------------------------------------------
+
+    def _build_update(self):
+        card, layout = _card()
+        layout.addWidget(_meta(i18n.t("settings.update_note")))
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(_button("settings.update_open", self._open_updates, width=220))
+        row.addStretch(1)
+        layout.addLayout(row)
+        return card
+
+    def _open_updates(self):
+        from ... import update_dialog
+        update_dialog.open_and_reload(self)
+
+    # -- construction du bloc Moteur de detection --------------------------------------
+
+    def _build_engine(self):
+        card, layout = _card()
+        layout.addWidget(self._caption("settings.engine_choice"))
+        self.engine_combo = QtWidgets.QComboBox()
+        self.engine_combo.setObjectName("aeroCombo")
+        self.engine_combo.setCursor(QtCore.Qt.PointingHandCursor)
+        self.engine_combo.setFocusPolicy(QtCore.Qt.NoFocus)
+        for choice in engines.CHOICES:
+            self.engine_combo.addItem(i18n.t(engines.CHOICE_TEXT[choice]), choice)
+        self.engine_combo.activated.connect(self._on_engine)
+        layout.addWidget(self.engine_combo)
+        layout.addWidget(_meta(i18n.t("settings.engine_note")))
+        layout.addSpacing(theme.PAD_S)
+        self.engine_rows = {}
+        for key in ("light", "precise", "training"):
+            row = QtWidgets.QHBoxLayout()
+            row.setSpacing(theme.PAD)
+            text = QtWidgets.QLabel()
+            row.addWidget(text, 1)
+            install = _button("settings.install", functools.partial(self._install, key), width=96)
+            row.addWidget(install)
+            layout.addLayout(row)
+            self.engine_rows[key] = (text, install)
+        self.engine_hint = _meta()
+        layout.addWidget(self.engine_hint)
+        return card
+
+    def refresh_engines(self):
+        """Etat des moteurs installes (une courte interrogation du Python externe)."""
+        state = engines.status()
+        busy = self._job is not None
+        index = self.engine_combo.findData(engines.selected())
+        self.engine_combo.blockSignals(True)
+        self.engine_combo.setCurrentIndex(max(0, index))
+        self.engine_combo.blockSignals(False)
+        for key, installed in engines.describe(state):
+            text, button = self.engine_rows[key]
+            text.setText(i18n.t("settings.engine_row", name=i18n.t(engines.NAME_TEXT[key]),
+                                state=install_ui.state_text(installed)))
+            button.setVisible(not installed)
+            button.setEnabled(not busy and engines.can_install())
+        if not engines.can_install():
+            self.engine_hint.setText(i18n.t("settings.engine_custom_python", path=aigcp.python_path()))
+        elif engines.resolve(state=state) is None:
+            self.engine_hint.setText(i18n.t("settings.engine_none"))
+        else:
+            self.engine_hint.setText(i18n.t("settings.engine_in_use",
+                                            name=i18n.t(engines.NAME_TEXT[engines.resolve(state=state)])))
+
+    def _on_engine(self, index):
+        choice = self.engine_combo.itemData(index)
+        engines.set_selected(choice)
+        journal.write("Moteur de detection : {}".format(choice))
+        wanted = engines.missing(choice)
+        if wanted is not None and engines.can_install():
+            what = i18n.t(engines.WHAT_TEXT[wanted])
+            if dialogs.ask(self, i18n.t("aigcp.setup_title"), i18n.t("settings.engine_missing_offer", what=what)):
+                install_ui.run(self, wanted, confirm=False)
+        self.refresh()
+
+    def _install(self, key):
+        if self._job is not None:
+            return
+        if key == "training":
+            install_ui.run(self, None, training=True)
+        else:
+            install_ui.run(self, key)
+        self.refresh()
 
     # -- construction du bloc Modeles IA ---------------------------------------------
 
@@ -277,6 +368,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self.train_button.setEnabled(not training_on and positives > 0)
         self.models.setEnabled(not training_on)
         self.use_refine.setEnabled(not training_on)
+        self.refresh_engines()
 
     # -- reglages ---------------------------------------------------------------------
 
@@ -346,8 +438,12 @@ class SettingsDialog(QtWidgets.QDialog):
             return
         missing = training.missing_tools()
         if missing:
-            self._say(i18n.t("settings.err_no_tools", tools=", ".join(missing), script=training.installer_path()))
-            return
+            offer = i18n.t("settings.train_tools_offer", tools=", ".join(missing))
+            if not dialogs.ask(self, i18n.t("settings.train_title"), offer):
+                return
+            if not install_ui.run(self, None, training=True, confirm=False):
+                return
+            self.refresh()
         counts = training.feedback_counts()
         positives = sum(c["positives"] for c in counts.values())
         negatives = sum(c["negatives"] for c in counts.values())

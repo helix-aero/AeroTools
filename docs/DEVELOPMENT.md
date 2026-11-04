@@ -173,12 +173,40 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
   `models/damier.onnx`, `models/bombe.onnx` (what the runner reads; export with `YOLO(...).export(format="onnx", imgsz=160, dynamic=True,
   simplify=True, opset=17)`; the training does it by itself). They are stored in git (the base model "Aero V1.0", released with the
   code); any other `*.pt` / `*.onnx` file stays git-ignored.
-- Hidden settings, section `aigcp`: `python` (path of the Python of the detection engine; default: `AIGCP_PYTHON`, then
+- Hidden settings, section `aigcp`: `engine` (auto, light, precise), `python` (path of the Python of the detection engine; default: `AIGCP_PYTHON`, then
   `~/AIGCP/_env/Scripts/python.exe`), `models_dir`, `conf_damier` (0.25), `conf_bombe` (0.30), `gate_min_m` (0.30),
   `gate_factor` (5), `consensus_m` (0.25), and the last `type`, `scope`, `ignore` and `review_thumb` (thumbnail size).
 - Limits: the review keeps only the last detection; at most 200 photos per marker and 3000 per run, a marker needs a 3D position and an aligned photo. Measured by script
   on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and 40 px): 98 to 100 % within 3 px.
   The guard is covered by tests but not measured on real roof false positives yet.
+
+## Engines and installation
+
+`engines.py` (no Qt) knows which engines the external Python has (one short subprocess, cached 20 s): `light` (onnxruntime, numpy,
+opencv), `precise` (torch, ultralytics), `training` (precise + onnx). The setting `aigcp.engine` is `auto` (precise if present, else
+light), `light` or `precise`; `work.json` gets `"engine": "onnx" | "torch"` and the runner never swaps a chosen engine silently.
+`aigcp.check` fails with a clear text when the chosen engine is missing, and `aigcp.setup_target` says what the installer can add.
+`install_ui.py` runs `install/install_all.ps1 -Yes -Engine ... [-Training] -PauseOnError` in a visible console and waits for it
+(the "Install" buttons of the settings, the box after a failed detection, the retraining pre-check). The installer asks
+the engine question itself when you double-click it.
+
+## Updates
+
+`aerotools/updater.py` (no Qt) and `update_dialog.py` (the window, menu Aero > Check for updates and Settings > Updates). The
+repository publishes `manifest.json`: SHA-256 and size of every shipped file (code, models, installer, assets, docs; text files
+are hashed with LF line endings). **Run `python install/make_manifest.py` before every push**: `tests/test_updater.py` fails when
+the manifest is stale. Bump `aerotools.__version__` for a release. The update compares the disk to the remote manifest, downloads
+the differences to `%LOCALAPPDATA%\HELIX\AeroTools\updates`, checks each file, backs up the old ones, replaces them, writes
+`manifest.json` last, and puts everything back if a step fails. A folder with `.git` is never updated. Hidden settings, section
+`update`: `channel` (`main` by default, `dev` to follow the test branch) and `base_url` (tests, mirrors; `file:///` works).
+Test an update safely with two folders and `base_url` pointing at the first.
+
+## Diagnostic of the marking
+
+`diagnostic.py` (no Qt): cross-validation of each manual pick (3D position from the other rays, `consensus.triangulate`, gap in
+pixels on the judged photo), peeling the worst pick until nothing exceeds 3 px so a bad pick does not accuse its neighbours;
+threshold `max(3 px, 4 x median)`; suspect photos; markers with too few picks. `tests/test_diagnostic.py` checks it on synthetic
+cameras where the shifted pick is known. Window: `diagnostic_dialog.py`, opened from the "Residual check" menu.
 
 ## AI models and retraining
 
