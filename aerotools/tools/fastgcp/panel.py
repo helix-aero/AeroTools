@@ -1450,6 +1450,13 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         if state is None:
             return
         try:
+            # Metashape se recentre sur son marqueur selectionne quand on change de
+            # photo : on lui donne le meme marqueur qu'a FastGCP.
+            if msapi.select_marker(msapi.chunk(), marker):
+                state.last_selected_label = msapi.marker_label(marker)
+        except Exception as exc:
+            journal.write("FastGCP : selection Reference : {!r}".format(exc))
+        try:
             from . import photos
             photos.filter_for_marker(state, marker, force=True)
         except Exception as exc:

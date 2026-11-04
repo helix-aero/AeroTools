@@ -141,6 +141,26 @@ def selected_markers(chk):
     return out
 
 
+def select_marker(chk, marker):
+    """Selectionne ce seul marqueur dans Metashape (panneau Reference). Ne leve jamais.
+
+    Metashape se recentre sur SON marqueur selectionne a chaque changement de
+    photo (Page precedente / suivante) : il doit etre le marqueur courant de
+    FastGCP, sinon la vue part sur l'ancien. Renvoie True si la selection est faite.
+    """
+    try:
+        for other in markers(chk):
+            try:
+                wanted = other == marker
+                if bool(other.selected) != wanted:
+                    other.selected = wanted
+            except RuntimeError:
+                continue
+        return True
+    except Exception:
+        return False
+
+
 def marker_label(marker):
     try:
         return marker.label

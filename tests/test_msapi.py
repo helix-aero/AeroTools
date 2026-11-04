@@ -165,3 +165,13 @@ def test_main_window_wrapper_is_kept_alive_and_renewed_when_dead(monkeypatch):
     assert msapi.main_window() is first
     first.dead = True
     assert msapi.main_window() is second
+
+
+def test_select_marker_makes_it_the_only_selected_one(ms):
+    first, second, third = ms.Marker("A"), ms.Marker("B"), ms.Marker("C")
+    chunk = ms.Chunk([], [first, second, third])
+    first.selected = True
+    assert msapi.select_marker(chunk, third) is True
+    assert [m.label for m in msapi.selected_markers(chunk)] == ["C"]
+    assert msapi.select_marker(chunk, third) is True
+    assert [m.label for m in msapi.selected_markers(chunk)] == ["C"]
