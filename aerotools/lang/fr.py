@@ -357,7 +357,7 @@ TEXTES = {
     "redo.nothing": "Rien à rétablir",
     "redo.failed": "Rétablissement impossible",
     "redo.done": "Rétabli : {label}",
-    "panel.ad": "Complex flight made easy",
+    "panel.ad": "Complex flights made easy",
 
     # -- Dossier de stockage -----------------------------------------------
     "settings.open_folder": "Ouvrir",

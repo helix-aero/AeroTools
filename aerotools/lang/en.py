@@ -351,7 +351,7 @@ TEXTES = {
     "redo.nothing": "Nothing to redo",
     "redo.failed": "Redo failed",
     "redo.done": "Redone: {label}",
-    "panel.ad": "Complex flight made easy",
+    "panel.ad": "Complex flights made easy",
 
     # -- Dossier de stockage -----------------------------------------------
     "settings.open_folder": "Open",
