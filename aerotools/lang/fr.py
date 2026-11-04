@@ -92,7 +92,7 @@ TEXTES = {
     "aigcp.no_runner": "IA : exécuteur introuvable ({path})",
     "aigcp.type_damier": "Damier",
     "aigcp.type_bombe": "Bombe",
-    "aigcp.scope_marker": "Marqueur actif",
+    "aigcp.scope_marker": "Marqueurs sélectionnés",
     "aigcp.scope_all": "Tous les marqueurs",
     "aigcp.ignore_both": "Ignore vert + bleu",
     "aigcp.ignore_green": "Ignore vert",

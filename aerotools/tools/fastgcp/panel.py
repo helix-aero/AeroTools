@@ -1040,7 +1040,9 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         grid.setTextElideMode(QtCore.Qt.ElideRight)
         grid.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         grid.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
-        grid.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        # Maj+clic / Ctrl+clic : plusieurs marqueurs pour la detection IA. Le dernier
+        # clique reste le marqueur courant.
+        grid.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         grid.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         grid.setIconSize(QtCore.QSize(DOT_SIZE + 2, DOT_SIZE + 2))
         grid.setSizePolicy(
@@ -1549,6 +1551,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         key, descending = self._sort if self._sort is not None else (None, False)
         rows = sort_rows(rows, key, descending)
         current = None
+        chosen = set(self.selected_labels())
 
         self.grid.blockSignals(True)
         self.grid.setUpdatesEnabled(False)
@@ -1559,9 +1562,13 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 self.grid.addTopLevelItem(item)
                 if row["label"] == active:
                     current = item
+                if row["label"] in chosen:
+                    item.setSelected(True)
             if current is not None:
-                self.grid.setCurrentItem(current)
+                self.grid.setCurrentItem(current, 0, QtCore.QItemSelectionModel.NoUpdate)
                 self.grid.scrollToItem(current)
+                if len(chosen) < 2:
+                    current.setSelected(True)
         finally:
             self.grid.setUpdatesEnabled(True)
             self.grid.blockSignals(False)
@@ -1873,9 +1880,18 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             journal.write("FastGCP : fermeture de la revue IA : {!r}".format(exc))
         self._review_dialog = None
 
+    def selected_labels(self):
+        """Etiquettes des lignes selectionnees (Maj+clic), dans l'ordre du tableau."""
+        out = []
+        for row in range(self.grid.topLevelItemCount()):
+            item = self.grid.topLevelItem(row)
+            if item.isSelected():
+                out.append(item.data(0, ROLE_LABEL))
+        return out
+
     def _on_aigcp_run(self, _checked=False):
         try:
-            aigcp.start(self._state)
+            aigcp.start(self._state, labels=self.selected_labels())
         except Exception as exc:
             journal.write("FastGCP : detection IA : {!r}".format(exc))
         self.update_aigcp()

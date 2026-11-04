@@ -93,9 +93,10 @@ to a file in a visible folder. No image is copied. The file format is documented
 ## AI detection (AIGCP)
 
 The **AI detection** card, at the top of the panel, proposes a marker on the photos that should see it. Two models, never mixed:
-checkerboard (`damier`) and spray or chalk mark (`bombe`). Three drop-down lists choose the type, the scope (**Selected marker** or
+checkerboard (`damier`) and spray or chalk mark (`bombe`). Three drop-down lists choose the type, the scope (**Selected markers** or
 **All markers**, meaning every marker that has a 3D position: no pin is needed when the marker has reference coordinates) and which photos to leave alone (**Ignore green + blue**,
-green, blue or none). Buttons: **Run detection**, **Clear proposals**, **Review**. The choices are saved per machine.
+green, blue or none). With **Selected markers**, Shift+click or Ctrl+click in the marker list selects several markers and the
+detection covers all of them (one selected marker: the active one). Buttons: **Run detection**, **Clear proposals**, **Review**. The choices are saved per machine.
 
 - The calculation never runs inside Metashape. `aigcp.py` writes a `work.json`, starts `aigcp_runner.py` in a separate Python
   that has torch and ultralytics, and reads `hits.json` when it is done. The panel stays free; the tool's heartbeat (`tool._tick`)

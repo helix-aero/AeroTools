@@ -424,8 +424,11 @@ def collect_items(chk, marker, index=0, limit=MAX_PHOTOS, skip_green=True, skip_
     return items, skipped
 
 
-def collect_all(chk, skip_green=True, skip_blue=True):
+def collect_all(chk, skip_green=True, skip_blue=True, labels=None):
     """Items de tous les marqueurs qui ont une position 3D (aucun pointage n'est exige).
+
+    `labels` (facultatif) restreint la recherche a ces marqueurs : la selection
+    multiple du panneau.
 
     Un marqueur sans pointage s'appuie sur ses coordonnees de reference : la recherche
     elargie reste permise et seule la coherence entre photos le garde. Renvoie
@@ -433,9 +436,12 @@ def collect_all(chk, skip_green=True, skip_blue=True):
     voisins : le runner ne la decode qu'une fois.
     """
     items, used, ignored = [], 0, 0
+    wanted = None if labels is None else set(labels)
     for index, marker in enumerate(msapi.markers(chk)):
         if len(items) >= MAX_PHOTOS_ALL:
             break
+        if wanted is not None and msapi.marker_label(marker) not in wanted:
+            continue
         if msapi.marker_point(chk, marker) is None:
             ignored += 1
             continue
@@ -524,18 +530,21 @@ def progress_of(state):
     return None if run is None else run.progress
 
 
-def start(state, kind=None, scope=None):
+def start(state, kind=None, scope=None, labels=None):
     """Lance la detection sur le marqueur actif (scope "marker") ou sur tous
-    (scope "all"). Sans argument : les choix memorises du panneau. Ne leve jamais."""
+    (scope "all"). Sans argument : les choix memorises du panneau. Ne leve jamais.
+
+    `labels` : marqueurs selectionnes dans le panneau (Maj+clic). Avec le scope "marker"
+    et plus d'un marqueur, la detection porte sur eux tous ; sinon sur le marqueur actif."""
     try:
-        return _start(state, kind or selected_type(), scope or selected_scope())
+        return _start(state, kind or selected_type(), scope or selected_scope(), labels)
     except Exception as exc:
         _status(state, i18n.t("aigcp.failed"))
         journal.write("IA : lancement impossible : {!r}".format(exc))
         return False
 
 
-def _start(state, kind, scope):
+def _start(state, kind, scope, labels=None):
     if busy(state):
         _status(state, i18n.t("aigcp.busy"))
         return False
@@ -548,8 +557,12 @@ def _start(state, kind, scope):
         _status(state, i18n.t("aigcp.no_marker"))
         return False
     label = state.active_label()
-    if scope == "all":
-        items, used, ignored = collect_all(chk, *skip_flags(state))
+    several = scope == "marker" and labels is not None and len(labels) > 1
+    if scope == "all" or several:
+        # Plusieurs marqueurs choisis : meme traitement et memes messages que « tous ».
+        scope = "all"
+        items, used, ignored = collect_all(chk, *skip_flags(state),
+                                           labels=labels if several else None)
         if ignored:
             journal.write("IA : {} marqueur(s) ignore(s) : sans position 3D".format(ignored))
         if not items:

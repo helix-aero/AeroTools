@@ -487,6 +487,50 @@ def test_scope_all_without_any_marker_position_says_so(install, ms):
     assert "position 3D" in state.panel.statuses[-1]
 
 
+def _three_markers(ms, first, cams):
+    """Le marqueur confirme + GCP2 et GCP3 (memes pointages) : de quoi choisir parmi plusieurs."""
+    others = []
+    for name in ("GCP2", "GCP3"):
+        marker = ms.Marker(name, position=ms.Vector(0, 0, 0), projections={
+            cams[0]: ms.Marker.Projection(ms.Vector(2000.0, 1500.0, 0), True),
+            cams[3]: ms.Marker.Projection(ms.Vector(2000.0, 1500.0, 0), True)})
+        others.append(marker)
+    return others
+
+
+def test_collect_all_can_be_limited_to_some_labels(ms, install, confirmed):
+    chunk, first, cams = confirmed
+    for marker in _three_markers(ms, first, cams):
+        chunk.markers.append(marker)
+    items, used, _ignored = aigcp.collect_all(chunk, labels=["GCP1", "GCP3"])
+    assert used == 2 and {it["label"] for it in items} == {"GCP1", "GCP3"}
+
+
+def test_several_selected_markers_run_together_in_marker_scope(ms, install, confirmed):
+    chunk, first, cams = confirmed
+    second, third = _three_markers(ms, first, cams)
+    chunk.markers.append(second)
+    chunk.markers.append(third)
+    state = make_state(first)
+    assert aigcp.start(state, "damier", "marker", labels=["GCP1", "GCP3"]) is True
+    wait_done(state)
+    assert msapi.get_projection(first, cams[2]) is not None
+    assert msapi.get_projection(third, cams[2]) is not None
+    assert msapi.get_projection(second, cams[2]) is None          # non selectionne : intact
+    assert "2 marqueur(s)" in state.panel.statuses[-1]
+
+
+def test_one_selected_marker_keeps_the_active_marker_behaviour(ms, install, confirmed):
+    chunk, first, cams = confirmed
+    second, _third = _three_markers(ms, first, cams)
+    chunk.markers.append(second)
+    state = make_state(first)
+    assert aigcp.start(state, "damier", "marker", labels=["GCP2"]) is True      # un seul : on garde l'actif
+    wait_done(state)
+    assert msapi.get_projection(first, cams[2]) is not None
+    assert msapi.get_projection(second, cams[2]) is None
+
+
 # -- choix memorises ---------------------------------------------------------
 
 def test_choices_default_and_persist(local_appdata):

@@ -86,7 +86,7 @@ TEXTES = {
     "aigcp.no_runner": "AI: runner not found ({path})",
     "aigcp.type_damier": "Checker",
     "aigcp.type_bombe": "Spray",
-    "aigcp.scope_marker": "Selected marker",
+    "aigcp.scope_marker": "Selected markers",
     "aigcp.scope_all": "All markers",
     "aigcp.ignore_both": "Ignore green + blue",
     "aigcp.ignore_green": "Ignore green",
