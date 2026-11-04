@@ -167,8 +167,8 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
   *Use manual refinements to build the training dataset* is unchecked.
 - Picking a marker in the panel also selects it in Metashape's Reference pane: Metashape recentres on its own selected marker
   when the photo changes (Page Up / Page Down).
-- Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder). `*.pt` is
-  git-ignored: copy them by hand next to the code.
+- Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder). They are stored in git
+  (the base model "Aero V1.0", released with the code); any other `*.pt` file stays git-ignored.
 - Hidden settings, section `aigcp`: `python` (path of the Python with torch and ultralytics; default: `AIGCP_PYTHON`, then
   `~/AIGCP/_env/Scripts/python.exe`), `models_dir`, `conf_damier` (0.25), `conf_bombe` (0.30), `gate_min_m` (0.30),
   `gate_factor` (5), `consensus_m` (0.25), and the last `type`, `scope`, `ignore` and `review_thumb` (thumbnail size).

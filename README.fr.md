@@ -171,7 +171,7 @@ Issues, idées et pull requests sont les bienvenues.
 
 [PolyForm Noncommercial 1.0.0](LICENSE). Copyright 2026 HELIX AERO.
 
-Le code est lisible par tous, et libre d'utilisation, de modification et de partage pour tout usage non commercial :
+Le code et le modèle d'IA de base (`models/damier.pt`, `models/bombe.pt`, « Aero V1.0 ») sont lisibles par tous, et libres d'utilisation, de modification et de partage pour tout usage non commercial :
 usage personnel, étude, recherche, enseignement, projets de loisir, associations. L'usage commercial demande une licence
 séparée auprès de nous. Si vous voulez utiliser AeroTools en entreprise, contactez-nous, nous en discuterons volontiers.
 

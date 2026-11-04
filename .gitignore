@@ -4,6 +4,8 @@ __pycache__/
 *.bak
 _sources_reference/
 *.pt
+!models/damier.pt
+!models/bombe.pt
 diag_*.py
 diag_*.txt
 docs/2026-11-03_pistes-amelioration.html
