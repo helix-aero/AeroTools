@@ -373,5 +373,5 @@ TEXTES = {
 
     # -- Installation de la detection IA -----------------------------------
     "aigcp.setup_title": "AI detection setup",
-    "aigcp.setup_needed": "The AI detection is not installed on this computer yet.\n\n{detail}\n\nOne-time setup: double-click\n{script}\nIt downloads Python and the calculation libraries (about 3 GB, internet connection needed). Then restart Metashape. Hand marking works without it.",
+    "aigcp.setup_needed": "The AI detection is not installed on this computer yet.\n\n{detail}\n\nOne-time setup: double-click\n{script}\nIt installs everything in one go, with a progress display (Python and the calculation libraries, about 3 GB, internet connection needed). Then restart Metashape. Hand marking works without it.",
 }

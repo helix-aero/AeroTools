@@ -78,15 +78,15 @@ again. So we wrote a tool for ourselves. It saved us enough time that we decided
 You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 
 1. Click **Download latest version** at the top of this page (or clone this repository), and unzip it anywhere you like.
-2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). It adds the **Aero** menu to Metashape and offers to install the AI detection too.
+2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). One installer does everything: it adds the **Aero** menu to Metashape and sets up the AI detection (Python and `torch`, about 3 GB, a few minutes). A window shows "Please wait..." with the progress; do not close it.
 3. Restart Metashape. The **Aero** menu is there.
 
 The installer writes one small launcher into `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Nothing else is touched.
 `install\desinstaller_aerotools.bat` removes it.
 
 > [!NOTE]
-> The AI detection needs a separate Python with `torch` and `ultralytics` (about 3 GB). The installer offers to set it up for
-> you (it can also be run later: `install\installer_ia.bat`). The hand-marking tools work without it. See the
+> The AI detection needs a separate Python with `torch` and `ultralytics` (about 3 GB). The same installer sets it up (run it
+> again at any time: it only redoes what is missing). The hand-marking tools work without it. See the
 > [troubleshooting table](docs/TUTORIAL.md#9-troubleshooting).
 
 ## Quick start

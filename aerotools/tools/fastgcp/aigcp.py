@@ -159,7 +159,7 @@ def skip_flags(state=None):
 
 def installer_path():
     """Fichier a double-cliquer pour installer la detection IA (Python + torch + ultralytics)."""
-    return os.path.join(config.ROOT, "install", "installer_ia.bat")
+    return os.path.join(config.ROOT, "CLICK HERE TO INSTALL.bat")
 
 
 def check(kind):

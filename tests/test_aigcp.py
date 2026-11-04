@@ -1026,5 +1026,5 @@ def test_a_missing_ai_setup_is_explained_in_a_box(install, world, monkeypatch):
     state = make_state(marker)
     monkeypatch.setattr(aigcp, "python_path", lambda: os.path.join(os.sep, "absent", "python.exe"))
     assert aigcp.start(state, "damier", "marker") is False
-    assert state.panel.setups and "installer_ia.bat" in state.panel.setups[0]
+    assert state.panel.setups and "CLICK HERE TO INSTALL.bat" in state.panel.setups[0]
     assert "python.exe" in state.panel.setups[0]

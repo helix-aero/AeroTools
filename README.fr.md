@@ -80,16 +80,16 @@ manuel** et la **détection IA**, qui propose les pointés pour que vous les pas
 Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Metashape 2.2.
 
 1. Cliquez sur **Télécharger la dernière version** en haut de cette page (ou clonez ce dépôt), puis décompressez-le où vous voulez.
-2. Double-cliquez sur **`CLICK HERE TO INSTALL.bat`** (à la racine du dossier décompressé). Il ajoute le menu **Aero** à Metashape et propose d'installer aussi la détection IA.
+2. Double-cliquez sur **`CLICK HERE TO INSTALL.bat`** (à la racine du dossier décompressé). Un seul installeur fait tout : il ajoute le menu **Aero** à Metashape et met en place la détection IA (Python et `torch`, environ 3 Go, quelques minutes). Une fenêtre affiche « Please wait... » avec la progression ; ne la fermez pas.
 3. Redémarrez Metashape. Le menu **Aero** est là.
 
 L'installeur écrit un petit lanceur dans `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Rien d'autre n'est touché.
 `install\desinstaller_aerotools.bat` le retire.
 
 > [!NOTE]
-> La détection IA demande un Python séparé avec `torch` et `ultralytics` (environ 3 Go). L'installeur propose de le mettre en
-> place pour vous (on peut aussi le lancer plus tard : `install\installer_ia.bat`). Les outils de pointage manuel fonctionnent
-> sans. Voir le [tableau de dépannage](docs/TUTORIAL.fr.md#9-dépannage).
+> La détection IA demande un Python séparé avec `torch` et `ultralytics` (environ 3 Go). Le même installeur le met en place
+> (relancez-le quand vous voulez : il ne refait que ce qui manque). Les outils de pointage manuel fonctionnent sans. Voir le
+> [tableau de dépannage](docs/TUTORIAL.fr.md#9-dépannage).
 
 ## Démarrage rapide
 
