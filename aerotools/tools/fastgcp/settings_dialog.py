@@ -344,6 +344,10 @@ class SettingsDialog(QtWidgets.QDialog):
         if state is not None and aigcp.busy(state):
             self._say(i18n.t("settings.train_busy_detect"))
             return
+        missing = training.missing_tools()
+        if missing:
+            self._say(i18n.t("settings.err_no_tools", tools=", ".join(missing), script=training.installer_path()))
+            return
         counts = training.feedback_counts()
         positives = sum(c["positives"] for c in counts.values())
         negatives = sum(c["negatives"] for c in counts.values())

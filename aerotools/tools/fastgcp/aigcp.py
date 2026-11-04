@@ -1,8 +1,7 @@
 """AIGCP dans FastGCP : proposer des pointages avec les modeles de detection.
 
 Le calcul ne tourne JAMAIS dans le Python de Metashape. FastGCP ecrit un
-`work.json`, lance `aigcp_runner.py` dans un Python a part (celui qui a torch et
-ultralytics), puis relit `hits.json` (contrat decrit dans aigcp_runner.py). Le
+`work.json`, lance `aigcp_runner.py` dans un Python a part (celui d'onnxruntime, sans torch), puis relit `hits.json` (contrat decrit dans aigcp_runner.py). Le
 panneau reste libre pendant ce temps : `poll()` est appele par le battement de
 tool.py et pose les propositions quand le calcul est fini.
 
@@ -35,7 +34,7 @@ Cela protege aussi un marqueur sans aucune projection, ou le garde-fou
 ci-dessus n'a rien a comparer.
 
 Reglages caches (settings.json, section `aigcp`) :
-  python      chemin du Python qui a torch + ultralytics
+  python      chemin du Python d'AIGCP (onnxruntime, numpy, opencv ; torch seulement pour l'entrainement)
               (defaut : variable AIGCP_PYTHON, puis ~/AIGCP/_env/Scripts/python.exe)
   models_dir  dossier des poids damier.pt et bombe.pt (defaut : <depot>/models)
   conf_damier, conf_bombe   seuils de confiance (defauts 0,25 et 0,30)
@@ -158,7 +157,7 @@ def skip_flags(state=None):
 
 
 def installer_path():
-    """Fichier a double-cliquer pour installer la detection IA (Python + torch + ultralytics)."""
+    """Fichier a double-cliquer pour installer la detection IA (Python + onnxruntime)."""
     return os.path.join(config.ROOT, "CLICK HERE TO INSTALL.bat")
 
 

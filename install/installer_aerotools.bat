@@ -1,7 +1,7 @@
 @echo off
 setlocal
 title AeroTools - installation
-rem Un seul installeur : menu Aero dans Metashape + detection IA (Python, torch, ultralytics).
+rem Un seul installeur : menu Aero dans Metashape + detection IA (Python, onnxruntime, environ 100 Mo).
 rem Tout est fait par install_all.ps1, qui affiche "Please wait..." pendant les etapes longues.
 rem Racine = dossier parent de install\ (sans antislash final).
 for %%I in ("%~dp0..") do set "AT_ROOT=%%~fI"

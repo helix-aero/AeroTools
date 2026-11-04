@@ -3,20 +3,22 @@
 #   1. ajoute le menu Aero a Metashape (petit lanceur dans le dossier scripts de Metashape)
 #   2. cherche un Python 3.10 a 3.13, ou installe Python 3.12 avec winget
 #   3. cree l'environnement %USERPROFILE%\AIGCP\_env (c'est la que FastGCP le cherche)
-#   4. installe torch (version CUDA si une carte NVIDIA est detectee, sinon processeur)
-#   5. installe ultralytics
-#   6. verifie que tout s'importe et que les poids models\damier.pt et models\bombe.pt sont la
+#   4. installe le moteur de detection : onnxruntime, numpy, opencv (environ 100 Mo, sans torch)
+#   5. verifie que tout s'importe et que les modeles models\*.pt et models\*.onnx sont la
+#   (option -Training) installe aussi torch, ultralytics et onnx (environ 3 Go) : seulement pour
+#   reentrainer le modele ("Refine my model" dans les parametres), jamais pour detecter.
 #
 # Relancer ne refait que ce qui manque. Pendant les longues etapes la fenetre affiche
 # "Please wait..." (points animes), le temps ecoule et la derniere ligne de la commande.
 #
-# Options : -NoAI (menu seulement, sans internet), -Check (dit ce qui manque, n'installe rien),
-#           -DryRun (montre les commandes sans les lancer).
+# Options : -NoAI (menu seulement, sans internet), -Training, -Check (dit ce qui manque,
+#           n'installe rien), -DryRun (montre les commandes sans les lancer).
 # Messages en ASCII : PowerShell 5.1 lit mal l'UTF-8 sans BOM.
 
 param(
     [string]$Root = (Split-Path -Parent $PSScriptRoot),
     [switch]$NoAI,
+    [switch]$Training,
     [switch]$Check,
     [switch]$DryRun
 )
@@ -26,15 +28,14 @@ $ProgressPreference = 'SilentlyContinue'
 
 $EnvDir = Join-Path $env:USERPROFILE 'AIGCP\_env'
 $EnvPython = Join-Path $EnvDir 'Scripts\python.exe'
-$Weights = @('damier.pt', 'bombe.pt')
+$Models = @('damier', 'bombe')
 $TorchGpuIndex = 'https://download.pytorch.org/whl/cu128'
 $ScriptsDir = Join-Path $env:LOCALAPPDATA 'Agisoft\Metashape Pro\scripts'
 $Launcher = Join-Path $ScriptsDir 'aerotools_launcher.py'
 $Template = Join-Path $Root 'install\aerotools_launcher.py.tpl'
 
-$TotalSteps = if ($NoAI) { 2 } else { 6 }
+$TotalSteps = if ($NoAI) { 2 } elseif ($Training) { 6 } else { 5 }
 $script:StepNo = 0
-$script:LastLog = $null
 
 
 function Say($text, $color) {
@@ -77,7 +78,6 @@ function Run-Long($label, $exe, [string[]]$arguments) {
     Say ("  > " + $exe + " " + ($arguments -join ' ')) 'DarkGray'
     if ($DryRun) { return }
     $log = Join-Path $env:TEMP ('aerotools_install_{0}.log' -f [guid]::NewGuid().ToString('N').Substring(0, 8))
-    $script:LastLog = $log
     $process = Start-Process -FilePath $exe -ArgumentList (($arguments | ForEach-Object { Quote-Arg $_ }) -join ' ') `
         -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError ($log + '.err')
     $null = $process.Handle        # sans cela PowerShell 5.1 ne garde pas le code de retour
@@ -122,11 +122,23 @@ function Find-SystemPython {
 }
 
 
-function Test-EnvImports {
+function Test-Imports($modules) {
     if (-not (Test-Path -LiteralPath $EnvPython)) { return $false }
-    & $EnvPython -c "import torch, ultralytics" 2>$null
-    return ($LASTEXITCODE -eq 0)
+    # PowerShell 5.1 transforme le stderr d'un programme natif en erreur fatale sous 'Stop' : un module
+    # absent (torch, par exemple) est ici une reponse normale, pas une panne.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $EnvPython -c ("import " + ($modules -join ', ')) 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } finally {
+        $ErrorActionPreference = $previous
+    }
 }
+
+
+function Test-EngineInstalled { return (Test-Imports @('onnxruntime', 'cv2', 'numpy')) }
+function Test-TrainingInstalled { return (Test-Imports @('torch', 'ultralytics', 'onnx')) }
 
 
 function Get-LauncherText {
@@ -165,10 +177,19 @@ function Show-Status {
     if (Test-LauncherCurrent) { Say 'Aero menu              : installed' } else { Say 'Aero menu              : NOT installed'; $ok = $false }
     if (-not $NoAI) {
         if (Test-Path -LiteralPath $EnvPython) { Say "Python environment    : $EnvPython" } else { Say "Python environment    : MISSING ($EnvPython)"; $ok = $false }
-        if (Test-EnvImports) { Say 'torch + ultralytics    : installed' } else { Say 'torch + ultralytics    : MISSING'; $ok = $false }
-        foreach ($name in $Weights) {
-            $path = Join-Path $Root "models\$name"
-            if (Test-Path -LiteralPath $path) { Say "Model $name       : present" } else { Say "Model $name       : MISSING ($path)"; $ok = $false }
+        if (Test-EngineInstalled) { Say 'Detection engine      : installed (onnxruntime, numpy, opencv)' } else { Say 'Detection engine      : MISSING'; $ok = $false }
+        foreach ($name in $Models) {
+            foreach ($ext in @('pt', 'onnx')) {
+                $path = Join-Path $Root ("models\$name.$ext")
+                if (Test-Path -LiteralPath $path) { Say ("Model {0}.{1} : present" -f $name, $ext) } else { Say ("Model {0}.{1} : MISSING ({2})" -f $name, $ext, $path); $ok = $false }
+            }
+        }
+        if (Test-TrainingInstalled) {
+            Say 'Training tools        : installed'
+        } elseif ($Training) {
+            Say 'Training tools        : MISSING'; $ok = $false
+        } else {
+            Say 'Training tools        : not installed (optional, only to retrain the model)'
         }
     }
     return $ok
@@ -178,7 +199,11 @@ function Show-Status {
 Say ''
 Say '  ============================================================' 'Green'
 Say '    AeroTools - installation' 'Green'
-Say '    Please wait: this can take 5 to 15 minutes the first time.' 'Green'
+if ($Training) {
+    Say '    Please wait: this can take 5 to 15 minutes (training tools, about 3 GB).' 'Green'
+} else {
+    Say '    Please wait: this takes a few minutes the first time (about 100 MB).' 'Green'
+}
 Say '    Do NOT close this window.' 'Green'
 Say '  ============================================================' 'Green'
 
@@ -192,17 +217,12 @@ try {
     Install-Launcher
 
     if (-not $NoAI) {
-        if ((Test-EnvImports) -and -not $DryRun) {
-            Show-Step 'Python for the AI detection'
-            Say '  Already installed.'
-            Show-Step 'AI environment'
-            Say '  Already installed.'
-            Show-Step 'torch'
-            Say '  Already installed.'
-            Show-Step 'ultralytics'
+        $engineReady = (Test-EngineInstalled) -and -not $DryRun
+        $python = $null
+        Show-Step 'Python for the AI detection'
+        if ($engineReady) {
             Say '  Already installed.'
         } else {
-            Show-Step 'Python for the AI detection'
             $python = Find-SystemPython
             if (-not $python) {
                 Say '  No Python 3.10 to 3.13 on this computer.'
@@ -218,26 +238,37 @@ try {
             } else {
                 Say "  Using $python"
             }
+        }
 
-            Show-Step 'AI environment'
-            if (Test-Path -LiteralPath $EnvPython) {
-                Say '  Already created.'
-            } else {
-                Run-Long 'Environment creation' $python @('-m', 'venv', $EnvDir)
-            }
+        Show-Step 'AI environment'
+        if (Test-Path -LiteralPath $EnvPython) {
+            Say '  Already created.'
+        } elseif ($python) {
+            Run-Long 'Environment creation' $python @('-m', 'venv', $EnvDir)
+        }
+
+        Show-Step 'Detection engine (onnxruntime, numpy, opencv: about 100 MB)'
+        if ($engineReady) {
+            Say '  Already installed.'
+        } else {
             Run-Long 'pip update' $EnvPython @('-m', 'pip', 'install', '--upgrade', 'pip', '--progress-bar', 'off', '--disable-pip-version-check')
+            Run-Long 'Detection engine installation' $EnvPython @('-m', 'pip', 'install', 'numpy', 'opencv-python-headless', 'onnxruntime', '--progress-bar', 'off', '--disable-pip-version-check')
+        }
 
-            Show-Step 'torch (the biggest download, about 3 GB with an NVIDIA card)'
-            if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
-                Say '  NVIDIA graphics card found: torch with CUDA.'
-                Run-Long 'torch installation' $EnvPython @('-m', 'pip', 'install', 'torch', 'torchvision', '--index-url', $TorchGpuIndex, '--progress-bar', 'off', '--disable-pip-version-check')
+        if ($Training) {
+            Show-Step 'Training tools (torch, ultralytics, onnx: about 3 GB)'
+            if ((Test-TrainingInstalled) -and -not $DryRun) {
+                Say '  Already installed.'
             } else {
-                Say '  No NVIDIA card: torch for the processor (the detection will be slower).'
-                Run-Long 'torch installation' $EnvPython @('-m', 'pip', 'install', 'torch', 'torchvision', '--progress-bar', 'off', '--disable-pip-version-check')
+                if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
+                    Say '  NVIDIA graphics card found: torch with CUDA.'
+                    Run-Long 'torch installation' $EnvPython @('-m', 'pip', 'install', 'torch', 'torchvision', '--index-url', $TorchGpuIndex, '--progress-bar', 'off', '--disable-pip-version-check')
+                } else {
+                    Say '  No NVIDIA card: torch for the processor (training will be slow).'
+                    Run-Long 'torch installation' $EnvPython @('-m', 'pip', 'install', 'torch', 'torchvision', '--progress-bar', 'off', '--disable-pip-version-check')
+                }
+                Run-Long 'ultralytics installation' $EnvPython @('-m', 'pip', 'install', 'ultralytics', 'onnx', '--progress-bar', 'off', '--disable-pip-version-check')
             }
-
-            Show-Step 'ultralytics'
-            Run-Long 'ultralytics installation' $EnvPython @('-m', 'pip', 'install', 'ultralytics', '--progress-bar', 'off', '--disable-pip-version-check')
         }
     }
 

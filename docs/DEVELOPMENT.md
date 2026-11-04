@@ -52,7 +52,7 @@ Per-machine settings (theme, language, options) live in `%LOCALAPPDATA%\HELIX\Ae
 
 - Every Metashape call goes through `msapi.py`. Tools never import `Metashape` directly.
 - Python 3.9 syntax, PySide2 first, PySide6 as well. Import Qt through `aerotools/qt.py`.
-- No third-party dependency. Anything heavy (torch, ultralytics) stays out of Metashape's Python.
+- No third-party dependency. Anything heavy (onnxruntime, numpy, opencv; torch and ultralytics for training only) stays out of Metashape's Python.
 - The report and the panel only use Qt for drawing, so they work inside Metashape.
 
 ## Tests
@@ -108,7 +108,9 @@ green, blue or none). With **Selected markers**, Shift+click or Ctrl+click in th
 detection covers all of them (one selected marker: the active one). Buttons: **Run detection**, **Clear proposals**, **Review**. The choices are saved per machine.
 
 - The calculation never runs inside Metashape. `aigcp.py` writes a `work.json`, starts `aigcp_runner.py` in a separate Python
-  that has torch and ultralytics, and reads `hits.json` when it is done. The panel stays free; the tool's heartbeat (`tool._tick`)
+  (ONNX Runtime, numpy, opencv; no torch), and reads `hits.json` when it is done. The runner groups the markers by photo, decodes
+  the next photos in background threads, and runs all the crops of a photo through the model in batches (about 2.7x faster than
+  one crop at a time on the benchmark run, same results to 0.74 px). It falls back on ultralytics (torch) when there is no `.onnx`. The panel stays free; the tool's heartbeat (`tool._tick`)
   polls the job and places the results.
 - The runner crops a square of `4 x S x pixels-per-metre` around the estimated position of the marker (S = 0.3 / 0.5 / 0.8 m,
   the target size is unknown), resizes it to 160 x 160, keeps the detection closest to the estimate, then re-centres on it.
@@ -167,9 +169,11 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
   *Use manual refinements to build the training dataset* is unchecked.
 - Picking a marker in the panel also selects it in Metashape's Reference pane: Metashape recentres on its own selected marker
   when the photo changes (Page Up / Page Down).
-- Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder). They are stored in git
-  (the base model "Aero V1.0", released with the code); any other `*.pt` file stays git-ignored.
-- Hidden settings, section `aigcp`: `python` (path of the Python with torch and ultralytics; default: `AIGCP_PYTHON`, then
+- Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder) and their ONNX export
+  `models/damier.onnx`, `models/bombe.onnx` (what the runner reads; export with `YOLO(...).export(format="onnx", imgsz=160, dynamic=True,
+  simplify=True, opset=17)`; the training does it by itself). They are stored in git (the base model "Aero V1.0", released with the
+  code); any other `*.pt` / `*.onnx` file stays git-ignored.
+- Hidden settings, section `aigcp`: `python` (path of the Python of the detection engine; default: `AIGCP_PYTHON`, then
   `~/AIGCP/_env/Scripts/python.exe`), `models_dir`, `conf_damier` (0.25), `conf_bombe` (0.30), `gate_min_m` (0.30),
   `gate_factor` (5), `consensus_m` (0.25), and the last `type`, `scope`, `ignore` and `review_thumb` (thumbnail size).
 - Limits: the review keeps only the last detection; at most 200 photos per marker and 3000 per run, a marker needs a 3D position and an aligned photo. Measured by script
@@ -184,8 +188,8 @@ The settings window (gear) has an **AI models** block: the checkbox above, the s
 
 - `training.py` (no Qt) holds the registry (`<storage>/models/<id>/<type>.pt` + `meta.json`, numbers never reused thanks to
   `counter.json`), the active model (`aigcp.weights_path` follows it, a local model that lacks a type falls back on the original
-  weights) and `Training`, which runs `aigcp_train.py` in the external Python (the one with torch and ultralytics, never inside
-  Metashape). The window asks for confirmation first (graphics card used heavily, do not touch the computer, the result may be
+  weights) and `Training`, which runs `aigcp_train.py` in the external Python (needs torch, ultralytics and onnx: `install/installer_entrainement.bat`;
+  never inside Metashape). The window asks for confirmation first (graphics card used heavily, do not touch the computer, the result may be
   better on the user's targets and worse elsewhere, wrong annotations give a worse model, the original model is never modified).
 - The training starts again from the original weights each time, with all the feedback. Per type: crops around the final point
   of every `refined` and `accepted` event (positives, 25 per target at most, refined first), crops at the AI position of every

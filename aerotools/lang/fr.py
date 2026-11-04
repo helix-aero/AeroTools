@@ -379,5 +379,8 @@ TEXTES = {
 
     # -- Installation de la detection IA -----------------------------------
     "aigcp.setup_title": "Installation de la détection IA",
-    "aigcp.setup_needed": "La détection IA n'est pas encore installée sur cet ordinateur.\n\n{detail}\n\nInstallation (une seule fois) : double-clique sur\n{script}\nIl installe tout d'un coup, avec un affichage de progression (Python et les bibliothèques de calcul, environ 3 Go, connexion internet nécessaire). Puis redémarre Metashape. Le pointage à la main fonctionne sans.",
+    "aigcp.setup_needed": "La détection IA n'est pas encore installée sur cet ordinateur.\n\n{detail}\n\nInstallation (une seule fois) : double-clique sur\n{script}\nIl installe tout d'un coup, avec un affichage de progression (Python et le moteur de détection, environ 100 Mo, connexion internet nécessaire). Puis redémarre Metashape. Le pointage à la main fonctionne sans.",
+
+    # -- Outils d'entrainement ---------------------------------------------
+    "settings.err_no_tools": "Le réentraînement a besoin d'outils qui ne sont pas installés ({tools}, environ 3 Go). Double-clique sur\n{script}\nattends la fin, puis recommence. La détection n'en a pas besoin.",
 }

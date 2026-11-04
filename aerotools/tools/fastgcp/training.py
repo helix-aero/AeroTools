@@ -281,6 +281,34 @@ def weights_for(kind):
     return base_weights(kind)
 
 
+def installer_path():
+    """Fichier a double-cliquer pour installer les outils d'entrainement (torch, ultralytics, onnx)."""
+    return os.path.join(config.ROOT, "install", "installer_entrainement.bat")
+
+
+def missing_tools(python=None):
+    """Modules d'entrainement absents du Python externe : [] si tout y est (lecture rapide, sans les importer).
+
+    Liste ["python"] si ce Python n'existe pas ; ["?"] si la verification elle-meme echoue.
+    """
+    if python is None:
+        from . import aigcp
+        python = aigcp.python_path()
+    if not os.path.isfile(python):
+        return ["python"]
+    code = ("import importlib.util as u, sys; m = [n for n in ('torch', 'ultralytics', 'onnx') "
+            "if u.find_spec(n) is None]; print(','.join(m)); sys.exit(1 if m else 0)")
+    try:
+        done = subprocess.run([python, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except Exception:
+        return ["?"]
+    if done.returncode == 0:
+        return []
+    names = [name for name in done.stdout.decode("utf-8", "replace").strip().split(",") if name]
+    return names or ["?"]
+
+
 def delete_model(model_id):
     """Supprime un modele local. Refuse celui de base (renvoie False). Le numero n'est pas rendu."""
     if model_id == BASE_ID or _number(model_id) is None:
@@ -337,6 +365,9 @@ def register_model(weights, metrics=None, base_id=BASE_ID):
     try:
         for kind, path in weights.items():
             shutil.copy2(path, os.path.join(folder, kind + ".pt"))
+            onnx = os.path.splitext(path)[0] + ".onnx"       # export fait par aigcp_train.py (peut manquer)
+            if os.path.isfile(onnx):
+                shutil.copy2(onnx, os.path.join(folder, kind + ".onnx"))
         meta = {"id": model_id, "name": LOCAL_NAME.format(number), "base": base_id,
                 "created": datetime.datetime.now().isoformat(timespec="seconds"),
                 "types": metrics or {}}
