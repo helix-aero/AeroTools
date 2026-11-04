@@ -78,7 +78,7 @@ class _Worker(threading.Thread):
 class ConfirmDialog(QtWidgets.QDialog):
     """Choix du sort (corbeille ou definitif) ; le definitif demande de taper DELETE."""
 
-    def __init__(self, parent, text, recycle_ok):
+    def __init__(self, parent, text, recycle_ok, na_key="space.mode_recycle_na"):
         super(ConfirmDialog, self).__init__(parent)
         self.setWindowTitle(i18n.t("space.title"))
         self.setModal(True)
@@ -90,7 +90,7 @@ class ConfirmDialog(QtWidgets.QDialog):
         layout.setContentsMargins(pad, pad, pad, pad)
         layout.setSpacing(theme.PAD)
         layout.addWidget(ui.label(text))
-        self.recycle = QtWidgets.QRadioButton(i18n.t("space.mode_recycle" if recycle_ok else "space.mode_recycle_na"))
+        self.recycle = QtWidgets.QRadioButton(i18n.t("space.mode_recycle" if recycle_ok else na_key))
         self.recycle.setEnabled(recycle_ok)
         self.permanent = QtWidgets.QRadioButton(i18n.t("space.mode_permanent"))
         layout.addWidget(self.recycle)
@@ -466,14 +466,17 @@ class SpaceDialog(QtWidgets.QDialog):
         self._confirm_and_run("delete", picked, text)
 
     def _confirm_and_run(self, kind, picked, text):
-        recycle_ok = all(actions.recycle_available(p.path) for p in picked)
-        dialog = ConfirmDialog(self, text, recycle_ok)
+        if kind == "lighten":
+            # Metashape efface lui-meme ses fichiers quand il enregistre : pas de corbeille possible.
+            dialog = ConfirmDialog(self, text, False, "space.mode_recycle_none")
+        else:
+            dialog = ConfirmDialog(self, text, all(actions.recycle_available(p.path) for p in picked))
         ui.run(dialog)
         if dialog.mode is None:
             return
         journal.write("Fast Space : {} de {} projet(s), mode {}".format(kind, len(picked), dialog.mode))
         self._batch = {"kind": kind, "mode": dialog.mode, "todo": list(picked), "total": len(picked), "done": 0,
-                       "freed": 0, "bin": 0, "ok": 0, "failed": [], "thread": None, "current": None}
+                       "freed": 0, "bin": 0, "ok": 0, "failed": [], "thread": None, "current": None, "sizes": {}}
         self.bar.setRange(0, len(picked))
         self.bar.setValue(0)
         self.bar.setVisible(True)
@@ -494,6 +497,8 @@ class SpaceDialog(QtWidgets.QDialog):
             return
         project = batch["todo"].pop(0)
         batch["current"] = project
+        # Taille concernee AVANT l'action (l'allegement met le projet a jour) : c'est elle qu'on journalise.
+        batch["sizes"][id(project)] = project.light if batch["kind"] == "lighten" else project.total
         action = i18n.t("space.act_lighten" if batch["kind"] == "lighten" else "space.act_delete")
         self.status.setText(i18n.t("space.working", action=action, i=batch["done"] + 1, n=batch["total"],
                                    name=project.name))
@@ -514,7 +519,7 @@ class SpaceDialog(QtWidgets.QDialog):
     def _record(self, batch, project, outcome):
         outcome = outcome or {}
         ok = bool(outcome.get("ok"))
-        size = project.light if batch["kind"] == "lighten" else project.total
+        size = batch["sizes"].get(id(project), 0)
         actions.log_action(batch["kind"], batch["mode"], project, ok, outcome.get("error", ""), size)
         batch["done"] += 1
         if ok:

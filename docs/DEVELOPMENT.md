@@ -187,14 +187,16 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
 a scan of 55 projects, 1.4 TB, takes about 1 s once the file system is cached). An open project is detected by its
 `.files/lock`: Metashape keeps it open, so opening it for writing fails (PermissionError); one we can open is a stale lock.
 `actions.py`: `lighten` goes through the Metashape API so the project stays consistent (`Document.open`, `chunk.remove` of the
-dense clouds and the depth map sets, `save`, then a read-only re-open that checks cameras and markers did not change); the Recycle Bin
-mode sends the `dense_cloud*` and `depth_maps*` folders to the bin first (`SHFileOperationW` with `FOF_ALLOWUNDO`, Windows asks
-itself when something is too big for the bin), then cleans the project's list. `delete_project` removes the `.psx` first, then the
+dense clouds (`chunk.point_clouds`) and the depth map sets (`chunk.depth_maps_sets`), `save`, then a read-only re-open that checks
+cameras and markers did not change). Measured on a copy: Metashape erases its own files on `save` (1967 MB to 1087 MB). So lightening is
+always permanent. Sending the folders to the bin first does not work: `chunk.remove` then raises `Can't open file dense_cloud.zip`
+and the project keeps ghost dense clouds. A possible later step: hard-link the folders and copy the small metadata zips to a
+side folder before the API call, then send that folder to the bin. `delete_project` can use the bin (`SHFileOperationW` with
+`FOF_ALLOWUNDO`; Windows asks itself when something is too big for the bin). `delete_project` removes the `.psx` first, then the
 `.files` folder (a failure leaves a visible orphan). Permanent deletion needs the typed word `DELETE`. `lighten` runs in the main
 thread (the API does not work elsewhere); scanning and deleting run in a worker. Actions are logged to
-`%LOCALAPPDATA%\HELIX\AeroTools\fastspace\log.csv`. Tests use a fake Metashape document (`tests/test_fastspace.py`); the real
-behaviour of `chunk.remove` + `save` (does Metashape erase the files itself) and of a project whose folders are already in the
-bin must be checked on a copy of a project before trusting it on real work.
+`%LOCALAPPDATA%\HELIX\AeroTools\fastspace\log.csv`. Tests use a fake Metashape document (`tests/test_fastspace.py`); the
+Metashape API part was checked on a copy in the Metashape console; the window itself should be tried on a copy before real work.
 
 ## Engines and installation
 

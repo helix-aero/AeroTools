@@ -233,29 +233,23 @@ def test_lighten_cleans_leftover_folders_when_metashape_keeps_them(tmp_path, fak
     assert actions.light_folders(project) == []
 
 
-def test_lighten_recycle_sends_the_folders_first_then_cleans_the_project(tmp_path, fake_metashape, monkeypatch):
-    order = []
-
-    def fake_recycle(paths):
-        order.append(("bin", len(paths)))
-        for path in paths:
-            shutil.rmtree(path)
-        return True, ""
-
-    monkeypatch.setattr(actions, "recycle", fake_recycle)
-    project = scanner.measure_project(make_project(tmp_path, dense=1000, depth=3000, chunks=2))
+def test_lighten_has_no_recycle_mode_and_touches_nothing_then(tmp_path, fake_metashape):
+    project = scanner.measure_project(make_project(tmp_path, dense=1000, depth=3000))
     result = actions.lighten(project, actions.RECYCLE)
-    assert result["ok"] and result["in_bin"] == 8000 and result["freed"] == 0
-    assert order == [("bin", 4)]
-    assert [mode for mode, _ in fake_metashape["opened"]][:2] == ["ro", "rw"]
+    assert not result["ok"] and "pas de corbeille" in result["error"]
+    assert fake_metashape["opened"] == [] and project.light == 4000
 
 
-def test_lighten_failure_of_the_bin_stops_before_touching_the_project(tmp_path, fake_metashape, monkeypatch):
-    monkeypatch.setattr(actions, "recycle", lambda paths: (False, "corbeille refusee"))
-    project = scanner.measure_project(make_project(tmp_path))
-    result = actions.lighten(project, actions.RECYCLE)
-    assert not result["ok"] and "corbeille refusee" in result["error"] and "restaure" in result["error"]
-    assert [mode for mode, _ in fake_metashape["opened"]] == ["ro"]
+def test_lighten_reports_an_api_failure_and_leaves_the_files(tmp_path, monkeypatch):
+    project = scanner.measure_project(make_project(tmp_path, dense=1000, depth=3000))
+
+    def broken(path, read_only):
+        raise OSError("Can't open file dense_cloud.zip")
+
+    monkeypatch.setattr(actions, "_open", broken)
+    result = actions.lighten(project, actions.PERMANENT)
+    assert not result["ok"] and "dense_cloud.zip" in result["error"]
+    assert len(actions.light_folders(project)) == 2
 
 
 def test_lighten_refuses_open_projects_and_orphans(tmp_path, fake_metashape):

@@ -327,8 +327,9 @@ orthos). Tick the projects, then:
 - **Delete project (hard)** removes the whole project: the `.psx` and its `.files` folder. Check that the deliverables are saved
   elsewhere first.
 
-Both ask where it goes: **Recycle Bin** (you can restore it; the space is freed when you empty the bin; not available on a network
-drive) or **Delete permanently**, which asks you to type `DELETE`. A project that is open in a Metashape (even on another
+**Delete project** asks where it goes: **Recycle Bin** (you can restore it; the space is freed when you empty the bin; not available
+on a network drive) or **Delete permanently**, which asks you to type `DELETE`. **Lighten** is always final and always asks you to
+type `DELETE`: Metashape erases those files itself when it saves the project, so there is no Recycle Bin for it. A project that is open in a Metashape (even on another
 computer) is never touched. Every action is written to a log (the **Action log** button).
 
 **Test it on a copy first.** Copy a small project (the `.psx` and its `.files` folder) to a test folder, scan that folder, and

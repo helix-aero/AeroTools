@@ -7,15 +7,16 @@ Deux sorts possibles pour ce qu'on retire :
 
 Alleger (`lighten`) retire le nuage dense et les cartes de profondeur, en gardant l'alignement, les
 marqueurs, les MNT et les orthos. Pour que le projet reste coherent (Metashape garde la liste de ses
-nuages denses dans le fichier du projet), on passe par l'API de Metashape :
+nuages denses dans le fichier du projet), on passe par l'API de Metashape, qui efface lui-meme ses
+fichiers a l'enregistrement (mesure sur une copie : 1967 Mo -> 1087 Mo, projet rouvert sans erreur).
+L'allegement est donc toujours PERMANENT : il n'y a pas de corbeille possible. Essai fait : envoyer les
+dossiers a la corbeille AVANT, puis laisser l'API nettoyer, echoue (`chunk.remove` relit le nuage dense et
+leve « Can't open file dense_cloud.zip », le projet garde des nuages denses fantomes).
 
-  RECYCLE    1. lecture seule : on note les chunks, cameras, marqueurs ;
-             2. les dossiers dense_cloud* et depth_maps* partent a la corbeille ;
-             3. l'API rouvre le projet, retire de sa liste ce qui n'existe plus, enregistre ;
-             4. verification : le projet se rouvre, memes cameras et marqueurs, plus de dense ni de depth.
-  PERMANENT  1. lecture seule ; 2. l'API retire les nuages denses et cartes de profondeur et enregistre
-             (Metashape efface alors ses fichiers) ; 3. les dossiers qui resteraient sont supprimes ;
-             4. verification.
+  1. lecture seule : on note les chunks, cameras, marqueurs ;
+  2. l'API retire les nuages denses et les cartes de profondeur de chaque chunk et enregistre ;
+  3. les dossiers qui resteraient sont supprimes ;
+  4. verification : le projet se rouvre, memes cameras et marqueurs, plus de dense ni de depth.
 
 Supprimer le projet (`delete_project`) retire le .psx et son dossier .files.
 
@@ -280,6 +281,9 @@ def lighten(project, mode, progress=None):
     if project.orphan:
         result["error"] = "pas de .psx : rien a alleger (supprimer le dossier)"
         return result
+    if mode != PERMANENT:
+        result["error"] = "l'allegement passe par Metashape, qui efface lui-meme ses fichiers : pas de corbeille"
+        return result
     before = project.light
     try:
         step("lecture")
@@ -287,12 +291,6 @@ def lighten(project, mode, progress=None):
         snap_before = snapshot(document)
         document = None
         gc.collect()
-        if mode == RECYCLE:
-            step("corbeille")
-            ok, message = recycle(light_folders(project))
-            if not ok:
-                raise SpaceError(message)
-            result["in_bin"] = before
         step("nettoyage du projet")
         document = _open(project.path, False)
         for chunk in document.chunks:
@@ -303,13 +301,8 @@ def lighten(project, mode, progress=None):
         left = light_folders(project)
         if left:
             step("dossiers restants")
-            if mode == RECYCLE:
-                ok, message = recycle(left)
-                if not ok:
-                    raise SpaceError(message)
-            else:
-                for folder in left:
-                    remove_path(folder)
+            for folder in left:
+                remove_path(folder)
         step("verification")
         document = _open(project.path, True)
         problem = check_snapshots(snap_before, snapshot(document))
@@ -318,12 +311,12 @@ def lighten(project, mode, progress=None):
         if problem:
             raise SpaceError("verification : " + problem)
         after = scanner.measure_project(project.path)
-        result["freed"] = 0 if mode == RECYCLE else max(0, before - after.light)
+        result["freed"] = max(0, before - after.light)
         result["ok"] = True
         project.parts, project.files_size = after.parts, after.files_size
     except Exception as exc:
         text = str(exc) if isinstance(exc, SpaceError) else repr(exc)
-        result["error"] = text + (" (ce qui est parti a la corbeille s'y restaure)" if mode == RECYCLE else "")
+        result["error"] = text
     return result
 
 

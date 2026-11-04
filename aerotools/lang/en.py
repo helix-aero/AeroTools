@@ -504,7 +504,7 @@ TEXTES = {
     "space.delete": "Delete project (hard)",
     "space.delete_tip": "Removes the whole project: the .psx and its .files folder",
     "space.open_log": "Action log",
-    "space.confirm_lighten": "Lighten {n} project(s)?\n\nThe dense clouds and depth maps are removed: {size}. The alignment, markers, DEMs and orthos stay. Metashape opens and saves each project to keep it consistent, which can take a while.\n\nNever do this on a project someone else is using.",
+    "space.confirm_lighten": "Lighten {n} project(s)?\n\nThe dense clouds and depth maps are removed: {size}. The alignment, markers, DEMs and orthos stay. Metashape opens and saves each project to keep it consistent, which can take a while. It is final: Metashape erases those files itself.\n\nNever do this on a project someone else is using.",
     "space.confirm_delete": "Delete {n} whole project(s)?\n\nThe .psx file and its .files folder go away: {size}. The alignment, the markers, everything. Make sure the deliverables (orthos, clouds, reports) are saved elsewhere.",
     "space.mode_recycle": "Send to the Recycle Bin (can be restored, the space is freed when you empty it)",
     "space.mode_recycle_na": "Recycle Bin not available here (network drive)",
@@ -518,4 +518,7 @@ TEXTES = {
     "space.done": "Done: {ok} project(s) processed, {freed} freed, {bin} in the Recycle Bin (empty it to free the space), {failed} failed.",
     "space.failed_title": "Some projects were not processed",
     "space.failed_line": "{name}: {error}",
+
+    # -- Fast Space : allegement -------------------------------------------
+    "space.mode_recycle_none": "Recycle Bin not possible when lightening: Metashape erases its own files when it saves",
 }

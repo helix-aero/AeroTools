@@ -510,7 +510,7 @@ TEXTES = {
     "space.delete": "Supprimer le projet (dur)",
     "space.delete_tip": "Retire le projet en entier : le .psx et son dossier .files",
     "space.open_log": "Journal des actions",
-    "space.confirm_lighten": "Alléger {n} projet(s) ?\n\nOn retire les nuages denses et les cartes de profondeur : {size}. L'alignement, les marqueurs, les MNT et les orthos restent. Metashape ouvre et enregistre chaque projet pour qu'il reste cohérent, ce qui peut être long.\n\nNe le fais jamais sur un projet que quelqu'un d'autre utilise.",
+    "space.confirm_lighten": "Alléger {n} projet(s) ?\n\nOn retire les nuages denses et les cartes de profondeur : {size}. L'alignement, les marqueurs, les MNT et les orthos restent. Metashape ouvre et enregistre chaque projet pour qu'il reste cohérent, ce qui peut être long. C'est définitif : Metashape efface lui-même ces fichiers.\n\nNe le fais jamais sur un projet que quelqu'un d'autre utilise.",
     "space.confirm_delete": "Supprimer {n} projet(s) en entier ?\n\nLe fichier .psx et son dossier .files disparaissent : {size}. L'alignement, les marqueurs, tout. Vérifie que les livrables (orthos, nuages, rapports) sont enregistrés ailleurs.",
     "space.mode_recycle": "Envoyer à la corbeille (restaurable, la place n'est libérée qu'en la vidant)",
     "space.mode_recycle_na": "Corbeille indisponible ici (lecteur réseau)",
@@ -524,4 +524,7 @@ TEXTES = {
     "space.done": "Terminé : {ok} projet(s) traité(s), {freed} libérés, {bin} dans la corbeille (à vider pour libérer la place), {failed} en échec.",
     "space.failed_title": "Des projets n'ont pas été traités",
     "space.failed_line": "{name} : {error}",
+
+    # -- Fast Space : allegement -------------------------------------------
+    "space.mode_recycle_none": "Corbeille impossible pour l'allègement : Metashape efface lui-même ses fichiers en enregistrant",
 }

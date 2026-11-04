@@ -1,5 +1,5 @@
 {
- "built": "2026-11-04T22:33:10",
+ "built": "2026-11-04T22:59:10",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -42,12 +42,12 @@
    "size": 436
   },
   "aerotools/lang/en.py": {
-   "sha256": "92191e883866a924093714a61614531f0349dad64afd6601107385c32f6eeb5e",
-   "size": 29887
+   "sha256": "a9e45d5cfe1a65edffff2ef294dc9c50cbec8f769650b198f46f897c654ac1f2",
+   "size": 30136
   },
   "aerotools/lang/fr.py": {
-   "sha256": "5eb4b580e26858277b6636977291047a69647593579117f51194122058e34050",
-   "size": 32614
+   "sha256": "7e567477012598e0bdbd56db8538d220e0e5ce200f3dc70df6f97d2340910c63",
+   "size": 32884
   },
   "aerotools/msapi.py": {
    "sha256": "ecb6a67acb1f2a9e29aec8791085e593b008795088671304c4e8e827fe664d4e",
@@ -182,12 +182,12 @@
    "size": 419
   },
   "aerotools/tools/fastspace/actions.py": {
-   "sha256": "a635a972cc79c593f17b6e17581da3b3d7c8aac841a6b5256680bc62e549ce54",
-   "size": 13460
+   "sha256": "46b58db8d6c364bdb8ea2f040079db7cfe5f4193e270cd4ccbb0635b677a643b",
+   "size": 13258
   },
   "aerotools/tools/fastspace/dialog.py": {
-   "sha256": "3e047401d9a3a76c24a39b1aabd663d90c7cad1bb7d3c2494f1c88465823528a",
-   "size": 26003
+   "sha256": "b4efbbb71889d13f8bab9c78ce5e873ee914c72cc77ee3584729241aaf3fbbaa",
+   "size": 26412
   },
   "aerotools/tools/fastspace/scanner.py": {
    "sha256": "74592818bce0eb5230da3d4d965a788fe63c4102b4c51320be5c3b01ae3222a3",
@@ -226,16 +226,16 @@
    "size": 15373
   },
   "docs/DEVELOPMENT.md": {
-   "sha256": "4a0573aecd49e08e34690fb42dfa3a160016b3fc175c9f3a31dadb33554056b3",
-   "size": 22016
+   "sha256": "f57350d4be2fdb1bac37eabee48cf234faaf33009206e4c828d7c1f62db54f74",
+   "size": 22321
   },
   "docs/TUTORIAL.fr.md": {
-   "sha256": "fd3df8262f1f915f287d1a42acc89a9362bdd879cf30d0074ed223a59afca6a8",
-   "size": 25183
+   "sha256": "e6fda0418af700f2d3deebf285a9f4dcc16a8de66a0d8c0d850896a31b92c39f",
+   "size": 25376
   },
   "docs/TUTORIAL.md": {
-   "sha256": "03c8e63382a1b220729c787f071f3c4f61289008c201891a911960da00e6f698",
-   "size": 22551
+   "sha256": "f7dc30d0ba39a72b9ba649e3ea5940fc4c5e3c9fb642be4c5acd6fa8fb9a64c2",
+   "size": 22730
   },
   "docs/debug_adjust.py": {
    "sha256": "941c77e544a3b881a272334d76ab795c5e97d4610c90eeb25862dcc77844984a",

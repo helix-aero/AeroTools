@@ -338,8 +338,9 @@ plantage, ou dossier `.files` orphelin dont le `.psx` a disparu). Clique un en-t
 - **Supprimer le projet (dur)** retire le projet en entier : le `.psx` et son dossier `.files`. Vérifie d'abord que les livrables
   sont enregistrés ailleurs.
 
-Les deux demandent où ça part : **Corbeille** (restaurable, la place n'est libérée qu'en la vidant, indisponible sur un lecteur
-réseau) ou **Supprimer définitivement**, qui demande de taper `DELETE`. Un projet ouvert dans un Metashape (même sur un autre
+**Supprimer le projet** demande où ça part : **Corbeille** (restaurable, la place n'est libérée qu'en la vidant, indisponible sur un
+lecteur réseau) ou **Supprimer définitivement**, qui demande de taper `DELETE`. **Alléger** est toujours définitif et demande
+toujours de taper `DELETE` : Metashape efface lui-même ces fichiers quand il enregistre le projet, il n'y a donc pas de corbeille. Un projet ouvert dans un Metashape (même sur un autre
 ordinateur) n'est jamais touché. Chaque action est écrite dans un journal (bouton **Journal des actions**).
 
 **Teste d'abord sur une copie.** Copie un petit projet (le `.psx` et son dossier `.files`) dans un dossier de test, scanne ce
