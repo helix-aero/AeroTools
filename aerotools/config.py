@@ -34,14 +34,7 @@ TOOLS = [
         "raccourci": "F8",
         "pret": True,
     },
-    {
-        "id": "aigcp",
-        "menu": "AIGCP",
-        "titre": "AIGCP",
-        "sous_titre": "tool.aigcp.subtitle",
-        "raccourci": None,
-        "pret": False,
-    },
+    # La detection IA (ex-AIGCP) est dans FastGCP : plus d'entree de menu a part.
 ]
 
 

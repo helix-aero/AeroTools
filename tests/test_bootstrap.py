@@ -45,10 +45,14 @@ def test_launch_not_ready_tool_loads_nothing(boot, ms, monkeypatch):
     def forbidden(name, *args, **kwargs):
         raise AssertionError("import inattendu : " + name)
 
+    cfg = sys.modules["aerotools.config"]
+    future = {"id": "futur", "menu": "Futur", "titre": "Futur", "sous_titre": "tool.fastgcp.subtitle",
+              "raccourci": None, "pret": False}
+    monkeypatch.setattr(cfg, "TOOLS", list(cfg.TOOLS) + [future])
     monkeypatch.setattr(importlib, "import_module", forbidden)
-    assert boot.launch("aigcp") is False
+    assert boot.launch("futur") is False
     assert len(ms.app.messages) == 1
-    assert "AIGCP" in ms.app.messages[0]
+    assert "Futur" in ms.app.messages[0]
 
 
 def test_launch_unknown_tool(boot, ms):

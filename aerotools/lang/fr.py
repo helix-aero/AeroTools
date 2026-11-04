@@ -33,8 +33,7 @@ TEXTES = {
         "dans le dossier scripts de Metashape. « Recharger AeroTools » relit "
         "le code du serveur sans redemarrer Metashape."
     ),
-    "tool.fastgcp.subtitle": "Pointage GCP assisté",
-    "tool.aigcp.subtitle": "Détection automatique des cibles",
+    "tool.fastgcp.subtitle": "Pointage GCP, à la main ou par IA",
     "tool.no_window": (
         "FastGCP a besoin de l'interface de Metashape : "
         "la fenetre principale n'a pas ete trouvee."

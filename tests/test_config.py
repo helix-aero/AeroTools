@@ -45,7 +45,7 @@ def test_section_of_wrong_type_does_not_raise(local_appdata):
 
 def test_registry():
     assert config.tool("fastgcp")["pret"] is True
-    assert config.tool("aigcp")["pret"] is False
+    assert config.tool("aigcp") is None            # la detection IA est dans FastGCP : pas d'entree a part
     assert config.tool("nexiste-pas") is None
     ids = [entry["id"] for entry in config.TOOLS]
     assert len(ids) == len(set(ids))

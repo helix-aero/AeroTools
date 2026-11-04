@@ -28,8 +28,7 @@ TEXTES = {
         "Metashape's scripts folder. \"Reload AeroTools\" re-reads the code "
         "from the server without restarting Metashape."
     ),
-    "tool.fastgcp.subtitle": "Assisted GCP marking",
-    "tool.aigcp.subtitle": "Automatic target detection",
+    "tool.fastgcp.subtitle": "GCP marking, by hand or with AI",
     "tool.no_window": (
         "FastGCP needs the Metashape interface: the main window was not found."
     ),
