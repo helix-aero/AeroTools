@@ -23,7 +23,8 @@ Rien ici ne modifie le vrai README.md, README.fr.md ni LICENSE.
 </p>
 
 ![Le Review panel de FastGCP : une vignette par photo, avec le point proposé par l'IA](docs/images/review-panel-overview.png)
-<!-- TODO screenshot: docs/images/panel-overview.png (le panneau FastGCP accroché dans Metashape) -->
+
+![Le panneau FastGCP accroché dans Metashape (interface en anglais) : en-tête, bouton Play/Pause, carte Détection IA, marqueur actif, tableau des marqueurs, boutons Residual check et Export](docs/images/panel-overview.png)
 
 AeroTools est une petite boîte à outils pour Agisoft Metashape, écrite par [HELIX AERO](https://helix.aero) en Corse. Nous
 cartographions avec des drones et nous pointons beaucoup de points de calage au sol (GCP). Metashape sait le faire, mais le

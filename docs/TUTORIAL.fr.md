@@ -35,7 +35,7 @@ Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Met
 > et les deux fichiers de poids `models\damier.pt` et `models\bombe.pt`. Voir le [dépannage](#9-dépannage). Tout le reste
 > fonctionne sans eux.
 
-<!-- TODO screenshot: panel-overview.png (le panneau FastGCP complet, accroché dans Metashape) -->
+![Le panneau FastGCP accroché dans Metashape (interface en anglais) : en-tête, bouton Play/Pause, carte Détection IA, marqueur actif, tableau des marqueurs, boutons Residual check et Export](images/panel-overview.png)
 
 ## 2. Pointer les GCP à la main
 
@@ -86,7 +86,7 @@ Cliquez sur une entrée pour ouvrir la pire photo du marqueur.
 
 **Export.** Le bouton **Exporter** écrit un **Rapport PDF** ou un **Tableau CSV** (section 7).
 
-<!-- TODO screenshot: marker-list.png (tableau avec erreurs, multi-sélection et menu clic droit) -->
+![Le tableau des marqueurs (interface en anglais) : erreur en X, Y et Z et nombre de projections pour chaque marqueur, marqueur actif (PS_4) surligné](images/marker-list.png)
 
 ## 4. Laisser l'IA proposer les pointés
 
@@ -120,7 +120,7 @@ Ce que vous obtenez :
 Quand la détection se termine, le Review panel s'ouvre tout seul (réglage *Ouvrir le Review panel automatiquement*, activé par
 défaut). **Réviser** le rouvre.
 
-<!-- TODO screenshot: ai-card.png (la carte Détection IA avec ses trois listes et le bouton Lancer) -->
+![La carte Détection IA (interface en anglais) : boutons Run, Clear proposals et Review (les deux derniers grisés) et les trois listes déroulantes (Spray, All markers, Ignore green + blue)](images/ai-card.png)
 
 ## 5. Le Review panel
 
@@ -227,7 +227,7 @@ coordonnées de référence).
 
 L'**engrenage** de l'en-tête ouvre la fenêtre Paramètres.
 
-<!-- TODO screenshot: settings-window.png (la fenêtre Paramètres, bloc Modèles IA) -->
+![La fenêtre Paramètres (interface en anglais) : bloc General, puis bloc AI models avec le dossier de stockage, le modèle Aero V1.0 et le bouton Refine my model using my data](images/settings-window.png)
 
 **Général**
 
@@ -267,7 +267,7 @@ d'origine pour lui. Une barre de progression suit les époques et **Annuler** l'
 À la fin, le nouveau modèle **Local** est sélectionné et vous pouvez l'essayer sur votre prochaine détection. S'il fait nettement
 moins bien qu'Aero V1.0 sur les données mises de côté, la fenêtre vous le dit. Utilisez **Revenir à Aero V1.0** si vous préférez.
 
-<!-- TODO screenshot: settings-training-warning.png (l'avertissement affiché avant le réentraînement) -->
+![L'avertissement affiché avant le réentraînement du modèle (interface en anglais), avec ses boutons Yes et No](images/settings-training-warning.png)
 
 > **Note : ce que nous avons mesuré.** Un essai sur notre propre projet, type Bombe uniquement : 798 exemples positifs et 208
 > négatifs, 75 secondes sur une carte graphique RTX 4070. Sur les cibles mises de côté, le mAP50 était de 0,9762 pour le nouveau

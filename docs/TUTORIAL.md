@@ -34,7 +34,7 @@ You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 > `ultralytics`, and the two weight files `models\damier.pt` and `models\bombe.pt`. See [Troubleshooting](#9-troubleshooting).
 > Everything else works without them.
 
-<!-- TODO screenshot: panel-overview.png (the whole FastGCP panel docked in Metashape) -->
+![The FastGCP panel docked in Metashape: header, play/pause button, AI detection card, active marker, marker table, Residual check and Export buttons](images/panel-overview.png)
 
 ## 2. Mark GCPs by hand
 
@@ -85,7 +85,7 @@ the worst photo of that marker.
 
 **Export.** The **Export** button writes a **PDF report** or a **CSV table** (section 7).
 
-<!-- TODO screenshot: marker-list.png (table with errors, a multi-selection, and the right-click menu) -->
+![The marker table: error on X, Y and Z and number of projections for each marker, with the active marker (PS_4) highlighted](images/marker-list.png)
 
 ## 4. Let the AI propose the marks
 
@@ -118,7 +118,7 @@ What you get:
 When the detection ends, the Review panel opens by itself (setting *Open the review panel automatically*, on by default). Use
 **Review** to reopen it.
 
-<!-- TODO screenshot: ai-card.png (the AI detection card with its three lists and the Run button) -->
+![The AI detection card: the Run, Clear proposals and Review buttons (the last two greyed out) and the three drop-down lists (Spray, All markers, Ignore green + blue)](images/ai-card.png)
 
 ## 5. The Review panel
 
@@ -220,7 +220,7 @@ coordinates).
 
 The **gear** in the header opens the Settings window.
 
-<!-- TODO screenshot: settings-window.png (the Settings window, AI models block) -->
+![The Settings window: General block, then the AI models block with the storage location, the Aero V1.0 model and the Refine my model using my data button](images/settings-window.png)
 
 **General**
 
@@ -259,7 +259,7 @@ examples; below that it is skipped and the local model keeps the original weight
 When it ends, the new **Local** model is selected, and you can test it on your next detection. If it scores clearly lower than
 Aero V1.0 on the data kept aside, the window tells you. Use **Revert to Aero V1.0** if you prefer.
 
-<!-- TODO screenshot: settings-training-warning.png (the warning shown before retraining) -->
+![The warning shown before retraining the model, with its Yes and No buttons](images/settings-training-warning.png)
 
 > **Note: what we measured.** One test on our own project, spray type only: 798 positive examples and 208 negative ones, 75
 > seconds on an RTX 4070 graphics card. On the targets kept aside, mAP50 was 0.9762 for the new model and 0.9784 for
