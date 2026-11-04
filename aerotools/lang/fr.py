@@ -369,4 +369,7 @@ TEXTES = {
     "aigcp.cancelled": "IA : détection annulée",
     "aigcp.bar": "AI ({kind}) · {done}/{total} photos",
     "aigcp.bar_start": "AI ({kind}) · starting…",
+
+    # -- Exclure apres validation ------------------------------------------
+    "review.confirm_exclude_done": "Retirer {n} point(s) déjà validé(s) ou affiné(s) du projet ? Les photos reviennent à l'état d'avant la détection, et « Remettre » les repose.",
 }

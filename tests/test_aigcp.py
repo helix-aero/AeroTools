@@ -923,6 +923,34 @@ def test_a_refined_or_validated_entry_can_be_refined_again(reviewed):
     history.clear()
 
 
+def test_a_validated_point_can_be_excluded_and_restored(reviewed):
+    state, rev, marker, cams = reviewed
+    entry = rev.entries[1]
+    review.accept_kept(state, rev)
+    assert entry["state"] == review.ACCEPTED and msapi.get_projection(marker, entry["camera"])[2] is True
+    assert review.remove(state, rev, entry) is True                        # apres validation
+    assert entry["state"] == review.REMOVED
+    assert msapi.get_projection(marker, entry["camera"]) is None           # retour a l'etat d'avant la detection
+    assert feedback_rows()[-1]["action"] == "rejected"
+    assert review.restore(state, rev, entry) is True
+    assert entry["state"] == review.ACCEPTED                               # remis tel que valide, pas en proposition
+    assert msapi.get_projection(marker, entry["camera"])[:2] == pytest.approx((entry["ai_x"], entry["ai_y"]))
+    assert msapi.get_projection(marker, entry["camera"])[2] is True
+    assert feedback_rows()[-1]["action"] == "accepted"
+
+
+def test_a_refined_point_can_be_excluded_and_comes_back_where_it_was_refined(reviewed):
+    state, rev, marker, cams = reviewed
+    entry = rev.entries[3]
+    review.refine(state, rev, entry, 1234.5, 987.25)
+    assert review.remove(state, rev, entry) is True
+    assert msapi.get_projection(marker, entry["camera"]) is None
+    assert review.restore(state, rev, entry) is True
+    assert entry["state"] == review.REFINED
+    assert msapi.get_projection(marker, entry["camera"]) == (1234.5, 987.25, True)
+    history.clear()
+
+
 def test_validate_kept_pins_only_the_kept_ones(reviewed):
     state, rev, marker, cams = reviewed
     review.remove(state, rev, rev.entries[0])

@@ -118,6 +118,7 @@ _RED = (255, 74, 46)
 _GREEN = (60, 220, 120)
 _DARK_RED = (225, 55, 55)
 _WHITE = (255, 255, 255)
+EXCLUDABLE = (review.KEPT, review.ACCEPTED, review.REFINED)    # on peut exclure aussi apres validation
 STATUS_TEXTS = {review.KEPT: "review.status_kept", review.REMOVED: "review.status_removed",
                 review.REFINED: "review.status_refined", review.ACCEPTED: "review.status_accepted"}
 
@@ -735,7 +736,7 @@ class ReviewDialog(QtWidgets.QDialog):
 
     def _update_buttons(self):
         picked = [entry for _item, entry in self._selected()]
-        self.exclude_button.setEnabled(any(e["state"] == review.KEPT for e in picked))
+        self.exclude_button.setEnabled(any(e["state"] in EXCLUDABLE for e in picked))
         self.restore_button.setEnabled(any(e["state"] == review.REMOVED for e in picked))
         self.refine_button.setEnabled(any(review.has_crop(e) for e in picked))
         self.validate_button.setEnabled(any(e["state"] == review.KEPT for e in self.review.entries))
@@ -780,6 +781,10 @@ class ReviewDialog(QtWidgets.QDialog):
             self._after_change(labels)
 
     def _on_exclude(self):
+        # Exclure un point deja valide ou affine defait un pointage manuel : on demande d'abord.
+        done = sum(1 for _item, e in self._selected() if e["state"] in (review.ACCEPTED, review.REFINED))
+        if done and not dialogs.ask(self, i18n.t("review.exclude"), i18n.t("review.confirm_exclude_done", n=done)):
+            return
         self._apply(review.remove)
 
     def _on_restore(self):

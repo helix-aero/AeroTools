@@ -135,7 +135,7 @@ sans Ctrl. Ensuite :
 
 | Bouton | Raccourci | Effet |
 |---|---|---|
-| **Exclure** | Suppr, ou clic droit | Retire la proposition du projet tout de suite ; le point d'avant revient. |
+| **Exclure** | Suppr, ou clic droit | Retire la proposition du projet tout de suite ; le point d'avant revient. Marche aussi après **Valider** et sur les points affinés : l'outil demande d'abord, puis défait ce pointage manuel. **Remettre** le rétablit tel qu'il était. |
 | **Remettre** | clic droit | Annule une exclusion. |
 | **Affiner…** | Entrée, double-clic, ou clic droit | Ouvre les vignettes sélectionnées dans la fenêtre d'affinage (section 6). |
 | **Valider** | | Transforme chaque proposition gardée en point manuel, après confirmation. |

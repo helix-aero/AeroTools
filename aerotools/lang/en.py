@@ -363,4 +363,7 @@ TEXTES = {
     "aigcp.cancelled": "AI: detection cancelled",
     "aigcp.bar": "AI ({kind}) · {done}/{total} photos",
     "aigcp.bar_start": "AI ({kind}) · starting…",
+
+    # -- Exclure apres validation ------------------------------------------
+    "review.confirm_exclude_done": "Remove {n} validated or refined point(s) from the project? The photos go back to how they were before the detection, and Restore puts them back.",
 }

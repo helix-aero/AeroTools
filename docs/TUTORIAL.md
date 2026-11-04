@@ -132,7 +132,7 @@ below.
 
 | Button | Shortcut | What it does |
 |---|---|---|
-| **Exclude** | Delete, or right-click | Takes the proposal out of the project now; the previous point comes back. |
+| **Exclude** | Delete, or right-click | Takes the proposal out of the project now; the previous point comes back. It also works after **Validate** and on refined points: the app asks first, then undoes that manual point. **Put back** restores it as it was. |
 | **Put back** | right-click | Undoes an exclusion. |
 | **Refine…** | Enter, double-click, or right-click | Opens the selected thumbnails in the Refine window (section 6). |
 | **Validate** | | Turns every kept proposal into a manual point, after a confirmation. |

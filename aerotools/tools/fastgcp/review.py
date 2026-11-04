@@ -190,11 +190,17 @@ def _own(entry):
 
 
 def remove(state, review, entry):
-    """Retire la proposition du projet : le point d'avant revient. Renvoie True si fait."""
-    if entry["state"] != KEPT:
+    """Retire du projet une proposition, ou un point deja valide ou affine : le point d'avant revient.
+
+    Renvoie True si fait. Un point valide ou affine est un pointage manuel : on le defait
+    toujours (l'operateur le demande), alors qu'une proposition non validee n'est retiree que
+    si la photo n'a pas ete pointee entre temps. `restore` remet l'entree dans son etat d'avant.
+    """
+    was = entry["state"]
+    if was not in (KEPT, ACCEPTED, REFINED):
         return False
     marker, camera = entry["marker"], entry["camera"]
-    own = _own(entry)
+    own = _own(entry) if was == KEPT else True
     msapi.unmark_proposal(marker, camera)
     if own:
         previous = entry["previous"]
@@ -203,19 +209,31 @@ def remove(state, review, entry):
         else:
             msapi.remove_projection(marker, camera)
     _forget(state, entry)
+    entry["was"] = was
     entry["state"] = REMOVED
     record(review, entry, "rejected")
     return True
 
 
 def restore(state, review, entry):
-    """Remet une proposition retiree. Refuse si l'operateur a pointe la photo entre temps."""
+    """Remet une entree retiree, dans son etat d'avant : proposition, point valide ou point affine.
+
+    Refuse si l'operateur a pointe la photo entre temps.
+    """
     if entry["state"] != REMOVED:
         return False
     marker, camera = entry["marker"], entry["camera"]
     current = msapi.get_projection(marker, camera)
     if current is not None and current[2]:
         return False
+    was = entry.get("was", KEPT)
+    if was in (ACCEPTED, REFINED):
+        done, _message = msapi.set_projection(marker, camera, entry["x"], entry["y"], pinned=True)
+        if not done:
+            return False
+        entry["state"] = was
+        record(review, entry, was, entry["x"], entry["y"])
+        return True
     done, _message = msapi.set_projection(marker, camera, entry["ai_x"], entry["ai_y"], pinned=False)
     if not done:
         return False
