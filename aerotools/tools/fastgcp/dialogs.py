@@ -8,7 +8,9 @@ style du panneau. `ask` renvoie True pour Oui, `inform` n'a qu'un bouton.
 from ... import i18n, theme
 from ...qt import QtCore, QtWidgets
 
-WIDTH = 480
+WIDTH = 480          # largeur demandee ; la fenetre peut etre plus etroite, le texte suit
+MIN_WIDTH = 300
+MAX_TEXT_HEIGHT = 520
 
 
 def _run(dialog):
@@ -27,12 +29,39 @@ def _button(text, handler, object_name="aeroGhost"):
     return button
 
 
+class _Box(QtWidgets.QDialog):
+    """Fenetre dont le texte s'adapte a la largeur REELLEMENT obtenue.
+
+    Sous Metashape la fenetre est plus etroite que demandee : un QLabel a largeur fixe
+    etait coupe a droite. Un champ de texte passe a la ligne tout seul a la largeur dont il
+    dispose, et on fixe sa hauteur une fois, a l'ouverture (sans reboucler sur la taille).
+    S'il manquait de la place, il aurait une barre de defilement : jamais de texte perdu.
+    """
+    view = None
+
+    def _fit(self):
+        view = self.view
+        if view is None:
+            return
+        width = view.viewport().width()
+        document = view.document()
+        document.setTextWidth(width if width > 0 else WIDTH - 4 * theme.PAD)
+        view.setFixedHeight(min(int(document.size().height()) + 10, MAX_TEXT_HEIGHT))
+        self.resize(self.width(), self.sizeHint().height())
+
+    def showEvent(self, event):
+        super(_Box, self).showEvent(event)
+        self._fit()
+        QtCore.QTimer.singleShot(0, self._fit)       # une fois la mise en page definitive
+
+
 def _build(parent, title, text, buttons):
     """Fenetre modale : `buttons` = [(texte, valeur rendue, objectName)]. Renvoie (dialog, choix)."""
-    dialog = QtWidgets.QDialog(parent)
+    dialog = _Box(parent)
     dialog.setWindowTitle(title)
     dialog.setModal(True)
-    dialog.setFixedWidth(WIDTH)
+    dialog.setMinimumWidth(MIN_WIDTH)
+    dialog.resize(WIDTH, 100)
     outer = QtWidgets.QVBoxLayout(dialog)
     outer.setContentsMargins(0, 0, 0, 0)
     root = QtWidgets.QWidget()
@@ -45,17 +74,16 @@ def _build(parent, title, text, buttons):
     pad = theme.PAD * 2
     layout.setContentsMargins(pad, pad, pad, pad)
     layout.setSpacing(theme.PAD * 2)
-    label = QtWidgets.QLabel(text)
-    label.setWordWrap(True)
-    label.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
-    layout.addWidget(label, 1)               # le label recoit son style en entrant dans la fenetre
-    # Largeur fixe, puis hauteur calculee pour cette largeur : sans cela le texte long est coupe.
-    label.setFixedWidth(WIDTH - 2 * pad)
-    label.ensurePolished()                  # la police du style doit etre en place avant de mesurer
-    wanted = label.fontMetrics().boundingRect(QtCore.QRect(0, 0, WIDTH - 2 * pad, 10000),
-                                              int(QtCore.Qt.TextWordWrap), text)
-    # On prend la plus grande des deux mesures : un texte coupe est pire qu'une marge en trop.
-    label.setFixedHeight(max(wanted.height(), label.heightForWidth(WIDTH - 2 * pad)) + 8)
+    view = QtWidgets.QTextBrowser()
+    view.setPlainText(text)
+    view.setFrameShape(QtWidgets.QFrame.NoFrame)
+    view.setStyleSheet("QTextBrowser {{ background: transparent; border: none; color: {}; }}".format(theme.FG_1))
+    view.viewport().setAutoFillBackground(False)
+    view.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+    view.setFocusPolicy(QtCore.Qt.NoFocus)
+    view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+    layout.addWidget(view)
+    dialog.view = view
 
     choice = {"value": None}
     row = QtWidgets.QHBoxLayout()
@@ -66,7 +94,6 @@ def _build(parent, title, text, buttons):
             dialog.accept()
         row.addWidget(_button(caption, pick, object_name))
     layout.addLayout(row)
-    dialog.adjustSize()
     return dialog, choice
 
 
