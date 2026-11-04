@@ -6,15 +6,24 @@ from aerotools.tools.fastgcp import panel as panel_mod
 Panel = panel_mod.FastGcpPanel
 
 
-class _Button(object):
+class _Combo(object):
+    """Juste ce que _refresh_lang_buttons touche dans la liste des langues."""
+
     def __init__(self):
-        self.props = {}
+        self.codes = ["fr", "en"]
+        self.index = 0
 
-    def property(self, name):
-        return self.props.get(name)
+    def findData(self, code):
+        return self.codes.index(code) if code in self.codes else -1
 
-    def setProperty(self, name, value):
-        self.props[name] = value
+    def currentIndex(self):
+        return self.index
+
+    def setCurrentIndex(self, index):
+        self.index = index
+
+    def blockSignals(self, _blocked):
+        pass
 
 
 class _Stub(object):
@@ -34,7 +43,7 @@ class _Stub(object):
     def __init__(self, broken=()):
         self.broken = set(broken)
         self.calls = []
-        self._lang_buttons = {"fr": _Button(), "en": _Button()}
+        self._lang_combo = _Combo()
         self._lang_cb = self.retranslate
         self._running = True
         self.destroyed = False
@@ -66,7 +75,7 @@ for _name in ("_retranslate_eyebrow", "_retranslate_search", "_retranslate_grid"
 
 
 def _active(stub):
-    return [code for code, button in stub._lang_buttons.items() if button.props.get("active")]
+    return [stub._lang_combo.codes[stub._lang_combo.index]]
 
 
 def test_highlight_follows_even_when_a_step_raises(monkeypatch):
@@ -117,7 +126,7 @@ def test_click_on_current_language_resyncs_the_panel(monkeypatch):
     monkeypatch.setattr(panel_mod, "_repolish", lambda widget: None)
     i18n.set_lang("fr")
     stub = _Stub()
-    stub._lang_buttons["en"].props["active"] = True  # surlignage a l'envers
+    stub._lang_combo.index = 1  # liste restee sur l'autre langue
     stub._on_lang_clicked("fr")
     assert _active(stub) == ["fr"]
     assert "_retranslate_eyebrow" in stub.calls

@@ -1,5 +1,11 @@
 # Development notes
 
+## Look of the panel
+
+One grey theme, the one of Metashape (`theme.py`: window #282828, base #404040, text #eeeeee), no light or dark switch. The header
+holds the title, Undo, the language list (a flag in front of each language, painted in code) and the **settings** gear, which
+opens the settings card (open the review automatically, save marker picks, journal).
+
 ## Layout
 
 ```
@@ -88,7 +94,7 @@ to a file in a visible folder. No image is copied. The file format is documented
 
 The **AI detection** card, at the top of the panel, proposes a marker on the photos that should see it. Two models, never mixed:
 checkerboard (`damier`) and spray or chalk mark (`bombe`). Three drop-down lists choose the type, the scope (**Selected marker** or
-**All markers**, meaning every marker that has at least 2 projections) and which photos to leave alone (**Ignore green + blue**,
+**All markers**, meaning every marker that has a 3D position: no pin is needed when the marker has reference coordinates) and which photos to leave alone (**Ignore green + blue**,
 green, blue or none). Buttons: **Run detection**, **Clear proposals**, **Review**. The choices are saved per machine.
 
 - The calculation never runs inside Metashape. `aigcp.py` writes a `work.json`, starts `aigcp_runner.py` in a separate Python
@@ -101,7 +107,7 @@ green, blue or none). Buttons: **Run detection**, **Clear proposals**, **Review*
 - **Guard.** When a marker has at least 2 projections (placed by hand or computed by Metashape, AI proposals excluded),
   `msapi.marker_spread_m` measures how far they sit from the reprojection of the marker's 3D point. A detection further than
   `max(gate_min_m, gate_factor x spread)` metres from the expected position is rejected (roof, tree, a neighbouring object) and
-  counted in the status line. Defaults: 0.30 m and 5. A marker with fewer projections has no guard, and the **All** scope skips it.
+  counted in the status line. Defaults: 0.30 m and 5. A marker with fewer projections has no guard but keeps the agreement check below.
 - **Agreement between photos.** Each detection is a ray from the camera to the detected pixel (`msapi.pixel_ray`). True
   detections of one target meet at a single 3D point, a roof or a tree does not. `consensus.py` finds the point that gathers the most
   rays (RANSAC on pairs, then least squares) and every detection further than `consensus_m` (0.25 m) from it is rejected. If no
@@ -117,12 +123,23 @@ green, blue or none). Buttons: **Run detection**, **Clear proposals**, **Review*
 - A proposal is a projection with `pinned=False` (blue point), remembered by `msapi.mark_proposal`. It never replaces a manual
   pin and is not counted as a pointed photo. Clicking the target replaces it with a normal pin. **Clear proposals** removes the ones
   still unvalidated and puts back the blue point that was there before, if any. Metashape's own blue points are never touched.
-- **Review window.** When a detection ends with proposals, a window opens (also under **Review**): markers on the left, one
-  thumbnail per photo in the middle, cropped around the proposed point with an orange cross on it, and a slider for the
-  thumbnail size. Select the bad ones (click, Ctrl / Shift, rectangle) and press **Remove** (or Delete): the point goes away at once and
-  the previous one comes back. **Put back** undoes it. Double-click or **Refine...** opens a large crop where you click the true
-  centre: the proposal becomes a manual pin (Ctrl+Z undoes it). **Validate kept** turns every kept proposal into a manual pin.
-  The thumbnails are written by the runner into `crops/` of the run folder, so the window stays fast.
+- **Review panel.** When a detection ends with proposals, the Review panel opens by itself (setting *Open the review panel
+  automatically*, checked by default; otherwise use **Review**). Markers on the left, one thumbnail per photo in the middle,
+  cropped around the proposed point with a red cross on it and the confidence in the corner.
+  - A click selects a thumbnail, another click unselects it: click every bad one, no Ctrl needed. **Exclude** (or right-click, or
+    Delete) takes the selection out of the project at once and the previous point comes back; **Put back** undoes it. The buttons
+    are grey when they have nothing to act on.
+  - **Refine...** (or Enter, or a double-click) opens the selected thumbnails one after the other in a large window: click the
+    true centre, Enter validates and moves to the next one, Esc stops. Each refined point becomes a manual pin (Ctrl+Z undoes it)
+    and its thumbnail turns green.
+  - The **+ / -** buttons and the short slider zoom *inside* the thumbnails (more or less context around the point, 50 to 400 %).
+    **Ctrl + mouse wheel** makes the thumbnails themselves bigger or smaller.
+  - **Validate** turns every kept proposal into a manual pin, after a confirmation.
+  The runner writes one wide crop per detection (`crops/` of the run folder); the window cuts the thumbnails out of it.
+- **PDF report.** After the usual pages, *Photos picked by the AI* shows, for every marker, one thumbnail per photo with the red
+  cross and the confidence under it (refined photos say *manual*). Only proposals still in the project count: excluded ones,
+  cleared ones and refinements undone with Ctrl+Z are left out. The thumbnails come from the crops of the run when they still
+  exist, else from the photo itself.
 - **Feedback for retraining.** Every decision is appended to `<settings>/dataset/aigcp_feedback.jsonl` (format in `review.py`):
   `rejected` is a hard negative, `refined` a corrected position, `accepted` a confirmed one. Only the last event of each
   (run, marker, photo) counts. The retraining button is for later.

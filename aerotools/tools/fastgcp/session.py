@@ -39,7 +39,8 @@ FIXED = {
 # Options supprimees : ni lues, ni ecrites.
 RETIRED = ("click_only",)
 
-DEFAULTS = dict(FIXED, collect_dataset=False, show_log=False)
+# ai_auto_review : la fenetre de revue s'ouvre toute seule a la fin d'une detection IA.
+DEFAULTS = dict(FIXED, collect_dataset=False, show_log=False, ai_auto_review=True)
 
 # Reglage cache (aucune option dans l'interface) : largeur d'image, en pixels,
 # visible autour du marqueur quand FastGCP zoome la vue photo. A ecrire a la
@@ -109,6 +110,7 @@ class Session(object):
         self.aigcp_run = None
         self.aigcp_applied = []
         self.aigcp_review = None
+        self.aigcp_log = []
         self.zoom_px = float(ZOOM_DEFAULT_PX)
         self.snap_px = SNAP_DEFAULT_PX
         self.options = dict(DEFAULTS)
@@ -160,6 +162,7 @@ class Session(object):
         self.zoomed = []
         self.aigcp_applied = []
         self.aigcp_review = None
+        self.aigcp_log = []
 
 
 _SESSION = None

@@ -36,6 +36,12 @@ LOG_VISIBLE_LINES = 6
 # Largeur mini du dock : le tableau des marqueurs a besoin de place.
 MIN_PANEL_WIDTH = 420
 
+# Texte de chaque case de la carte Parametres (cle de l'option : cle de texte).
+CHECK_TEXTS = {
+    "collect_dataset": "panel.save_picks",
+    "ai_auto_review": "aigcp.auto_review",
+}
+
 # Texte de chaque choix des listes deroulantes de la detection IA (cle de texte litterale,
 # pour que le test des textes inutilises la voie).
 AIGCP_CHOICE_TEXTS = {
@@ -50,7 +56,6 @@ AIGCP_CHOICE_TEXTS = {
 }
 
 # Largeur d'un bouton du selecteur de langue (code a deux lettres).
-LANG_BUTTON_W = 32
 
 # Hauteur mini du tableau des marqueurs (il prend tout le reste du dock).
 LIST_MIN_HEIGHT = 120
@@ -343,36 +348,39 @@ def _gear_pixmap(color):
     return _cached(("gear", color), build)
 
 
-THEME_ICON = 18
+FLAG_W, FLAG_H = 24, 16
 
 
-def _theme_pixmap(mode, color):
-    """Lune (theme clair : on passe au sombre) ou soleil (theme sombre)."""
+def _flag_pixmap(code):
+    """Petit drapeau peint (aucune image a livrer) ; gris uni pour une langue sans drapeau."""
     def build():
         def draw(painter):
-            size = float(THEME_ICON)
-            centre = size / 2
-            if mode == "light":
-                moon = QtGui.QPainterPath()
-                moon.addEllipse(QtCore.QPointF(centre - 0.4, centre), 6.4, 6.4)
-                bite = QtGui.QPainterPath()
-                bite.addEllipse(QtCore.QPointF(centre + 3.2, centre - 2.6), 5.4, 5.4)
-                painter.setPen(QtCore.Qt.NoPen)
-                painter.setBrush(QtGui.QColor(color))
-                painter.drawPath(moon.subtracted(bite))
+            clip = QtGui.QPainterPath()
+            clip.addRoundedRect(QtCore.QRectF(0.5, 0.5, FLAG_W - 1.0, FLAG_H - 1.0), 2.5, 2.5)
+            painter.setClipPath(clip)
+            whole = QtCore.QRectF(0, 0, FLAG_W, FLAG_H)
+            if code == "fr":
+                for k, color in enumerate(("#0055a4", "#ffffff", "#ef4135")):
+                    painter.fillRect(QtCore.QRectF(k * FLAG_W / 3.0, 0, FLAG_W / 3.0 + 0.6, FLAG_H),
+                                     QtGui.QColor(color))
+            elif code == "en":
+                painter.fillRect(whole, QtGui.QColor("#012169"))
+                for color, width in (("#ffffff", 3.6), ("#c8102e", 1.4)):
+                    painter.setPen(_pen(color, width))
+                    painter.drawLine(QtCore.QPointF(0, 0), QtCore.QPointF(FLAG_W, FLAG_H))
+                    painter.drawLine(QtCore.QPointF(0, FLAG_H), QtCore.QPointF(FLAG_W, 0))
+                for color, width in (("#ffffff", 5.0), ("#c8102e", 3.0)):
+                    painter.setPen(_pen(color, width))
+                    painter.drawLine(QtCore.QPointF(FLAG_W / 2.0, 0), QtCore.QPointF(FLAG_W / 2.0, FLAG_H))
+                    painter.drawLine(QtCore.QPointF(0, FLAG_H / 2.0), QtCore.QPointF(FLAG_W, FLAG_H / 2.0))
             else:
-                painter.setPen(QtCore.Qt.NoPen)
-                painter.setBrush(QtGui.QColor(color))
-                painter.drawEllipse(QtCore.QPointF(centre, centre), 3.5, 3.5)
-                painter.setPen(_pen(color, 1.4))
-                for i in range(8):
-                    angle = i * math.pi / 4
-                    painter.drawLine(
-                        QtCore.QPointF(centre + 5.7 * math.cos(angle), centre + 5.7 * math.sin(angle)),
-                        QtCore.QPointF(centre + 7.6 * math.cos(angle), centre + 7.6 * math.sin(angle)),
-                    )
-        return _paint(THEME_ICON, THEME_ICON, draw)
-    return _cached(("theme", mode, color), build)
+                painter.fillRect(whole, QtGui.QColor("#777777"))
+            painter.setClipping(False)
+            painter.setBrush(QtCore.Qt.NoBrush)
+            painter.setPen(QtGui.QPen(QtGui.QColor(0, 0, 0, 110), 0.8))
+            painter.drawRoundedRect(QtCore.QRectF(0.5, 0.5, FLAG_W - 1.0, FLAG_H - 1.0), 2.5, 2.5)
+        return _paint(FLAG_W, FLAG_H, draw)
+    return _cached(("flag", code), build)
 
 
 UNDO_ICON = 18
@@ -764,7 +772,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._running = True
         self._last_pick = (None, 0.0)
         self._checks = {}
-        self._lang_buttons = {}
+        self._lang_combo = None
         self._aigcp_combos = {}
         self._review_dialog = None
         self._lang_cb = None
@@ -838,7 +846,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return root
 
     def _build_header(self):
-        """Titre a gauche, a droite : Annuler, selecteur de langue, theme (lune / soleil)."""
+        """Titre a gauche, a droite : Annuler, langue (liste a drapeaux), parametres (engrenage)."""
         header = QtWidgets.QWidget()
         header.setObjectName("aeroHeader")
         layout = QtWidgets.QHBoxLayout(header)
@@ -858,41 +866,32 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.undo_button.clicked.connect(self._on_undo_clicked)
         layout.addWidget(self.undo_button, 0)
 
-        layout.addWidget(self._build_lang_switch(), 0)
+        layout.addWidget(self._build_lang_combo(), 0)
 
-        self.theme_button = QtWidgets.QPushButton()
-        self.theme_button.setObjectName("aeroGhost")
-        self.theme_button.setProperty("round", True)
-        self.theme_button.setCursor(QtCore.Qt.PointingHandCursor)
-        self.theme_button.setFixedSize(32, 32)
-        self.theme_button.setIconSize(QtCore.QSize(THEME_ICON, THEME_ICON))
-        self.theme_button.clicked.connect(self._on_theme_clicked)
-        layout.addWidget(self.theme_button, 0)
+        self.more_button = QtWidgets.QPushButton()
+        self.more_button.setObjectName("aeroGhost")
+        self.more_button.setProperty("round", True)
+        self.more_button.setCheckable(True)
+        self.more_button.setCursor(QtCore.Qt.PointingHandCursor)
+        self.more_button.setFixedSize(32, 32)
+        self.more_button.setIconSize(QtCore.QSize(GEAR_ICON, GEAR_ICON))
+        self.more_button.toggled.connect(self._on_more_toggled)
+        layout.addWidget(self.more_button, 0)
         return header
 
-    def _build_lang_switch(self):
-        """Selecteur segmente "FR | EN" : un bouton par langue de `i18n.LANGUES`.
-
-        Les boutons portent le code de la langue (jamais traduit) ; celui de la
-        langue active est surligne par la feuille de style (propriete `active`).
-        """
-        frame = QtWidgets.QFrame()
-        frame.setObjectName("aeroLang")
-        frame.setFixedHeight(32)
-        layout = QtWidgets.QHBoxLayout(frame)
-        layout.setContentsMargins(3, 3, 3, 3)
-        layout.setSpacing(2)
-        for code in i18n.codes():
-            button = QtWidgets.QPushButton(code.upper())
-            button.setObjectName("aeroLangBtn")
-            button.setProperty("active", False)
-            button.setCursor(QtCore.Qt.PointingHandCursor)
-            button.setFocusPolicy(QtCore.Qt.NoFocus)
-            button.setFixedSize(LANG_BUTTON_W, 26)
-            button.clicked.connect(functools.partial(self._on_lang_clicked, code))
-            layout.addWidget(button)
-            self._lang_buttons[code] = button
-        return frame
+    def _build_lang_combo(self):
+        """Liste deroulante des langues de `i18n.LANGUES`, un drapeau devant chaque nom."""
+        combo = QtWidgets.QComboBox()
+        combo.setObjectName("aeroCombo")
+        combo.setCursor(QtCore.Qt.PointingHandCursor)
+        combo.setFocusPolicy(QtCore.Qt.NoFocus)
+        combo.setIconSize(QtCore.QSize(FLAG_W, FLAG_H))
+        combo.setFixedWidth(128)
+        for code, name in i18n.LANGUES:
+            combo.addItem(QtGui.QIcon(_flag_pixmap(code)), name, code)
+        combo.activated.connect(self._on_lang_activated)
+        self._lang_combo = combo
+        return combo
 
     def _build_play(self):
         """Bouton rond Play / Pause, puis pastille et texte d'etat."""
@@ -931,7 +930,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         choices = QtWidgets.QHBoxLayout()
         choices.setContentsMargins(0, 0, 0, 0)
         choices.setSpacing(theme.PAD)
-        for key, values, stretch in (("type", aigcp.TYPES, 3), ("scope", aigcp.SCOPES, 4),
+        for key, values, stretch in (("type", aigcp.TYPES, 2), ("scope", aigcp.SCOPES, 5),
                                      ("ignore", aigcp.IGNORES, 4)):
             choices.addWidget(self._build_combo(key, values), stretch)
         layout.addLayout(choices)
@@ -1100,7 +1099,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.setContentsMargins(pad, pad, pad, pad)
         layout.setSpacing(theme.PAD_S)
 
-        layout.addWidget(self._check("collect_dataset", i18n.t("panel.save_picks")))
+        layout.addWidget(self._check("ai_auto_review", i18n.t(CHECK_TEXTS["ai_auto_review"])))
+        layout.addWidget(self._check("collect_dataset", i18n.t(CHECK_TEXTS["collect_dataset"])))
 
         self.log_button = _ElidedButton(i18n.t("panel.log"))
         self.log_button.setCursor(QtCore.Qt.PointingHandCursor)
@@ -1127,7 +1127,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return box
 
     def _build_footer(self):
-        """Statut a gauche, bouton Exporter puis engrenage rond a droite."""
+        """Statut a gauche, bouton Exporter a droite."""
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD)
@@ -1150,15 +1150,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self._export_actions[kind] = action
         row.addWidget(self.export_button, 0)
 
-        self.more_button = QtWidgets.QPushButton()
-        self.more_button.setObjectName("aeroGhost")
-        self.more_button.setProperty("round", True)
-        self.more_button.setCheckable(True)
-        self.more_button.setCursor(QtCore.Qt.PointingHandCursor)
-        self.more_button.setFixedSize(32, 32)
-        self.more_button.setIconSize(QtCore.QSize(GEAR_ICON, GEAR_ICON))
-        self.more_button.toggled.connect(self._on_more_toggled)
-        row.addWidget(self.more_button, 0)
         return row
 
     # ------------------------------------------------------------------
@@ -1170,7 +1161,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         try:
             self._apply_toggle(self._running)
             self.more_button.setIcon(QtGui.QIcon(_gear_pixmap(theme.FG_2)))
-            self.theme_button.setIcon(QtGui.QIcon(_theme_pixmap(theme.MODE, theme.FG_2)))
             self.undo_button.setIcon(_undo_icon())
             self.export_button.setIcon(QtGui.QIcon(_export_pixmap(theme.FG_2)))
             self.export_menu.setStyleSheet(theme.menu_stylesheet())
@@ -1190,34 +1180,15 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         palette.setColor(role, _qcolor(theme.FG_2))
         self.search.setPalette(palette)
 
-    def _on_theme_clicked(self):
-        """Bascule clair / sombre, enregistre le choix et repeint tout le panneau."""
-        mode = "dark" if theme.MODE == "light" else "light"
-        theme.set_mode(mode)
-        try:
-            config.put("theme", "mode", mode)
-        except Exception as exc:
-            journal.write("FastGCP : theme non enregistre : {!r}".format(exc))
-        self._apply_theme()
-        journal.write("Theme {}".format("sombre" if mode == "dark" else "clair"))
-
-    def _apply_theme(self):
-        try:
-            self._root.setStyleSheet(theme.stylesheet())
-            _DOT_ICONS.clear()
-            _ICONS.clear()
-            self._refresh_icons()
-            self.refresh_markers()
-            self._header.viewport().update()
-        except RuntimeError:
-            pass
-
     # ------------------------------------------------------------------
     # Langue
     # ------------------------------------------------------------------
 
+    def _on_lang_activated(self, index):
+        self._on_lang_clicked(self._lang_combo.itemData(index))
+
     def _on_lang_clicked(self, code, _checked=False):
-        """Un clic sur FR / EN : change la langue, `retranslate` suit par abonnement."""
+        """Choix d'une langue dans la liste : change la langue, `retranslate` suit par abonnement."""
         # Abonnement (re)pose a chaque clic : un abonnement perdu ne doit pas
         # rendre le selecteur muet jusqu'au prochain redemarrage de l'outil.
         if self._lang_cb is not None:
@@ -1230,16 +1201,18 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         journal.write("Langue : {}".format(code))
 
     def _refresh_lang_buttons(self):
-        """Surligne le bouton de la langue active."""
-        current = i18n.lang()
-        for code, button in self._lang_buttons.items():
-            wanted = code == current
-            try:
-                if bool(button.property("active")) != wanted:
-                    button.setProperty("active", wanted)
-                _repolish(button)
-            except RuntimeError:
-                pass
+        """Montre la langue active dans la liste."""
+        combo = self._lang_combo
+        if combo is None:
+            return
+        try:
+            index = combo.findData(i18n.lang())
+            if index >= 0 and combo.currentIndex() != index:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(index)
+                combo.blockSignals(False)
+        except RuntimeError:
+            pass
 
     def _set_export_text(self):
         """Texte du bouton Exporter, elide s'il est trop long dans la langue choisie."""
@@ -1298,8 +1271,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._header.viewport().update()
 
     def _retranslate_checks(self):
-        for box in self._checks.values():
-            box.set_full_text(i18n.t("panel.save_picks"))
+        for key, box in self._checks.items():
+            box.set_full_text(i18n.t(CHECK_TEXTS[key]))
 
     def _retranslate_buttons(self):
         self.log_button.set_full_text(i18n.t("panel.log"))

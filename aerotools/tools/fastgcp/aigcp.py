@@ -14,7 +14,8 @@ qui rend le point bleu d'avant s'il y en avait un) ou se valide en cliquant la
 cible, ce qui la remplace par un pointage normal.
 
 Deux modeles, jamais melanges : damier et bombe. L'operateur choisit le type.
-Portee : le marqueur actif, ou tous les marqueurs ayant au moins 2 projections.
+Portee : le marqueur actif, ou tous les marqueurs qui ont une position 3D (triangulee, ou donnee
+par les coordonnees de reference d'un GCP) : aucun pointage n'est exige.
 Photos deja marquees : par defaut l'IA ne touche ni aux pointages manuels (vert)
 ni aux points bleus de Metashape ; le choix « Ignorer » du panneau (vert, bleu,
 les deux, aucun) permet de repasser dessus, et « Effacer » rend alors l'etat d'avant.
@@ -424,16 +425,18 @@ def collect_items(chk, marker, index=0, limit=MAX_PHOTOS, skip_green=True, skip_
 
 
 def collect_all(chk, skip_green=True, skip_blue=True):
-    """Items de tous les marqueurs dont la position est confirmee (2 projections ou plus).
+    """Items de tous les marqueurs qui ont une position 3D (aucun pointage n'est exige).
 
-    Renvoie (items, marqueurs retenus, marqueurs ignores). Les items d'une meme
-    photo sont voisins : le runner ne la decode qu'une fois.
+    Un marqueur sans pointage s'appuie sur ses coordonnees de reference : la recherche
+    elargie reste permise et seule la coherence entre photos le garde. Renvoie
+    (items, marqueurs retenus, marqueurs ignores). Les items d'une meme photo sont
+    voisins : le runner ne la decode qu'une fois.
     """
     items, used, ignored = [], 0, 0
     for index, marker in enumerate(msapi.markers(chk)):
         if len(items) >= MAX_PHOTOS_ALL:
             break
-        if msapi.marker_spread_m(chk, marker) is None:
+        if msapi.marker_point(chk, marker) is None:
             ignored += 1
             continue
         found, _skipped = collect_items(chk, marker, index, MAX_PHOTOS_ALL - len(items),
@@ -509,6 +512,12 @@ def busy(state):
     return getattr(state, "aigcp_run", None) is not None
 
 
+def _auto_review(state):
+    """La revue s'ouvre-t-elle toute seule ? Reglage du panneau, coche par defaut."""
+    option = getattr(state, "option", None)
+    return True if option is None else bool(option("ai_auto_review"))
+
+
 def progress_of(state):
     """(photos traitees, total) du calcul en cours, ou None (pas de calcul, ou pas encore demarre)."""
     run = getattr(state, "aigcp_run", None)
@@ -542,7 +551,7 @@ def _start(state, kind, scope):
     if scope == "all":
         items, used, ignored = collect_all(chk, *skip_flags(state))
         if ignored:
-            journal.write("IA : {} marqueur(s) ignore(s) : moins de 2 projections".format(ignored))
+            journal.write("IA : {} marqueur(s) ignore(s) : sans position 3D".format(ignored))
         if not items:
             _status(state, i18n.t("aigcp.no_markers"))
             return False
@@ -599,7 +608,7 @@ def poll(state):
         _status(state, i18n.t("aigcp.failed"))
         journal.write("IA : pose des propositions impossible : {!r}".format(exc))
     _refresh_panel(state)
-    if getattr(state, "aigcp_review", None) is not None:
+    if getattr(state, "aigcp_review", None) is not None and _auto_review(state):
         photos.panel_call(state, "open_review")
 
 
@@ -657,6 +666,10 @@ def _apply(state, run, hits, errors):
     # La revue ne porte que sur la derniere detection ; « Effacer » defait toujours tout.
     state.aigcp_review = (review.Review(run.kind, os.path.basename(run.job.run_dir), entries)
                           if entries else None)
+    # Journal cumule de toutes les detections de la session : le rapport PDF s'en sert.
+    fresh = set((e["label"], msapi.camera_key(e["camera"])) for e in entries)
+    state.aigcp_log = [e for e in (getattr(state, "aigcp_log", None) or [])
+                       if (e["label"], msapi.camera_key(e["camera"])) not in fresh] + entries
     _status(state, _summary(run, len(placed), len(run.items), gated, len(with_proposal)))
 
 
@@ -710,6 +723,8 @@ def clear(state):
             continue          # marqueur ou photo disparus avec le chunk
     state.aigcp_applied = []
     state.aigcp_review = None
+    state.aigcp_log = [e for e in (getattr(state, "aigcp_log", None) or [])
+                       if e["state"] != review.KEPT]
     photos.panel_call(state, "close_review")
     _status(state, i18n.t("aigcp.cleared", n=removed))
     _refresh_panel(state)

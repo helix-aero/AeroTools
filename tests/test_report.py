@@ -370,6 +370,153 @@ def test_page_count_matches_the_plan(world):
 # CSV
 # --------------------------------------------------------------------------
 
+def _ai_items(n, prefix="IMG"):
+    return [{"image": object(), "camera": "{}_{:04d}".format(prefix, k), "caption": "0,90",
+             "color": "#000", "ring": "#000"} for k in range(n)]
+
+
+def test_ai_pages_are_empty_without_picks():
+    assert report._ai_plan([]) == []
+    assert report._ai_plan([{"label": "PS_1", "items": []}]) == []
+
+
+def test_ai_plan_lays_thumbnails_in_rows_under_a_marker_title():
+    pages = report._ai_plan([{"label": "PS_1", "items": _ai_items(20)}])
+    assert len(pages) == 1
+    assert pages[0][0][0] == "head" and pages[0][0][2] is False
+    rows = [e[1] for e in pages[0] if e[0] == "row"]
+    cols = report._ai_columns(report.A4_W)
+    assert cols == 8 and [len(r) for r in rows] == [8, 8, 4]
+
+
+def test_ai_plan_shares_a_page_between_small_markers():
+    sections = [{"label": "PS_{}".format(k), "items": _ai_items(5)} for k in range(1, 4)]
+    pages = report._ai_plan(sections)
+    assert len(pages) == 1
+    assert [e[1]["label"] for e in pages[0] if e[0] == "head"] == ["PS_1", "PS_2", "PS_3"]
+
+
+def test_ai_plan_continues_a_long_marker_on_the_next_page():
+    pages = report._ai_plan([{"label": "PS_1", "items": _ai_items(150)}])
+    assert len(pages) >= 2
+    heads = [e for page in pages for e in page if e[0] == "head"]
+    assert heads[0][2] is False and all(h[2] is True for h in heads[1:])
+    assert sum(len(e[1]) for page in pages for e in page if e[0] == "row") == 150
+
+
+def test_ai_plan_never_overflows_a_page():
+    pages = report._ai_plan([{"label": "PS_{}".format(k), "items": _ai_items(37)} for k in range(1, 9)])
+    row_h = report.AI_CELL + report.AI_CAPTION_H + report.AI_GAP
+    for page in pages:
+        y = report.TABLE_TOP + 4.0
+        for entry in page:
+            y += report.AI_HEAD_H if entry[0] == "head" else row_h
+        assert y <= report.A4_H - 50.0 + 1e-6
+
+
+def test_page_count_includes_the_ai_pages(world):
+    data = report.collect_data(msapi.chunk())
+    base = report.page_count(data, None)
+    picks = [{"label": "PS_1", "items": _ai_items(150)}]
+    assert report.page_count(data, {"ai_picks": picks}) == base + len(report._ai_plan(picks))
+    assert report.page_count(data, {"ai_picks": []}) == base
+
+
+def test_ai_sections_keep_only_live_picks_with_their_confidence(ms, monkeypatch):
+    from aerotools.tools.fastgcp import review
+    cams = [ms.Camera(k, ms.Vector(0, 0, 0)) for k in range(1, 5)]
+    marker = ms.Marker("PS_2", projections={cams[0]: ms.Marker.Projection(ms.Vector(1, 2, 0), False),
+                                            cams[1]: ms.Marker.Projection(ms.Vector(1, 2, 0), True),
+                                            cams[2]: ms.Marker.Projection(ms.Vector(1, 2, 0), False)})
+    ms.app.document.chunk = ms.Chunk(cams, [marker])
+
+    def entry(cam, state, conf):
+        return {"marker": marker, "label": "PS_2", "camera": cam, "camera_label": cam.label,
+                "state": state, "conf": conf, "x": 1.0, "y": 2.0}
+
+    log = [entry(cams[0], review.KEPT, 0.91), entry(cams[1], review.REFINED, 0.80),
+           entry(cams[2], review.REMOVED, 0.70), entry(cams[3], review.KEPT, 0.60)]
+    monkeypatch.setattr(report, "_ai_thumb", lambda e: object())
+    sections = report.ai_sections(types.SimpleNamespace(aigcp_log=log))
+    assert [s["label"] for s in sections] == ["PS_2"]
+    items = sections[0]["items"]
+    assert [i["camera"] for i in items] == [cams[0].label, cams[1].label]   # exclue et sans projection : absentes
+    assert items[0]["caption"] == report.fmt_num(0.91, 2) and items[1]["caption"] == "manuel"
+
+
+def test_ai_info_parts_describe_the_marker():
+    info = {"total": 0.0123, "x": 0.003, "y": -0.002, "z": 0.011, "median_px": 0.84, "max_px": 2.1,
+            "conf_mean": 0.9234, "conf_min": 0.9, "projections": 40, "gcp": True, "accuracy": 0.005}
+    parts = report.ai_info_parts(info)
+    text = " | ".join(parts)
+    assert "0,012" in text and "0,8" in text and "2,1" in text      # erreur 3D, ecart median, maximum
+    assert "0,92" in text and "0,90" in text                        # confiance moyenne et minimum
+    assert "40" in text and "GCP" in text and "0,005" in text
+    assert len(parts) == 5
+
+
+def test_ai_info_parts_say_when_it_is_a_check_point_and_skip_the_unknown():
+    parts = report.ai_info_parts({"gcp": False})
+    assert len(parts) == 1 and "contrôle" in parts[0]
+    assert report.ai_info_parts({}) == []
+    assert report.ai_info_parts({"gcp": None, "accuracy": 0.01}) == []
+
+
+def test_marker_reference_info_reads_gcp_use_and_accuracy(ms):
+    marker = ms.Marker("M")
+    marker.reference.enabled = True
+    marker.reference.accuracy = ms.Vector(0.005, 0.005, 0.02)
+    assert msapi.marker_reference_info(marker) == (True, 0.02)
+    marker.reference.enabled = False
+    marker.reference.accuracy = 0.01
+    assert msapi.marker_reference_info(marker) == (False, 0.01)
+    assert msapi.marker_reference_info(ms.Marker("N")) == (None, None)
+
+
+def test_marker_reference_accuracy_falls_back_on_the_chunk_default(ms):
+    marker = ms.Marker("M")
+    marker.reference.enabled = True
+    marker.reference.accuracy = None
+    chunk = ms.Chunk([], [marker])
+    chunk.marker_location_accuracy = ms.Vector(0.005, 0.005, 0.005)
+    assert msapi.marker_reference_info(marker, chunk) == (True, 0.005)
+    assert msapi.marker_reference_info(marker) == (True, None)
+
+
+def test_ai_sections_carry_the_marker_information(ms, monkeypatch):
+    from aerotools.tools.fastgcp import review
+    cams = [ms.Camera(k, ms.Vector(0, 0, -10)) for k in (1, 2)]
+    marker = ms.Marker("PS_5", position=ms.Vector(0, 0, 0), projections={
+        cams[0]: ms.Marker.Projection(ms.Vector(2001.0, 1500.0, 0), False),
+        cams[1]: ms.Marker.Projection(ms.Vector(2000.0, 1503.0, 0), False)})
+    marker.reference.enabled = True
+    marker.reference.accuracy = 0.005
+    ms.app.document.chunk = ms.Chunk(cams, [marker])
+    log = [{"marker": marker, "label": "PS_5", "camera": cams[0], "camera_label": cams[0].label,
+            "state": review.KEPT, "conf": 0.90, "x": 2001.0, "y": 1500.0},
+           {"marker": marker, "label": "PS_5", "camera": cams[1], "camera_label": cams[1].label,
+            "state": review.KEPT, "conf": 0.94, "x": 2000.0, "y": 1503.0}]
+    data = {"markers": [{"label": "PS_5", "total": 0.02, "x": 0.01, "y": 0.01, "z": 0.015, "projections": 12}]}
+    monkeypatch.setattr(report, "_ai_thumb", lambda e: object())
+    info = report.ai_sections(types.SimpleNamespace(aigcp_log=log), data)[0]["info"]
+    assert info["total"] == 0.02 and info["projections"] == 12
+    assert info["median_px"] == pytest.approx(2.0) and info["max_px"] == pytest.approx(3.0)   # 1 px et 3 px d'ecart
+    assert info["conf_mean"] == pytest.approx(0.92) and info["conf_min"] == pytest.approx(0.90)
+    assert info["gcp"] is True and info["accuracy"] == pytest.approx(0.005)
+
+
+def test_ai_sections_skip_unreadable_photos(ms, monkeypatch):
+    from aerotools.tools.fastgcp import review
+    cam = ms.Camera(1, ms.Vector(0, 0, 0))
+    marker = ms.Marker("PS_1", projections={cam: ms.Marker.Projection(ms.Vector(1, 2, 0), False)})
+    ms.app.document.chunk = ms.Chunk([cam], [marker])
+    log = [{"marker": marker, "label": "PS_1", "camera": cam, "camera_label": cam.label,
+            "state": review.KEPT, "conf": 0.9, "x": 1.0, "y": 2.0}]
+    monkeypatch.setattr(report, "_ai_thumb", lambda e: None)
+    assert report.ai_sections(types.SimpleNamespace(aigcp_log=log)) == []
+    assert report.ai_sections(types.SimpleNamespace()) == []
+
+
 def test_csv_rows_without_reference(world):
     rows = report.csv_rows(report.collect_data(world))
     assert rows[0] == ["ID", "Erreur X (m)", "Erreur Y (m)", "Erreur Z (m)",

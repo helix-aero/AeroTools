@@ -1132,6 +1132,47 @@ def marker_estimate(chk, marker, camera):
         return None
 
 
+def _accuracy_m(value):
+    """Plus grande composante d'une precision (vecteur ou nombre), ou None."""
+    if value is None:
+        return None
+    try:
+        values = _components(value)
+        if values is None:
+            values = (float(value),) * 3
+        return max(values) if _finite(values) else None
+    except Exception:
+        return None
+
+
+def marker_reference_info(marker, chk=None):
+    """(utilise comme GCP, precision de reference en m) ; None pour ce qu'on ne sait pas lire.
+
+    `reference.enabled` vrai : le marqueur sert de point d'appui (GCP) ; faux : point de
+    controle. La precision est celle du marqueur, sinon celle du chunk (`marker_location_accuracy`,
+    la valeur que le tableau Reference de Metashape affiche). Ne leve jamais.
+    """
+    try:
+        reference = marker.reference
+    except Exception:
+        return None, None
+    try:
+        used = bool(reference.enabled)
+    except Exception:
+        used = None
+    accuracy = None
+    try:
+        accuracy = _accuracy_m(reference.accuracy)
+    except Exception:
+        accuracy = None
+    if accuracy is None and chk is not None:
+        try:
+            accuracy = _accuracy_m(chk.marker_location_accuracy)
+        except Exception:
+            accuracy = None
+    return used, accuracy
+
+
 def marker_spread_m(chk, marker):
     """Plus grand ecart, en metres au sol, entre une projection du marqueur et la
     reprojection de son point 3D ; None si on ne peut pas le dire.

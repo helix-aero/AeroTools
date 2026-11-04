@@ -18,8 +18,7 @@ faux quand la position attendue est connue a quelques centimetres.
     {"version": 1, "seconds": 3.2, "device": "cpu",
      "hits": [{"id": "...", "found": true, "x": 130.1, "y": 450.2,
                "conf": 0.91, "crop_px": 214,
-               "crop": {"thumb": "0_12.jpg", "big": "0_12_big.jpg", "win": 107,
-                        "x0": 77, "y0": 397}}, ...],
+               "crop": {"big": "0_12.jpg", "win": 214, "x0": 23, "y0": 343}}, ...],
      "errors": ["id : message", ...]}
 
 Methode, celle qui a ete mesuree sur le jeu d'apprentissage (modeles\\evaluer.py) :
@@ -162,30 +161,27 @@ def detect_item(detector, image, item, scales, conf):
             "conf": round(found[2], 4), "crop_px": int(found[3])}
 
 
-THUMB, BIG = 320, 640
+BIG = 960
 
 
 def save_review_crops(image, row, crops_dir, name):
-    """Vignette et grande vignette autour du point trouve, pour la revue de FastGCP.
+    """Recadrage autour du point trouve, pour le Review panel de FastGCP.
 
-    La fenetre fait la moitie de celle du modele : la cible y occupe environ la
-    moitie de la vignette. Renvoie {thumb, big, win, x0, y0} (noms de fichiers dans
-    `crops_dir`, win = cote de la fenetre en pixels de la photo, x0 y0 = son coin).
+    La fenetre est celle du modele (`crop_px`, au moins 96 px) : l'interface en decoupe
+    la moitie centrale a zoom normal, et le curseur de zoom montre plus ou moins de
+    contexte. Renvoie {big, win, x0, y0} (nom du fichier dans `crops_dir`, win = cote
+    de la fenetre en pixels de la photo, x0 y0 = son coin), ou None.
     """
     import cv2
-    side = max(48, int(round(row["crop_px"] / 2.0)))
-    info = {"win": side}
-    for key, out, suffix in (("thumb", THUMB, ".jpg"), ("big", BIG, "_big.jpg")):
-        made = crop(image, row["x"], row["y"], side, out)
-        if made is None:
-            return None
-        ok, buffer = cv2.imencode(".jpg", made[0], [cv2.IMWRITE_JPEG_QUALITY, 90])
-        if not ok:
-            return None
-        buffer.tofile(os.path.join(crops_dir, name + suffix))
-        info[key] = name + suffix
-        info["x0"], info["y0"] = made[1], made[2]
-    return info
+    side = max(CROP_MIN, int(round(row["crop_px"])))
+    made = crop(image, row["x"], row["y"], side, BIG)
+    if made is None:
+        return None
+    ok, buffer = cv2.imencode(".jpg", made[0], [cv2.IMWRITE_JPEG_QUALITY, 90])
+    if not ok:
+        return None
+    buffer.tofile(os.path.join(crops_dir, name + ".jpg"))
+    return {"big": name + ".jpg", "win": side, "x0": made[1], "y0": made[2]}
 
 
 def pick_device(wanted):

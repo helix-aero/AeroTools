@@ -29,6 +29,7 @@ import unicodedata
 
 from ... import i18n, journal, msapi, theme
 from ...qt import QtCore, QtGui, QtWidgets
+from . import review
 
 # --------------------------------------------------------------------------
 # Constantes
@@ -1216,6 +1217,250 @@ def _page_captures(cv, W, H, data, images, page, total):
 
 
 # --------------------------------------------------------------------------
+# Photos pointees par l'IA : une vignette par photo, croix rouge et indice de confiance
+# --------------------------------------------------------------------------
+
+AI_CELL = 58.0                      # cote d'une vignette, en points
+AI_GAP = 7.0
+AI_CAPTION_H = 11.0
+AI_HEAD_H = 42.0                    # titre du marqueur + deux lignes d'informations
+AI_THUMB_PX = 160                   # cote de la vignette peinte, en pixels
+AI_FALLBACK_PX = 96                 # region lue dans la photo quand le recadrage n'existe plus
+AI_RED = "#ff4a2e"
+A4_W, A4_H = 595.28, 841.89
+
+
+def _ai_columns(width):
+    return max(1, int((width - 2 * MARGIN + AI_GAP) // (AI_CELL + AI_GAP)))
+
+
+def _ai_plan(sections, width=A4_W, height=A4_H):
+    """Pages des photos pointees par l'IA, sans rien dessiner.
+
+    `sections` : [{"label": str, "items": [...]}]. Renvoie une liste de pages ; une page est
+    une liste de ("head", section, suite) ou ("row", [items]). Un marqueur qui ne tient pas
+    sur la page continue sur la suivante, avec son titre repete.
+    """
+    cols = _ai_columns(width)
+    row_h = AI_CELL + AI_CAPTION_H + AI_GAP
+    top = TABLE_TOP + 4.0
+    bottom = height - 50.0
+    pages, y = [[]], top
+    for section in sections:
+        items, i, continued = section["items"], 0, False
+        while i < len(items):
+            if y + AI_HEAD_H + row_h > bottom and pages[-1]:
+                pages.append([])
+                y = top
+            pages[-1].append(("head", section, continued))
+            y += AI_HEAD_H
+            while i < len(items) and y + row_h <= bottom:
+                pages[-1].append(("row", items[i:i + cols]))
+                y += row_h
+                i += cols
+            if i < len(items):
+                pages.append([])
+                y = top
+                continued = True
+            else:
+                y += 8.0
+    return pages if pages != [[]] else []
+
+
+def _page_ai(cv, W, H, data, plan, page, total):
+    _page_background(cv, W, H)
+    _page_title(cv, W, data, i18n.t("report.ai.title"), i18n.t("report.ai.sub"))
+    y = TABLE_TOP + 4.0
+    for entry in plan:
+        if entry[0] == "head":
+            section, continued = entry[1], entry[2]
+            title = i18n.t("report.ai.marker", label=section["label"], n=len(section["items"]))
+            if continued:
+                title = "{} {}".format(title, i18n.t("report.ai.cont"))
+            cv.text(MARGIN, y + 12.0, title, 10.5, INK, "body", 2)
+            cv.line(MARGIN, y + 17.0, W - MARGIN, y + 17.0, LINE, 0.6)
+            lines = [] if continued else cv.wrap(" {} ".format(DOT).join(ai_info_parts(section.get("info") or {})),
+                                                 7.6, W - 2 * MARGIN, max_lines=2)
+            for k, line in enumerate(lines):
+                cv.text(MARGIN, y + 28.0 + k * CAPTION_LINE, line, 7.6, MUTED)
+            y += AI_HEAD_H
+            continue
+        for k, item in enumerate(entry[1]):
+            x = MARGIN + k * (AI_CELL + AI_GAP)
+            cv.image(item["image"], x, y, AI_CELL, AI_CELL)
+            cv.rect(x, y, AI_CELL, AI_CELL, line=item["ring"], line_w=0.7)
+            cv.text(x + AI_CELL / 2.0, y + AI_CELL + 9.0, item["caption"], 7.2, item["color"],
+                    "body", 1, "c")
+        y += AI_CELL + AI_CAPTION_H + AI_GAP
+    _footer(cv, W, H, page, total)
+
+
+def _median_of(values):
+    values = sorted(values)
+    if not values:
+        return None
+    middle = len(values) // 2
+    return values[middle] if len(values) % 2 else (values[middle - 1] + values[middle]) / 2.0
+
+
+def ai_info_parts(info):
+    """Phrases courtes decrivant un marqueur dans le rapport : erreur, pointage, confiance, GCP.
+
+    `info` : dict de ai_sections (cles absentes ou None = on n'en parle pas). Sans Qt.
+    """
+    parts = []
+    if info.get("total") is not None:
+        parts.append(i18n.t("report.ai.info_error", total=fmt_num(info["total"], 3),
+                            x=fmt_num(info.get("x"), 3), y=fmt_num(info.get("y"), 3),
+                            z=fmt_num(info.get("z"), 3)))
+    if info.get("median_px") is not None:
+        parts.append(i18n.t("report.ai.info_pointing", median=fmt_num(info["median_px"], 1),
+                            max=fmt_num(info["max_px"], 1)))
+    if info.get("conf_mean") is not None:
+        parts.append(i18n.t("report.ai.info_conf", mean=fmt_num(info["conf_mean"], 2),
+                            min=fmt_num(info["conf_min"], 2)))
+    if info.get("projections"):
+        parts.append(i18n.t("report.ai.info_projections", n=info["projections"]))
+    if info.get("gcp") is True:
+        text = i18n.t("report.ai.info_gcp_yes")
+    elif info.get("gcp") is False:
+        text = i18n.t("report.ai.info_gcp_no")
+    else:
+        text = None
+    if text:
+        if info.get("accuracy") is not None:
+            text = "{} ({})".format(text, i18n.t("report.ai.info_accuracy", acc=fmt_num(info["accuracy"], 3)))
+        parts.append(text)
+    return parts
+
+
+def _ai_mark(image, cx, cy, color):
+    """Croix a quatre branches (vide au centre, halo blanc) sur une vignette de AI_THUMB_PX."""
+    marked = image.convertToFormat(QtGui.QImage.Format_RGB32)
+    painter = QtGui.QPainter(marked)
+    try:
+        painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        arm, gap = marked.width() / 5.0, marked.width() / 28.0
+        for tone, width in (("#ffffff", 4.2), (color, 2.2)):
+            painter.setPen(QtGui.QPen(QtGui.QColor(tone), width))
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                painter.drawLine(QtCore.QPointF(cx + dx * gap, cy + dy * gap),
+                                 QtCore.QPointF(cx + dx * arm, cy + dy * arm))
+    finally:
+        painter.end()
+    return marked
+
+
+def _ai_thumb(entry):
+    """Vignette carree d'une proposition, croix sur son point ; None si la photo est illisible.
+
+    On reprend le recadrage ecrit par la detection quand il existe encore ; sinon on lit
+    la region dans la photo d'origine.
+    """
+    x, y = entry["x"], entry["y"]
+    if review.has_crop(entry) and os.path.isfile(entry["big"]):
+        source = QtGui.QImage(entry["big"])
+        if not source.isNull():
+            left, top, side = review.source_rect(entry, 1.0, source.width())
+            rect = QtCore.QRect(int(round(left)), int(round(top)), int(round(side)), int(round(side)))
+            image = source.copy(rect).scaled(AI_THUMB_PX, AI_THUMB_PX, QtCore.Qt.IgnoreAspectRatio,
+                                             QtCore.Qt.SmoothTransformation)
+            cx, cy = review.to_view(entry, x, y, AI_THUMB_PX, 1.0)
+            return _ai_mark(image, cx, cy, AI_RED)
+    region = _read_region(entry["image_path"], x, y, AI_FALLBACK_PX, AI_FALLBACK_PX,
+                          msapi.camera_size(entry["camera"]))
+    if region is None:
+        return None
+    image, lx, ly, _scale = region
+    factor = AI_THUMB_PX / float(image.width())
+    image = image.scaled(AI_THUMB_PX, int(round(image.height() * factor)), QtCore.Qt.IgnoreAspectRatio,
+                         QtCore.Qt.SmoothTransformation)
+    return _ai_mark(image, lx * factor, ly * factor, AI_RED)
+
+
+def _natural(label):
+    return [int(t) if t.isdigit() else t.lower() for t in re.split(r"(\d+)", str(label))]
+
+
+def _ai_still_there(entry):
+    """La proposition est-elle toujours dans le projet, dans l'etat que le journal lui donne ?
+
+    Gardee : projection non posee. Validee ou affinee : projection posee a la main (un
+    Ctrl+Z ou un « Effacer » apres coup la fait sortir du rapport).
+    """
+    projection = msapi.get_projection(entry["marker"], entry["camera"])
+    if projection is None:
+        return False
+    return not projection[2] if entry["state"] == review.KEPT else bool(projection[2])
+
+
+def _ai_info(entries, data):
+    """Informations d'un marqueur pour l'en-tete de sa section (voir ai_info_parts).
+
+    L'erreur et le nombre de projections viennent de `data` (collect_data) ; la precision de
+    pointage est l'ecart, en pixels, entre chaque point retenu et la reprojection du point 3D
+    du marqueur ; la confiance est celle de l'IA sur les points retenus.
+    """
+    marker = entries[0]["marker"]
+    info = {}
+    row = next((m for m in (data or {}).get("markers", []) if m["label"] == entries[0]["label"]), None)
+    if row is not None:
+        info.update(total=row["total"], x=row["x"], y=row["y"], z=row["z"], projections=row["projections"])
+    chk = msapi.chunk()
+    gaps = []
+    for entry in entries:
+        estimate = msapi.marker_estimate(chk, marker, entry["camera"])
+        if estimate is not None:
+            gaps.append(math.hypot(entry["x"] - estimate[0], entry["y"] - estimate[1]))
+    if gaps:
+        info.update(median_px=_median_of(gaps), max_px=max(gaps))
+    confs = [e["conf"] for e in entries if e["state"] != review.REFINED]
+    if confs:
+        info.update(conf_mean=sum(confs) / len(confs), conf_min=min(confs))
+    info["gcp"], info["accuracy"] = msapi.marker_reference_info(marker, chk)
+    return info
+
+
+def ai_sections(state, data=None):
+    """Vignettes des photos pointees par l'IA, par marqueur : [{"label", "items": [...], "info": {...}}].
+
+    Seules comptent les propositions gardees, validees ou affinees, et seulement si leur
+    projection existe encore dans le projet. Une photo illisible est simplement absente.
+    """
+    grouped, kept = {}, {}
+    for entry in getattr(state, "aigcp_log", None) or []:
+        if entry["state"] not in (review.KEPT, review.ACCEPTED, review.REFINED):
+            continue
+        try:
+            if not _ai_still_there(entry):
+                continue
+            image = _ai_thumb(entry)
+        except Exception as exc:
+            journal.write("Rapport : vignette IA ignorée : {!r}".format(exc))
+            continue
+        if image is None:
+            continue
+        manual = entry["state"] == review.REFINED
+        kept.setdefault(entry["label"], []).append(entry)
+        grouped.setdefault(entry["label"], []).append({
+            "image": image, "camera": entry["camera_label"],
+            "caption": i18n.t("report.ai.manual") if manual else fmt_num(entry["conf"], 2),
+            "color": GREEN_DEEP if manual else MUTED,
+            "ring": GREEN if manual else LINE,
+        })
+    sections = []
+    for label in sorted(grouped, key=_natural):
+        try:
+            info = _ai_info(kept[label], data)
+        except Exception as exc:
+            journal.write("Rapport : informations de {} ignorées : {!r}".format(label, exc))
+            info = {}
+        sections.append({"label": label, "info": info,
+                         "items": sorted(grouped[label], key=lambda it: it["camera"])})
+    return sections
+
+
+# --------------------------------------------------------------------------
 # PDF
 # --------------------------------------------------------------------------
 
@@ -1237,7 +1482,8 @@ def _new_writer(path, title):
 
 def page_count(data, images=None):
     """Nombre de pages que build_pdf produira (A4 : 842 pt de haut)."""
-    return 1 + _table_pages_count(len(data["markers"]), 841.89) + (1 if _has_images(images) else 0)
+    ai = len(_ai_plan((images or {}).get("ai_picks") or []))
+    return 1 + _table_pages_count(len(data["markers"]), 841.89) + (1 if _has_images(images) else 0) + ai
 
 
 def build_pdf(data, path, images=None):
@@ -1245,7 +1491,7 @@ def build_pdf(data, path, images=None):
 
     `images` (toutes optionnelles) : {"photo": QImage, "photo_caption": str,
     "crops": [{"image": QImage, "caption": str}], "panel": QImage,
-    "panel_caption": str}. Leve une exception si le fichier ne peut pas etre
+    "panel_caption": str, "ai_picks": [{"label": str, "items": [...]}]} (voir ai_sections). Leve une exception si le fichier ne peut pas etre
     ecrit : l'appelant (export_pdf) la transforme en message.
     """
     if QtWidgets.QApplication.instance() is None:
@@ -1273,7 +1519,11 @@ def build_pdf(data, path, images=None):
         pages = next_no - 1
         if _has_images(images):
             writer.newPage()
-            _page_captures(cv, W, H, data, images, next_no, total)
+            _page_captures(cv, W, H, data, images, pages + 1, total)
+            pages += 1
+        for plan in _ai_plan(images.get("ai_picks") or [], W, H):
+            writer.newPage()
+            _page_ai(cv, W, H, data, plan, pages + 1, total)
             pages += 1
     except Exception:
         painter.end()
@@ -1572,6 +1822,13 @@ def collect_images(state, data):
             images["crops"] = crops
     except Exception as exc:
         journal.write("Rapport : vignettes ignorées : {!r}".format(exc))
+
+    try:
+        picks = ai_sections(state, data)
+        if picks:
+            images["ai_picks"] = picks
+    except Exception as exc:
+        journal.write("Rapport : photos pointées par l'IA ignorées : {!r}".format(exc))
 
     try:
         panel = getattr(state, "panel", None)

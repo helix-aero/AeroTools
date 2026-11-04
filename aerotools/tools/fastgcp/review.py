@@ -34,9 +34,6 @@ from . import history
 
 SCHEMA = 1
 FILE_NAME = "aigcp_feedback.jsonl"
-THUMB_SIZE = 320
-BIG_SIZE = 640
-
 KEPT = "kept"
 REMOVED = "removed"
 REFINED = "refined"
@@ -89,7 +86,7 @@ def make_entry(item, hit, previous, crops_dir):
         "x": float(hit["x"]), "y": float(hit["y"]),
         "conf": float(hit["conf"]), "crop_px": float(hit.get("crop_px") or 0),
         "px_per_m": float(item["px_per_m"]), "previous": previous,
-        "thumb": path("thumb"), "big": path("big"),
+        "big": path("big"),
         "win": float(crop.get("win") or 0), "x0": float(crop.get("x0") or 0),
         "y0": float(crop.get("y0") or 0),
         "state": KEPT,
@@ -100,20 +97,39 @@ def make_entry(item, hit, previous, crops_dir):
 # Passage entre la vignette et la photo
 # --------------------------------------------------------------------------
 
-def to_view(entry, x, y, size):
-    """Position (x, y) de la photo, en pixels d'une vignette carree de `size` px."""
-    scale = size / entry["win"]
-    return (x - entry["x0"]) * scale, (y - entry["y0"]) * scale
+def view_rect(entry, zoom=1.0):
+    """Carre (gauche, haut, cote), en position photo, montre a ce zoom autour du point de l'IA.
+
+    Au zoom 1 il fait la moitie de la fenetre enregistree par le runner ; zoom 0,5 montre
+    toute la fenetre, zoom 4 un huitieme de son cote.
+    """
+    side = entry["win"] / 2.0 / zoom
+    return entry["ai_x"] - side / 2.0, entry["ai_y"] - side / 2.0, side
 
 
-def to_source(entry, u, v, size):
-    """Pixel (u, v) d'une vignette carree de `size` px, en position de la photo."""
-    scale = entry["win"] / float(size)
-    return entry["x0"] + u * scale, entry["y0"] + v * scale
+def to_view(entry, x, y, size, zoom=1.0):
+    """Position (x, y) de la photo, en pixels d'une vignette carree de `size` px au zoom donne."""
+    left, top, side = view_rect(entry, zoom)
+    scale = size / side
+    return (x - left) * scale, (y - top) * scale
+
+
+def to_source(entry, u, v, size, zoom=1.0):
+    """Pixel (u, v) d'une vignette carree de `size` px au zoom donne, en position de la photo."""
+    left, top, side = view_rect(entry, zoom)
+    scale = side / float(size)
+    return left + u * scale, top + v * scale
+
+
+def source_rect(entry, zoom, image_width):
+    """Le carre de view_rect, en pixels de l'image recadree enregistree (largeur `image_width`)."""
+    left, top, side = view_rect(entry, zoom)
+    scale = image_width / entry["win"]
+    return (left - entry["x0"]) * scale, (top - entry["y0"]) * scale, side * scale
 
 
 def has_crop(entry):
-    return bool(entry.get("thumb") and entry.get("big") and entry["win"] > 0)
+    return bool(entry.get("big") and entry["win"] > 0)
 
 
 # --------------------------------------------------------------------------

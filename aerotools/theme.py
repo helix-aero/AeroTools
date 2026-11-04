@@ -4,67 +4,42 @@ Les valeurs viennent du design system HELIX (tokens.css, releve le 03/11/2026)
 et des couleurs du logo HELIX AERO. Une couleur existe ici une fois : les
 panneaux ne font que de la mise en page.
 
-Fonds (theme sombre, celui du produit) :
-  ground-1 #111214 (fond), ground-2 #191b1e (carte), ground-3 #222428 (releve),
-  ground-4 #2b2e33 (survol d'un bouton secondaire).
-Textes : fg-0 blanc, fg-1 #d5d6da (texte courant), fg-2 #8c8e96 (secondaire).
+Fonds (le gris de Metashape, un seul theme) :
+  ground-0 #282828 (fenetre), ground-1 #404040 (fond), ground-2 #484848 (carte),
+  ground-3 #353535 (releve : champs, listes), ground-4 #555555 (survol).
+Textes : fg-0 blanc, fg-1 #eeeeee (texte courant), fg-2 #b9b9b9 (secondaire).
 Accent : vert de marque #1eca59 (survol #34d56b, texte dessus #06241a) — un
 remplissage, jamais du texte sur fond clair.
 Alerte : orange #ff5210 (outil a l'arret).
 Degrade du logo : #163056 -> #139168 -> #03a132, du bas gauche vers le haut droit.
 """
 
-import os
-
-from . import config
-
 # --------------------------------------------------------------------------
 # Jetons
 # --------------------------------------------------------------------------
 
-# Deux palettes : « light » (par defaut, surfaces papier du design system) et
-# « dark » (fond encre du produit). Les constantes du module prennent les
-# valeurs de la palette active (le vert est repete dans chacune : on peut
-# l'ajuster par theme) ; l'orange et le degrade du logo sont communs.
-_PALETTES = {
-    "light": dict(
-        GROUND_0="#ecece8", GROUND_1="#f6f6f4", GROUND_2="#ffffff",
-        GROUND_3="#ecece8", GROUND_4="#e0e0db",
-        FG_0="#111214", FG_1="#2b2e33", FG_2="#5d6067", FG_3="#8c8e96",
-        FG_4="#d5d6da",
-        BORDER_FAINT="rgba(17, 18, 20, 0.10)",
-        BORDER_SOFT="rgba(17, 18, 20, 0.14)",
-        BORDER_STRONG="rgba(17, 18, 20, 0.22)",
-        FIELD_BG="#ffffff",
-        OFF_TEXT="#b83504",
-        GREEN="#1eca59", GREEN_BRIGHT="#34d56b", GREEN_ON="#06241a",
-        GREEN_SOFT="rgba(30, 202, 89, 0.14)",
-    ),
-    "dark": dict(
-        GROUND_0="#0b0c0e", GROUND_1="#111214", GROUND_2="#191b1e",
-        GROUND_3="#222428", GROUND_4="#2b2e33",
-        FG_0="#ffffff", FG_1="#d5d6da", FG_2="#8c8e96", FG_3="#6f7177",
-        FG_4="#2f3236",
-        BORDER_FAINT="rgba(255, 255, 255, 0.06)",
-        BORDER_SOFT="rgba(255, 255, 255, 0.10)",
-        BORDER_STRONG="rgba(255, 255, 255, 0.18)",
-        FIELD_BG="rgba(255, 255, 255, 0.03)",
-        OFF_TEXT="#ff7a3c",
-        GREEN="#1eca59", GREEN_BRIGHT="#34d56b", GREEN_ON="#06241a",
-        GREEN_SOFT="rgba(30, 202, 89, 0.14)",
-    ),
-}
-MODE = "light"
-
-
-def set_mode(mode):
-    """Active une palette. Un nom inconnu laisse la palette claire."""
-    global MODE
-    if mode not in _PALETTES:
-        mode = "light"
-    globals().update(_PALETTES[mode])
-    MODE = mode
-
+# Une seule palette : le gris de Metashape (Window #282828, Base #404040, Text #eeeeee),
+# pour que le panneau et les fenetres d'AeroTools se fondent dans l'interface.
+# Le vert de marque est le seul accent ; l'orange et le degrade du logo sont communs.
+GROUND_0 = "#282828"
+GROUND_1 = "#404040"
+GROUND_2 = "#484848"
+GROUND_3 = "#353535"
+GROUND_4 = "#555555"
+FG_0 = "#ffffff"
+FG_1 = "#eeeeee"
+FG_2 = "#b9b9b9"
+FG_3 = "#8f8f8f"
+FG_4 = "#5a5a5a"
+BORDER_FAINT = "rgba(255, 255, 255, 0.08)"
+BORDER_SOFT = "rgba(255, 255, 255, 0.13)"
+BORDER_STRONG = "rgba(255, 255, 255, 0.24)"
+FIELD_BG = "#353535"
+OFF_TEXT = "#ff7a3c"
+GREEN = "#1eca59"
+GREEN_BRIGHT = "#34d56b"
+GREEN_ON = "#06241a"
+GREEN_SOFT = "rgba(30, 202, 89, 0.18)"
 
 GREEN_DEEP = "#03a132"
 
@@ -78,19 +53,6 @@ LOGO_1 = "#139168"
 LOGO_2 = "#03a132"
 
 
-def saved_mode():
-    """Mode enregistre pour ce poste ; clair au moindre souci."""
-    try:
-        mode = config.get("theme", "mode", "light")
-    except Exception:
-        return "light"
-    return mode if mode in _PALETTES else "light"
-
-
-try:
-    set_mode(saved_mode())
-except Exception:
-    set_mode("light")
 
 # Pas de 8 px (et demi-pas de 4), comme le design system.
 PAD = 8
@@ -202,8 +164,7 @@ def stylesheet():
       #aeroCounter    pastille-compteur
       #aeroGhost      bouton secondaire discret ([round="true"] : rond,
                       [pill="true"] : gelule avec texte)
-      #aeroLang       selecteur de langue (gelule) ; #aeroLangBtn : un bouton par
-                      langue, [active="true"] pour celle qui est choisie
+      #aeroZoomButton boutons +/- de la fenetre de revue
       #aeroGridBox    cadre du tableau des marqueurs ; #aeroGrid : la grille
     """
     return """
@@ -411,34 +372,27 @@ def stylesheet():
     #aeroPanel QPushButton#aeroGhost[pill="true"]:hover {{
         color: {fg_0};
     }}
+    #aeroPanel QPushButton#aeroGhost[pill="true"]:disabled {{
+        color: {fg_4};
+        border-color: {border_faint};
+    }}
     #aeroPanel QPushButton#aeroGhost[round="true"]:checked {{
         background: {ground_4};
         border-color: {border_strong};
     }}
 
-    /* Selecteur de langue : boutons accoles dans une gelule, la langue active en vert doux */
-    #aeroPanel #aeroLang {{
+    /* Boutons +/- du zoom de la fenetre de revue */
+    #aeroPanel QToolButton#aeroZoomButton {{
         background: {ground_3};
         border: 1px solid {border_soft};
-        border-radius: 16px;
-    }}
-    #aeroPanel QPushButton#aeroLangBtn {{
-        background: transparent;
-        border: 1px solid transparent;
         border-radius: 13px;
-        color: {fg_2};
-        font-family: "{title}";
-        font-size: 9pt;
+        color: {fg_1};
+        font-size: 13pt;
         font-weight: 600;
         padding: 0;
     }}
-    #aeroPanel QPushButton#aeroLangBtn:hover {{
+    #aeroPanel QToolButton#aeroZoomButton:hover {{
         background: {ground_4};
-        color: {fg_0};
-    }}
-    #aeroPanel QPushButton#aeroLangBtn[active="true"] {{
-        background: {green_soft};
-        border-color: {green};
         color: {fg_0};
     }}
 

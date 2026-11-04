@@ -27,9 +27,8 @@ STUB_SLOW = STUB_OK.replace(
     "time.sleep(1.5)\nhits = [", 1)
 STUB_CROPS = STUB_OK.replace(
     '"conf": 0.9, "crop_px": 200}',
-    '"conf": 0.9, "crop_px": 200, "crop": {"thumb": "t_" + it["id"].replace(":", "_") + ".jpg", '
-    '"big": "b_" + it["id"].replace(":", "_") + ".jpg", "win": 100, '
-    '"x0": it["x_est"] + 1.0 - 50, "y0": it["y_est"] + 1.0 - 50}}')
+    '"conf": 0.9, "crop_px": 200, "crop": {"big": "b_" + it["id"].replace(":", "_") + ".jpg", "win": 200, '
+    '"x0": it["x_est"] + 1.0 - 100, "y0": it["y_est"] + 1.0 - 100}}')
 STUB_FAIL = "import sys\nsys.stderr.write('boom')\nsys.exit(3)\n"
 
 
@@ -452,13 +451,17 @@ def test_gated_detections_are_not_placed_and_are_counted(install, confirmed):
 
 # -- portee : tous les marqueurs ---------------------------------------------
 
-def test_collect_all_skips_markers_without_two_projections(ms, install, confirmed):
+def test_collect_all_skips_only_markers_without_a_3d_position(ms, install, confirmed):
     chunk, first, cams = confirmed
-    chunk.markers.append(ms.Marker("GCP2", position=ms.Vector(0, 0, 0)))
+    chunk.markers.append(ms.Marker("NOPOS"))                     # ni position ni coordonnees
+    chunk.markers.append(ms.Marker("GCP2", position=ms.Vector(0, 0, 0)))   # aucun pointage, mais une position
     items, used, ignored = aigcp.collect_all(chunk)
-    assert used == 1 and ignored == 1
-    assert items and all(it["label"] == "GCP1" and it["id"].startswith("0:") for it in items)
+    assert used == 2 and ignored == 1
+    labels = {it["label"] for it in items}
+    assert labels == {"GCP1", "GCP2"}
     assert [it["image_path"] for it in items] == sorted(it["image_path"] for it in items)
+    unpinned = [it for it in items if it["label"] == "GCP2"]
+    assert unpinned and all(it["gate_m"] is None and it["rescue"] is True for it in unpinned)
 
 
 def test_scope_all_places_proposals_for_every_confirmed_marker(ms, install, confirmed):
@@ -476,12 +479,12 @@ def test_scope_all_places_proposals_for_every_confirmed_marker(ms, install, conf
     assert len(state.aigcp_applied) == 4
 
 
-def test_scope_all_without_confirmed_marker_says_so(install, world):
-    _chunk, marker, cams = world
-    del marker.projections[cams[1]]           # une seule projection : position non confirmee
+def test_scope_all_without_any_marker_position_says_so(install, ms):
+    marker = ms.Marker("SANS")
+    ms.app.document.chunk = ms.Chunk([], [marker])
     state = make_state(marker)
     assert aigcp.start(state, "damier", "all") is False
-    assert "2 projections" in state.panel.statuses[-1]
+    assert "position 3D" in state.panel.statuses[-1]
 
 
 # -- choix memorises ---------------------------------------------------------
@@ -706,8 +709,8 @@ def test_a_finished_detection_opens_the_review(reviewed):
     assert rev.labels() == ["RING"] and len(rev.entries_for("RING")) == 6
     assert state.panel.calls[-1] == "open_review"
     entry = rev.entries[0]
-    assert entry["thumb"].endswith(".jpg") and entry["big"].endswith(".jpg") and review.has_crop(entry)
-    assert os.path.basename(os.path.dirname(entry["thumb"])) == "crops"
+    assert entry["big"].endswith(".jpg") and review.has_crop(entry)
+    assert os.path.basename(os.path.dirname(entry["big"])) == "crops"
 
 
 def test_thumbnail_and_photo_coordinates_agree():
@@ -715,6 +718,21 @@ def test_thumbnail_and_photo_coordinates_agree():
     assert review.to_view(entry, 1000.0, 1500.0, 320) == pytest.approx((160.0, 160.0))
     u, v = review.to_view(entry, 1010.0, 1490.0, 640)
     assert review.to_source(entry, u, v, 640) == pytest.approx((1010.0, 1490.0))
+
+
+def test_zoom_shows_less_or_more_of_the_photo_around_the_point():
+    entry = {"win": 200.0, "x0": 900.0, "y0": 1400.0, "ai_x": 1000.0, "ai_y": 1500.0}
+    assert review.view_rect(entry, 1.0)[2] == pytest.approx(100.0)       # moitie de la fenetre
+    assert review.view_rect(entry, 0.5)[2] == pytest.approx(200.0)       # toute la fenetre
+    assert review.view_rect(entry, 4.0)[2] == pytest.approx(25.0)
+    for zoom in (0.5, 1.0, 2.0, 4.0):
+        assert review.to_view(entry, 1000.0, 1500.0, 300, zoom) == pytest.approx((150.0, 150.0))
+        u, v = review.to_view(entry, 1012.0, 1491.0, 300, zoom)
+        assert review.to_source(entry, u, v, 300, zoom) == pytest.approx((1012.0, 1491.0))
+    # Le meme carre, dans l'image recadree enregistree de 960 px pour une fenetre de 200 px.
+    left, top, side = review.source_rect(entry, 1.0, 960)
+    assert (left, top, side) == pytest.approx((240.0, 240.0, 480.0))
+    assert review.source_rect(entry, 0.5, 960) == pytest.approx((0.0, 0.0, 960.0))
 
 
 def test_an_entry_without_thumbnail_cannot_be_refined(install, ring):
@@ -733,6 +751,7 @@ def test_remove_gives_back_the_previous_point_and_logs_a_negative(reviewed):
     assert msapi.get_projection(marker, entry["camera"]) is None
     assert msapi.is_proposal(marker, entry["camera"]) is False
     assert all(t[1] is not entry["camera"] for t in state.aigcp_applied)
+    assert entry in state.aigcp_log and entry["state"] == review.REMOVED
     assert review.remove(state, rev, entry) is False                 # deja retire
     row = feedback_rows()[-1]
     assert row["action"] == "rejected" and row["marker"] == "RING" and row["type"] == "damier"
@@ -818,3 +837,40 @@ def test_a_detection_with_nothing_kept_leaves_no_review(install, ring, monkeypat
     aigcp.start(state, "damier", "marker")
     wait_done(state)
     assert state.aigcp_review is None
+
+
+# -- ouverture automatique du Review panel et journal cumule -----------------------------
+
+def test_the_review_does_not_open_when_the_setting_is_off(install, ring):
+    chunk, marker, cams = ring
+    state = make_state(marker)
+    state.option = lambda key: key != "ai_auto_review"
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    assert state.aigcp_review is not None and "open_review" not in state.panel.calls
+
+
+def test_the_review_opens_by_default(install, ring):
+    chunk, marker, cams = ring
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    assert state.panel.calls.count("open_review") == 1
+
+
+def test_the_log_accumulates_detections_and_forgets_cleared_proposals(install, ring):
+    chunk, marker, cams = ring
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    first = list(state.aigcp_review.entries)
+    assert len(state.aigcp_log) == 6
+    review.refine(state, state.aigcp_review, first[0], 10.0, 20.0)
+    aigcp.start(state, "damier", "marker")           # nouvelle detection : 5 propositions, la 1re est pointee
+    wait_done(state)
+    assert len(state.aigcp_log) == 6
+    states = [e["state"] for e in state.aigcp_log]
+    assert states.count(review.REFINED) == 1
+    aigcp.clear(state)
+    assert all(e["state"] != review.KEPT for e in state.aigcp_log)
+    history.clear()
