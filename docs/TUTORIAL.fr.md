@@ -323,3 +323,24 @@ Les réglages du poste sont dans `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`.
 [DEVELOPMENT.md](DEVELOPMENT.md).
 
 AeroTools est fait par [HELIX AERO](https://helix.aero). Code source : [github.com/helix-aero/AeroTools](https://github.com/helix-aero/AeroTools).
+
+## 10. Fast Space : libérer de la place
+
+**Aero > FastSpace** ouvre une fenêtre qui trouve les anciens projets Metashape qui mangent ton disque. Choisis un disque (ou
+**Dossier…**) et clique **Scanner** : les projets les plus lourds arrivent en premier. Pour chacun tu vois le fichier `.psx`, les
+trois dossiers au-dessus (pour reconnaître le chantier), **Dense + profondeur** (ce que libère l'allègement, en Go), **Projet entier**
+(pour juger si le supprimer vaut la peine), la part de l'un dans l'autre, la date et l'état (*Ouvert*, *Ancien verrou* laissé par un
+plantage, ou dossier `.files` orphelin dont le `.psx` a disparu). Clique un en-tête pour trier. Survole la taille pour le détail
+(nuage dense, cartes de profondeur, points de liaison, MNT, orthos). Coche les projets, puis :
+
+- **Alléger (doux)** retire le nuage dense et les cartes de profondeur, qui se recalculent. L'alignement, les marqueurs, les MNT et
+  les orthos restent, et Metashape ouvre et enregistre chaque projet pour qu'il reste cohérent.
+- **Supprimer le projet (dur)** retire le projet en entier : le `.psx` et son dossier `.files`. Vérifie d'abord que les livrables
+  sont enregistrés ailleurs.
+
+Les deux demandent où ça part : **Corbeille** (restaurable, la place n'est libérée qu'en la vidant, indisponible sur un lecteur
+réseau) ou **Supprimer définitivement**, qui demande de taper `DELETE`. Un projet ouvert dans un Metashape (même sur un autre
+ordinateur) n'est jamais touché. Chaque action est écrite dans un journal (bouton **Journal des actions**).
+
+**Teste d'abord sur une copie.** Copie un petit projet (le `.psx` et son dossier `.files`) dans un dossier de test, scanne ce
+dossier, et essaie les deux modes sur la copie avant de l'utiliser sur du vrai travail.

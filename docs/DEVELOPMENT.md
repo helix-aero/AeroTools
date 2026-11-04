@@ -180,6 +180,22 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
   on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and 40 px): 98 to 100 % within 3 px.
   The guard is covered by tests but not measured on real roof false positives yet.
 
+## Fast Space
+
+`aerotools/tools/fastspace/`: `scanner.py` (no Qt, no Metashape) finds `.psx` and orphan `.files` folders and measures them
+(`<name>.files/<chunk>/<frame>/<part>[.N]/`: `dense_cloud`, `depth_maps`, `point_cloud` = tie points, `elevation`, `orthomosaic`...;
+a scan of 55 projects, 1.4 TB, takes about 1 s once the file system is cached). An open project is detected by its
+`.files/lock`: Metashape keeps it open, so opening it for writing fails (PermissionError); one we can open is a stale lock.
+`actions.py`: `lighten` goes through the Metashape API so the project stays consistent (`Document.open`, `chunk.remove` of the
+dense clouds and the depth map sets, `save`, then a read-only re-open that checks cameras and markers did not change); the Recycle Bin
+mode sends the `dense_cloud*` and `depth_maps*` folders to the bin first (`SHFileOperationW` with `FOF_ALLOWUNDO`, Windows asks
+itself when something is too big for the bin), then cleans the project's list. `delete_project` removes the `.psx` first, then the
+`.files` folder (a failure leaves a visible orphan). Permanent deletion needs the typed word `DELETE`. `lighten` runs in the main
+thread (the API does not work elsewhere); scanning and deleting run in a worker. Actions are logged to
+`%LOCALAPPDATA%\HELIX\AeroTools\fastspace\log.csv`. Tests use a fake Metashape document (`tests/test_fastspace.py`); the real
+behaviour of `chunk.remove` + `save` (does Metashape erase the files itself) and of a project whose folders are already in the
+bin must be checked on a copy of a project before trusting it on real work.
+
 ## Engines and installation
 
 `engines.py` (no Qt) knows which engines the external Python has (one short subprocess, cached 20 s): `light` (onnxruntime, numpy,

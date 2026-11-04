@@ -83,6 +83,9 @@ Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Met
 2. Double-cliquez sur **`CLICK HERE TO INSTALL.bat`** (à la racine du dossier décompressé). Un seul installeur fait tout : il ajoute le menu **Aero** à Metashape et met en place la détection IA (Python et un moteur de détection léger, environ 100 Mo, une à deux minutes). Une fenêtre affiche « Please wait... » avec la progression ; ne la fermez pas.
 3. Redémarrez Metashape. Le menu **Aero** est là.
 
+**Aero > FastSpace** scanne un disque à la recherche des anciens projets Metashape et libère de la place : les alléger (retirer le
+nuage dense et les cartes de profondeur) ou les supprimer, à la corbeille ou définitivement.
+
 Plus tard, **Aero > Vérifier les mises à jour…** apporte la dernière version depuis GitHub (avec la liste des changements et leur
 poids). L'installeur demande quel moteur de détection vous voulez (léger, précis, ou les deux) et s'il faut ajouter les outils de
 réentraînement ; les paramètres de FastGCP peuvent ensuite installer chacun d'un clic.

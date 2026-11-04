@@ -312,3 +312,24 @@ Per-machine settings live in `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`. Dev
 [DEVELOPMENT.md](DEVELOPMENT.md).
 
 AeroTools is made by [HELIX AERO](https://helix.aero). Source: [github.com/helix-aero/AeroTools](https://github.com/helix-aero/AeroTools).
+
+## 10. Fast Space: free disk space
+
+**Aero > FastSpace** opens a window that finds the old Metashape projects eating your disk. Pick a drive (or **Folder...**) and
+click **Scan**: the heaviest projects come first. For each one you see the `.psx` file, the three folders above it (to recognise
+the job), **Dense + depth maps** (what lightening frees, in GB), **Whole project** (to judge whether deleting it is worth it), the
+share of the first in the second, the date, and the state (*Open*, *Old lock* left by a crash, or an orphan `.files` folder
+whose `.psx` is gone). Click a header to sort. Hover the size to see the detail (dense cloud, depth maps, tie points, DEMs,
+orthos). Tick the projects, then:
+
+- **Lighten (gentle)** removes the dense cloud and the depth maps, which can be recomputed. The alignment, markers, DEMs and
+  orthos stay, and Metashape opens and saves each project so that it stays consistent.
+- **Delete project (hard)** removes the whole project: the `.psx` and its `.files` folder. Check that the deliverables are saved
+  elsewhere first.
+
+Both ask where it goes: **Recycle Bin** (you can restore it; the space is freed when you empty the bin; not available on a network
+drive) or **Delete permanently**, which asks you to type `DELETE`. A project that is open in a Metashape (even on another
+computer) is never touched. Every action is written to a log (the **Action log** button).
+
+**Test it on a copy first.** Copy a small project (the `.psx` and its `.files` folder) to a test folder, scan that folder, and
+try both modes on the copy before using it on real work.
