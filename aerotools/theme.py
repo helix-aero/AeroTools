@@ -162,6 +162,7 @@ def stylesheet():
       #aeroPlayOn / #aeroPlayOff  bouton rond Pause / Play
       #aeroState / #aeroStateOff  texte « Tool actif » / « Tool inactif »
       #aeroCounter    pastille-compteur
+      #aeroRun        bouton d'action vert (Run, Valider quand tout est fait)
       #aeroGhost      bouton secondaire discret ([round="true"] : rond,
                       [pill="true"] : gelule avec texte)
       #aeroZoomButton boutons +/- de la fenetre de revue
@@ -379,6 +380,24 @@ def stylesheet():
     #aeroPanel QPushButton#aeroGhost[round="true"]:checked {{
         background: {ground_4};
         border-color: {border_strong};
+    }}
+
+    /* Bouton d'action : meme vert que le Play */
+    #aeroPanel QPushButton#aeroRun {{
+        background: {green};
+        border: none;
+        border-radius: 16px;
+        color: {green_on};
+        font-weight: 700;
+        padding: 0 14px;
+    }}
+    #aeroPanel QPushButton#aeroRun:hover {{
+        background: {green_bright};
+        color: {green_on};
+    }}
+    #aeroPanel QPushButton#aeroRun:disabled {{
+        background: {ground_2};
+        color: {fg_4};
     }}
 
     /* Boutons +/- du zoom de la fenetre de revue */

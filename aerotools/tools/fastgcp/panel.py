@@ -927,6 +927,18 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._eyebrow_aigcp = _eyebrow(i18n.t("panel.aigcp"))
         layout.addWidget(self._eyebrow_aigcp)
 
+        actions = QtWidgets.QHBoxLayout()
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(theme.PAD)
+        self.aigcp_button = self._tool_button("aigcp.run", self._on_aigcp_run)
+        self.aigcp_button.setObjectName("aeroRun")
+        self.aigcp_clear_button = self._tool_button("aigcp.clear", self._on_aigcp_clear)
+        self.aigcp_review_button = self._tool_button("aigcp.review", self._on_aigcp_review)
+        actions.addWidget(self.aigcp_button, 3)
+        actions.addWidget(self.aigcp_clear_button, 3)
+        actions.addWidget(self.aigcp_review_button, 3)
+        layout.addLayout(actions)
+
         choices = QtWidgets.QHBoxLayout()
         choices.setContentsMargins(0, 0, 0, 0)
         choices.setSpacing(theme.PAD)
@@ -934,17 +946,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                                      ("ignore", aigcp.IGNORES, 4)):
             choices.addWidget(self._build_combo(key, values), stretch)
         layout.addLayout(choices)
-
-        actions = QtWidgets.QHBoxLayout()
-        actions.setContentsMargins(0, 0, 0, 0)
-        actions.setSpacing(theme.PAD)
-        self.aigcp_button = self._tool_button("aigcp.run", self._on_aigcp_run)
-        self.aigcp_clear_button = self._tool_button("aigcp.clear", self._on_aigcp_clear)
-        self.aigcp_review_button = self._tool_button("aigcp.review", self._on_aigcp_review)
-        actions.addWidget(self.aigcp_button, 3)
-        actions.addWidget(self.aigcp_clear_button, 3)
-        actions.addWidget(self.aigcp_review_button, 2)
-        layout.addLayout(actions)
 
         self.aigcp_progress = QtWidgets.QProgressBar()
         self.aigcp_progress.setObjectName("aeroProgress")

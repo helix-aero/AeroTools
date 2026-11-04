@@ -1,15 +1,18 @@
 """Review panel : fenetre de revue des pointes de l'IA (Qt).
 
 A gauche les marqueurs qui ont des propositions, au milieu une vignette par photo :
-un recadrage autour du point propose, avec une croix rouge sur ce point. Un clic
-selectionne une vignette, un autre clic la deselectionne : on clique donc toutes les
-mauvaises, puis « Exclure » (ou clic droit). « Affiner » ouvre, l'une apres l'autre,
-chaque vignette selectionnee dans une grande fenetre : on clique le vrai centre,
-Entree valide et passe a la suivante ; le point devient un pointage manuel et la
-correction est gardee pour le futur reentrainement (voir review.py).
+un recadrage autour du point propose, avec une croix rouge sur ce point. A droite, un
+panneau : zoom dans les vignettes et reglages d'affichage (exposition, contraste,
+saturation, nettete), qui ne servent qu'a l'oeil (voir imageadjust.py).
 
-Le curseur +/- zoome dans les vignettes (plus ou moins de contexte autour du point).
-Ctrl + molette agrandit ou reduit les vignettes elles-memes.
+Un clic selectionne une vignette, un autre clic la deselectionne : on clique donc toutes les
+mauvaises, puis « Exclure » (ou clic droit). « Affiner » ouvre les vignettes selectionnees
+dans UNE grande fenetre : on clique le vrai centre de chacune (molette = zoom, bouton du
+milieu = deplacer), « Suivant » passe a la suivante, « Valider » pose les points ; chaque
+point devient un pointage manuel et la correction est gardee pour le futur
+reentrainement (voir review.py). Une vignette deja affinee peut l'etre a nouveau.
+
+Molette sur les vignettes : Maj = zoom dans les vignettes, Ctrl = taille des vignettes.
 
 Chaque decision est appliquee tout de suite au projet. Aucun appel direct a Metashape :
 tout passe par review.py et msapi.
@@ -17,7 +20,7 @@ tout passe par review.py et msapi.
 
 from ... import config, i18n, journal, msapi, theme
 from ...qt import QShortcut, QtCore, QtGui, QtWidgets, modifiers
-from . import photos, review
+from . import adjust_panel, imageadjust, photos, review
 
 SECTION = "aigcp"
 THUMB_KEY = "review_thumb"
@@ -25,7 +28,9 @@ ZOOM_KEY = "review_zoom"
 DEFAULT_THUMB = 170
 MIN_THUMB, MAX_THUMB, THUMB_STEP = 96, 360, 20
 DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP = 100, 50, 400, 25
-REFINE_VIEW = 640
+REFRESH_MS = 70                       # attente apres un reglage avant de repeindre les images
+VIEW_MIN = 560                        # cote mini de la grande vue d'affinage
+VIEW_ZOOM_STEP = 0.8                  # un cran de molette dans la vue d'affinage
 ROLE_ENTRY = QtCore.Qt.UserRole
 
 
@@ -65,15 +70,39 @@ def zoom_percent():
     return _saved(ZOOM_KEY, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM)
 
 
-def _button(text_key, handler):
+def _button(text_key, handler, object_name="aeroGhost", width=96):
     button = QtWidgets.QPushButton(i18n.t(text_key))
-    button.setObjectName("aeroGhost")
+    button.setObjectName(object_name)
     button.setProperty("pill", True)
     button.setCursor(QtCore.Qt.PointingHandCursor)
     button.setFixedHeight(32)
-    button.setMinimumWidth(96)
+    button.setMinimumWidth(width)
+    button.setAutoDefault(False)
     button.clicked.connect(lambda *_args: handler())
     return button
+
+
+def _restyle(widget, object_name):
+    """Change l'objectName d'un widget et relance son style (QSS)."""
+    if widget.objectName() == object_name:
+        return
+    widget.setObjectName(object_name)
+    style = widget.style()
+    style.unpolish(widget)
+    style.polish(widget)
+
+
+def _timer(parent, handler):
+    timer = QtCore.QTimer(parent)
+    timer.setSingleShot(True)
+    timer.timeout.connect(handler)
+    return timer
+
+
+def _event_pos(event):
+    getter = getattr(event, "position", None)
+    point = getter() if getter is not None else event.pos()
+    return float(point.x()), float(point.y())
 
 
 def _cross(painter, x, y, arm, gap, color, width):
@@ -87,7 +116,10 @@ def _cross(painter, x, y, arm, gap, color, width):
 
 _RED = (255, 74, 46)
 _GREEN = (60, 220, 120)
-_DARK_RED = (235, 60, 60)
+_DARK_RED = (225, 55, 55)
+_WHITE = (255, 255, 255)
+STATUS_TEXTS = {review.KEPT: "review.status_kept", review.REMOVED: "review.status_removed",
+                review.REFINED: "review.status_refined", review.ACCEPTED: "review.status_accepted"}
 
 
 def _load(cache, path):
@@ -110,15 +142,56 @@ def _paint_crop(painter, entry, size, zoom, cache):
     return True
 
 
-def render_thumb(entry, size, zoom, cache):
-    """Pastille carree de `size` px : recadrage, croix sur le point de l'IA, etat de la decision."""
-    canvas = QtGui.QPixmap(size, size)
-    canvas.fill(QtGui.QColor(45, 45, 45))
+def _badge(painter, size, state):
+    """Pastille de statut en haut a droite : coche (affinee, validee) ou croix (exclue)."""
+    if state not in (review.REMOVED, review.REFINED, review.ACCEPTED):
+        return
+    d = max(16, size // 8)
+    x, y = size - d - 4, 4
+    painter.save()
+    painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+    if state == review.REMOVED:
+        fill, mark = QtGui.QColor(*_DARK_RED), QtGui.QColor(*_WHITE)
+    elif state == review.REFINED:
+        fill, mark = QtGui.QColor(*_GREEN), QtGui.QColor(*_WHITE)
+    else:
+        fill, mark = QtGui.QColor(30, 30, 30, 200), QtGui.QColor(*_GREEN)
+    painter.setPen(QtGui.QPen(QtGui.QColor(*_GREEN), 1.5) if state == review.ACCEPTED else QtCore.Qt.NoPen)
+    painter.setBrush(fill)
+    painter.drawEllipse(QtCore.QRectF(x, y, d, d))
+    pen = QtGui.QPen(mark, max(1.6, d / 9.0))
+    pen.setCapStyle(QtCore.Qt.RoundCap)
+    pen.setJoinStyle(QtCore.Qt.RoundJoin)
+    painter.setPen(pen)
+    painter.setBrush(QtCore.Qt.NoBrush)
+    if state == review.REMOVED:
+        a = d * 0.3
+        painter.drawLine(QtCore.QPointF(x + a, y + a), QtCore.QPointF(x + d - a, y + d - a))
+        painter.drawLine(QtCore.QPointF(x + d - a, y + a), QtCore.QPointF(x + a, y + d - a))
+    else:
+        painter.drawPolyline([QtCore.QPointF(x + d * 0.27, y + d * 0.52),
+                              QtCore.QPointF(x + d * 0.44, y + d * 0.68),
+                              QtCore.QPointF(x + d * 0.74, y + d * 0.34)])
+    painter.restore()
+
+
+def render_thumb(entry, size, zoom, cache, adjust=None):
+    """Pastille carree de `size` px : recadrage regle, croix sur le point de l'IA, statut."""
+    base = QtGui.QImage(size, size, QtGui.QImage.Format_RGB32)
+    base.fill(QtGui.QColor(45, 45, 45))
+    painter = QtGui.QPainter(base)
+    try:
+        painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
+        has_image = _paint_crop(painter, entry, size, zoom, cache)
+    finally:
+        painter.end()
+    if has_image and adjust is not None:
+        base = imageadjust.apply_image(base, adjust)
+    canvas = QtGui.QPixmap.fromImage(base)
     painter = QtGui.QPainter(canvas)
     try:
         painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
-        painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
-        if _paint_crop(painter, entry, size, zoom, cache):
+        if has_image:
             u, v = review.to_view(entry, entry["ai_x"], entry["ai_y"], size, zoom)
             arm, gap = max(8, size // 7), max(3, size // 40)
             _cross(painter, u, v, arm, gap, _RED, 2)
@@ -131,150 +204,285 @@ def render_thumb(entry, size, zoom, cache):
                              i18n.t("review.no_crop"))
         # Confiance en haut a gauche.
         painter.fillRect(0, 0, 38, 16, QtGui.QColor(0, 0, 0, 150))
-        painter.setPen(QtGui.QColor(255, 255, 255))
+        painter.setPen(QtGui.QColor(*_WHITE))
         painter.drawText(4, 12, "{:.2f}".format(entry["conf"]))
         if entry["state"] == review.REMOVED:
-            painter.fillRect(0, 0, size, size, QtGui.QColor(0, 0, 0, 150))
-            pen = QtGui.QPen(QtGui.QColor(*_DARK_RED))
-            pen.setWidth(4)
-            painter.setPen(pen)
-            painter.drawLine(size // 4, size // 4, 3 * size // 4, 3 * size // 4)
-            painter.drawLine(3 * size // 4, size // 4, size // 4, 3 * size // 4)
-        elif entry["state"] in (review.REFINED, review.ACCEPTED):
-            pen = QtGui.QPen(QtGui.QColor(*_GREEN))
-            pen.setWidth(5)
-            painter.setPen(pen)
-            painter.drawRect(2, 2, size - 4, size - 4)
+            painter.fillRect(0, 0, size, size, QtGui.QColor(0, 0, 0, 120))
+        _badge(painter, size, entry["state"])
     finally:
         painter.end()
     return canvas
 
 
-class _ClickLabel(QtWidgets.QLabel):
-    """Grande vignette : un clic (ou un glisse) pose le centre de la cible."""
+class _RefineView(QtWidgets.QWidget):
+    """Grande vue de la photo : clic = poser le centre, molette = zoom, bouton du milieu = deplacer."""
 
-    def __init__(self, pixmap, entry, zoom, on_point, parent=None):
-        super(_ClickLabel, self).__init__(parent)
-        self._entry = entry
-        self._zoom = zoom
-        self._on_point = on_point
-        self._point = None
-        self.setPixmap(pixmap)
-        self.setFixedSize(pixmap.size())
+    def __init__(self, on_pick, parent=None):
+        super(_RefineView, self).__init__(parent)
+        self._on_pick = on_pick
+        self._entry = None
+        self._image = None
+        self._center = (0.0, 0.0)
+        self._side = 1.0
+        self._pick = None
+        self._current = None           # point deja affine de cette vignette, montre en pale
+        self._pan = None
+        self.setMinimumSize(VIEW_MIN, VIEW_MIN)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.setCursor(QtCore.Qt.CrossCursor)
 
-    @staticmethod
-    def _pos(event):
-        getter = getattr(event, "position", None)
-        point = getter().toPoint() if getter is not None else event.pos()
-        return float(point.x()), float(point.y())
-
-    def _set(self, event):
-        self._point = self._pos(event)
+    def show_entry(self, entry, image, side, pick):
+        self._entry, self._image = entry, image
+        self._side = side
+        self._center = (entry["ai_x"], entry["ai_y"])
+        self._pick = pick
+        self._current = (entry["x"], entry["y"]) if entry["state"] == review.REFINED else None
         self.update()
-        self._on_point(*self._point)
+
+    def set_image(self, image):
+        self._image = image
+        self.update()
+
+    def set_pick(self, pick):
+        self._pick = pick
+        self.update()
+
+    def _scale(self):
+        return min(self.width(), self.height()) / self._side
+
+    def _to_photo(self, u, v):
+        scale = self._scale()
+        return (self._center[0] + (u - self.width() / 2.0) / scale,
+                self._center[1] + (v - self.height() / 2.0) / scale)
+
+    def _to_widget(self, x, y):
+        scale = self._scale()
+        return ((x - self._center[0]) * scale + self.width() / 2.0,
+                (y - self._center[1]) * scale + self.height() / 2.0)
+
+    def _pick_at(self, event):
+        self._pick = self._to_photo(*_event_pos(event))
+        self.update()
+        self._on_pick(*self._pick)
 
     def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.LeftButton:
-            self._set(event)
+        if event.button() == QtCore.Qt.LeftButton and self._entry is not None:
+            self._pick_at(event)
+        elif event.button() == QtCore.Qt.MiddleButton:
+            self._pan = _event_pos(event)
+            self.setCursor(QtCore.Qt.ClosedHandCursor)
 
     def mouseMoveEvent(self, event):
-        if event.buttons() & QtCore.Qt.LeftButton:
-            self._set(event)
+        if self._pan is not None:
+            u, v = _event_pos(event)
+            scale = self._scale()
+            self._center = (self._center[0] - (u - self._pan[0]) / scale,
+                            self._center[1] - (v - self._pan[1]) / scale)
+            self._pan = (u, v)
+            self.update()
+        elif event.buttons() & QtCore.Qt.LeftButton and self._entry is not None:
+            self._pick_at(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == QtCore.Qt.MiddleButton and self._pan is not None:
+            self._pan = None
+            self.setCursor(QtCore.Qt.CrossCursor)
+
+    def wheelEvent(self, event):
+        if self._entry is None:
+            return
+        delta = event.angleDelta().y()
+        if not delta:
+            return
+        u, v = _event_pos(event)
+        before = self._to_photo(u, v)
+        win = float(self._entry["win"])
+        side = self._side * (VIEW_ZOOM_STEP if delta > 0 else 1.0 / VIEW_ZOOM_STEP)
+        self._side = max(win / 16.0, min(win * 1.2, side))
+        scale = self._scale()                  # le point sous le curseur reste sous le curseur
+        self._center = (before[0] - (u - self.width() / 2.0) / scale,
+                        before[1] - (v - self.height() / 2.0) / scale)
+        self.update()
+        event.accept()
 
     def paintEvent(self, event):
-        super(_ClickLabel, self).paintEvent(event)
         painter = QtGui.QPainter(self)
         try:
-            u, v = review.to_view(self._entry, self._entry["ai_x"], self._entry["ai_y"],
-                                  REFINE_VIEW, self._zoom)
-            _cross(painter, u, v, 26, 6, _RED, 2)
-            if self._point is not None:
-                _cross(painter, self._point[0], self._point[1], 26, 4, _GREEN, 2)
+            painter.fillRect(self.rect(), QtGui.QColor(45, 45, 45))
+            if self._entry is None:
+                return
+            if self._image is not None and not self._image.isNull():
+                painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
+                painter.save()
+                scale = self._scale()
+                painter.translate(self.width() / 2.0, self.height() / 2.0)
+                painter.scale(scale, scale)
+                painter.translate(-self._center[0], -self._center[1])
+                entry = self._entry
+                painter.drawImage(QtCore.QRectF(entry["x0"], entry["y0"], entry["win"], entry["win"]),
+                                  self._image)
+                painter.restore()
+            ai = self._to_widget(self._entry["ai_x"], self._entry["ai_y"])
+            _cross(painter, ai[0], ai[1], 26, 6, _RED, 2)
+            if self._pick is None and self._current is not None:
+                u, v = self._to_widget(*self._current)
+                _cross(painter, u, v, 20, 5, (60, 220, 120), 1)
+            if self._pick is not None:
+                u, v = self._to_widget(*self._pick)
+                _cross(painter, u, v, 26, 4, _GREEN, 2)
         finally:
             painter.end()
 
 
 class RefineDialog(QtWidgets.QDialog):
-    """Fenetre modale : l'operateur clique le vrai centre de la cible, Entree valide."""
+    """Fenetre modale d'affinage : toutes les vignettes choisies, l'une apres l'autre.
 
-    def __init__(self, entry, zoom, number, total, parent=None):
+    Les points ne sont poses qu'a « Valider » ; `picks()` les rend. « Annuler » n'en pose aucun.
+    """
+
+    def __init__(self, entries, zoom, model, parent=None):
         super(RefineDialog, self).__init__(parent)
-        self._entry = entry
+        self._entries = list(entries)
         self._zoom = zoom
-        self._chosen = None
+        self._model = model
+        self._picks = {}
+        self._index = 0
+        self._source = None
         root = _styled_root(self)
-        self.setWindowTitle(i18n.t("review.refine_title", label=entry["label"],
-                                   camera=entry["camera_label"], n=number, total=total))
+        self.resize(1010, 760)
         layout = QtWidgets.QVBoxLayout(root)
         layout.setContentsMargins(theme.PAD_L, theme.PAD_L, theme.PAD_L, theme.PAD_L)
         layout.setSpacing(theme.PAD)
-        hint = QtWidgets.QLabel(i18n.t("review.refine_hint"))
-        hint.setObjectName("aeroMeta")
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-        layout.addWidget(_ClickLabel(self._render(), entry, zoom, self._on_point), 0, QtCore.Qt.AlignCenter)
-        row = QtWidgets.QHBoxLayout()
-        row.addStretch(1)
-        self._cancel = self._make_button("review.refine_cancel", self.reject)
-        self._ok = self._make_button("review.refine_ok", self.accept)
-        self._ok.setDefault(True)
-        self._ok.setEnabled(False)
-        row.addWidget(self._cancel)
-        row.addWidget(self._ok)
-        layout.addLayout(row)
 
-    def _render(self):
-        canvas = QtGui.QPixmap(REFINE_VIEW, REFINE_VIEW)
-        canvas.fill(QtGui.QColor(45, 45, 45))
-        painter = QtGui.QPainter(canvas)
-        try:
-            painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
-            _paint_crop(painter, self._entry, REFINE_VIEW, self._zoom, {})
-        finally:
-            painter.end()
-        return canvas
+        self.header = QtWidgets.QLabel()
+        self.header.setObjectName("aeroValue")
+        layout.addWidget(self.header)
 
-    @staticmethod
-    def _make_button(text_key, handler):
-        button = QtWidgets.QPushButton(i18n.t(text_key))
-        button.setObjectName("aeroGhost")
-        button.setProperty("pill", True)
-        button.setCursor(QtCore.Qt.PointingHandCursor)
-        button.setFixedHeight(32)
-        button.setMinimumWidth(110)
-        button.setAutoDefault(True)
-        button.clicked.connect(lambda *_args: handler())
-        return button
+        body = QtWidgets.QHBoxLayout()
+        body.setSpacing(theme.PAD)
+        self.view = _RefineView(self._on_pick)
+        body.addWidget(self.view, 1)
+        self.panel = adjust_panel.AdjustPanel(model, hint_key="review.refine_hint")
+        body.addWidget(self.panel, 0)
+        layout.addLayout(body, 1)
 
-    def _on_point(self, u, v):
-        self._chosen = review.to_source(self._entry, u, v, REFINE_VIEW, self._zoom)
-        self._ok.setEnabled(True)
+        bottom = QtWidgets.QHBoxLayout()
+        bottom.setSpacing(theme.PAD)
+        self.progress = QtWidgets.QProgressBar()
+        self.progress.setObjectName("aeroProgress")
+        self.progress.setTextVisible(False)
+        self.progress.setRange(0, max(1, len(self._entries)))
+        bottom.addWidget(self.progress, 1)
+        self.progress_label = QtWidgets.QLabel()
+        self.progress_label.setObjectName("aeroMeta")
+        self.progress_label.setMinimumWidth(110)
+        bottom.addWidget(self.progress_label)
+        self.cancel_button = _button("review.refine_cancel", self.reject)
+        self.next_button = _button("review.refine_next", self._next)
+        self.validate_button = _button("review.refine_validate_exit", self.accept, width=150)
+        for button in (self.cancel_button, self.next_button, self.validate_button):
+            bottom.addWidget(button)
+        layout.addLayout(bottom)
 
-    def chosen(self):
-        """(x, y) en position de la photo, ou None."""
-        return self._chosen
+        for key in ("Return", "Enter"):
+            shortcut = QShortcut(QtGui.QKeySequence(key), self)
+            shortcut.setContext(QtCore.Qt.WindowShortcut)
+            shortcut.activated.connect(self._on_enter)
+
+        self._refresh = _timer(self, self._reload_image)
+        model.subscribe(self._on_model)
+        self.finished.connect(lambda *_args: model.unsubscribe(self._on_model))
+        self._show(0)
+
+    # -- entree courante ------------------------------------------------------------
+
+    def _entry(self):
+        return self._entries[self._index]
+
+    def _show(self, index):
+        self._index = index
+        entry = self._entry()
+        source = QtGui.QImage(entry["big"]) if review.has_crop(entry) else None
+        self._source = source if source is not None and not source.isNull() else None
+        text = i18n.t("review.refine_title", label=entry["label"], camera=entry["camera_label"])
+        position = i18n.t("review.refine_photo", n=index + 1, total=len(self._entries))
+        self.header.setText("{}  ·  {}".format(text, position))
+        self.setWindowTitle("{} ({})".format(text, position))
+        side = review.view_rect(entry, self._zoom)[2]
+        self.view.show_entry(entry, self._adjusted(), side, self._picks.get(index))
+        self._update_state()
+
+    def _adjusted(self):
+        return imageadjust.apply_image(self._source, self._model) if self._source is not None else None
+
+    def _reload_image(self):
+        self.view.set_image(self._adjusted())
+
+    def _on_model(self):
+        self._refresh.start(REFRESH_MS)
+
+    # -- decisions ---------------------------------------------------------------------
+
+    def _on_pick(self, x, y):
+        self._picks[self._index] = (x, y)
+        self._update_state()
+
+    def _update_state(self):
+        total, done = len(self._entries), len(self._picks)
+        self.progress.setValue(done)
+        self.progress_label.setText(i18n.t("review.refine_progress", done=done, total=total))
+        self.next_button.setEnabled(total > 1)
+        complete = done == total
+        self.validate_button.setEnabled(done > 0)
+        self.validate_button.setText(i18n.t("review.refine_validate" if complete
+                                            else "review.refine_validate_exit"))
+        _restyle(self.validate_button, "aeroRun" if complete else "aeroGhost")
+
+    def _next(self):
+        """Passe a la prochaine vignette sans point (en bouclant) ; sinon a la suivante."""
+        total = len(self._entries)
+        for step in range(1, total + 1):
+            index = (self._index + step) % total
+            if index not in self._picks:
+                self._show(index)
+                return
+        self._show((self._index + 1) % total)
+
+    def _on_enter(self):
+        if self._index not in self._picks:
+            return
+        if len(self._picks) == len(self._entries):
+            self.accept()
+        else:
+            self._next()
+
+    def picks(self):
+        """[(entree, x, y)] des points poses, en position de la photo."""
+        return [(self._entries[i], x, y) for i, (x, y) in sorted(self._picks.items())]
 
 
 class _ThumbList(QtWidgets.QListWidget):
-    """Liste de vignettes : Ctrl + molette change la taille des vignettes."""
+    """Liste de vignettes : Ctrl + molette = taille des vignettes, Maj + molette = zoom dedans."""
 
-    def __init__(self, on_resize, parent=None):
+    def __init__(self, on_resize, on_zoom, parent=None):
         super(_ThumbList, self).__init__(parent)
         self._on_resize = on_resize
+        self._on_zoom = on_zoom
 
     def wheelEvent(self, event):
-        if modifiers(event)[0]:
-            delta = event.angleDelta().y()
+        ctrl, shift, _alt = modifiers(event)
+        if ctrl or shift:
+            # Qt peut transformer Maj + molette en defilement horizontal : on lit les deux axes.
+            delta = event.angleDelta().y() or event.angleDelta().x()
             if delta:
-                self._on_resize(1 if delta > 0 else -1)
+                (self._on_resize if ctrl else self._on_zoom)(1 if delta > 0 else -1)
             event.accept()
             return
         super(_ThumbList, self).wheelEvent(event)
 
 
 class ReviewDialog(QtWidgets.QDialog):
-    """Marqueurs a gauche, vignettes au milieu, decisions en bas. Non modale."""
+    """Marqueurs a gauche, vignettes au milieu, panneau de reglages a droite. Non modale."""
 
     def __init__(self, state, rev, parent=None):
         super(ReviewDialog, self).__init__(parent)
@@ -284,36 +492,14 @@ class ReviewDialog(QtWidgets.QDialog):
         self._thumb = thumb_size()
         self._zoom = zoom_percent() / 100.0
         self._items = {}
+        self.adjust = imageadjust.load()
         root = _styled_root(self)
         self.setWindowTitle(i18n.t("review.title"))
-        self.resize(1120, 740)
+        self.resize(1280, 760)
 
         layout = QtWidgets.QVBoxLayout(root)
         layout.setContentsMargins(theme.PAD_L, theme.PAD_L, theme.PAD_L, theme.PAD_L)
         layout.setSpacing(theme.PAD)
-
-        top = QtWidgets.QHBoxLayout()
-        hint = QtWidgets.QLabel(i18n.t("review.hint"))
-        hint.setObjectName("aeroMeta")
-        hint.setWordWrap(True)
-        top.addWidget(hint, 1)
-        self.zoom_out = self._zoom_button("−", -ZOOM_STEP)
-        top.addWidget(self.zoom_out)
-        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.slider.setObjectName("aeroSlider")
-        self.slider.setRange(MIN_ZOOM, MAX_ZOOM)
-        self.slider.setValue(int(round(self._zoom * 100)))
-        self.slider.setFixedWidth(110)
-        self.slider.valueChanged.connect(self._on_zoom)
-        self.slider.sliderReleased.connect(self._save_zoom)
-        top.addWidget(self.slider)
-        self.zoom_in = self._zoom_button("+", ZOOM_STEP)
-        top.addWidget(self.zoom_in)
-        self.zoom_label = QtWidgets.QLabel()
-        self.zoom_label.setObjectName("aeroMeta")
-        self.zoom_label.setFixedWidth(44)
-        top.addWidget(self.zoom_label)
-        layout.addLayout(top)
 
         body = QtWidgets.QHBoxLayout()
         body.setSpacing(theme.PAD)
@@ -322,7 +508,7 @@ class ReviewDialog(QtWidgets.QDialog):
         self.markers.setFixedWidth(190)
         self.markers.currentRowChanged.connect(self._on_marker)
         body.addWidget(self.markers)
-        self.thumbs = _ThumbList(self._resize_thumbs)
+        self.thumbs = _ThumbList(self._resize_thumbs, self._step_zoom)
         self.thumbs.setObjectName("aeroThumbs")
         self.thumbs.setViewMode(QtWidgets.QListView.IconMode)
         self.thumbs.setResizeMode(QtWidgets.QListView.Adjust)
@@ -337,6 +523,8 @@ class ReviewDialog(QtWidgets.QDialog):
         self.thumbs.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.thumbs.customContextMenuRequested.connect(self._on_menu)
         body.addWidget(self.thumbs, 1)
+        self.panel = adjust_panel.AdjustPanel(self.adjust, top=self._build_zoom(), hint_key="review.hint")
+        body.addWidget(self.panel, 0)
         layout.addLayout(body, 1)
 
         bottom = QtWidgets.QHBoxLayout()
@@ -359,8 +547,42 @@ class ReviewDialog(QtWidgets.QDialog):
             shortcut.setContext(QtCore.Qt.WindowShortcut)
             shortcut.activated.connect(handler)
 
+        self._refresh = _timer(self, self._repaint_all)
+        self.adjust.subscribe(self._on_adjust)
+        self.finished.connect(lambda *_args: self.adjust.unsubscribe(self._on_adjust))
         self._update_zoom_label()
         self._fill_markers()
+
+    def _build_zoom(self):
+        """Ligne de zoom, en haut du panneau de droite : plus fine qu'une barre en haut de la fenetre."""
+        box = QtWidgets.QWidget()
+        column = QtWidgets.QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(2)
+        line = QtWidgets.QHBoxLayout()
+        name = QtWidgets.QLabel(i18n.t("review.zoom"))
+        name.setObjectName("aeroMeta")
+        self.zoom_label = QtWidgets.QLabel()
+        self.zoom_label.setObjectName("aeroMeta")
+        self.zoom_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        line.addWidget(name, 1)
+        line.addWidget(self.zoom_label, 0)
+        column.addLayout(line)
+        row = QtWidgets.QHBoxLayout()
+        row.setSpacing(theme.PAD_S)
+        self.zoom_out = self._zoom_button("−", -ZOOM_STEP)
+        row.addWidget(self.zoom_out)
+        self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider.setObjectName("aeroSlider")
+        self.slider.setRange(MIN_ZOOM, MAX_ZOOM)
+        self.slider.setValue(int(round(self._zoom * 100)))
+        self.slider.valueChanged.connect(self._on_zoom)
+        self.slider.sliderReleased.connect(self._save_zoom)
+        row.addWidget(self.slider, 1)
+        self.zoom_in = self._zoom_button("+", ZOOM_STEP)
+        row.addWidget(self.zoom_in)
+        column.addLayout(row)
+        return box
 
     def _zoom_button(self, text, step):
         button = QtWidgets.QToolButton()
@@ -414,13 +636,17 @@ class ReviewDialog(QtWidgets.QDialog):
         self._update_buttons()
 
     def _paint_item(self, item, entry):
-        item.setIcon(QtGui.QIcon(render_thumb(entry, self._thumb, self._zoom, self._cache)))
+        item.setIcon(QtGui.QIcon(render_thumb(entry, self._thumb, self._zoom, self._cache, self.adjust)))
         item.setText(entry["camera_label"].split("_", 2)[-1])
-        item.setToolTip("{} · {:.2f}".format(entry["camera_label"], entry["conf"]))
+        item.setToolTip("{} · {:.2f} · {}".format(entry["camera_label"], entry["conf"],
+                                                  i18n.t(STATUS_TEXTS[entry["state"]])))
 
     def _repaint_all(self):
         for item, entry in self._items.values():
             self._paint_item(item, entry)
+
+    def _on_adjust(self):
+        self._refresh.start(REFRESH_MS)
 
     def _selected(self):
         out = []
@@ -442,6 +668,10 @@ class ReviewDialog(QtWidgets.QDialog):
         self._repaint_all()
         config.put(SECTION, THUMB_KEY, size)
 
+    def _step_zoom(self, direction):
+        """Maj + molette : meme effet que le curseur de zoom."""
+        self.slider.setValue(self.slider.value() + direction * ZOOM_STEP)
+
     def _update_zoom_label(self):
         self.zoom_label.setText("{}%".format(int(round(self._zoom * 100))))
 
@@ -462,8 +692,7 @@ class ReviewDialog(QtWidgets.QDialog):
         picked = [entry for _item, entry in self._selected()]
         self.exclude_button.setEnabled(any(e["state"] == review.KEPT for e in picked))
         self.restore_button.setEnabled(any(e["state"] == review.REMOVED for e in picked))
-        self.refine_button.setEnabled(any(
-            review.has_crop(e) and e["state"] in (review.KEPT, review.REMOVED) for e in picked))
+        self.refine_button.setEnabled(any(review.has_crop(e) for e in picked))
         self.validate_button.setEnabled(any(e["state"] == review.KEPT for e in self.review.entries))
 
     def _update_summary(self):
@@ -514,22 +743,25 @@ class ReviewDialog(QtWidgets.QDialog):
         self._refine(self._selected())
 
     def _refine(self, pairs):
-        """Ouvre chaque vignette dans la fenetre d'affinage, l'une apres l'autre."""
-        pairs = [(i, e) for i, e in pairs
-                 if review.has_crop(e) and e["state"] in (review.KEPT, review.REMOVED)]
+        """Ouvre les vignettes choisies dans la fenetre d'affinage, puis pose les points valides."""
+        pairs = [(i, e) for i, e in pairs if review.has_crop(e)]
+        if not pairs:
+            return
+        by_entry = {id(entry): item for item, entry in pairs}
         done = 0
-        for number, (item, entry) in enumerate(pairs, 1):
-            try:
-                dialog = RefineDialog(entry, max(1.0, self._zoom), number, len(pairs), self)
-                if not _exec(dialog) or dialog.chosen() is None:
-                    break
-                x, y = dialog.chosen()
-                if review.refine(self._state, self.review, entry, x, y):
-                    self._paint_item(item, entry)
-                    done += 1
-            except Exception as exc:
-                journal.write("revue IA : affinage : {!r}".format(exc))
-                break
+        try:
+            dialog = RefineDialog([e for _i, e in pairs], max(1.0, self._zoom), self.adjust, self)
+            if _exec(dialog):
+                for entry, x, y in dialog.picks():
+                    try:
+                        if review.refine(self._state, self.review, entry, x, y):
+                            self._paint_item(by_entry[id(entry)], entry)
+                            done += 1
+                    except Exception as exc:
+                        journal.write("revue IA : affinage : {!r}".format(exc))
+        except Exception as exc:
+            journal.write("revue IA : affinage : {!r}".format(exc))
+        self._repaint_all()           # les reglages ont pu changer dans la fenetre d'affinage
         if done:
             self.thumbs.clearSelection()
             self._after_change()

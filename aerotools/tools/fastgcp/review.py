@@ -222,9 +222,10 @@ def restore(state, review, entry):
 
 
 def refine(state, review, entry, x, y):
-    """Remplace la proposition par un pointage manuel en (x, y). Annulable par Ctrl+Z."""
-    if entry["state"] not in (KEPT, REMOVED):
-        return False
+    """Remplace la proposition par un pointage manuel en (x, y). Annulable par Ctrl+Z.
+
+    Marche sur toute entree, y compris une deja affinee ou validee : on peut la reprendre.
+    """
     marker, camera = entry["marker"], entry["camera"]
     before = msapi.get_projection(marker, camera)
     chunk = msapi.chunk()

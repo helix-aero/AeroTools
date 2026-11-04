@@ -129,11 +129,18 @@ green, blue or none). Buttons: **Run detection**, **Clear proposals**, **Review*
   - A click selects a thumbnail, another click unselects it: click every bad one, no Ctrl needed. **Exclude** (or right-click, or
     Delete) takes the selection out of the project at once and the previous point comes back; **Put back** undoes it. The buttons
     are grey when they have nothing to act on.
-  - **Refine...** (or Enter, or a double-click) opens the selected thumbnails one after the other in a large window: click the
-    true centre, Enter validates and moves to the next one, Esc stops. Each refined point becomes a manual pin (Ctrl+Z undoes it)
-    and its thumbnail turns green.
-  - The **+ / -** buttons and the short slider zoom *inside* the thumbnails (more or less context around the point, 50 to 400 %).
-    **Ctrl + mouse wheel** makes the thumbnails themselves bigger or smaller.
+  - **Refine...** (or Enter, or a double-click) opens the selected thumbnails in ONE large window, one photo at a time: click the
+    true centre (mouse wheel zooms, middle button pans), **Next** moves to the next photo still without a point, **Validate**
+    puts the points down. A bar at the bottom counts the photos picked (`3/15`); with fewer than all of them the button reads
+    *Validate and exit*, with all of them it turns green and reads *Validate*. **Cancel** puts nothing down. Each refined point
+    becomes a manual pin (Ctrl+Z undoes it). A refined (or validated) thumbnail can be refined again.
+  - Each thumbnail carries a small status tag in its top-right corner: a red cross (excluded), a green check (refined) or a
+    hollow check (validated as is). The same word is in the tooltip.
+  - **Right-hand panel.** *Zoom* (the short slider and the **+ / -** buttons) zooms *inside* the thumbnails (more or less context
+    around the point, 50 to 400 %); **Shift + mouse wheel** does the same, **Ctrl + mouse wheel** makes the thumbnails themselves
+    bigger or smaller. Under it, four viewing sliders: exposure, contrast, saturation and sharpness (`imageadjust.py`, numpy
+    shipped with Metashape). They only change what the eye sees, in the Review panel AND in the Refine window (same sliders,
+    same values, remembered between sessions); the photos, the crops and the points are never modified.
   - **Validate** turns every kept proposal into a manual pin, after a confirmation.
   The runner writes one wide crop per detection (`crops/` of the run folder); the window cuts the thumbnails out of it.
 - **PDF report.** After the usual pages, *Photos picked by the AI* shows, for every marker, one thumbnail per photo with the red

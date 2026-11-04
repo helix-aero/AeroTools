@@ -809,6 +809,22 @@ def test_a_removed_proposal_can_still_be_refined(reviewed):
     history.clear()
 
 
+def test_a_refined_or_validated_entry_can_be_refined_again(reviewed):
+    state, rev, marker, cams = reviewed
+    entry = rev.entries[2]
+    assert review.refine(state, rev, entry, 10.0, 20.0) is True
+    assert review.refine(state, rev, entry, 11.0, 21.0) is True            # deja affinee : on la reprend
+    assert entry["state"] == review.REFINED and (entry["x"], entry["y"]) == (11.0, 21.0)
+    assert msapi.get_projection(marker, entry["camera"]) == (11.0, 21.0, True)
+    other = rev.entries[0]
+    review.accept_kept(state, rev)
+    assert other["state"] == review.ACCEPTED
+    assert review.refine(state, rev, other, 5.0, 6.0) is True              # deja validee
+    assert other["state"] == review.REFINED
+    assert feedback_rows()[-1]["action"] == "refined"
+    history.clear()
+
+
 def test_validate_kept_pins_only_the_kept_ones(reviewed):
     state, rev, marker, cams = reviewed
     review.remove(state, rev, rev.entries[0])
