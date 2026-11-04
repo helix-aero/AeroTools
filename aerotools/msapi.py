@@ -148,11 +148,13 @@ def marker_label(marker):
         return ""
 
 
-def projection_cameras(marker, pinned_only=False):
+def projection_cameras(marker, without_proposals=False):
     """Cameras ou ce marqueur a deja une projection.
 
-    `pinned_only=True` ecarte les projections proposees par une detection
-    automatique (AIGCP) : seules comptent celles que l'operateur a posees.
+    `without_proposals=True` ecarte les projections proposees par la detection
+    IA de FastGCP (voir mark_proposal) et celles-la seulement : les autres
+    projections du projet (posees a la main ou calculees par Metashape)
+    restent.
 
     `marker.projections` ne s'itere pas de la meme facon selon la version :
     on essaie l'iteration directe, puis keys(), puis items().
@@ -185,21 +187,49 @@ def projection_cameras(marker, pinned_only=False):
                 cameras.append(cam)
         except Exception:
             continue
-    if pinned_only:
-        cameras = [cam for cam in cameras if is_pinned(marker, cam)]
+    if without_proposals:
+        cameras = [cam for cam in cameras if not is_proposal(marker, cam)]
     return cameras
 
 
-def is_pinned(marker, camera):
-    """False seulement si la projection est explicitement non posee a la main
-    (proposition de l'IA, point bleu de Metashape). Doute = pose."""
+# Projections posees par la detection IA et pas encore validees : (chunk, marqueur,
+# photo). Metashape ne distingue pas une proposition d'un point bleu qu'il a
+# lui-meme calcule : on s'en souvient ici, pour ne pas les compter comme pointees.
+_PROPOSALS = set()
+
+
+def _proposal_key(marker, camera):
+    return (chunk_key(chunk()), marker_label(marker), camera_key(camera))
+
+
+def mark_proposal(marker, camera):
+    _PROPOSALS.add(_proposal_key(marker, camera))
+
+
+def unmark_proposal(marker, camera):
+    _PROPOSALS.discard(_proposal_key(marker, camera))
+
+
+def is_proposal(marker, camera):
+    """Cette projection est-elle une proposition de l'IA encore non validee ?
+
+    Des que l'operateur la remplace par un pointage (pinned), elle n'en est plus une.
+    """
+    if not _PROPOSALS:
+        return False
+    key = _proposal_key(marker, camera)
+    if key not in _PROPOSALS:
+        return False
     projection = get_projection(marker, camera)
-    return projection is None or bool(projection[2])
+    if projection is None or projection[2]:
+        _PROPOSALS.discard(key)
+        return False
+    return True
 
 
 def projection_count(marker):
-    """Nombre de photos pointees a la main (les propositions de l'IA ne comptent pas)."""
-    return len(projection_cameras(marker, pinned_only=True))
+    """Nombre de photos avec une projection, propositions de l'IA exclues."""
+    return len(projection_cameras(marker, without_proposals=True))
 
 
 def marker_point(chk, marker):

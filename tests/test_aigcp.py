@@ -88,17 +88,29 @@ def wait_done(state, seconds=20.0):
 
 # -- msapi : projections posees, echelle, estimation -------------------------
 
-def test_projection_count_ignores_ai_proposals(world):
-    _chunk, marker, _cams = world
+def test_only_marked_proposals_are_left_out_of_the_count(world):
+    _chunk, marker, cams = world
+    # Point bleu calcule par Metashape (pas une proposition) : il compte, comme avant.
+    assert msapi.projection_count(marker) == 2
+    msapi.mark_proposal(marker, cams[1])
     assert msapi.projection_count(marker) == 1
     assert len(msapi.projection_cameras(marker)) == 2
-    assert [c.key for c in msapi.projection_cameras(marker, pinned_only=True)] == [1]
+    assert [c.key for c in msapi.projection_cameras(marker, without_proposals=True)] == [1]
 
 
-def test_unreadable_projection_counts_as_pinned(ms):
-    cam = ms.Camera(1, ms.Vector(0, 0, -10))
-    marker = ms.Marker("M", projections={cam: object()})
-    assert msapi.is_pinned(marker, cam) is True
+def test_validated_proposal_is_no_longer_one(ms, world):
+    _chunk, marker, cams = world
+    msapi.mark_proposal(marker, cams[1])
+    msapi.set_projection(marker, cams[1], 5.0, 6.0, pinned=True)
+    assert msapi.is_proposal(marker, cams[1]) is False
+    assert msapi.projection_count(marker) == 2
+
+
+def test_proposal_memory_is_per_chunk(ms, world):
+    chunk, marker, cams = world
+    msapi.mark_proposal(marker, cams[1])
+    chunk.key = 77
+    assert msapi.is_proposal(marker, cams[1]) is False
 
 
 def test_ground_scale_is_focal_over_distance(world):
@@ -227,6 +239,7 @@ def test_start_poll_places_unpinned_proposals_only(install, world):
         assert (x, y, pinned) == (2001.0, 1501.0, False)
     assert msapi.get_projection(marker, cams[3]) is None          # photo sans chemin
     assert msapi.projection_count(marker) == 1
+    assert msapi.is_proposal(marker, cams[1]) and msapi.is_proposal(marker, cams[2])
     assert "2 proposition(s)" in state.panel.statuses[-1]
     assert len(state.aigcp_applied) == 2
 
@@ -291,10 +304,21 @@ def test_clear_removes_only_unvalidated_proposals(install, world):
     wait_done(state)
     msapi.set_projection(marker, cams[2], 7.0, 8.0, pinned=True)   # validee par l'operateur
     assert aigcp.clear(state) == 1
-    assert msapi.get_projection(marker, cams[1]) is None
+    assert msapi.get_projection(marker, cams[1]) == (1990.0, 1490.0, False)   # point bleu d'avant rendu
     assert msapi.get_projection(marker, cams[2]) == (7.0, 8.0, True)
     assert msapi.get_projection(marker, cams[0]) == (2000.0, 1500.0, True)
     assert state.aigcp_applied == []
+
+
+def test_clear_gives_back_the_previous_blue_point(install, world):
+    chunk, marker, cams = world
+    state = make_state(marker)
+    aigcp.start(state, "damier")
+    wait_done(state)
+    assert msapi.get_projection(marker, cams[1]) == (2001.0, 1501.0, False)
+    aigcp.clear(state)
+    assert msapi.get_projection(marker, cams[1]) == (1990.0, 1490.0, False)
+    assert msapi.is_proposal(marker, cams[1]) is False
 
 
 def test_cancel_stops_a_running_job(install, world):

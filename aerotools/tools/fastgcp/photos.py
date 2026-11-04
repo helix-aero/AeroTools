@@ -199,7 +199,7 @@ def _show_marker(state, chunk, marker, cameras):
         return
     if not cameras:
         return
-    pinned = set(msapi.camera_key(cam) for cam in msapi.projection_cameras(marker, pinned_only=True))
+    pinned = set(msapi.camera_key(cam) for cam in msapi.projection_cameras(marker, without_proposals=True))
     target = next((cam for cam in cameras if msapi.camera_key(cam) not in pinned), cameras[0])
     ok, message = msapi.open_photo(target)
     if ok:
@@ -320,7 +320,7 @@ def _advance(state, marker, origin_key, token=None, attempt=0):
             return
         label = msapi.marker_label(marker)
         cameras = _recompute_candidates(state, chunk, marker)
-        pinned = set(msapi.camera_key(cam) for cam in msapi.projection_cameras(marker, pinned_only=True))
+        pinned = set(msapi.camera_key(cam) for cam in msapi.projection_cameras(marker, without_proposals=True))
         target, remaining = next_unpinned(cameras, origin_key, pinned)
         if target is None:
             if remaining:

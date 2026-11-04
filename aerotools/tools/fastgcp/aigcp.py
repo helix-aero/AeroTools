@@ -7,10 +7,11 @@ panneau reste libre pendant ce temps : `poll()` est appele par le battement de
 tool.py et pose les propositions quand le calcul est fini.
 
 Une proposition est une projection NON posee a la main (`pinned=False`, point
-bleu de Metashape). Elle ne remplace jamais un pointage de l'operateur, ne
-compte pas dans les photos pointees (msapi.projection_count) et disparait d'un
-clic (« Effacer les propositions ») ou se valide en cliquant la cible, ce qui la
-remplace par un pointage normal.
+bleu de Metashape), memorisee par msapi.mark_proposal. Elle ne remplace jamais
+un pointage de l'operateur, ne compte pas dans les photos pointees
+(msapi.projection_count) et disparait d'un clic (« Effacer les propositions »,
+qui rend le point bleu d'avant s'il y en avait un) ou se valide en cliquant la
+cible, ce qui la remplace par un pointage normal.
 
 Deux modeles, jamais melanges : damier et bombe. L'operateur choisit le type.
 
@@ -408,11 +409,13 @@ def _apply(state, run, hits, errors):
         current = msapi.get_projection(run.marker, camera)
         if current is not None and current[2]:
             continue          # l'operateur a pointe cette photo entre temps
+        previous = current    # point bleu de Metashape eventuel, rendu a l'effacement
         ok, message = msapi.set_projection(run.marker, camera, hit["x"], hit["y"], pinned=False)
         if not ok:
             journal.write("IA : {} sur {} : {}".format(run.label, msapi.camera_label(camera), message))
             continue
-        placed.append((run.marker, camera))
+        msapi.mark_proposal(run.marker, camera)
+        placed.append((run.marker, camera, previous))
         journal.write("IA : {} propose en ({:.0f}, {:.0f}) sur {} (confiance {:.2f})".format(
             run.label, hit["x"], hit["y"], msapi.camera_label(camera), hit["conf"]))
     applied = getattr(state, "aigcp_applied", None)
@@ -430,12 +433,17 @@ def _apply(state, run, hits, errors):
 def clear(state):
     """Efface les propositions encore non validees. Renvoie leur nombre."""
     removed = 0
-    for marker, camera in list(getattr(state, "aigcp_applied", None) or []):
+    for marker, camera, previous in list(getattr(state, "aigcp_applied", None) or []):
         try:
             current = msapi.get_projection(marker, camera)
+            msapi.unmark_proposal(marker, camera)
             if current is None or current[2]:
                 continue      # validee ou deja effacee : on n'y touche pas
-            ok, _message = msapi.remove_projection(marker, camera)
+            if previous is not None:
+                ok, _message = msapi.set_projection(
+                    marker, camera, previous[0], previous[1], previous[2])
+            else:
+                ok, _message = msapi.remove_projection(marker, camera)
             removed += 1 if ok else 0
         except Exception:
             continue          # marqueur ou photo disparus avec le chunk
