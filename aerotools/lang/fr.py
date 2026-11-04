@@ -117,7 +117,7 @@ TEXTES = {
     "review.refine_progress": "{done}/{total} pointées",
     "review.refine_next": "Suivant",
     "review.refine_validate_exit": "Valider et quitter",
-    "review.hint": "Clique les vignettes à écarter, puis Exclure (ou clic droit). Maj + molette : zoom dans les vignettes. Ctrl + molette : taille des vignettes.",
+    "review.hint": "Clique une vignette pour la voir au-dessus, puis clique dans cette photo pour poser une nouvelle croix. Double-clic sur une vignette : plein écran. Ctrl ou Maj + clic : en prendre plusieurs, puis Exclure (ou clic droit). Maj + molette : zoom. Ctrl + molette : taille des vignettes.",
     "review.exclude": "Exclure",
     "review.restore": "Remettre",
     "review.refine": "Affiner…",

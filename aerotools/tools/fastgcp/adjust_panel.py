@@ -107,6 +107,7 @@ class AdjustPanel(QtWidgets.QFrame):
         slider.setObjectName("aeroSlider")
         slider.setToolTip(i18n.t("review.slider_tip"))
         slider.setRange(*imageadjust.RANGES[key])
+        slider.setTracking(True)                 # l'effet suit le curseur pendant qu'on le glisse
         slider.setEnabled(imageadjust.available())
         slider.valueChanged.connect(lambda v, k=key: self.model.set(k, v))
         box.addWidget(slider)

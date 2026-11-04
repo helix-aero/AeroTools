@@ -844,6 +844,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._lang_cb = None
         # Tri du tableau : (cle, decroissant) ou None = ordre du projet.
         self._sort = None
+        self._signature = None            # instantane du tableau, pour voir ce que Metashape a change
+        self.poll_cost = 0.0
         # Nom du chunk affiche a la suite de la progression (pose par tool.py).
         self._chunk_name = ""
 
@@ -1721,6 +1723,37 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     # Liste des marqueurs
     # ------------------------------------------------------------------
 
+    def poll_rows(self):
+        """Relit le tableau s'il a change dans Metashape : marqueur ajoute ou retire, projection posee
+        ou retiree ailleurs, erreurs recalculees. Compare un instantane leger au precedent.
+
+        Appele par le battement, toutes les deux secondes. Ne leve jamais. `poll_cost` (secondes) dit
+        combien coute la lecture : le battement espace les relectures si le projet est gros.
+        """
+        if self._state is None:
+            return
+        try:
+            chunk = msapi.chunk()
+            if chunk is None:
+                self._signature = None
+                return
+            start = time.time()
+            signature = []
+            for marker in msapi.markers(chunk):
+                label = msapi.marker_label(marker)
+                if label:
+                    row = self._row_data(chunk, marker, label)
+                    signature.append((label, row["proj"], row["x"], row["y"], row["z"]))
+            self.poll_cost = time.time() - start
+            previous, self._signature = self._signature, signature
+            if previous is not None and previous != signature:
+                bar = self.grid.verticalScrollBar()
+                position = bar.value()
+                self.refresh_markers()
+                bar.setValue(position)             # on ne fait pas sauter le tableau pendant qu'on le lit
+        except Exception as exc:
+            journal.write("FastGCP : suivi du tableau : {!r}".format(exc))
+
     def refresh_markers(self):
         """Relit les marqueurs du chunk courant. Ne leve jamais."""
         if self._state is None:
@@ -2134,7 +2167,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         proposals = state is not None and bool(getattr(state, "aigcp_applied", None))
         self.aigcp_button.setEnabled(not running)
         self.aigcp_clear_button.setEnabled(proposals and not running)
-        self.aigcp_review_button.setEnabled(state is not None and bool(getattr(state, "aigcp_review", None)))
+        self.aigcp_review_button.setEnabled(state is not None)       # toujours cliquable : sans detection, il le dit
         # Barre : pleine largeur et en va-et-vient tant que le runner charge son modele,
         # puis au prorata des photos traitees.
         progress = aigcp.progress_of(state) if running else None

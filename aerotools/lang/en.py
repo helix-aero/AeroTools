@@ -111,7 +111,7 @@ TEXTES = {
     "review.refine_progress": "{done}/{total} picked",
     "review.refine_next": "Next",
     "review.refine_validate_exit": "Validate and exit",
-    "review.hint": "Click the thumbnails to set aside, then Exclude (or right-click). Shift + mouse wheel: zoom inside the thumbnails. Ctrl + mouse wheel: thumbnail size.",
+    "review.hint": "Click a thumbnail to see it above, then click in that photo to place a new cross. Double-click a thumbnail to open it full size. Ctrl or Shift + click: pick several, then Exclude (or right-click). Shift + wheel: zoom. Ctrl + wheel: thumbnail size.",
     "review.exclude": "Exclude",
     "review.restore": "Put back",
     "review.refine": "Refine…",

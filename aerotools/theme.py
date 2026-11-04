@@ -165,6 +165,7 @@ def stylesheet():
       #aeroState / #aeroStateOff  texte « Tool actif » / « Tool inactif »
       #aeroCounter    pastille-compteur
       #aeroRun        bouton d'action vert (Run, Valider quand tout est fait)
+      #aeroYes / #aeroNo  Oui (liseré vert) et Non (liseré rouge) des boites de dialogue
       #aeroGhost      bouton secondaire discret ([round="true"] : rond,
                       [pill="true"] : gelule avec texte)
       #aeroZoomButton boutons +/- de la fenetre de revue
@@ -420,6 +421,26 @@ def stylesheet():
     #aeroPanel QPushButton#aeroGhost[pill="true"]:disabled {{
         color: {fg_4};
         border-color: {border_faint};
+    }}
+    #aeroPanel QPushButton#aeroYes, #aeroPanel QPushButton#aeroNo {{
+        background: transparent;
+        color: {fg_0};
+        border-radius: 20px;
+        padding: 0 20px;
+        font-size: 10pt;
+        font-weight: 700;
+    }}
+    #aeroPanel QPushButton#aeroYes {{
+        border: 2px solid {green};
+    }}
+    #aeroPanel QPushButton#aeroNo {{
+        border: 2px solid #e5484d;
+    }}
+    #aeroPanel QPushButton#aeroYes:hover {{
+        background: rgba(30, 202, 89, 0.18);
+    }}
+    #aeroPanel QPushButton#aeroNo:hover {{
+        background: rgba(229, 72, 77, 0.18);
     }}
     #aeroPanel QPushButton#aeroGhost[round="true"]:checked {{
         background: {ground_4};

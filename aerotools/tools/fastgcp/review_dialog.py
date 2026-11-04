@@ -28,6 +28,7 @@ ZOOM_KEY = "review_zoom"
 DEFAULT_THUMB = 170
 MIN_THUMB, MAX_THUMB, THUMB_STEP = 96, 360, 20
 DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP = 100, 50, 400, 25
+SCROLL_ROOM = 16                      # place de la barre de defilement du panneau de droite
 PREVIEW = 190                         # photo choisie, en haut du panneau de droite (230 px moins les marges, un peu moins pour tenir en hauteur)
 REFRESH_MS = 70                       # attente apres un reglage avant de repeindre les images
 VIEW_MIN = 560                        # cote mini de la grande vue d'affinage
@@ -466,7 +467,8 @@ class RefineDialog(QtWidgets.QDialog):
         self.view.set_image(self._adjusted())
 
     def _on_model(self):
-        self._refresh.start(REFRESH_MS)
+        if not self._refresh.isActive():        # l'image suit le curseur en continu, pas a la fin du geste
+            self._refresh.start(REFRESH_MS)
 
     # -- decisions ---------------------------------------------------------------------
 
@@ -506,6 +508,21 @@ class RefineDialog(QtWidgets.QDialog):
     def picks(self):
         """[(entree, x, y)] des points poses, en position de la photo."""
         return [(self._entries[i], x, y) for i, (x, y) in sorted(self._picks.items())]
+
+
+class _PreviewLabel(QtWidgets.QLabel):
+    """Photo choisie : un clic gauche dedans donne la position (u, v) de la nouvelle croix."""
+
+    def __init__(self, on_click, parent=None):
+        super(_PreviewLabel, self).__init__(parent)
+        self._on_click = on_click
+        self.setCursor(QtCore.Qt.CrossCursor)
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            u, v = _event_pos(event)
+            self._on_click(u, v)
+        super(_PreviewLabel, self).mousePressEvent(event)
 
 
 class _ThumbList(QtWidgets.QListWidget):
@@ -563,8 +580,8 @@ class ReviewDialog(QtWidgets.QDialog):
         self.thumbs.setUniformItemSizes(True)
         self.thumbs.setWordWrap(True)
         self.thumbs.setSpacing(theme.PAD)
-        # Un clic bascule la selection de la vignette : pas besoin de Ctrl pour en prendre plusieurs.
-        self.thumbs.setSelectionMode(QtWidgets.QAbstractItemView.MultiSelection)
+        # Un clic rend la photo active (en haut a droite) ; Ctrl ou Maj + clic pour en prendre plusieurs.
+        self.thumbs.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.thumbs.itemSelectionChanged.connect(self._update_buttons)
         self.thumbs.itemDoubleClicked.connect(self._on_double_click)
         self.thumbs.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
@@ -572,7 +589,16 @@ class ReviewDialog(QtWidgets.QDialog):
         body.addWidget(self.thumbs, 1)
         self._viewed = None
         self.panel = adjust_panel.AdjustPanel(self.adjust, top=self._build_top(), hint_key="review.hint")
-        body.addWidget(self.panel, 0)
+        # Si la fenetre est basse, le panneau defile : ses curseurs ne se chevauchent jamais.
+        scroller = QtWidgets.QScrollArea()
+        scroller.setFrameShape(QtWidgets.QFrame.NoFrame)
+        scroller.setWidgetResizable(True)
+        scroller.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        scroller.setFixedWidth(self.panel.width() + SCROLL_ROOM)
+        scroller.setWidget(self.panel)
+        scroller.viewport().setAutoFillBackground(False)
+        self.panel.setAutoFillBackground(False)
+        body.addWidget(scroller, 0)
         layout.addLayout(body, 1)
 
         bottom = QtWidgets.QHBoxLayout()
@@ -610,7 +636,7 @@ class ReviewDialog(QtWidgets.QDialog):
         title = QtWidgets.QLabel(i18n.t("review.preview").upper())
         title.setObjectName("aeroEyebrow")
         column.addWidget(title)
-        self.preview = QtWidgets.QLabel()
+        self.preview = _PreviewLabel(self._on_preview_click)
         self.preview.setFixedSize(PREVIEW, PREVIEW)
         self.preview.setAlignment(QtCore.Qt.AlignCenter)
         self.preview.setWordWrap(True)
@@ -637,6 +663,23 @@ class ReviewDialog(QtWidgets.QDialog):
         elif self._viewed is not None and id(self._viewed) not in self._items:
             self._viewed = None
         return self._viewed
+
+    def _on_preview_click(self, u, v):
+        """Clic dans la photo choisie : pose une nouvelle croix (point affine) a cet endroit."""
+        entry = self._viewed
+        found = self._items.get(id(entry)) if entry is not None else None
+        if found is None or not review.has_crop(entry):
+            return
+        x, y = review.to_source(entry, u, v, PREVIEW, self._zoom)
+        try:
+            done = review.refine(self._state, self.review, entry, x, y)
+        except Exception as exc:
+            journal.write("revue IA : croix posee dans la photo choisie : {!r}".format(exc))
+            return
+        if done:
+            self._paint_item(found[0], entry)
+            self._update_preview()
+            self._after_change({entry["label"]})
 
     def _update_preview(self):
         entry = self._preview_entry()
@@ -666,17 +709,19 @@ class ReviewDialog(QtWidgets.QDialog):
         column.addLayout(line)
         row = QtWidgets.QHBoxLayout()
         row.setSpacing(theme.PAD_S)
+        row.setAlignment(QtCore.Qt.AlignVCenter)
         self.zoom_out = self._zoom_button("−", -ZOOM_STEP)
-        row.addWidget(self.zoom_out)
+        row.addWidget(self.zoom_out, 0, QtCore.Qt.AlignVCenter)
         self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.slider.setObjectName("aeroSlider")
         self.slider.setRange(MIN_ZOOM, MAX_ZOOM)
         self.slider.setValue(int(round(self._zoom * 100)))
+        self.slider.setFixedHeight(26)           # meme hauteur que les boutons : tout est centre sur la meme ligne
         self.slider.valueChanged.connect(self._on_zoom)
         self.slider.sliderReleased.connect(self._save_zoom)
-        row.addWidget(self.slider, 1)
+        row.addWidget(self.slider, 1, QtCore.Qt.AlignVCenter)
         self.zoom_in = self._zoom_button("+", ZOOM_STEP)
-        row.addWidget(self.zoom_in)
+        row.addWidget(self.zoom_in, 0, QtCore.Qt.AlignVCenter)
         column.addLayout(row)
         return box
 
@@ -744,7 +789,9 @@ class ReviewDialog(QtWidgets.QDialog):
         self._update_preview()
 
     def _on_adjust(self):
-        self._refresh.start(REFRESH_MS)
+        self._update_preview()                  # la photo choisie suit le curseur en continu
+        if not self._refresh.isActive():        # les vignettes suivent au rythme du repaint, pas a la fin du geste
+            self._refresh.start(REFRESH_MS)
 
     def _selected(self):
         out = []

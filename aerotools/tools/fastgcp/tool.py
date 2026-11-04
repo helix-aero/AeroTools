@@ -11,6 +11,8 @@ from ...qt import QShortcut, QtCore, QtGui, QtWidgets
 from . import aigcp, history, marking, photos, session as session_mod
 
 TICK_MS = 400
+POLL_TICKS = 5                        # le tableau du panneau est compare a Metashape tous les 5 battements (2 s)
+SLOW_POLL_S = 0.15                    # lecture plus lente que ca : on espace les comparaisons par 5
 HOTKEY = "Ctrl+Shift+M"
 UNDO_KEY = "Ctrl+Z"
 REDO_KEYS = ("Ctrl+Y", "Ctrl+Shift+Z")
@@ -51,6 +53,8 @@ def install():
     timer.start()
     state.timer = timer
 
+    aigcp.set_choice("scope", aigcp.DEFAULT_SCOPE)      # on repart toujours sur « Selected markers »
+    panel.update_aigcp()
     panel.refresh_markers()
     trigger = "clic" if marking.PLAIN_CLICK_PLACES else "Maj + clic"
     journal.write("FastGCP demarre : Qt {}, Metashape {} ; {} dans la vue photo, ou {}".format(
@@ -172,6 +176,17 @@ def panel():
 # Battement : suit l'etat de Metashape
 # --------------------------------------------------------------------------
 
+def _poll_table(state):
+    """Le tableau du panneau suit Metashape sans qu'on clique : relu quand il a change ailleurs."""
+    panel = state.panel
+    if not hasattr(panel, "poll_rows"):
+        return
+    state.poll_count = getattr(state, "poll_count", 0) + 1
+    every = POLL_TICKS * (5 if getattr(panel, "poll_cost", 0.0) > SLOW_POLL_S else 1)
+    if state.poll_count % every == 0:
+        panel.poll_rows()
+
+
 def _tick(state):
     """Detecte un changement de chunk et un changement de selection.
 
@@ -183,6 +198,7 @@ def _tick(state):
     if state.panel is None:
         return
     aigcp.poll(state)
+    _poll_table(state)
     chunk = msapi.chunk()
     key = msapi.chunk_key(chunk)
 

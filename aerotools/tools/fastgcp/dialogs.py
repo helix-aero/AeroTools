@@ -10,7 +10,8 @@ from ...qt import QtCore, QtWidgets
 
 WIDTH = 480          # largeur demandee ; la fenetre peut etre plus etroite, le texte suit
 MIN_WIDTH = 300
-MAX_TEXT_HEIGHT = 520
+BUTTON_HEIGHT = 40
+BUTTON_WIDTH = 120
 
 
 def _run(dialog):
@@ -22,37 +23,38 @@ def _button(text, handler, object_name="aeroGhost"):
     button.setObjectName(object_name)
     button.setProperty("pill", True)
     button.setCursor(QtCore.Qt.PointingHandCursor)
-    button.setFixedHeight(32)
-    button.setMinimumWidth(96)
+    button.setFixedHeight(BUTTON_HEIGHT)
+    button.setMinimumWidth(BUTTON_WIDTH)
     button.setAutoDefault(False)
     button.clicked.connect(lambda *_args: handler())
     return button
 
 
 class _Box(QtWidgets.QDialog):
-    """Fenetre dont le texte s'adapte a la largeur REELLEMENT obtenue.
+    """Fenetre dont le texte reste entier quelle que soit la largeur obtenue.
 
-    Sous Metashape la fenetre est plus etroite que demandee : un QLabel a largeur fixe
-    etait coupe a droite. Un champ de texte passe a la ligne tout seul a la largeur dont il
-    dispose, et on fixe sa hauteur une fois, a l'ouverture (sans reboucler sur la taille).
-    S'il manquait de la place, il aurait une barre de defilement : jamais de texte perdu.
+    Le QLabel passe a la ligne tout seul. Une fois la fenetre affichee on lui donne, une seule
+    fois par largeur, la hauteur que ce texte demande : la mise en page seule la sous-estime
+    parfois (le dernier paragraphe etait coupe). Pas de boucle : on ne refait rien tant que la
+    largeur ne change pas.
     """
-    view = None
+    label = None
+    _fitted = None
 
     def _fit(self):
-        view = self.view
-        if view is None:
+        label = self.label
+        width = label.width() if label is not None else 0
+        if width <= 0 or width == self._fitted:
             return
-        width = view.viewport().width()
-        document = view.document()
-        document.setTextWidth(width if width > 0 else WIDTH - 4 * theme.PAD)
-        view.setFixedHeight(min(int(document.size().height()) + 10, MAX_TEXT_HEIGHT))
-        self.resize(self.width(), self.sizeHint().height())
+        self._fitted = width
+        need = label.heightForWidth(width)
+        if need > label.height():
+            label.setMinimumHeight(need)
+            self.resize(self.width(), max(self.height(), self.minimumSizeHint().height()))
 
     def showEvent(self, event):
         super(_Box, self).showEvent(event)
-        self._fit()
-        QtCore.QTimer.singleShot(0, self._fit)       # une fois la mise en page definitive
+        QtCore.QTimer.singleShot(0, self._fit)
 
 
 def _build(parent, title, text, buttons):
@@ -61,7 +63,7 @@ def _build(parent, title, text, buttons):
     dialog.setWindowTitle(title)
     dialog.setModal(True)
     dialog.setMinimumWidth(MIN_WIDTH)
-    dialog.resize(WIDTH, 100)
+    dialog.resize(WIDTH, 10)          # la hauteur minimale de la mise en page fait le reste
     outer = QtWidgets.QVBoxLayout(dialog)
     outer.setContentsMargins(0, 0, 0, 0)
     root = QtWidgets.QWidget()
@@ -74,16 +76,14 @@ def _build(parent, title, text, buttons):
     pad = theme.PAD * 2
     layout.setContentsMargins(pad, pad, pad, pad)
     layout.setSpacing(theme.PAD * 2)
-    view = QtWidgets.QTextBrowser()
-    view.setPlainText(text)
-    view.setFrameShape(QtWidgets.QFrame.NoFrame)
-    view.setStyleSheet("QTextBrowser {{ background: transparent; border: none; color: {}; }}".format(theme.FG_1))
-    view.viewport().setAutoFillBackground(False)
-    view.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-    view.setFocusPolicy(QtCore.Qt.NoFocus)
-    view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
-    layout.addWidget(view)
-    dialog.view = view
+    # Un QLabel qui passe a la ligne, sans taille fixe : sa hauteur suit la largeur reellement obtenue
+    # (sous Metashape la fenetre est parfois plus etroite que demandee).
+    label = QtWidgets.QLabel(text)
+    label.setWordWrap(True)
+    label.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+    label.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+    layout.addWidget(label)
+    dialog.label = label
 
     choice = {"value": None}
     row = QtWidgets.QHBoxLayout()
@@ -103,7 +103,7 @@ def ask(parent, title, text):
     Ordre de Windows : la reponse positive a gauche, la negative a droite.
     """
     dialog, choice = _build(parent, title, text, [
-        (i18n.t("dialogs.yes"), True, "aeroGhost"), (i18n.t("dialogs.no"), False, "aeroGhost")])
+        (i18n.t("dialogs.yes"), True, "aeroYes"), (i18n.t("dialogs.no"), False, "aeroNo")])
     _run(dialog)
     return bool(choice["value"])
 
