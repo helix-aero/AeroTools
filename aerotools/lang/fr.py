@@ -372,4 +372,8 @@ TEXTES = {
 
     # -- Exclure apres validation ------------------------------------------
     "review.confirm_exclude_done": "Retirer {n} point(s) déjà validé(s) ou affiné(s) du projet ? Les photos reviennent à l'état d'avant la détection, et « Remettre » les repose.",
+
+    # -- Photo choisie -----------------------------------------------------
+    "review.preview": "Photo choisie",
+    "review.preview_none": "Clique une vignette pour la voir ici en grand.",
 }

@@ -366,4 +366,8 @@ TEXTES = {
 
     # -- Exclure apres validation ------------------------------------------
     "review.confirm_exclude_done": "Remove {n} validated or refined point(s) from the project? The photos go back to how they were before the detection, and Restore puts them back.",
+
+    # -- Photo choisie -----------------------------------------------------
+    "review.preview": "Selected photo",
+    "review.preview_none": "Click a thumbnail to see it here, larger.",
 }

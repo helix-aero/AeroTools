@@ -28,6 +28,7 @@ ZOOM_KEY = "review_zoom"
 DEFAULT_THUMB = 170
 MIN_THUMB, MAX_THUMB, THUMB_STEP = 96, 360, 20
 DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP = 100, 50, 400, 25
+PREVIEW = 190                         # photo choisie, en haut du panneau de droite (230 px moins les marges, un peu moins pour tenir en hauteur)
 REFRESH_MS = 70                       # attente apres un reglage avant de repeindre les images
 VIEW_MIN = 560                        # cote mini de la grande vue d'affinage
 VIEW_ZOOM_STEP = 0.8                  # un cran de molette dans la vue d'affinage
@@ -541,7 +542,7 @@ class ReviewDialog(QtWidgets.QDialog):
         self.adjust = imageadjust.load()
         root = _styled_root(self)
         self.setWindowTitle(i18n.t("review.title"))
-        self.resize(1280, 760)
+        self.resize(1280, 820)
 
         layout = QtWidgets.QVBoxLayout(root)
         layout.setContentsMargins(theme.PAD_L, theme.PAD_L, theme.PAD_L, theme.PAD_L)
@@ -569,7 +570,8 @@ class ReviewDialog(QtWidgets.QDialog):
         self.thumbs.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.thumbs.customContextMenuRequested.connect(self._on_menu)
         body.addWidget(self.thumbs, 1)
-        self.panel = adjust_panel.AdjustPanel(self.adjust, top=self._build_zoom(), hint_key="review.hint")
+        self._viewed = None
+        self.panel = adjust_panel.AdjustPanel(self.adjust, top=self._build_top(), hint_key="review.hint")
         body.addWidget(self.panel, 0)
         layout.addLayout(body, 1)
 
@@ -599,8 +601,56 @@ class ReviewDialog(QtWidgets.QDialog):
         self._update_zoom_label()
         self._fill_markers()
 
+    def _build_top(self):
+        """Haut du panneau de droite : la photo choisie en grand, puis le zoom."""
+        box = QtWidgets.QWidget()
+        column = QtWidgets.QVBoxLayout(box)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(theme.PAD_S)
+        title = QtWidgets.QLabel(i18n.t("review.preview").upper())
+        title.setObjectName("aeroEyebrow")
+        column.addWidget(title)
+        self.preview = QtWidgets.QLabel()
+        self.preview.setFixedSize(PREVIEW, PREVIEW)
+        self.preview.setAlignment(QtCore.Qt.AlignCenter)
+        self.preview.setWordWrap(True)
+        self.preview.setStyleSheet("background: {}; border-radius: 4px; color: {};".format(theme.GROUND_3, theme.FG_3))
+        column.addWidget(self.preview)
+        self.preview_name = QtWidgets.QLabel()
+        self.preview_name.setObjectName("aeroMeta")
+        self.preview_name.setWordWrap(True)
+        column.addWidget(self.preview_name)
+        column.addSpacing(theme.PAD_S)
+        column.addWidget(self._build_zoom())
+        self._update_preview()
+        return box
+
+    def _preview_entry(self):
+        """L'entree a montrer : la derniere vignette cliquee, sinon la derniere vue (la selection se vide apres une decision)."""
+        item = self.thumbs.currentItem()
+        found = self._items.get(item.data(ROLE_ENTRY)) if item is not None and item.isSelected() else None
+        if found is None:
+            picked = self._selected()
+            found = picked[-1] if picked else None
+        if found is not None:
+            self._viewed = found[1]
+        elif self._viewed is not None and id(self._viewed) not in self._items:
+            self._viewed = None
+        return self._viewed
+
+    def _update_preview(self):
+        entry = self._preview_entry()
+        if entry is None:
+            self.preview.setPixmap(QtGui.QPixmap())
+            self.preview.setText(i18n.t("review.preview_none"))
+            self.preview_name.setText("")
+            return
+        self.preview.setPixmap(render_thumb(entry, PREVIEW, self._zoom, self._cache, self.adjust))
+        self.preview_name.setText("{} · {:.2f} · {}".format(
+            entry["camera_label"], entry["conf"], i18n.t(STATUS_TEXTS[entry["state"]])))
+
     def _build_zoom(self):
-        """Ligne de zoom, en haut du panneau de droite : plus fine qu'une barre en haut de la fenetre."""
+        """Ligne de zoom, sous la photo choisie : plus fine qu'une barre en haut de la fenetre."""
         box = QtWidgets.QWidget()
         column = QtWidgets.QVBoxLayout(box)
         column.setContentsMargins(0, 0, 0, 0)
@@ -670,6 +720,7 @@ class ReviewDialog(QtWidgets.QDialog):
     def _fill_thumbs(self):
         self.thumbs.clear()
         self._items = {}
+        self._viewed = None
         self._grid()
         label = self._current_label()
         if label is not None:
@@ -690,6 +741,7 @@ class ReviewDialog(QtWidgets.QDialog):
     def _repaint_all(self):
         for item, entry in self._items.values():
             self._paint_item(item, entry)
+        self._update_preview()
 
     def _on_adjust(self):
         self._refresh.start(REFRESH_MS)
@@ -740,6 +792,8 @@ class ReviewDialog(QtWidgets.QDialog):
         self.restore_button.setEnabled(any(e["state"] == review.REMOVED for e in picked))
         self.refine_button.setEnabled(any(review.has_crop(e) for e in picked))
         self.validate_button.setEnabled(any(e["state"] == review.KEPT for e in self.review.entries))
+        if hasattr(self, "preview"):
+            self._update_preview()
 
     def _update_summary(self):
         counts = self.review.counts()
