@@ -317,6 +317,7 @@ def stylesheet():
         border: none;
         border-radius: 4px;
         color: {fg_0};
+        text-align: center;
         min-height: 22px;
         max-height: 22px;
     }}
