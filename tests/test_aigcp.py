@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import sys
 import time
 import types
@@ -7,7 +8,7 @@ import types
 import pytest
 
 from aerotools import config, msapi
-from aerotools.tools.fastgcp import aigcp, aigcp_runner
+from aerotools.tools.fastgcp import aigcp, aigcp_runner, history, review
 
 STUB_OK = '''
 import argparse, json
@@ -24,6 +25,11 @@ STUB_SLOW = STUB_OK.replace(
     "hits = [", "import os, time\n"
     "json.dump({'done': 2, 'total': 5}, open(os.path.join(os.path.dirname(args.out), 'progress.json'), 'w'))\n"
     "time.sleep(1.5)\nhits = [", 1)
+STUB_CROPS = STUB_OK.replace(
+    '"conf": 0.9, "crop_px": 200}',
+    '"conf": 0.9, "crop_px": 200, "crop": {"thumb": "t_" + it["id"].replace(":", "_") + ".jpg", '
+    '"big": "b_" + it["id"].replace(":", "_") + ".jpg", "win": 100, '
+    '"x0": it["x_est"] + 1.0 - 50, "y0": it["y_est"] + 1.0 - 50}}')
 STUB_FAIL = "import sys\nsys.stderr.write('boom')\nsys.exit(3)\n"
 
 
@@ -67,6 +73,13 @@ def install(tmp_path, local_appdata, monkeypatch):
 class FakePanel(object):
     def __init__(self):
         self.statuses = []
+        self.calls = []
+
+    def open_review(self):
+        self.calls.append("open_review")
+
+    def close_review(self):
+        self.calls.append("close_review")
 
     def set_status(self, text):
         self.statuses.append(text)
@@ -82,9 +95,8 @@ def make_state(marker):
     state = types.SimpleNamespace(panel=FakePanel(), active_marker=marker,
                                   aigcp_run=None, aigcp_applied=[])
     state.active_label = lambda: marker.label
-    # Les tests historiques repassent sur les points bleus ; la case verte reste cochee.
-    state.options = {"ai_skip_green": True, "ai_skip_blue": False}
-    state.option = lambda key: state.options.get(key, False)
+    # Les tests historiques repassent sur les points bleus et respectent le vert.
+    aigcp.set_choice("ignore", "green")
     return state
 
 
@@ -495,13 +507,14 @@ def test_start_without_arguments_uses_the_saved_choices(install, confirmed):
 
 # -- photos deja marquees : cases vert / bleu --------------------------------
 
-def test_skip_flags_default_to_checked(local_appdata):
-    from aerotools.tools.fastgcp import session as session_mod
-    state = session_mod.Session()
-    assert aigcp.skip_flags(state) == (True, True)
-    state.set_option("ai_skip_blue", False)
-    assert aigcp.skip_flags(state) == (True, False)
-    assert aigcp.skip_flags(object()) == (True, True)
+def test_ignore_choice_defaults_to_both_and_maps_to_the_flags(local_appdata):
+    assert aigcp.selected_ignore() == "both" and aigcp.skip_flags() == (True, True)
+    for choice, flags in (("green", (True, False)), ("blue", (False, True)),
+                          ("none", (False, False)), ("both", (True, True))):
+        aigcp.set_choice("ignore", choice)
+        assert aigcp.skip_flags() == flags
+    aigcp.set_choice("ignore", "tout")
+    assert aigcp.selected_ignore() == "both"
 
 
 def test_blue_points_of_metashape_are_ignored_unless_unchecked(install, world):
@@ -528,7 +541,7 @@ def test_green_points_are_ignored_unless_unchecked(install, world):
 def test_unchecking_green_lets_the_ai_go_over_a_manual_pin_and_clear_restores_it(install, world):
     chunk, marker, cams = world
     state = make_state(marker)
-    state.options["ai_skip_green"] = False
+    aigcp.set_choice("ignore", "none")
     aigcp.start(state, "damier", "marker")
     wait_done(state)
     assert msapi.get_projection(marker, cams[0]) == (2001.0, 1501.0, False)
@@ -541,7 +554,7 @@ def test_unchecking_green_lets_the_ai_go_over_a_manual_pin_and_clear_restores_it
 def test_blue_points_stay_untouched_when_checked(install, world):
     chunk, marker, cams = world
     state = make_state(marker)
-    state.options["ai_skip_blue"] = True
+    aigcp.set_choice("ignore", "both")
     aigcp.start(state, "damier", "marker")
     wait_done(state)
     assert msapi.get_projection(marker, cams[1]) == (1990.0, 1490.0, False)   # intact
@@ -664,3 +677,144 @@ def test_progress_reaches_the_status_line_while_running(install, world):
     assert any("2/5" in text for text in state.panel.statuses)
     wait_done(state)
     assert aigcp.progress_of(state) is None
+
+
+# -- revue des pointes de l'IA -------------------------------------------------------
+
+def feedback_rows():
+    path = review.feedback_path()
+    if not os.path.isfile(path):
+        return []
+    with open(path, encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+@pytest.fixture
+def reviewed(install, ring):
+    """Une detection terminee sur la couronne : six propositions a revoir."""
+    install.write_text(STUB_CROPS)
+    chunk, marker, cams = ring
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    return state, state.aigcp_review, marker, cams
+
+
+def test_a_finished_detection_opens_the_review(reviewed):
+    state, rev, _marker, _cams = reviewed
+    assert len(rev.entries) == 6 and rev.counts()[review.KEPT] == 6
+    assert rev.labels() == ["RING"] and len(rev.entries_for("RING")) == 6
+    assert state.panel.calls[-1] == "open_review"
+    entry = rev.entries[0]
+    assert entry["thumb"].endswith(".jpg") and entry["big"].endswith(".jpg") and review.has_crop(entry)
+    assert os.path.basename(os.path.dirname(entry["thumb"])) == "crops"
+
+
+def test_thumbnail_and_photo_coordinates_agree():
+    entry = {"win": 100.0, "x0": 950.0, "y0": 1450.0, "ai_x": 1000.0, "ai_y": 1500.0}
+    assert review.to_view(entry, 1000.0, 1500.0, 320) == pytest.approx((160.0, 160.0))
+    u, v = review.to_view(entry, 1010.0, 1490.0, 640)
+    assert review.to_source(entry, u, v, 640) == pytest.approx((1010.0, 1490.0))
+
+
+def test_an_entry_without_thumbnail_cannot_be_refined(install, ring):
+    chunk, marker, cams = ring
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")           # le runner factice n'ecrit aucune vignette
+    wait_done(state)
+    assert state.aigcp_review.entries and not review.has_crop(state.aigcp_review.entries[0])
+
+
+def test_remove_gives_back_the_previous_point_and_logs_a_negative(reviewed):
+    state, rev, marker, cams = reviewed
+    entry = rev.entries[2]
+    assert review.remove(state, rev, entry) is True
+    assert entry["state"] == review.REMOVED
+    assert msapi.get_projection(marker, entry["camera"]) is None
+    assert msapi.is_proposal(marker, entry["camera"]) is False
+    assert all(t[1] is not entry["camera"] for t in state.aigcp_applied)
+    assert review.remove(state, rev, entry) is False                 # deja retire
+    row = feedback_rows()[-1]
+    assert row["action"] == "rejected" and row["marker"] == "RING" and row["type"] == "damier"
+    assert row["ai_x"] == pytest.approx(entry["ai_x"], abs=0.01) and row["run"] == rev.run_id
+    assert row["image_path"] == entry["image_path"] and "x" not in row
+
+
+def test_restore_puts_the_proposal_back(reviewed):
+    state, rev, marker, cams = reviewed
+    entry = rev.entries[0]
+    review.remove(state, rev, entry)
+    assert review.restore(state, rev, entry) is True
+    assert entry["state"] == review.KEPT and msapi.is_proposal(marker, entry["camera"])
+    assert msapi.get_projection(marker, entry["camera"])[:2] == pytest.approx((entry["ai_x"], entry["ai_y"]))
+    assert feedback_rows()[-1]["action"] == "restored"
+
+
+def test_restore_refuses_when_the_operator_pinned_the_photo(reviewed):
+    state, rev, marker, cams = reviewed
+    entry = rev.entries[0]
+    review.remove(state, rev, entry)
+    msapi.set_projection(marker, entry["camera"], 5.0, 6.0, pinned=True)
+    assert review.restore(state, rev, entry) is False
+    assert msapi.get_projection(marker, entry["camera"]) == (5.0, 6.0, True)
+
+
+def test_remove_leaves_a_photo_the_operator_pinned_in_the_meantime(reviewed):
+    state, rev, marker, cams = reviewed
+    entry = rev.entries[1]
+    msapi.set_projection(marker, entry["camera"], 7.0, 8.0, pinned=True)
+    review.remove(state, rev, entry)
+    assert msapi.get_projection(marker, entry["camera"]) == (7.0, 8.0, True)
+
+
+def test_refine_pins_the_corrected_point_and_keeps_the_correction(reviewed):
+    state, rev, marker, cams = reviewed
+    entry = rev.entries[3]
+    assert review.refine(state, rev, entry, 1234.5, 987.25) is True
+    assert msapi.get_projection(marker, entry["camera"]) == (1234.5, 987.25, True)
+    assert entry["state"] == review.REFINED and not msapi.is_proposal(marker, entry["camera"])
+    assert history.can_undo()
+    row = feedback_rows()[-1]
+    assert row["action"] == "refined" and (row["x"], row["y"]) == (1234.5, 987.25)
+    assert row["ai_x"] == pytest.approx(entry["ai_x"], abs=0.01)
+    msapi.remove_projection(marker, entry["camera"])
+    history.clear()
+
+
+def test_a_removed_proposal_can_still_be_refined(reviewed):
+    state, rev, marker, cams = reviewed
+    entry = rev.entries[4]
+    review.remove(state, rev, entry)
+    assert review.refine(state, rev, entry, 10.0, 20.0) is True
+    assert msapi.get_projection(marker, entry["camera"]) == (10.0, 20.0, True)
+    history.clear()
+
+
+def test_validate_kept_pins_only_the_kept_ones(reviewed):
+    state, rev, marker, cams = reviewed
+    review.remove(state, rev, rev.entries[0])
+    assert review.accept_kept(state, rev) == 5
+    assert rev.counts() == {review.KEPT: 0, review.REMOVED: 1, review.REFINED: 0, review.ACCEPTED: 5}
+    assert msapi.get_projection(marker, rev.entries[0]["camera"]) is None
+    for entry in rev.entries[1:]:
+        assert msapi.get_projection(marker, entry["camera"])[2] is True
+    accepted = [r for r in feedback_rows() if r["action"] == "accepted"]
+    assert len(accepted) == 5 and accepted[0]["x"] == pytest.approx(accepted[0]["ai_x"], abs=0.01)
+    assert state.aigcp_applied == []
+
+
+def test_clear_closes_and_forgets_the_review(reviewed):
+    state, rev, marker, cams = reviewed
+    aigcp.clear(state)
+    assert state.aigcp_review is None and state.panel.calls[-1] == "close_review"
+
+
+def test_a_detection_with_nothing_kept_leaves_no_review(install, ring, monkeypatch):
+    chunk, marker, cams = ring
+    monkeypatch.setattr(msapi, "pixel_ray", lambda camera, x, y: (
+        (camera.center.x, camera.center.y, camera.center.z),
+        (camera.key * 3.0 - camera.center.x, camera.key * 1.0 - camera.center.y, 7.0 * camera.key - camera.center.z)))
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    assert state.aigcp_review is None

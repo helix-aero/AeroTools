@@ -36,11 +36,17 @@ LOG_VISIBLE_LINES = 6
 # Largeur mini du dock : le tableau des marqueurs a besoin de place.
 MIN_PANEL_WIDTH = 420
 
-# Texte de chaque case de la carte « Plus » (cle de l'option : cle de texte).
-CHECK_TEXTS = {
-    "collect_dataset": "panel.save_picks",
-    "ai_skip_green": "aigcp.skip_green",
-    "ai_skip_blue": "aigcp.skip_blue",
+# Texte de chaque choix des listes deroulantes de la detection IA (cle de texte litterale,
+# pour que le test des textes inutilises la voie).
+AIGCP_CHOICE_TEXTS = {
+    ("type", "damier"): "aigcp.type_damier",
+    ("type", "bombe"): "aigcp.type_bombe",
+    ("scope", "marker"): "aigcp.scope_marker",
+    ("scope", "all"): "aigcp.scope_all",
+    ("ignore", "both"): "aigcp.ignore_both",
+    ("ignore", "green"): "aigcp.ignore_green",
+    ("ignore", "blue"): "aigcp.ignore_blue",
+    ("ignore", "none"): "aigcp.ignore_none",
 }
 
 # Largeur d'un bouton du selecteur de langue (code a deux lettres).
@@ -759,7 +765,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._last_pick = (None, 0.0)
         self._checks = {}
         self._lang_buttons = {}
-        self._aigcp_buttons = {}
+        self._aigcp_combos = {}
+        self._review_dialog = None
         self._lang_cb = None
         # Tri du tableau : (cle, decroissant) ou None = ordre du projet.
         self._sort = None
@@ -924,9 +931,9 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         choices = QtWidgets.QHBoxLayout()
         choices.setContentsMargins(0, 0, 0, 0)
         choices.setSpacing(theme.PAD)
-        choices.addWidget(self._build_segment("type", aigcp.TYPES))
-        choices.addWidget(self._build_segment("scope", aigcp.SCOPES))
-        choices.addStretch(1)
+        for key, values, stretch in (("type", aigcp.TYPES, 3), ("scope", aigcp.SCOPES, 4),
+                                     ("ignore", aigcp.IGNORES, 4)):
+            choices.addWidget(self._build_combo(key, values), stretch)
         layout.addLayout(choices)
 
         actions = QtWidgets.QHBoxLayout()
@@ -934,8 +941,10 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         actions.setSpacing(theme.PAD)
         self.aigcp_button = self._tool_button("aigcp.run", self._on_aigcp_run)
         self.aigcp_clear_button = self._tool_button("aigcp.clear", self._on_aigcp_clear)
-        actions.addWidget(self.aigcp_button, 1)
-        actions.addWidget(self.aigcp_clear_button, 1)
+        self.aigcp_review_button = self._tool_button("aigcp.review", self._on_aigcp_review)
+        actions.addWidget(self.aigcp_button, 3)
+        actions.addWidget(self.aigcp_clear_button, 3)
+        actions.addWidget(self.aigcp_review_button, 2)
         layout.addLayout(actions)
 
         self.aigcp_progress = QtWidgets.QProgressBar()
@@ -947,25 +956,19 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._retranslate_aigcp()
         return card
 
-    def _build_segment(self, key, values):
-        """Selecteur segmente (meme style que FR | EN) : un bouton par valeur de `values`."""
-        frame = QtWidgets.QFrame()
-        frame.setObjectName("aeroLang")
-        frame.setFixedHeight(32)
-        layout = QtWidgets.QHBoxLayout(frame)
-        layout.setContentsMargins(3, 3, 3, 3)
-        layout.setSpacing(2)
+    def _build_combo(self, key, values):
+        """Liste deroulante d'un choix de la detection IA ; les textes sont poses par la traduction."""
+        combo = QtWidgets.QComboBox()
+        combo.setObjectName("aeroCombo")
+        combo.setCursor(QtCore.Qt.PointingHandCursor)
+        combo.setFocusPolicy(QtCore.Qt.NoFocus)
+        combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLength)
+        combo.setMinimumContentsLength(4)
         for value in values:
-            button = QtWidgets.QPushButton()
-            button.setObjectName("aeroLangBtn")
-            button.setProperty("active", False)
-            button.setCursor(QtCore.Qt.PointingHandCursor)
-            button.setFocusPolicy(QtCore.Qt.NoFocus)
-            button.setFixedHeight(26)
-            button.clicked.connect(functools.partial(self._on_aigcp_choice, key, value))
-            layout.addWidget(button)
-            self._aigcp_buttons[(key, value)] = button
-        return frame
+            combo.addItem("", value)
+        combo.activated.connect(functools.partial(self._on_aigcp_combo, key))
+        self._aigcp_combos[key] = combo
+        return combo
 
     def _build_active_card(self):
         card = QtWidgets.QFrame()
@@ -1098,8 +1101,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.setSpacing(theme.PAD_S)
 
         layout.addWidget(self._check("collect_dataset", i18n.t("panel.save_picks")))
-        layout.addWidget(self._check("ai_skip_green", i18n.t(CHECK_TEXTS["ai_skip_green"])))
-        layout.addWidget(self._check("ai_skip_blue", i18n.t(CHECK_TEXTS["ai_skip_blue"])))
 
         self.log_button = _ElidedButton(i18n.t("panel.log"))
         self.log_button.setCursor(QtCore.Qt.PointingHandCursor)
@@ -1297,8 +1298,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._header.viewport().update()
 
     def _retranslate_checks(self):
-        for key, box in self._checks.items():
-            box.set_full_text(i18n.t(CHECK_TEXTS[key]))
+        for box in self._checks.values():
+            box.set_full_text(i18n.t("panel.save_picks"))
 
     def _retranslate_buttons(self):
         self.log_button.set_full_text(i18n.t("panel.log"))
@@ -1307,14 +1308,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.count_photos.set_tip(i18n.t("panel.tip_seen"))
 
     def _retranslate_aigcp(self):
-        """Textes de la carte Detection IA, largeur des boutons segmentes, etat des boutons."""
+        """Textes de la carte Detection IA, choix affiches, etat des boutons."""
         self._eyebrow_aigcp.set_full_text(i18n.t("panel.aigcp").upper())
-        for (key, value), button in self._aigcp_buttons.items():
-            text = i18n.t("aigcp.{}_{}".format(key, value))
-            button.setText(text)
-            button.setMinimumWidth(_text_width(button.fontMetrics(), text) + 2 * theme.PAD + theme.PAD_S)
+        for key, combo in self._aigcp_combos.items():
+            for index in range(combo.count()):
+                combo.setItemText(index, i18n.t(AIGCP_CHOICE_TEXTS[(key, combo.itemData(index))]))
         self.aigcp_button.set_full_text(i18n.t("aigcp.run"))
         self.aigcp_clear_button.set_full_text(i18n.t("aigcp.clear"))
+        self.aigcp_review_button.set_full_text(i18n.t("aigcp.review"))
         self.update_aigcp()
 
     def _retranslate_export(self):
@@ -1845,21 +1846,24 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     # ------------------------------------------------------------------
 
     def update_aigcp(self):
-        """Surligne le type et la portee choisis ; grise Lancer pendant un calcul."""
+        """Montre les choix memorises ; grise Lancer pendant un calcul ; barre de progression."""
         state = self._state
-        chosen = {"type": aigcp.selected_type(), "scope": aigcp.selected_scope()}
-        for (key, value), button in self._aigcp_buttons.items():
-            wanted = value == chosen[key]
+        chosen = {"type": aigcp.selected_type(), "scope": aigcp.selected_scope(),
+                  "ignore": aigcp.selected_ignore()}
+        for key, combo in self._aigcp_combos.items():
             try:
-                if bool(button.property("active")) != wanted:
-                    button.setProperty("active", wanted)
-                _repolish(button)
+                index = combo.findData(chosen[key])
+                if index >= 0 and combo.currentIndex() != index:
+                    combo.blockSignals(True)
+                    combo.setCurrentIndex(index)
+                    combo.blockSignals(False)
             except RuntimeError:
                 pass
         running = state is not None and aigcp.busy(state)
         proposals = state is not None and bool(getattr(state, "aigcp_applied", None))
         self.aigcp_button.setEnabled(not running)
         self.aigcp_clear_button.setEnabled(proposals and not running)
+        self.aigcp_review_button.setEnabled(state is not None and bool(getattr(state, "aigcp_review", None)))
         # Barre : pleine largeur et en va-et-vient tant que le runner charge son modele,
         # puis au prorata des photos traitees.
         progress = aigcp.progress_of(state) if running else None
@@ -1871,9 +1875,29 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self.aigcp_progress.setValue(0)
         self.aigcp_progress.setVisible(bool(running))
 
-    def _on_aigcp_choice(self, key, value, _checked=False):
-        aigcp.set_choice(key, value)
+    def _on_aigcp_combo(self, key, index):
+        combo = self._aigcp_combos[key]
+        aigcp.set_choice(key, combo.itemData(index))
         self.update_aigcp()
+
+    def _on_aigcp_review(self, _checked=False):
+        self.open_review()
+
+    def open_review(self):
+        """Ouvre la fenetre de revue des pointes de la derniere detection. Ne leve jamais."""
+        try:
+            from . import review_dialog
+            self._review_dialog = review_dialog.show(self._state, self, self._review_dialog)
+        except Exception as exc:
+            journal.write("FastGCP : revue des pointes IA : {!r}".format(exc))
+
+    def close_review(self):
+        try:
+            from . import review_dialog
+            review_dialog.close(self._review_dialog)
+        except Exception as exc:
+            journal.write("FastGCP : fermeture de la revue IA : {!r}".format(exc))
+        self._review_dialog = None
 
     def _on_aigcp_run(self, _checked=False):
         try:
@@ -1987,6 +2011,10 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
     def detach(self):
         """Coupe les liens avec le reste du programme. Ne leve jamais."""
+        try:
+            self.close_review()
+        except Exception:
+            pass
         try:
             if self._journal_cb is not None:
                 journal.unsubscribe(self._journal_cb)

@@ -170,6 +170,7 @@ def _tick(state):
     if key != state.last_chunk_key:
         state.last_chunk_key = key
         state.forget_chunk()
+        photos.panel_call(state, "close_review")
         try:
             # Le nom du chunk suit la progression dans le statut du panneau.
             state.panel.set_chunk_name(

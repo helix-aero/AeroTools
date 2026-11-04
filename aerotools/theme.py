@@ -195,6 +195,8 @@ def stylesheet():
       #aeroMeta       ligne secondaire
       #aeroCard       bloc de reglages
       #aeroProgress   barre de progression de la detection IA
+      #aeroCombo      liste deroulante (choix de la detection IA)
+      #aeroThumbs     listes de la fenetre de revue ; #aeroSlider : curseur de taille
       #aeroPlayOn / #aeroPlayOff  bouton rond Pause / Play
       #aeroState / #aeroStateOff  texte « Tool actif » / « Tool inactif »
       #aeroCounter    pastille-compteur
@@ -255,6 +257,56 @@ def stylesheet():
         background: {ground_2};
         border: 1px solid {border_faint};
         border-radius: {radius}px;
+    }}
+    #aeroPanel QComboBox#aeroCombo {{
+        background: {field_bg};
+        border: 1px solid {border_faint};
+        border-radius: {radius_s}px;
+        color: {fg_0};
+        padding: 4px 8px;
+        min-height: 20px;
+    }}
+    #aeroPanel QComboBox#aeroCombo:hover {{
+        border-color: {border_strong};
+    }}
+    #aeroPanel QComboBox#aeroCombo::drop-down {{
+        border: none;
+        width: 18px;
+    }}
+    #aeroPanel QComboBox QAbstractItemView {{
+        background: {ground_2};
+        color: {fg_0};
+        border: 1px solid {border_strong};
+        selection-background-color: {green_soft};
+        selection-color: {fg_0};
+        outline: 0;
+    }}
+    #aeroPanel QListWidget#aeroThumbs {{
+        background: {ground_1};
+        border: 1px solid {border_faint};
+        border-radius: {radius_s}px;
+        outline: 0;
+    }}
+    #aeroPanel QListWidget#aeroThumbs::item {{
+        color: {fg_1};
+        border: 1px solid transparent;
+        border-radius: {radius_s}px;
+    }}
+    #aeroPanel QListWidget#aeroThumbs::item:selected {{
+        background: {green_soft};
+        border: 1px solid {green};
+        color: {fg_0};
+    }}
+    #aeroPanel QSlider#aeroSlider::groove:horizontal {{
+        height: 4px;
+        background: {ground_3};
+        border-radius: 2px;
+    }}
+    #aeroPanel QSlider#aeroSlider::handle:horizontal {{
+        background: {green};
+        width: 12px;
+        margin: -4px 0;
+        border-radius: 6px;
     }}
     #aeroPanel QProgressBar#aeroProgress {{
         background: {ground_3};

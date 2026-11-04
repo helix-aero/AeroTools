@@ -87,9 +87,9 @@ to a file in a visible folder. No image is copied. The file format is documented
 ## AI detection (AIGCP)
 
 The **AI detection** card, at the top of the panel, proposes a marker on the photos that should see it. Two models, never mixed:
-checkerboard (`damier`) and spray or chalk mark (`bombe`). The card has a type switch, a scope switch (**Selected marker** or
-**All**, meaning every marker that has at least 2 projections) and the **Run detection** and **Clear proposals** buttons.
-The choices are saved per machine.
+checkerboard (`damier`) and spray or chalk mark (`bombe`). Three drop-down lists choose the type, the scope (**Selected marker** or
+**All markers**, meaning every marker that has at least 2 projections) and which photos to leave alone (**Ignore green + blue**,
+green, blue or none). Buttons: **Run detection**, **Clear proposals**, **Review**. The choices are saved per machine.
 
 - The calculation never runs inside Metashape. `aigcp.py` writes a `work.json`, starts `aigcp_runner.py` in a separate Python
   that has torch and ultralytics, and reads `hits.json` when it is done. The panel stays free; the tool's heartbeat (`tool._tick`)
@@ -110,21 +110,30 @@ The choices are saved per machine.
   do move the marker's estimated position in Metashape, which is why a wrong one matters: validate them or clear them.
 - **Progress bar.** The runner writes `progress.json` next to `hits.json`; the panel shows a bar under the buttons (moving back and
   forth while the model loads, then proportional to the photos done) and the count in the status line.
-- **Already marked photos.** The settings card ("More") has two checkboxes, both checked by default: *AI: skip photos already
-  marked (green)* and *AI: skip photos with a blue point*. Checked means the AI leaves those photos alone. Unchecking one lets the
-  AI go over it, and **Clear proposals** then puts the previous point back (a green one comes back green). A proposal from an
-  earlier run is always retried. A photo whose point changes while the calculation runs is left alone.
+- **Already marked photos.** The *Ignore* list picks what the AI leaves alone: green (manual pins), blue (points computed by
+  Metashape), both (default) or none. Choosing less lets the AI go over those photos, and **Clear proposals** then puts the previous
+  point back (a green one comes back green). A proposal from an earlier run is always retried. A photo whose point changes while
+  the calculation runs is left alone.
 - A proposal is a projection with `pinned=False` (blue point), remembered by `msapi.mark_proposal`. It never replaces a manual
   pin and is not counted as a pointed photo. Clicking the target replaces it with a normal pin. **Clear proposals** removes the ones
   still unvalidated and puts back the blue point that was there before, if any. Metashape's own blue points are never touched.
+- **Review window.** When a detection ends with proposals, a window opens (also under **Review**): markers on the left, one
+  thumbnail per photo in the middle, cropped around the proposed point with an orange cross on it, and a slider for the
+  thumbnail size. Select the bad ones (click, Ctrl / Shift, rectangle) and press **Remove** (or Delete): the point goes away at once and
+  the previous one comes back. **Put back** undoes it. Double-click or **Refine...** opens a large crop where you click the true
+  centre: the proposal becomes a manual pin (Ctrl+Z undoes it). **Validate kept** turns every kept proposal into a manual pin.
+  The thumbnails are written by the runner into `crops/` of the run folder, so the window stays fast.
+- **Feedback for retraining.** Every decision is appended to `<settings>/dataset/aigcp_feedback.jsonl` (format in `review.py`):
+  `rejected` is a hard negative, `refined` a corrected position, `accepted` a confirmed one. Only the last event of each
+  (run, marker, photo) counts. The retraining button is for later.
 - Picking a marker in the panel also selects it in Metashape's Reference pane: Metashape recentres on its own selected marker
   when the photo changes (Page Up / Page Down).
 - Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder). `*.pt` is
   git-ignored: copy them by hand next to the code.
 - Hidden settings, section `aigcp`: `python` (path of the Python with torch and ultralytics; default: `AIGCP_PYTHON`, then
   `~/AIGCP/_env/Scripts/python.exe`), `models_dir`, `conf_damier` (0.25), `conf_bombe` (0.30), `gate_min_m` (0.30),
-  `gate_factor` (5), `consensus_m` (0.25), and the last `type` and `scope`.
-- Limits: at most 200 photos per marker and 3000 per run, a marker needs a 3D position and an aligned photo. Measured by script
+  `gate_factor` (5), `consensus_m` (0.25), and the last `type`, `scope`, `ignore` and `review_thumb` (thumbnail size).
+- Limits: the review keeps only the last detection; at most 200 photos per marker and 3000 per run, a marker needs a 3D position and an aligned photo. Measured by script
   on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and 40 px): 98 to 100 % within 3 px.
   The guard is covered by tests but not measured on real roof false positives yet.
 

@@ -16,8 +16,8 @@ cible, ce qui la remplace par un pointage normal.
 Deux modeles, jamais melanges : damier et bombe. L'operateur choisit le type.
 Portee : le marqueur actif, ou tous les marqueurs ayant au moins 2 projections.
 Photos deja marquees : par defaut l'IA ne touche ni aux pointages manuels (vert)
-ni aux points bleus de Metashape ; deux options du panneau (ai_skip_green,
-ai_skip_blue) permettent de repasser dessus, et « Effacer » rend alors l'etat d'avant.
+ni aux points bleus de Metashape ; le choix « Ignorer » du panneau (vert, bleu,
+les deux, aucun) permet de repasser dessus, et « Effacer » rend alors l'etat d'avant.
 
 Garde-fou geometrique : quand un marqueur a au moins 2 projections (posees a la
 main ou calculees par Metashape), on mesure leur ecart a la reprojection de son
@@ -40,7 +40,7 @@ Reglages caches (settings.json, section `aigcp`) :
   conf_damier, conf_bombe   seuils de confiance (defauts 0,25 et 0,30)
   gate_min_m (0,30), gate_factor (5)   garde-fou ; gate_min_m tres grand = coupe
   consensus_m (0,25)   tolerance de la coherence entre photos ; tres grand = coupe
-  type, scope   derniers choix du panneau
+  type, scope, ignore   derniers choix du panneau
 """
 
 import json
@@ -51,13 +51,17 @@ import subprocess
 import time
 
 from ... import config, i18n, journal, msapi
-from . import consensus, detection, photos
+from . import consensus, detection, photos, review
 
 SECTION = "aigcp"
 TYPES = ("damier", "bombe")
 SCOPES = ("marker", "all")
+# Photos deja marquees a respecter : vert (pointage manuel), bleu (point calcule par
+# Metashape), les deux, ou aucune.
+IGNORES = ("both", "green", "blue", "none")
 DEFAULT_TYPE = "damier"
 DEFAULT_SCOPE = "marker"
+DEFAULT_IGNORE = "both"
 DEFAULT_CONF = {"damier": 0.25, "bombe": 0.30}
 SCALES_M = (0.3, 0.5, 0.8)
 MAX_PHOTOS = 200
@@ -132,18 +136,22 @@ def selected_scope():
     return value if value in SCOPES else DEFAULT_SCOPE
 
 
+def selected_ignore():
+    value = config.get(SECTION, "ignore")
+    return value if value in IGNORES else DEFAULT_IGNORE
+
+
 def set_choice(key, value):
-    """Memorise le type ou la portee choisis dans le panneau."""
-    if (key == "type" and value in TYPES) or (key == "scope" and value in SCOPES):
+    """Memorise le type, la portee ou les photos a ignorer choisis dans le panneau."""
+    allowed = {"type": TYPES, "scope": SCOPES, "ignore": IGNORES}
+    if value in allowed.get(key, ()):
         config.put(SECTION, key, value)
 
 
-def skip_flags(state):
-    """(ignorer le vert, ignorer le bleu) : options du panneau, cochees par defaut."""
-    option = getattr(state, "option", None)
-    if option is None:
-        return True, True
-    return bool(option("ai_skip_green")), bool(option("ai_skip_blue"))
+def skip_flags(state=None):
+    """(ignorer le vert, ignorer le bleu) d'apres le choix « Ignorer » du panneau."""
+    choice = selected_ignore()
+    return choice in ("both", "green"), choice in ("both", "blue")
 
 
 def check(kind):
@@ -189,9 +197,11 @@ def new_run_dir():
     return path
 
 
-def build_work(kind, items, conf=None):
-    """Contenu de work.json. `items` : dicts id, image_path, x_est, y_est, px_per_m, rescue."""
-    return {
+def build_work(kind, items, conf=None, crops_dir=None):
+    """Contenu de work.json. `items` : dicts id, image_path, x_est, y_est, px_per_m, rescue.
+
+    `crops_dir` : dossier ou le runner ecrit les vignettes de la revue (facultatif)."""
+    work = {
         "version": 1,
         "type": kind,
         "weights": weights_path(kind),
@@ -205,6 +215,9 @@ def build_work(kind, items, conf=None):
             for it in items
         ],
     }
+    if crops_dir:
+        work["crops_dir"] = crops_dir
+    return work
 
 
 def read_hits(path):
@@ -550,7 +563,8 @@ def _start(state, kind, scope):
         used = 1
         text = i18n.t("aigcp.running", kind=kind, n=len(items), label=label)
         shown = label
-    job = Job(kind, build_work(kind, items), new_run_dir()).start()
+    run_dir = new_run_dir()
+    job = Job(kind, build_work(kind, items, crops_dir=os.path.join(run_dir, "crops")), run_dir).start()
     state.aigcp_run = _Running(job, kind, scope, shown, msapi.chunk_key(chk), items, used)
     _status(state, text)
     _refresh_panel(state)
@@ -585,6 +599,8 @@ def poll(state):
         _status(state, i18n.t("aigcp.failed"))
         journal.write("IA : pose des propositions impossible : {!r}".format(exc))
     _refresh_panel(state)
+    if getattr(state, "aigcp_review", None) is not None:
+        photos.panel_call(state, "open_review")
 
 
 def _apply(state, run, hits, errors):
@@ -596,7 +612,8 @@ def _apply(state, run, hits, errors):
         return
     conf = conf_for(run.kind)
     by_id = {it["id"]: it for it in run.items}
-    placed, gated, with_proposal = [], 0, set()
+    placed, gated, with_proposal, entries = [], 0, set(), []
+    crops_dir = os.path.join(run.job.run_dir, "crops")
     accepted = {}
     for hit in hits:
         item = by_id.get(str(hit.get("id")))
@@ -629,6 +646,7 @@ def _apply(state, run, hits, errors):
             continue
         msapi.mark_proposal(marker, camera)
         placed.append((marker, camera, previous))
+        entries.append(review.make_entry(item, hit, previous, crops_dir))
         with_proposal.add(item["label"])
         journal.write("IA : {} propose en ({:.0f}, {:.0f}) sur {} (confiance {:.2f})".format(
             item["label"], hit["x"], hit["y"], msapi.camera_label(camera), hit["conf"]))
@@ -636,6 +654,9 @@ def _apply(state, run, hits, errors):
     if applied is None:
         applied = state.aigcp_applied = []
     applied.extend(placed)
+    # La revue ne porte que sur la derniere detection ; « Effacer » defait toujours tout.
+    state.aigcp_review = (review.Review(run.kind, os.path.basename(run.job.run_dir), entries)
+                          if entries else None)
     _status(state, _summary(run, len(placed), len(run.items), gated, len(with_proposal)))
 
 
@@ -688,6 +709,8 @@ def clear(state):
         except Exception:
             continue          # marqueur ou photo disparus avec le chunk
     state.aigcp_applied = []
+    state.aigcp_review = None
+    photos.panel_call(state, "close_review")
     _status(state, i18n.t("aigcp.cleared", n=removed))
     _refresh_panel(state)
     return removed

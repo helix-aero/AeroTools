@@ -9,14 +9,17 @@ jamais dans celui de Metashape :
     {"version": 1, "type": "damier", "weights": "...pt", "conf": 0.25,
      "scales_m": [0.3, 0.5, 0.8], "device": "auto",
      "items": [{"id": "...", "image_path": "...", "x_est": 123.4,
-                "y_est": 456.7, "px_per_m": 210.0, "rescue": true}, ...]}
+                "y_est": 456.7, "px_per_m": 210.0, "rescue": true}, ...],
+     "crops_dir": "dossier des vignettes de revue (facultatif)"}
 `rescue` (defaut vrai) : permet la recherche elargie si rien n'est trouve au centre ;
 faux quand la position attendue est connue a quelques centimetres.
 
 `hits.json` (ecrit ici, en fin de travail) :
     {"version": 1, "seconds": 3.2, "device": "cpu",
      "hits": [{"id": "...", "found": true, "x": 130.1, "y": 450.2,
-               "conf": 0.91, "crop_px": 214}, ...],
+               "conf": 0.91, "crop_px": 214,
+               "crop": {"thumb": "0_12.jpg", "big": "0_12_big.jpg", "win": 107,
+                        "x0": 77, "y0": 397}}, ...],
      "errors": ["id : message", ...]}
 
 Methode, celle qui a ete mesuree sur le jeu d'apprentissage (modeles\\evaluer.py) :
@@ -54,8 +57,8 @@ def crop_size(ppm, scale_m):
     return int(round(min(CROP_MAX, max(CROP_MIN, 4.0 * scale_m * ppm))))
 
 
-def crop(image, cx, cy, size):
-    """Carre de `size` px centre en (cx, cy), gris hors image, ramene a 160 x 160.
+def crop(image, cx, cy, size, out=OUT):
+    """Carre de `size` px centre en (cx, cy), gris hors image, ramene a `out` x `out`.
 
     Renvoie (tuile, x0, y0) ou None si le carre est entierement hors image.
     """
@@ -74,8 +77,8 @@ def crop(image, cx, cy, size):
         tile[sy0 - y0:sy1 - y0, sx0 - x0:sx1 - x0] = image[sy0:sy1, sx0:sx1]
     else:
         tile = image[y0:y1, x0:x1]
-    interpolation = cv2.INTER_AREA if size > OUT else cv2.INTER_CUBIC
-    return cv2.resize(tile, (OUT, OUT), interpolation=interpolation), x0, y0
+    interpolation = cv2.INTER_AREA if size > out else cv2.INTER_CUBIC
+    return cv2.resize(tile, (out, out), interpolation=interpolation), x0, y0
 
 
 class Detector(object):
@@ -159,6 +162,32 @@ def detect_item(detector, image, item, scales, conf):
             "conf": round(found[2], 4), "crop_px": int(found[3])}
 
 
+THUMB, BIG = 320, 640
+
+
+def save_review_crops(image, row, crops_dir, name):
+    """Vignette et grande vignette autour du point trouve, pour la revue de FastGCP.
+
+    La fenetre fait la moitie de celle du modele : la cible y occupe environ la
+    moitie de la vignette. Renvoie {thumb, big, win, x0, y0} (noms de fichiers dans
+    `crops_dir`, win = cote de la fenetre en pixels de la photo, x0 y0 = son coin).
+    """
+    import cv2
+    side = max(48, int(round(row["crop_px"] / 2.0)))
+    info = {"win": side}
+    for key, out, suffix in (("thumb", THUMB, ".jpg"), ("big", BIG, "_big.jpg")):
+        made = crop(image, row["x"], row["y"], side, out)
+        if made is None:
+            return None
+        ok, buffer = cv2.imencode(".jpg", made[0], [cv2.IMWRITE_JPEG_QUALITY, 90])
+        if not ok:
+            return None
+        buffer.tofile(os.path.join(crops_dir, name + suffix))
+        info[key] = name + suffix
+        info["x0"], info["y0"] = made[1], made[2]
+    return info
+
+
 def pick_device(wanted):
     if wanted and wanted != "auto":
         return wanted
@@ -190,6 +219,9 @@ def run(work_path, out_path):
     detector = Detector(work["weights"], device)
     hits, errors = [], []
     items = work.get("items", [])
+    crops_dir = work.get("crops_dir")
+    if crops_dir:
+        os.makedirs(crops_dir, exist_ok=True)
     write_progress(out_path, 0, len(items))
     last_write = time.time()
     last_path, image = None, None     # les items d'une meme photo se suivent : un seul decodage
@@ -205,6 +237,9 @@ def run(work_path, out_path):
                 raise ValueError("image illisible")
             row = detect_item(detector, image, item, scales, conf)
             row["id"] = item["id"]
+            if crops_dir and row["found"]:
+                name = "".join(c if c.isalnum() or c in "-_" else "_" for c in str(item["id"]))
+                row["crop"] = save_review_crops(image, row, crops_dir, name)
             hits.append(row)
         except Exception as exc:
             errors.append("{} : {!r}".format(item.get("id"), exc))

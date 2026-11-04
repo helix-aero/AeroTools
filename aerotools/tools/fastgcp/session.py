@@ -39,10 +39,7 @@ FIXED = {
 # Options supprimees : ni lues, ni ecrites.
 RETIRED = ("click_only",)
 
-# ai_skip_green / ai_skip_blue : la detection IA ignore les photos ou le marqueur est deja
-# pointe a la main (vert) ou porte un point bleu de Metashape. Coche = ignorer.
-DEFAULTS = dict(FIXED, collect_dataset=False, show_log=False,
-                ai_skip_green=True, ai_skip_blue=True)
+DEFAULTS = dict(FIXED, collect_dataset=False, show_log=False)
 
 # Reglage cache (aucune option dans l'interface) : largeur d'image, en pixels,
 # visible autour du marqueur quand FastGCP zoome la vue photo. A ecrire a la
@@ -111,6 +108,7 @@ class Session(object):
         # Detection IA (aigcp.py) : calcul en cours, propositions posees.
         self.aigcp_run = None
         self.aigcp_applied = []
+        self.aigcp_review = None
         self.zoom_px = float(ZOOM_DEFAULT_PX)
         self.snap_px = SNAP_DEFAULT_PX
         self.options = dict(DEFAULTS)
@@ -161,6 +159,7 @@ class Session(object):
         self.last_cameras = []
         self.zoomed = []
         self.aigcp_applied = []
+        self.aigcp_review = None
 
 
 _SESSION = None
