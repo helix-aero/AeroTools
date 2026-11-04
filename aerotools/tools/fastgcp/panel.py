@@ -39,7 +39,9 @@ SETTLE_MS = (500, 2000)               # relectures du tableau apres une modifica
 HEADER_BUTTON = 26                    # boutons ronds du haut : Annuler, Retablir, parametres
 HEADER_ICON = 14
 LANG_WIDTH = 60                       # liste des langues : le drapeau seul
-LOGO_SCALE = 2                        # le logo est range en double resolution
+LOGO_SCALE = 2                        # le logo est dessine en double resolution
+LOGO_WIDTH = 96                       # largeur affichee du logo AERO (le kit demande 64 px au minimum)
+LOGO_FILE = "helix-aero-AERO-blanc-512px.png"
 LABEL_MAX = 10                        # longueur maxi du nom du marqueur courant dans sa carte
 
 # Lignes visibles dans le journal deplie.
@@ -929,11 +931,13 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         row.setContentsMargins(theme.PAD_L, theme.PAD, theme.PAD_L, theme.PAD)
         row.setSpacing(theme.PAD_L)
         logo = QtWidgets.QLabel()
-        pixmap = QtGui.QPixmap(os.path.join(config.ROOT, "assets", "logo", "helix_aero_logo_white.png"))
+        pixmap = QtGui.QPixmap(os.path.join(config.ROOT, "assets", "logo", LOGO_FILE))
         if pixmap.isNull():
-            logo.setText("HELIX AERO")
+            logo.setText("AERO")
             logo.setObjectName("aeroTitle")
         else:
+            # Logo texte AERO, version blanche du kit valide le 31/10/2026 (fond gris).
+            pixmap = pixmap.scaledToWidth(LOGO_WIDTH * LOGO_SCALE, QtCore.Qt.SmoothTransformation)
             pixmap.setDevicePixelRatio(LOGO_SCALE)
             logo.setPixmap(pixmap)
         logo.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
