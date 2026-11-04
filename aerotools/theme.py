@@ -155,7 +155,7 @@ def stylesheet():
       #aeroTitle      titre d'outil
       #aeroValue      valeur mise en avant (marqueur courant)
       #aeroMeta       ligne secondaire
-      #aeroBanner     bandeau du haut (logo HELIX, pub) ; #aeroBannerTop : son filet vert
+      #aeroBanner     bandeau du haut (logo AERO sur le fond clair #F3F4F1 du kit, pub) ; #aeroBannerTop : son filet vert
       #aeroCard       bloc de reglages ; #aeroCardAccent : bloc mis en avant (cadre vert)
       #aeroSection    titre de section d'une fenetre (parametres)
       #aeroProgress   barre de progression de la detection IA
@@ -183,7 +183,10 @@ def stylesheet():
         background: {ground_1};
     }}
     #aeroPanel #aeroBanner {{
-        background: {ground_1};
+        background: #f3f4f1;
+    }}
+    #aeroPanel #aeroBanner QLabel#aeroMeta {{
+        color: #4a4d52;
     }}
     #aeroPanel #aeroBannerTop {{
         border: none;

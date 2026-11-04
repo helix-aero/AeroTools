@@ -41,7 +41,7 @@ HEADER_ICON = 14
 LANG_WIDTH = 60                       # liste des langues : le drapeau seul
 LOGO_SCALE = 2                        # le logo est dessine en double resolution
 LOGO_WIDTH = 96                       # largeur affichee du logo AERO (le kit demande 64 px au minimum)
-LOGO_FILE = "helix-aero-AERO-blanc-512px.png"
+LOGO_FILE = "helix-aero-AERO-degrade-512px.png"
 LABEL_MAX = 10                        # longueur maxi du nom du marqueur courant dans sa carte
 
 # Lignes visibles dans le journal deplie.
@@ -936,7 +936,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             logo.setText("AERO")
             logo.setObjectName("aeroTitle")
         else:
-            # Logo texte AERO, version blanche du kit valide le 31/10/2026 (fond gris).
+            # Logo texte AERO, version degrade du kit valide le 31/10/2026.
             pixmap = pixmap.scaledToWidth(LOGO_WIDTH * LOGO_SCALE, QtCore.Qt.SmoothTransformation)
             pixmap.setDevicePixelRatio(LOGO_SCALE)
             logo.setPixmap(pixmap)

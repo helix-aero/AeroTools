@@ -5,7 +5,7 @@
 One grey theme, the one of Metashape (`theme.py`: window #282828, base #404040, text #eeeeee), no light or dark switch. The header
 holds the title, Undo, the language list (a flag in front of each language, painted in code) and the **settings** gear, which
 opens the settings window (`settings_dialog.py`: open the review automatically, save marker picks, journal, and the AI models
-block, see *AI models and retraining*). The very top is a banner: green strip, the white AERO text logo (`assets/logo/helix-aero-AERO-blanc-512px.png`, from the brand kit
+block, see *AI models and retraining*). The very top is a banner: green strip, the gradient AERO text logo (`assets/logo/helix-aero-AERO-degrade-512px.png`, from the brand kit
 validated on 31/10/2026, kept on the server in `1-HELIX AERO\Logo_Helix_Aero_2026-10-31`; the O and AERO are never combined) and a one-line presentation, all of it a link to helix.aero. In the header: Undo and Redo (Ctrl+Z, Ctrl+Y or
 Ctrl+Shift+Z, `history.py` keeps a redo stack that a new pin clears), the language list showing only the flag, and the gear, all small.
 Confirmation and message boxes are our own (`dialogs.py`, fixed width, text measured to fit) because a QMessageBox cut long text under
