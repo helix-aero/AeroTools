@@ -845,13 +845,43 @@ def get_projection(marker, camera):
         return None
 
 
-def remove_projection(marker, camera):
-    """Supprime la projection du marqueur sur cette photo. Renvoie (ok, message)."""
+def remove_projection(marker, camera, update=True):
+    """Supprime la projection du marqueur sur cette photo. Renvoie (ok, message).
+
+    `update=False` : ne rafraichit pas Metashape (l'appelant le fait une fois pour toute une serie).
+    """
     try:
         try:
             del marker.projections[camera]
         except (TypeError, AttributeError, NotImplementedError):
             marker.projections[camera] = None
+        if update:
+            refresh()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def remove_all_projections(marker):
+    """Supprime toutes les projections du marqueur (posees, bleues, propositions de l'IA).
+
+    Renvoie le nombre de projections retirees. Le marqueur reste dans le chunk. Ne leve jamais.
+    """
+    removed = 0
+    for camera in projection_cameras(marker):
+        done, _message = remove_projection(marker, camera, update=False)
+        removed += 1 if done else 0
+    refresh()
+    return removed
+
+
+def remove_marker(chk, marker):
+    """Supprime le marqueur du chunk. Renvoie (ok, message)."""
+    try:
+        try:
+            chk.remove([marker])
+        except TypeError:
+            chk.remove(marker)
         refresh()
         return True, ""
     except Exception as exc:

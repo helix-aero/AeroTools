@@ -17,6 +17,7 @@ devenue illisible est ignoree, jamais une exception.
 MAX_DEPTH = 100
 
 _STACK = []
+_REDO = []            # pointages defaits par Annuler, que Retablir peut reposer
 _LISTENERS = []
 
 
@@ -54,11 +55,16 @@ def _clean_previous(previous):
         return None
 
 
-def push(marker, camera, previous, chunk_key=None, label="", camera_name=""):
-    """Empile un pointage. Renvoie l'entree, ou None si elle est inutilisable."""
+def push(marker, camera, previous, chunk_key=None, label="", camera_name="", keep_redo=False):
+    """Empile un pointage. Renvoie l'entree, ou None si elle est inutilisable.
+
+    Un nouveau pointage vide la pile de Retablir, sauf quand c'est Retablir lui-meme (`keep_redo`).
+    """
     if marker is None or camera is None:
         return None
     entry = Entry(marker, camera, _clean_previous(previous), chunk_key, label, camera_name)
+    if not keep_redo:
+        del _REDO[:]
     _STACK.append(entry)
     if len(_STACK) > MAX_DEPTH:
         del _STACK[: len(_STACK) - MAX_DEPTH]
@@ -82,6 +88,31 @@ def discard(entry):
         notify()
 
 
+def push_redo(marker, camera, after, chunk_key=None, label="", camera_name=""):
+    """Garde ce que Annuler vient d'effacer : `after` est la projection a reposer (ou None : aucune)."""
+    if marker is None or camera is None:
+        return None
+    entry = Entry(marker, camera, _clean_previous(after), chunk_key, label, camera_name)
+    _REDO.append(entry)
+    if len(_REDO) > MAX_DEPTH:
+        del _REDO[: len(_REDO) - MAX_DEPTH]
+    notify()
+    return entry
+
+
+def pop_redo():
+    """Depile le dernier pointage defait, ou None."""
+    if not _REDO:
+        return None
+    entry = _REDO.pop()
+    notify()
+    return entry
+
+
+def can_redo():
+    return bool(_REDO)
+
+
 def peek():
     return _STACK[-1] if _STACK else None
 
@@ -95,8 +126,9 @@ def can_undo():
 
 
 def clear():
-    if _STACK:
+    if _STACK or _REDO:
         del _STACK[:]
+        del _REDO[:]
         notify()
 
 

@@ -20,7 +20,7 @@ tout passe par review.py et msapi.
 
 from ... import config, i18n, journal, msapi, theme
 from ...qt import QShortcut, QtCore, QtGui, QtWidgets, modifiers
-from . import adjust_panel, imageadjust, photos, review
+from . import adjust_panel, dialogs, imageadjust, photos, review
 
 SECTION = "aigcp"
 THUMB_KEY = "review_thumb"
@@ -334,6 +334,50 @@ class _RefineView(QtWidgets.QWidget):
             painter.end()
 
 
+class BusyDialog(QtWidgets.QDialog):
+    """Petite fenetre modale « application en cours » avec barre de progression.
+
+    Bloque la fenetre de revue pendant qu'on pose les points (pas de double clic sur
+    Valider). `step(fait, total)` avance la barre et laisse Qt repeindre.
+    """
+
+    def __init__(self, text, parent=None):
+        super(BusyDialog, self).__init__(parent)
+        self.setModal(True)
+        self.setWindowTitle(i18n.t("review.busy_title"))
+        self.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.CustomizeWindowHint | QtCore.Qt.WindowTitleHint)
+        self.setFixedWidth(380)
+        root = _styled_root(self)
+        layout = QtWidgets.QVBoxLayout(root)
+        pad = theme.PAD * 2
+        layout.setContentsMargins(pad, pad, pad, pad)
+        layout.setSpacing(theme.PAD)
+        self.label = QtWidgets.QLabel(text)
+        self.label.setWordWrap(True)
+        layout.addWidget(self.label)
+        self.bar = QtWidgets.QProgressBar()
+        self.bar.setObjectName("aeroProgress")
+        self.bar.setTextVisible(False)
+        self.bar.setRange(0, 0)
+        layout.addWidget(self.bar)
+        self.note = QtWidgets.QLabel(i18n.t("review.busy_note"))
+        self.note.setObjectName("aeroMeta")
+        self.note.setWordWrap(True)
+        layout.addWidget(self.note)
+
+    def step(self, done, total):
+        if total > 0:
+            self.bar.setRange(0, total)
+            self.bar.setValue(min(done, total))
+        QtWidgets.QApplication.processEvents()
+
+    def open(self):
+        """Affiche la fenetre sans bloquer : l'appelant avance la barre avec step()."""
+        self.show()
+        self.raise_()
+        QtWidgets.QApplication.processEvents()
+
+
 class RefineDialog(QtWidgets.QDialog):
     """Fenetre modale d'affinage : toutes les vignettes choisies, l'une apres l'autre.
 
@@ -380,7 +424,8 @@ class RefineDialog(QtWidgets.QDialog):
         self.cancel_button = _button("review.refine_cancel", self.reject)
         self.next_button = _button("review.refine_next", self._next)
         self.validate_button = _button("review.refine_validate_exit", self.accept, width=150)
-        for button in (self.cancel_button, self.next_button, self.validate_button):
+        # Ordre de Windows : l'action positive a gauche, Annuler tout a droite.
+        for button in (self.validate_button, self.next_button, self.cancel_button):
             bottom.addWidget(button)
         layout.addLayout(bottom)
 
@@ -701,7 +746,11 @@ class ReviewDialog(QtWidgets.QDialog):
             "review.summary", kept=counts[review.KEPT], removed=counts[review.REMOVED],
             refined=counts[review.REFINED], accepted=counts[review.ACCEPTED]))
 
-    def _after_change(self):
+    def _after_change(self, labels=None, everything=False):
+        """Rafraichit la fenetre et le panneau FastGCP (erreurs X/Y/Z, nombre de projections).
+
+        `labels` : marqueurs dont une proposition vient de changer ; `everything` : tout le tableau.
+        """
         row = self.markers.currentRow()
         labels = self.review.labels()
         for index, label in enumerate(labels):
@@ -710,23 +759,25 @@ class ReviewDialog(QtWidgets.QDialog):
             self.markers.setCurrentRow(row)
         self._update_summary()
         self._update_buttons()
-        for method in ("update_aigcp", "update_active_card", "refresh_errors"):
-            photos.panel_call(self._state, method)
+        photos.panel_call(self._state, "update_aigcp")
+        photos.panel_call(self._state, "refresh_rows", None if everything else (labels or []), True)
+        photos.panel_call(self._state, "update_active_card")
 
     # -- decisions -----------------------------------------------------------------------
 
     def _apply(self, action):
-        changed = 0
+        changed, labels = 0, set()
         for item, entry in self._selected():
             try:
                 if action(self._state, self.review, entry):
                     changed += 1
+                    labels.add(entry["label"])
                     self._paint_item(item, entry)
             except Exception as exc:
                 journal.write("revue IA : {!r}".format(exc))
         if changed:
             self.thumbs.clearSelection()
-            self._after_change()
+            self._after_change(labels)
 
     def _on_exclude(self):
         self._apply(review.remove)
@@ -748,23 +799,34 @@ class ReviewDialog(QtWidgets.QDialog):
         if not pairs:
             return
         by_entry = {id(entry): item for item, entry in pairs}
-        done = 0
+        done, labels = 0, set()
         try:
             dialog = RefineDialog([e for _i, e in pairs], max(1.0, self._zoom), self.adjust, self)
             if _exec(dialog):
-                for entry, x, y in dialog.picks():
-                    try:
-                        if review.refine(self._state, self.review, entry, x, y):
-                            self._paint_item(by_entry[id(entry)], entry)
-                            done += 1
-                    except Exception as exc:
-                        journal.write("revue IA : affinage : {!r}".format(exc))
+                picks = dialog.picks()
+                busy = BusyDialog(i18n.t("review.busy_refine", n=len(picks)), self) if len(picks) > 1 else None
+                if busy is not None:
+                    busy.open()
+                try:
+                    for index, (entry, x, y) in enumerate(picks):
+                        if busy is not None:
+                            busy.step(index, len(picks))
+                        try:
+                            if review.refine(self._state, self.review, entry, x, y):
+                                self._paint_item(by_entry[id(entry)], entry)
+                                labels.add(entry["label"])
+                                done += 1
+                        except Exception as exc:
+                            journal.write("revue IA : affinage : {!r}".format(exc))
+                finally:
+                    if busy is not None:
+                        busy.close()
         except Exception as exc:
             journal.write("revue IA : affinage : {!r}".format(exc))
         self._repaint_all()           # les reglages ont pu changer dans la fenetre d'affinage
         if done:
             self.thumbs.clearSelection()
-            self._after_change()
+            self._after_change(labels)
 
     def _on_menu(self, pos):
         item = self.thumbs.itemAt(pos)
@@ -785,16 +847,20 @@ class ReviewDialog(QtWidgets.QDialog):
         count = sum(1 for e in self.review.entries if e["state"] == review.KEPT)
         if not count:
             return
-        box = QtWidgets.QMessageBox(self)
-        box.setWindowTitle(i18n.t("review.accept"))
-        box.setText(i18n.t("review.confirm_accept", n=count))
-        box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-        if _exec(box) != QtWidgets.QMessageBox.Yes:
+        if not dialogs.ask(self, i18n.t("review.accept"), i18n.t("review.confirm_accept", n=count)):
             return
-        done = review.accept_kept(self._state, self.review)
-        photos.panel_call(self._state, "set_status", i18n.t("review.accepted_status", n=done))
-        self._fill_thumbs()
-        self._after_change()
+        busy = BusyDialog(i18n.t("review.busy_validate", n=count), self)
+        busy.open()
+        try:
+            done = review.accept_kept(self._state, self.review, busy.step)
+            busy.label.setText(i18n.t("review.busy_refresh"))
+            busy.bar.setRange(0, 0)
+            QtWidgets.QApplication.processEvents()
+            photos.panel_call(self._state, "set_status", i18n.t("review.accepted_status", n=done))
+            self._fill_thumbs()
+            self._after_change(everything=True)
+        finally:
+            busy.close()
 
 
 def show(state, parent=None, existing=None):

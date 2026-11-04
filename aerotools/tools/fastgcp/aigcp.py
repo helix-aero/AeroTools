@@ -90,7 +90,9 @@ def models_dir():
 
 
 def weights_path(kind):
-    return os.path.join(models_dir(), kind + ".pt")
+    """Poids du modele actif pour ce type (celui de base tant qu'on n'en a pas choisi d'autre)."""
+    from . import training
+    return training.weights_for(kind)
 
 
 def python_path():
@@ -511,7 +513,7 @@ def _status(state, text):
 def _refresh_panel(state):
     photos.panel_call(state, "update_aigcp")
     photos.panel_call(state, "update_active_card")
-    photos.panel_call(state, "refresh_errors")
+    photos.panel_call(state, "refresh_rows", None)
 
 
 def busy(state):
@@ -715,6 +717,33 @@ def _summary(run, placed, tested, gated, markers):
     if gated:
         return i18n.t("aigcp.none_gate", label=run.label, g=gated)
     return i18n.t("aigcp.none", m=tested, label=run.label)
+
+
+def forget_markers(state, labels):
+    """Oublie les propositions de ces marqueurs (supprimes ou vides de leurs projections).
+
+    Les retire des propositions que « Effacer » defait, du journal du rapport et de la
+    revue en cours ; ferme la fenetre de revue si elle n'a plus rien a montrer.
+    """
+    gone = set(labels)
+    state.aigcp_applied = [t for t in (getattr(state, "aigcp_applied", None) or [])
+                           if _label_of(t[0]) not in gone]
+    state.aigcp_log = [e for e in (getattr(state, "aigcp_log", None) or [])
+                       if e["label"] not in gone]
+    current = getattr(state, "aigcp_review", None)
+    if current is not None:
+        current.entries = [e for e in current.entries if e["label"] not in gone]
+        if not current.entries:
+            state.aigcp_review = None
+            photos.panel_call(state, "close_review")
+    photos.panel_call(state, "update_aigcp")
+
+
+def _label_of(marker):
+    try:
+        return msapi.marker_label(marker)
+    except Exception:
+        return None
 
 
 def clear(state):

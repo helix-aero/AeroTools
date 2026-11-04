@@ -4,7 +4,16 @@
 
 One grey theme, the one of Metashape (`theme.py`: window #282828, base #404040, text #eeeeee), no light or dark switch. The header
 holds the title, Undo, the language list (a flag in front of each language, painted in code) and the **settings** gear, which
-opens the settings card (open the review automatically, save marker picks, journal).
+opens the settings window (`settings_dialog.py`: open the review automatically, save marker picks, journal, and the AI models
+block, see *AI models and retraining*). The very top is a banner: green strip, the white HELIX AERO logo (`assets/logo/helix_aero_logo_white.png`, from the 2026 brand
+file, top square in green) and a one-line presentation, all of it a link to helix.aero. In the header: Undo and Redo (Ctrl+Z, Ctrl+Y or
+Ctrl+Shift+Z, `history.py` keeps a redo stack that a new pin clears), the language list showing only the flag, and the gear, all small.
+Confirmation and message boxes are our own (`dialogs.py`, fixed width, text measured to fit) because a QMessageBox cut long text under
+Metashape. After removing projections or validating, the marker table is read again at once and twice more (0.5 s and 2 s), since
+Metashape recomputes marker positions a little later. At the bottom of the panel: *Tool made by helix.aero* (link) and a GitHub icon (link,
+painted from an SVG path by `svgpath.py`). The marker list takes Shift+click and Ctrl+click (several markers at once); a right-click
+offers *Remove projections* and *Remove markers* for the selection, after a confirmation. The active marker card is one line:
+name (cut at 10 characters, then three dots), pointed count, photo count.
 
 ## Layout
 
@@ -142,15 +151,20 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
     bigger or smaller. Under it, four viewing sliders: exposure, contrast, saturation and sharpness (`imageadjust.py`, numpy
     shipped with Metashape). They only change what the eye sees, in the Review panel AND in the Refine window (same sliders,
     same values, remembered between sessions); the photos, the crops and the points are never modified.
-  - **Validate** turns every kept proposal into a manual pin, after a confirmation.
+  - **Validate** turns every kept proposal into a manual pin, after a confirmation, with a small waiting window and a progress bar
+    (the window is modal, so a second click cannot start a second run). When it ends, and after every exclusion or refinement, the
+    marker table of the panel is read again (errors X/Y/Z and projection counts of every marker concerned).
+  - Double-clicking a viewing slider (or its name or value) puts it back to 0.
   The runner writes one wide crop per detection (`crops/` of the run folder); the window cuts the thumbnails out of it.
 - **PDF report.** After the usual pages, *Photos picked by the AI* shows, for every marker, one thumbnail per photo with the red
-  cross and the confidence under it (refined photos say *manual*). Only proposals still in the project count: excluded ones,
-  cleared ones and refinements undone with Ctrl+Z are left out. The thumbnails come from the crops of the run when they still
+  cross and the confidence under it (refined photos say *manual*). Excluded photos are shown too, darkened with a large red cross
+  and counted in the marker's header; they do not enter its statistics. Cleared proposals and refinements undone with Ctrl+Z
+  are left out. Every page footer links to helix.aero (a PDF link annotation). The thumbnails come from the crops of the run when they still
   exist, else from the photo itself.
 - **Feedback for retraining.** Every decision is appended to `<settings>/dataset/aigcp_feedback.jsonl` (format in `review.py`):
   `rejected` is a hard negative, `refined` a corrected position, `accepted` a confirmed one. Only the last event of each
-  (run, marker, photo) counts. The retraining button is for later.
+  (run, marker, photo) counts. The file lives in the *storage location* chosen in the settings window, and nothing is written when
+  *Use manual refinements to build the training dataset* is unchecked.
 - Picking a marker in the panel also selects it in Metashape's Reference pane: Metashape recentres on its own selected marker
   when the photo changes (Page Up / Page Down).
 - Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder). `*.pt` is
@@ -161,6 +175,26 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
 - Limits: the review keeps only the last detection; at most 200 photos per marker and 3000 per run, a marker needs a 3D position and an aligned photo. Measured by script
   on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and 40 px): 98 to 100 % within 3 px.
   The guard is covered by tests but not measured on real roof false positives yet.
+
+## AI models and retraining
+
+The settings window (gear) has an **AI models** block: the checkbox above, the storage location (Browse...), the model in use
+(*Aero V1.0* is ours and cannot be removed; *Local 1.1*, *Local 1.2*... are the ones trained on the user's data, never renamed),
+*Add...* (disabled for now), *Manage...* (delete local models) and **Refine my model using my data** with **Revert to Aero V1.0**.
+
+- `training.py` (no Qt) holds the registry (`<storage>/models/<id>/<type>.pt` + `meta.json`, numbers never reused thanks to
+  `counter.json`), the active model (`aigcp.weights_path` follows it, a local model that lacks a type falls back on the original
+  weights) and `Training`, which runs `aigcp_train.py` in the external Python (the one with torch and ultralytics, never inside
+  Metashape). The window asks for confirmation first (graphics card used heavily, do not touch the computer, the result may be
+  better on the user's targets and worse elsewhere, wrong annotations give a worse model, the original model is never modified).
+- The training starts again from the original weights each time, with all the feedback. Per type: crops around the final point
+  of every `refined` and `accepted` event (positives, 25 per target at most, refined first), crops at the AI position of every
+  `rejected` event (negatives), a few random backgrounds; train/validation split by physical target; fine-tuning with the
+  backbone frozen and a low learning rate; the result reports the validation mAP50 of the original and of the new model, and the
+  window warns when the new one scores clearly lower. A type needs at least `MIN_POSITIVES` (30) positives.
+- Honest limit: `accepted` events only confirm what the model already finds, so a first retraining on mostly validated points
+  barely changes it (measured on 623 events of CITADELLE_Pompeani: mAP50 0.979 before and after). Corrections (`refined`) and
+  rejections are what teach it something.
 
 ## Hidden settings
 

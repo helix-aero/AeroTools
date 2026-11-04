@@ -13,6 +13,7 @@ from . import aigcp, history, marking, photos, session as session_mod
 TICK_MS = 400
 HOTKEY = "Ctrl+Shift+M"
 UNDO_KEY = "Ctrl+Z"
+REDO_KEYS = ("Ctrl+Y", "Ctrl+Shift+Z")
 
 
 def install():
@@ -96,6 +97,14 @@ def uninstall():
             pass
         state.undo_shortcut = None
 
+    for redo in getattr(state, "redo_shortcuts", None) or []:
+        try:
+            redo.setEnabled(False)
+            redo.deleteLater()
+        except RuntimeError:
+            pass
+    state.redo_shortcuts = []
+
     panel = getattr(state, "panel", None)
     if panel is not None:
         try:
@@ -133,12 +142,22 @@ def _install_undo_shortcut(state, window):
     except Exception:
         pass
 
+    redo_shortcuts = []
+    for key in REDO_KEYS:
+        redo = QShortcut(QtGui.QKeySequence(key), window)
+        redo.setContext(QtCore.Qt.ApplicationShortcut)
+        redo.activated.connect(lambda *_args: marking.redo_last(state))
+        redo_shortcuts.append(redo)
+
     def sync():
         try:
             shortcut.setEnabled(bool(state.enabled) and history.can_undo())
+            for redo in redo_shortcuts:
+                redo.setEnabled(bool(state.enabled) and history.can_redo())
         except RuntimeError:
             history.unsubscribe(sync)
 
+    state.redo_shortcuts = redo_shortcuts
     state.undo_shortcut = shortcut
     state.undo_listener = sync
     history.subscribe(sync)

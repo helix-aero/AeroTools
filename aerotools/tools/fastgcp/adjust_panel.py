@@ -18,6 +18,26 @@ def _signed(value):
     return "{:+d}".format(value) if value else "0"
 
 
+class _ResetSlider(QtWidgets.QSlider):
+    """Curseur dont le double-clic ramene la valeur neutre (0), comme dans Lightroom."""
+
+    def mouseDoubleClickEvent(self, event):
+        self.setValue(0 if self.minimum() <= 0 <= self.maximum() else self.minimum())
+        event.accept()
+
+
+class _ResetLabel(QtWidgets.QLabel):
+    """Libelle ou valeur : double-clic = remise a zero du reglage correspondant."""
+
+    def __init__(self, text, on_reset):
+        super(_ResetLabel, self).__init__(text)
+        self._on_reset = on_reset
+
+    def mouseDoubleClickEvent(self, event):
+        self._on_reset()
+        event.accept()
+
+
 class AdjustPanel(QtWidgets.QFrame):
     """Cadre a droite des images : `top` (widget facultatif, ex. le zoom) puis les reglages."""
 
@@ -72,16 +92,20 @@ class AdjustPanel(QtWidgets.QFrame):
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(2)
         line = QtWidgets.QHBoxLayout()
-        name = QtWidgets.QLabel(i18n.t(LABELS[key]))
+        def reset(_key=key):
+            self.model.set(_key, 0)
+
+        name = _ResetLabel(i18n.t(LABELS[key]), reset)
         name.setObjectName("aeroMeta")
-        value = QtWidgets.QLabel("0")
+        value = _ResetLabel("0", reset)
         value.setObjectName("aeroMeta")
         value.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         line.addWidget(name, 1)
         line.addWidget(value, 0)
         box.addLayout(line)
-        slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        slider = _ResetSlider(QtCore.Qt.Horizontal)
         slider.setObjectName("aeroSlider")
+        slider.setToolTip(i18n.t("review.slider_tip"))
         slider.setRange(*imageadjust.RANGES[key])
         slider.setEnabled(imageadjust.available())
         slider.valueChanged.connect(lambda v, k=key: self.model.set(k, v))

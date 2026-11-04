@@ -155,7 +155,9 @@ def stylesheet():
       #aeroTitle      titre d'outil
       #aeroValue      valeur mise en avant (marqueur courant)
       #aeroMeta       ligne secondaire
-      #aeroCard       bloc de reglages
+      #aeroBanner     bandeau du haut (logo HELIX, pub) ; #aeroBannerTop : son filet vert
+      #aeroCard       bloc de reglages ; #aeroCardAccent : bloc mis en avant (cadre vert)
+      #aeroSection    titre de section d'une fenetre (parametres)
       #aeroProgress   barre de progression de la detection IA
       #aeroCombo      liste deroulante (choix de la detection IA)
       #aeroThumbs     listes de la fenetre de revue ; #aeroSlider : curseur de taille
@@ -179,6 +181,13 @@ def stylesheet():
     }}
     #aeroPanel #aeroHeader {{
         background: {ground_1};
+    }}
+    #aeroPanel #aeroBanner {{
+        background: {ground_1};
+    }}
+    #aeroPanel #aeroBannerTop {{
+        border: none;
+        background: {green};
     }}
     #aeroPanel #aeroRule {{
         border: none;
@@ -219,6 +228,24 @@ def stylesheet():
         background: {ground_2};
         border: 1px solid {border_faint};
         border-radius: {radius}px;
+    }}
+    #aeroPanel #aeroCardAccent {{
+        background: {ground_2};
+        border: 1px solid {green};
+        border-radius: {radius}px;
+    }}
+    #aeroPanel #aeroSection {{
+        color: {fg_0};
+        font-family: "{title}";
+        font-size: 11pt;
+        font-weight: 600;
+    }}
+    #aeroPanel #aeroAccentTitle {{
+        color: {green};
+        font-family: "{title}";
+        font-size: 9pt;
+        font-weight: 700;
+        letter-spacing: 1.4px;
     }}
     #aeroPanel QComboBox#aeroCombo {{
         background: {field_bg};

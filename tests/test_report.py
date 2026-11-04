@@ -436,12 +436,16 @@ def test_ai_sections_keep_only_live_picks_with_their_confidence(ms, monkeypatch)
 
     log = [entry(cams[0], review.KEPT, 0.91), entry(cams[1], review.REFINED, 0.80),
            entry(cams[2], review.REMOVED, 0.70), entry(cams[3], review.KEPT, 0.60)]
-    monkeypatch.setattr(report, "_ai_thumb", lambda e: object())
+    monkeypatch.setattr(report, "_ai_thumb", lambda e, excluded=False: object())
     sections = report.ai_sections(types.SimpleNamespace(aigcp_log=log))
     assert [s["label"] for s in sections] == ["PS_2"]
     items = sections[0]["items"]
-    assert [i["camera"] for i in items] == [cams[0].label, cams[1].label]   # exclue et sans projection : absentes
+    # la photo exclue figure avec sa croix rouge ; une gardee sans projection est absente
+    assert [i["camera"] for i in items] == [cams[0].label, cams[1].label, cams[2].label]
     assert items[0]["caption"] == report.fmt_num(0.91, 2) and items[1]["caption"] == "manuel"
+    assert items[2]["caption"] == "exclue" and items[2]["ring"] == report.AI_RED
+    assert sections[0]["info"]["excluded"] == 1
+    assert "1 photo(s) exclue(s)" in report.ai_info_parts(sections[0]["info"])
 
 
 def test_ai_info_parts_describe_the_marker():
@@ -497,7 +501,7 @@ def test_ai_sections_carry_the_marker_information(ms, monkeypatch):
            {"marker": marker, "label": "PS_5", "camera": cams[1], "camera_label": cams[1].label,
             "state": review.KEPT, "conf": 0.94, "x": 2000.0, "y": 1503.0}]
     data = {"markers": [{"label": "PS_5", "total": 0.02, "x": 0.01, "y": 0.01, "z": 0.015, "projections": 12}]}
-    monkeypatch.setattr(report, "_ai_thumb", lambda e: object())
+    monkeypatch.setattr(report, "_ai_thumb", lambda e, excluded=False: object())
     info = report.ai_sections(types.SimpleNamespace(aigcp_log=log), data)[0]["info"]
     assert info["total"] == 0.02 and info["projections"] == 12
     assert info["median_px"] == pytest.approx(2.0) and info["max_px"] == pytest.approx(3.0)   # 1 px et 3 px d'ecart
@@ -512,7 +516,7 @@ def test_ai_sections_skip_unreadable_photos(ms, monkeypatch):
     ms.app.document.chunk = ms.Chunk([cam], [marker])
     log = [{"marker": marker, "label": "PS_1", "camera": cam, "camera_label": cam.label,
             "state": review.KEPT, "conf": 0.9, "x": 1.0, "y": 2.0}]
-    monkeypatch.setattr(report, "_ai_thumb", lambda e: None)
+    monkeypatch.setattr(report, "_ai_thumb", lambda e, excluded=False: None)
     assert report.ai_sections(types.SimpleNamespace(aigcp_log=log)) == []
     assert report.ai_sections(types.SimpleNamespace()) == []
 

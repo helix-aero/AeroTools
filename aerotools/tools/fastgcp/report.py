@@ -552,6 +552,31 @@ class _Canvas(object):
         p.drawText(QtCore.QPointF(0.0, 0.0), text)
         p.restore()
 
+    def link(self, x, y, text, px, url, kind="body", weight=1, align="l"):
+        """Rend cliquable (lien PDF) le texte deja ecrit avec la ligne de base en `y`.
+
+        Un QTextDocument invisible porte l'ancre : Qt en fait une annotation de lien. La zone
+        suit la police du systeme, a quelques points pres de celle du texte ecrit.
+        """
+        text = str(text)
+        width = self.width(text, px, kind, weight)
+        if align == "r":
+            x -= width
+        elif align == "c":
+            x -= width / 2.0
+        font = QtGui.QFont(self.st.body_family)
+        font.setPixelSize(max(1, int(round(px))))
+        doc = QtGui.QTextDocument()
+        doc.setDefaultFont(font)
+        doc.setDocumentMargin(0)
+        doc.setHtml('<a href="{}">{}</a>'.format(url, text))
+        p = self.p
+        p.save()
+        p.translate(x, y - QtGui.QFontMetricsF(font).ascent())
+        p.setOpacity(0.0)
+        doc.drawContents(p)
+        p.restore()
+
     def fit(self, text, px, max_width, kind="body", weight=1):
         """Raccourcit `text` avec une ellipse pour tenir dans `max_width`."""
         text = str(text)
@@ -627,7 +652,11 @@ def _fmt_date(day):
 def _footer(cv, W, H, page, total):
     y = H - 34.0
     cv.line(MARGIN, y, W - MARGIN, y, LINE, 0.6)
-    cv.text(MARGIN, y + 15.0, "HELIX AERO {} AeroTools FastGCP".format(DOT), 7.5, MUTED)
+    credit = "HELIX AERO {} AeroTools FastGCP {} ".format(DOT, DOT)
+    cv.text(MARGIN, y + 15.0, credit, 7.5, MUTED)
+    start = MARGIN + cv.width(credit, 7.5)
+    cv.text(start, y + 15.0, SITE_TEXT, 7.5, GREEN_DEEP, "body", 2)
+    cv.link(start, y + 15.0, SITE_TEXT, 7.5, SITE_URL, "body", 2)
     cv.text(W - MARGIN, y + 15.0, i18n.t("report.footer.page", page=page, total=total),
             7.5, MUTED, align="r")
 
@@ -667,6 +696,7 @@ def _draw_band(cv, W, data):
     cv.p.setBrush(_gradient_brush(0, height, W, 0))
     cv.p.drawRect(QtCore.QRectF(0, 0, W, height))
     cv.text(MARGIN, 36.0, "HELIX AERO", 9, "#ffffff", "display", 2, spacing=1.8)
+    cv.link(MARGIN, 36.0, "HELIX AERO", 9, SITE_URL, "display", 2)
     cv.text(W - MARGIN, 36.0, "AeroTools {} FastGCP".format(DOT), 9, "#ffffff", "display", 1,
             align="r", alpha=0.85)
     cv.text(MARGIN, 76.0, i18n.t("report.title"), 29, "#ffffff", "display", 2)
@@ -1227,6 +1257,8 @@ AI_HEAD_H = 42.0                    # titre du marqueur + deux lignes d'informat
 AI_THUMB_PX = 160                   # cote de la vignette peinte, en pixels
 AI_FALLBACK_PX = 96                 # region lue dans la photo quand le recadrage n'existe plus
 AI_RED = "#ff4a2e"
+SITE_URL = "https://helix.aero"
+SITE_TEXT = "helix.aero"
 A4_W, A4_H = 595.28, 841.89
 
 
@@ -1321,6 +1353,8 @@ def ai_info_parts(info):
                             min=fmt_num(info["conf_min"], 2)))
     if info.get("projections"):
         parts.append(i18n.t("report.ai.info_projections", n=info["projections"]))
+    if info.get("excluded"):
+        parts.append(i18n.t("report.ai.info_excluded", n=info["excluded"]))
     if info.get("gcp") is True:
         text = i18n.t("report.ai.info_gcp_yes")
     elif info.get("gcp") is False:
@@ -1351,11 +1385,29 @@ def _ai_mark(image, cx, cy, color):
     return marked
 
 
-def _ai_thumb(entry):
+def _ai_excluded(image):
+    """Vignette d'une photo exclue : assombrie, avec une grande croix rouge d'un coin a l'autre."""
+    marked = image.convertToFormat(QtGui.QImage.Format_RGB32)
+    painter = QtGui.QPainter(marked)
+    try:
+        painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        painter.fillRect(marked.rect(), QtGui.QColor(0, 0, 0, 110))
+        w, h = marked.width(), marked.height()
+        inset = w * 0.12
+        for tone, width in (("#ffffff", w * 0.07), (AI_RED, w * 0.04)):
+            painter.setPen(QtGui.QPen(QtGui.QColor(tone), width, QtCore.Qt.SolidLine, QtCore.Qt.RoundCap))
+            painter.drawLine(QtCore.QPointF(inset, inset), QtCore.QPointF(w - inset, h - inset))
+            painter.drawLine(QtCore.QPointF(w - inset, inset), QtCore.QPointF(inset, h - inset))
+    finally:
+        painter.end()
+    return marked
+
+
+def _ai_thumb(entry, excluded=False):
     """Vignette carree d'une proposition, croix sur son point ; None si la photo est illisible.
 
     On reprend le recadrage ecrit par la detection quand il existe encore ; sinon on lit
-    la region dans la photo d'origine.
+    la region dans la photo d'origine. Une photo `excluded` porte une grande croix rouge.
     """
     x, y = entry["x"], entry["y"]
     if review.has_crop(entry) and os.path.isfile(entry["big"]):
@@ -1365,6 +1417,8 @@ def _ai_thumb(entry):
             rect = QtCore.QRect(int(round(left)), int(round(top)), int(round(side)), int(round(side)))
             image = source.copy(rect).scaled(AI_THUMB_PX, AI_THUMB_PX, QtCore.Qt.IgnoreAspectRatio,
                                              QtCore.Qt.SmoothTransformation)
+            if excluded:
+                return _ai_excluded(image)
             cx, cy = review.to_view(entry, x, y, AI_THUMB_PX, 1.0)
             return _ai_mark(image, cx, cy, AI_RED)
     region = _read_region(entry["image_path"], x, y, AI_FALLBACK_PX, AI_FALLBACK_PX,
@@ -1375,6 +1429,8 @@ def _ai_thumb(entry):
     factor = AI_THUMB_PX / float(image.width())
     image = image.scaled(AI_THUMB_PX, int(round(image.height() * factor)), QtCore.Qt.IgnoreAspectRatio,
                          QtCore.Qt.SmoothTransformation)
+    if excluded:
+        return _ai_excluded(image)
     return _ai_mark(image, lx * factor, ly * factor, AI_RED)
 
 
@@ -1424,21 +1480,30 @@ def _ai_info(entries, data):
 def ai_sections(state, data=None):
     """Vignettes des photos pointees par l'IA, par marqueur : [{"label", "items": [...], "info": {...}}].
 
-    Seules comptent les propositions gardees, validees ou affinees, et seulement si leur
-    projection existe encore dans le projet. Une photo illisible est simplement absente.
+    Les propositions gardees, validees ou affinees comptent si leur projection existe encore
+    dans le projet ; les photos exclues y figurent aussi, avec une grande croix rouge, sans
+    entrer dans les statistiques du marqueur. Une photo illisible est simplement absente.
     """
-    grouped, kept = {}, {}
+    grouped, kept, excluded = {}, {}, {}
     for entry in getattr(state, "aigcp_log", None) or []:
-        if entry["state"] not in (review.KEPT, review.ACCEPTED, review.REFINED):
+        if entry["state"] not in (review.KEPT, review.ACCEPTED, review.REFINED, review.REMOVED):
             continue
+        out = entry["state"] == review.REMOVED
         try:
-            if not _ai_still_there(entry):
+            if not out and not _ai_still_there(entry):
                 continue
-            image = _ai_thumb(entry)
+            image = _ai_thumb(entry, excluded=out)
         except Exception as exc:
             journal.write("Rapport : vignette IA ignorée : {!r}".format(exc))
             continue
         if image is None:
+            continue
+        if out:
+            excluded[entry["label"]] = excluded.get(entry["label"], 0) + 1
+            grouped.setdefault(entry["label"], []).append({
+                "image": image, "camera": entry["camera_label"],
+                "caption": i18n.t("report.ai.excluded"), "color": AI_RED, "ring": AI_RED,
+            })
             continue
         manual = entry["state"] == review.REFINED
         kept.setdefault(entry["label"], []).append(entry)
@@ -1451,10 +1516,12 @@ def ai_sections(state, data=None):
     sections = []
     for label in sorted(grouped, key=_natural):
         try:
-            info = _ai_info(kept[label], data)
+            info = _ai_info(kept[label], data) if label in kept else {}
         except Exception as exc:
             journal.write("Rapport : informations de {} ignorées : {!r}".format(label, exc))
             info = {}
+        if excluded.get(label):
+            info["excluded"] = excluded[label]
         sections.append({"label": label, "info": info,
                          "items": sorted(grouped[label], key=lambda it: it["camera"])})
     return sections

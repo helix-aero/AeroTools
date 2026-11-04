@@ -108,6 +108,10 @@ class Chunk(object):
         self.key = 1
         self.label = "Chunk 1"
 
+    def remove(self, items):
+        gone = items if isinstance(items, (list, tuple)) else [items]
+        self.markers = [m for m in self.markers if m not in gone]
+
 
 class FakeApp(object):
     def __init__(self):

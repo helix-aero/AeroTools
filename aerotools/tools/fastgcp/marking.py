@@ -202,6 +202,7 @@ def _undo_last(state):
     label = msapi.marker_label(marker) or entry.label
     camera_name = msapi.camera_label(camera) or entry.camera_name
 
+    after = msapi.get_projection(marker, camera)          # ce que Retablir remettra
     previous = entry.previous
     if previous is None:
         ok, message = msapi.remove_projection(marker, camera)
@@ -216,19 +217,74 @@ def _undo_last(state):
         return False
 
     # Une photo suivante programmee par le pointage defait n'a plus lieu d'etre.
+    history.push_redo(marker, camera, after, chunk_key=entry.chunk_key, label=label, camera_name=camera_name)
+    _show_result(state, marker, camera, label)
+    _undo_status(state, i18n.t("undo.done", label=label))
+    journal.write("Annule : {} sur {} ({})".format(label, camera_name, what))
+    return True
+
+
+def _show_result(state, marker, camera, label):
+    """Apres Annuler ou Retablir : photo rouverte, zoom sur le point, panneau relu."""
     photos.cancel_advance()
     state.active_marker = marker
     if getattr(state, "panel", None) is not None:
         photos.panel_call(state, "set_active_marker_by_label", label)
     already_open = msapi.camera_key(msapi.current_camera()) == msapi.camera_key(camera)
     msapi.open_photo(camera)
-    # Photo rouverte par l'annulation : zoom sur le point defait. Photo deja a
-    # l'ecran : on ne touche pas au zoom de l'operateur.
+    # Photo rouverte : zoom sur le point. Photo deja a l'ecran : on ne touche pas au
+    # zoom de l'operateur.
     photos.zoom_on_marker(state, marker, camera, force=not already_open)
     photos.panel_call(state, "update_active_card")
     photos.panel_call(state, "refresh_errors")
-    _undo_status(state, i18n.t("undo.done", label=label))
-    journal.write("Annule : {} sur {} ({})".format(label, camera_name, what))
+
+
+def redo_last(state):
+    """Repose le dernier pointage defait par Annuler. True si c'est fait. Ne leve jamais."""
+    try:
+        return _redo_last(state)
+    except Exception as exc:
+        try:
+            journal.write("retablir : {!r}".format(exc))
+        except Exception:
+            pass
+        return False
+
+
+def _redo_last(state):
+    if not state.enabled:
+        return False
+    chunk = msapi.chunk()
+    key = msapi.chunk_key(chunk)
+    while True:
+        entry = history.pop_redo()
+        if entry is None:
+            _undo_status(state, i18n.t("redo.nothing"))
+            return False
+        if chunk is None or (entry.chunk_key is not None and entry.chunk_key != key):
+            history.clear()
+            return False
+        if entry.is_valid() and msapi.camera_in_chunk(chunk, entry.camera):
+            break
+    marker, camera = entry.marker, entry.camera
+    label = msapi.marker_label(marker) or entry.label
+    camera_name = msapi.camera_label(camera) or entry.camera_name
+    before = msapi.get_projection(marker, camera)
+    undo = history.push(marker, camera, before, chunk_key=entry.chunk_key, label=label,
+                        camera_name=camera_name, keep_redo=True)
+    after = entry.previous
+    if after is None:
+        ok, message = msapi.remove_projection(marker, camera)
+    else:
+        ok, message = msapi.set_projection(marker, camera, after[0], after[1], after[2])
+    if not ok:
+        history.discard(undo)
+        journal.write("Echec de Retablir {} sur {} : {}".format(label, camera_name, message))
+        _undo_status(state, i18n.t("redo.failed"))
+        return False
+    _show_result(state, marker, camera, label)
+    _undo_status(state, i18n.t("redo.done", label=label))
+    journal.write("Retabli : {} sur {}".format(label, camera_name))
     return True
 
 

@@ -3,9 +3,9 @@
 Vue principale : titre, bouton Annuler, selecteur de langue et bouton de theme,
 Play / Pause avec l'etat de l'outil, marqueur courant (deux compteurs), recherche, tableau des
 marqueurs (ID, erreurs X / Y / Z, nombre de projections, colonnes triables).
-Le pied porte le statut, le menu Exporter et l'engrenage ; le reste
-(enregistrement des pointages, journal) est dans la carte « Plus », repliee par
-defaut.
+Le pied porte le statut, le menu Exporter et le credit HELIX (lien du site et
+GitHub). L'engrenage ouvre la fenetre Parametres (settings_dialog.py) : options,
+journal, modeles IA et reentrainement.
 
 Le filtre des photos, la synchronisation avec le panneau Reference et le
 passage a la photo suivante sont automatiques : le panneau ne les propose pas.
@@ -13,7 +13,8 @@ passage a la photo suivante sont automatiques : le panneau ne les propose pas.
 Regles de ce module :
   - aucun appel direct a Metashape : tout passe par `msapi` ;
   - aucun style en dur : couleurs, marges et objectName viennent de `theme` ;
-  - aucune phrase d'aide, et aucune infobulle hors des deux pastilles-compteur ;
+  - aucune phrase d'aide, et aucune infobulle hors des deux pastilles-compteur
+    et de l'icone GitHub du credit ;
   - aucun texte visible en dur : tout passe par `i18n.t(...)`, et `retranslate()`
     remet le panneau dans la langue choisie sans le recreer ;
   - jamais d'exception vers l'appelant : une reference de marqueur devient
@@ -23,18 +24,33 @@ Regles de ce module :
 
 import functools
 import math
+import os
 import re
 import time
 
-from ... import config, i18n, journal, msapi, theme
+from ... import config, i18n, journal, msapi, svgpath, theme
 from ...qt import QtCore, QtGui, QtWidgets
 from . import aigcp, history, qc
+
+SITE_URL = "https://helix.aero"
+SITE_NAME = "helix.aero"
+GITHUB_URL = "https://github.com/helix-aero/AeroTools"
+SETTLE_MS = (500, 2000)               # relectures du tableau apres une modification en masse
+HEADER_BUTTON = 26                    # boutons ronds du haut : Annuler, Retablir, parametres
+HEADER_ICON = 14
+LANG_WIDTH = 60                       # liste des langues : le drapeau seul
+LOGO_SCALE = 2                        # le logo est range en double resolution
+LABEL_MAX = 10                        # longueur maxi du nom du marqueur courant dans sa carte
 
 # Lignes visibles dans le journal deplie.
 LOG_VISIBLE_LINES = 6
 
 # Largeur mini du dock : le tableau des marqueurs a besoin de place.
 MIN_PANEL_WIDTH = 420
+
+# Meme hauteur pour tous les boutons et listes du panneau ; Run est un petit bouton.
+CONTROL_HEIGHT = 30
+RUN_WIDTH = 72
 
 # Texte de chaque case de la carte Parametres (cle de l'option : cle de texte).
 CHECK_TEXTS = {
@@ -313,6 +329,33 @@ def _counter_pixmap(kind, color):
 
 
 GEAR_ICON = 18
+GITHUB_ICON = 16
+
+# Marque GitHub (Octicons mark-github, 16 x 16), peinte sans fichier ni QtSvg.
+GITHUB_PATH = (
+    "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49"
+    "-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82"
+    ".72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15"
+    "-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04"
+    " 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25"
+    ".54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
+)
+
+
+def _github_pixmap(color):
+    def build():
+        def draw(painter):
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.setBrush(QtGui.QColor(color))
+            painter.drawPath(svgpath.parse(GITHUB_PATH))
+        return _paint(GITHUB_ICON, GITHUB_ICON, draw)
+    return _cached(("github", color), build)
+
+
+def short_label(label, limit=LABEL_MAX):
+    """Nom du marqueur tronque a `limit` caracteres, suivi de trois points."""
+    label = label or ""
+    return label if len(label) <= limit else label[:limit] + "..."
 
 
 def _gear_pixmap(color):
@@ -409,11 +452,14 @@ def _undo_pixmap(color, opacity=1.0):
     return _cached(("undo", color, opacity), build)
 
 
-def _undo_icon():
-    """Icone du bouton Annuler, avec sa version grisee."""
+def _undo_icon(mirror=False):
+    """Icone du bouton Annuler (ou Retablir, en miroir), avec sa version grisee."""
+    def pick(pixmap):
+        return pixmap.transformed(QtGui.QTransform().scale(-1, 1)) if mirror else pixmap
+
     icon = QtGui.QIcon()
-    icon.addPixmap(_undo_pixmap(theme.FG_2), QtGui.QIcon.Normal)
-    icon.addPixmap(_undo_pixmap(theme.FG_3, 0.45), QtGui.QIcon.Disabled)
+    icon.addPixmap(pick(_undo_pixmap(theme.FG_2)), QtGui.QIcon.Normal)
+    icon.addPixmap(pick(_undo_pixmap(theme.FG_3, 0.45)), QtGui.QIcon.Disabled)
     return icon
 
 
@@ -472,6 +518,22 @@ def _dot_icon(done):
 # ----------------------------------------------------------------------
 # Petits widgets
 # ----------------------------------------------------------------------
+
+class _LinkFrame(QtWidgets.QFrame):
+    """Cadre cliquable : un clic ouvre l'adresse dans le navigateur."""
+
+    def __init__(self, url, parent=None):
+        super(_LinkFrame, self).__init__(parent)
+        self._url = url
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        try:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(self._url))
+        except Exception as exc:
+            journal.write("FastGCP : lien du bandeau : {!r}".format(exc))
+        super(_LinkFrame, self).mousePressEvent(event)
+
 
 class _ElidedLabel(QtWidgets.QLabel):
     """Etiquette sur une ligne, tronquee par « … » au lieu d'elargir le dock."""
@@ -827,6 +889,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         column = QtWidgets.QVBoxLayout(body)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(0)
+        column.addWidget(self._build_banner())
         column.addWidget(self._build_header())
         column.addWidget(theme.gradient_rule(QtWidgets))
 
@@ -840,13 +903,51 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.addWidget(self._build_search())
         layout.addWidget(self._build_list(), 1)
         layout.addLayout(self._build_tools())
-        layout.addWidget(self._build_more())
+        self._build_more()                # ouverte dans la fenetre Parametres, jamais dans la colonne
         layout.addLayout(self._build_footer())
+        layout.addLayout(self._build_credit())
         column.addWidget(content, 1)
         return root
 
+    def _build_banner(self):
+        """Tout en haut : filet vert, logo HELIX (blanc sur le gris) et une ligne de presentation.
+
+        Tout le bandeau est un lien vers le site.
+        """
+        holder = QtWidgets.QWidget()
+        outer = QtWidgets.QVBoxLayout(holder)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        top = QtWidgets.QFrame()
+        top.setObjectName("aeroBannerTop")
+        top.setFixedHeight(3)
+        outer.addWidget(top)
+
+        banner = _LinkFrame(SITE_URL)
+        banner.setObjectName("aeroBanner")
+        row = QtWidgets.QHBoxLayout(banner)
+        row.setContentsMargins(theme.PAD_L, theme.PAD, theme.PAD_L, theme.PAD)
+        row.setSpacing(theme.PAD_L)
+        logo = QtWidgets.QLabel()
+        pixmap = QtGui.QPixmap(os.path.join(config.ROOT, "assets", "logo", "helix_aero_logo_white.png"))
+        if pixmap.isNull():
+            logo.setText("HELIX AERO")
+            logo.setObjectName("aeroTitle")
+        else:
+            pixmap.setDevicePixelRatio(LOGO_SCALE)
+            logo.setPixmap(pixmap)
+        logo.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+        row.addWidget(logo, 0)
+        self.ad = _ElidedLabel("aeroMeta")
+        self.ad.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.ad.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
+        self.ad.set_full_text(i18n.t("panel.ad", site=SITE_NAME))
+        row.addWidget(self.ad, 1)
+        outer.addWidget(banner)
+        return holder
+
     def _build_header(self):
-        """Titre a gauche, a droite : Annuler, langue (liste a drapeaux), parametres (engrenage)."""
+        """Titre a gauche, a droite : Annuler, Retablir, langue (drapeau), parametres (engrenage)."""
         header = QtWidgets.QWidget()
         header.setObjectName("aeroHeader")
         layout = QtWidgets.QHBoxLayout(header)
@@ -856,28 +957,30 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         title.setObjectName("aeroTitle")
         layout.addWidget(title, 1)
 
-        self.undo_button = QtWidgets.QPushButton()
-        self.undo_button.setObjectName("aeroGhost")
-        self.undo_button.setProperty("round", True)
-        self.undo_button.setCursor(QtCore.Qt.PointingHandCursor)
-        self.undo_button.setFixedSize(32, 32)
-        self.undo_button.setIconSize(QtCore.QSize(UNDO_ICON, UNDO_ICON))
-        self.undo_button.setEnabled(False)
-        self.undo_button.clicked.connect(self._on_undo_clicked)
+        self.undo_button = self._round_button(self._on_undo_clicked)
+        self.redo_button = self._round_button(self._on_redo_clicked)
         layout.addWidget(self.undo_button, 0)
+        layout.addWidget(self.redo_button, 0)
 
         layout.addWidget(self._build_lang_combo(), 0)
 
-        self.more_button = QtWidgets.QPushButton()
-        self.more_button.setObjectName("aeroGhost")
-        self.more_button.setProperty("round", True)
-        self.more_button.setCheckable(True)
-        self.more_button.setCursor(QtCore.Qt.PointingHandCursor)
-        self.more_button.setFixedSize(32, 32)
-        self.more_button.setIconSize(QtCore.QSize(GEAR_ICON, GEAR_ICON))
-        self.more_button.toggled.connect(self._on_more_toggled)
+        self.more_button = self._round_button(self._open_settings)
+        self.more_button.setEnabled(True)
         layout.addWidget(self.more_button, 0)
         return header
+
+    @staticmethod
+    def _round_button(handler):
+        """Petit bouton rond du bandeau d'en-tete (Annuler, Retablir, parametres)."""
+        button = QtWidgets.QPushButton()
+        button.setObjectName("aeroGhost")
+        button.setProperty("round", True)
+        button.setCursor(QtCore.Qt.PointingHandCursor)
+        button.setFixedSize(HEADER_BUTTON, HEADER_BUTTON)
+        button.setIconSize(QtCore.QSize(HEADER_ICON, HEADER_ICON))
+        button.setEnabled(False)
+        button.clicked.connect(handler)
+        return button
 
     def _build_lang_combo(self):
         """Liste deroulante des langues de `i18n.LANGUES`, un drapeau devant chaque nom."""
@@ -886,9 +989,9 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         combo.setCursor(QtCore.Qt.PointingHandCursor)
         combo.setFocusPolicy(QtCore.Qt.NoFocus)
         combo.setIconSize(QtCore.QSize(FLAG_W, FLAG_H))
-        combo.setFixedWidth(128)
-        for code, name in i18n.LANGUES:
-            combo.addItem(QtGui.QIcon(_flag_pixmap(code)), name, code)
+        combo.setFixedWidth(LANG_WIDTH)
+        for code, _name in i18n.LANGUES:
+            combo.addItem(QtGui.QIcon(_flag_pixmap(code)), "", code)
         combo.activated.connect(self._on_lang_activated)
         self._lang_combo = combo
         return combo
@@ -919,12 +1022,13 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     def _build_aigcp_card(self):
         """Detection IA, en haut : type de cible, portee (marqueur actif ou tous), lancer."""
         card = QtWidgets.QFrame()
-        card.setObjectName("aeroCard")
+        card.setObjectName("aeroCardAccent")
         layout = QtWidgets.QVBoxLayout(card)
         pad = theme.PAD + theme.PAD_S
         layout.setContentsMargins(pad, pad, pad, pad)
         layout.setSpacing(theme.PAD)
-        self._eyebrow_aigcp = _eyebrow(i18n.t("panel.aigcp"))
+        self._eyebrow_aigcp = _ElidedLabel("aeroAccentTitle")
+        self._eyebrow_aigcp.set_full_text(i18n.t("panel.aigcp").upper())
         layout.addWidget(self._eyebrow_aigcp)
 
         actions = QtWidgets.QHBoxLayout()
@@ -932,19 +1036,25 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         actions.setSpacing(theme.PAD)
         self.aigcp_button = self._tool_button("aigcp.run", self._on_aigcp_run)
         self.aigcp_button.setObjectName("aeroRun")
+        self.aigcp_button.setFixedWidth(RUN_WIDTH)
+        self.aigcp_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         self.aigcp_clear_button = self._tool_button("aigcp.clear", self._on_aigcp_clear)
         self.aigcp_review_button = self._tool_button("aigcp.review", self._on_aigcp_review)
-        actions.addWidget(self.aigcp_button, 3)
-        actions.addWidget(self.aigcp_clear_button, 3)
-        actions.addWidget(self.aigcp_review_button, 3)
+        actions.addWidget(self.aigcp_button, 0)
+        actions.addWidget(self.aigcp_clear_button, 1)
+        actions.addWidget(self.aigcp_review_button, 1)
         layout.addLayout(actions)
 
-        choices = QtWidgets.QHBoxLayout()
+        # Deux lignes de listes : type et portee, puis les photos a laisser tranquilles.
+        choices = QtWidgets.QGridLayout()
         choices.setContentsMargins(0, 0, 0, 0)
-        choices.setSpacing(theme.PAD)
-        for key, values, stretch in (("type", aigcp.TYPES, 2), ("scope", aigcp.SCOPES, 5),
-                                     ("ignore", aigcp.IGNORES, 4)):
-            choices.addWidget(self._build_combo(key, values), stretch)
+        choices.setHorizontalSpacing(theme.PAD)
+        choices.setVerticalSpacing(theme.PAD)
+        choices.addWidget(self._build_combo("type", aigcp.TYPES), 0, 0)
+        choices.addWidget(self._build_combo("scope", aigcp.SCOPES), 0, 1)
+        choices.addWidget(self._build_combo("ignore", aigcp.IGNORES), 1, 0, 1, 2)
+        choices.setColumnStretch(0, 2)
+        choices.setColumnStretch(1, 3)
         layout.addLayout(choices)
 
         self.aigcp_progress = QtWidgets.QProgressBar()
@@ -962,6 +1072,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         combo.setObjectName("aeroCombo")
         combo.setCursor(QtCore.Qt.PointingHandCursor)
         combo.setFocusPolicy(QtCore.Qt.NoFocus)
+        combo.setFixedHeight(CONTROL_HEIGHT)
         combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLength)
         combo.setMinimumContentsLength(4)
         for value in values:
@@ -978,15 +1089,16 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.setContentsMargins(pad, pad, pad, pad)
         layout.setSpacing(theme.PAD)
 
-        head = QtWidgets.QVBoxLayout()
-        head.setContentsMargins(0, 0, 0, 0)
-        head.setSpacing(2)
+        # Une seule ligne : intitule, identifiant (tronque a 10 caracteres), compteurs.
+        line = QtWidgets.QHBoxLayout()
+        line.setContentsMargins(0, 0, 0, 0)
+        line.setSpacing(theme.PAD)
         self._eyebrow_active = _eyebrow(i18n.t("panel.active_marker"))
-        head.addWidget(self._eyebrow_active)
+        self._eyebrow_active.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+        line.addWidget(self._eyebrow_active, 0)
         self.active_value = _ElidedLabel("aeroValueEmpty")
         self.active_value.set_full_text("—")
-        head.addWidget(self.active_value)
-        layout.addLayout(head)
+        line.addWidget(self.active_value, 1)
 
         # Les pastilles gardent leur place quand elles sont masquees : la carte
         # ne change pas de hauteur d'un marqueur a l'autre.
@@ -1001,8 +1113,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.count_photos = _Counter("image", i18n.t("panel.tip_seen"))
         row.addWidget(self.count_pointed)
         row.addWidget(self.count_photos)
-        row.addStretch(1)
-        layout.addWidget(self.counters)
+        line.addWidget(self.counters, 0)
+        layout.addLayout(line)
         return card
 
     def _build_search(self):
@@ -1069,6 +1181,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
         grid.currentItemChanged.connect(self._on_current_changed)
         grid.itemClicked.connect(self._on_item_clicked)
+        grid.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        grid.customContextMenuRequested.connect(self._on_grid_menu)
         inner.addWidget(grid)
         self.grid = grid
         # Ancien nom du widget, garde pour les appelants existants.
@@ -1089,7 +1203,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         button.setObjectName("aeroGhost")
         button.setProperty("pill", True)
         button.setCursor(QtCore.Qt.PointingHandCursor)
-        button.setFixedHeight(32)
+        button.setFixedHeight(CONTROL_HEIGHT)
         button.clicked.connect(handler)
         return button
 
@@ -1120,7 +1234,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.log.setVisible(False)
         layout.addWidget(self.log)
 
-        self.more.setVisible(False)
         return self.more
 
     def _check(self, key, text):
@@ -1142,7 +1255,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.export_button.setObjectName("aeroGhost")
         self.export_button.setProperty("pill", True)
         self.export_button.setCursor(QtCore.Qt.PointingHandCursor)
-        self.export_button.setFixedHeight(32)
+        self.export_button.setFixedHeight(CONTROL_HEIGHT)
         self.export_button.setIconSize(QtCore.QSize(EXPORT_ICON, EXPORT_ICON))
         self.export_button.clicked.connect(self._show_export_menu)
         self.export_menu = QtWidgets.QMenu(self.export_button)
@@ -1155,6 +1268,42 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
         return row
 
+    def _build_credit(self):
+        """Tout en bas : « Outil cree par helix.aero » (lien) et l'icone GitHub (lien)."""
+        row = QtWidgets.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(theme.PAD_S)
+        row.addStretch(1)
+        self.credit = QtWidgets.QLabel()
+        self.credit.setObjectName("aeroMeta")
+        self.credit.setTextFormat(QtCore.Qt.RichText)
+        self.credit.setOpenExternalLinks(True)
+        self.credit.setCursor(QtCore.Qt.PointingHandCursor)
+        self._set_credit_text()
+        row.addWidget(self.credit, 0)
+        self.github_button = QtWidgets.QPushButton()
+        self.github_button.setObjectName("aeroGhost")
+        self.github_button.setProperty("round", True)
+        self.github_button.setCursor(QtCore.Qt.PointingHandCursor)
+        self.github_button.setFixedSize(26, 26)
+        self.github_button.setIconSize(QtCore.QSize(GITHUB_ICON, GITHUB_ICON))
+        self.github_button.setToolTip(i18n.t("panel.github_tip"))
+        self.github_button.clicked.connect(self._open_github)
+        row.addWidget(self.github_button, 0)
+        row.addStretch(1)
+        return row
+
+    def _set_credit_text(self):
+        link = '<a href="{url}" style="color:{color};text-decoration:none">{name}</a>'.format(
+            url=SITE_URL, color=theme.GREEN, name=SITE_NAME)
+        self.credit.setText(i18n.t("panel.credit", site=link))
+
+    def _open_github(self, _checked=False):
+        try:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(GITHUB_URL))
+        except Exception as exc:
+            journal.write("FastGCP : lien GitHub : {!r}".format(exc))
+
     # ------------------------------------------------------------------
     # Theme
     # ------------------------------------------------------------------
@@ -1164,7 +1313,9 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         try:
             self._apply_toggle(self._running)
             self.more_button.setIcon(QtGui.QIcon(_gear_pixmap(theme.FG_2)))
+            self.github_button.setIcon(QtGui.QIcon(_github_pixmap(theme.FG_2)))
             self.undo_button.setIcon(_undo_icon())
+            self.redo_button.setIcon(_undo_icon(mirror=True))
             self.export_button.setIcon(QtGui.QIcon(_export_pixmap(theme.FG_2)))
             self.export_menu.setStyleSheet(theme.menu_stylesheet())
             self._paint_placeholder()
@@ -1249,6 +1400,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             ("bottom_buttons", self._retranslate_buttons),
             ("aigcp", self._retranslate_aigcp),
             ("export", self._retranslate_export),
+            ("credit", self._retranslate_credit),
             ("state", lambda: self._apply_toggle(self._running)),
             ("markers", self.refresh_markers),
             ("card", self.update_active_card),
@@ -1293,6 +1445,11 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.aigcp_clear_button.set_full_text(i18n.t("aigcp.clear"))
         self.aigcp_review_button.set_full_text(i18n.t("aigcp.review"))
         self.update_aigcp()
+
+    def _retranslate_credit(self):
+        self.ad.set_full_text(i18n.t("panel.ad", site=SITE_NAME))
+        self._set_credit_text()
+        self.github_button.setToolTip(i18n.t("panel.github_tip"))
 
     def _retranslate_export(self):
         self._set_export_text()
@@ -1364,15 +1521,19 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         journal.write("FastGCP {}".format("actif" if running else "en pause"))
 
     # ------------------------------------------------------------------
-    # Carte « Plus »
+    # Fenetre Parametres (l'engrenage)
     # ------------------------------------------------------------------
 
-    def _on_more_toggled(self, opened):
-        # Etat volontairement non memorise : la carte est repliee a chaque demarrage.
-        self.more.setVisible(bool(opened))
-        if opened and self._log_open:
-            self._fit_log_height()
-            self._scroll_log_to_end()
+    def _open_settings(self, _checked=False):
+        """Ouvre la fenetre Parametres (une seule instance, reutilisee)."""
+        try:
+            from . import settings_dialog
+            self._settings_dialog = settings_dialog.show(self, getattr(self, "_settings_dialog", None))
+            if self._log_open:
+                self._fit_log_height()
+                self._scroll_log_to_end()
+        except Exception as exc:
+            journal.write("FastGCP : fenetre Parametres : {!r}".format(exc))
 
     # ------------------------------------------------------------------
     # Marqueur courant
@@ -1390,7 +1551,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
         if label:
             wanted = "aeroValue"
-            self.active_value.set_full_text(label)
+            self.active_value.set_full_text(short_label(label))
+            self.active_value.setToolTip(label if label != short_label(label) else "")
             self.count_pointed.set_number(self._pointed_count(state.active_marker))
             self.count_photos.set_number(getattr(state, "last_photo_count", 0) or 0)
             self.counters.setVisible(True)
@@ -1495,6 +1657,29 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self._update_undo_button()
         except Exception as exc:
             journal.write("FastGCP : erreurs non rafraichies : {!r}".format(exc))
+
+    def refresh_rows(self, labels=None, settle=False):
+        """Relit les lignes de ces marqueurs (erreurs X/Y/Z, projections) ; None = tout le tableau.
+
+        Apres une validation ou un affinage, plusieurs marqueurs ont change : les relire
+        tous. `settle=True` : Metashape recalcule la position des marqueurs apres coup, donc
+        on relit encore deux fois, un peu plus tard. Ne leve jamais.
+        """
+        state = self._state
+        if state is None:
+            return
+        if settle:
+            for delay in SETTLE_MS:
+                QtCore.QTimer.singleShot(delay, functools.partial(self.refresh_rows, labels))
+        try:
+            if labels is None or (self._sort is not None and self._sort[0] != "id"):
+                self.refresh_markers()
+            else:
+                for label in set(labels):
+                    self._refresh_row(label)
+                self._update_undo_button()
+        except Exception as exc:
+            journal.write("FastGCP : lignes non rafraichies : {!r}".format(exc))
 
     def _filter_photos(self, marker):
         state = self._state
@@ -1647,6 +1832,81 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         except Exception:
             return None
 
+    # -- clic droit : supprimer les projections ou les marqueurs choisis ------
+
+    def _on_grid_menu(self, pos):
+        item = self.grid.itemAt(pos)
+        if item is not None and not item.isSelected():
+            self.grid.clearSelection()
+            item.setSelected(True)
+        labels = self.selected_labels()
+        if not labels:
+            return
+        menu = QtWidgets.QMenu(self)
+        menu.setStyleSheet(theme.menu_stylesheet())
+        count = len(labels)
+        for key, handler in (("panel.remove_projections", self._remove_projections),
+                             ("panel.remove_markers", self._remove_markers)):
+            action = menu.addAction(i18n.t(key, n=count))
+            action.triggered.connect(lambda *_args, h=handler, names=labels: h(names))
+        run = getattr(menu, "exec_", None) or getattr(menu, "exec")
+        run(self.grid.viewport().mapToGlobal(pos))
+
+    def _confirm(self, text_key, labels):
+        from . import dialogs
+        shown = ", ".join(labels[:5]) + ("\u2026" if len(labels) > 5 else "")
+        return dialogs.ask(self, i18n.t("panel.remove_title"), i18n.t(text_key, n=len(labels), names=shown))
+
+    def _markers_named(self, labels):
+        chunk = msapi.chunk()
+        wanted = set(labels)
+        if chunk is None:
+            return None, []
+        return chunk, [m for m in msapi.markers(chunk) if msapi.marker_label(m) in wanted]
+
+    def _remove_projections(self, labels):
+        state = self._state
+        if state is None or not self._confirm("panel.remove_projections_confirm", labels):
+            return
+        from . import review_dialog
+        busy = review_dialog.BusyDialog(i18n.t("panel.busy_projections", n=len(labels)), self)
+        busy.open()
+        try:
+            _chunk, found = self._markers_named(labels)
+            total = 0
+            for index, marker in enumerate(found):
+                busy.step(index, len(found))
+                total += msapi.remove_all_projections(marker)
+            aigcp.forget_markers(state, labels)
+            self.refresh_rows(labels, settle=True)
+            self.update_active_card()
+            self.set_status(i18n.t("panel.removed_projections", n=total, k=len(found)))
+            journal.write("FastGCP : {} projection(s) supprimee(s) sur {} marqueur(s)".format(total, len(found)))
+        except Exception as exc:
+            journal.write("FastGCP : suppression des projections : {!r}".format(exc))
+        finally:
+            busy.close()
+
+    def _remove_markers(self, labels):
+        state = self._state
+        if state is None or not self._confirm("panel.remove_markers_confirm", labels):
+            return
+        try:
+            chunk, found = self._markers_named(labels)
+            gone = []
+            for marker in found:
+                label = msapi.marker_label(marker)
+                if msapi.remove_marker(chunk, marker)[0]:
+                    gone.append(label)
+            state.active_label()          # remet le marqueur courant a zero s'il vient d'etre supprime
+            aigcp.forget_markers(state, gone)
+            self.refresh_markers()
+            self.update_active_card()
+            self.set_status(i18n.t("panel.removed_markers", n=len(gone)))
+            journal.write("FastGCP : {} marqueur(s) supprime(s) : {}".format(len(gone), ", ".join(gone)))
+        except Exception as exc:
+            journal.write("FastGCP : suppression des marqueurs : {!r}".format(exc))
+
     def _on_search(self, _text):
         self.refresh_markers()
 
@@ -1734,10 +1994,22 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             history.unsubscribe(self._on_history_changed)
 
     def _update_undo_button(self):
-        """Actif seulement quand l'outil tourne et qu'il y a un pointage a defaire."""
+        """Annuler / Retablir : actifs seulement quand l'outil tourne et qu'il y a de quoi defaire / refaire."""
         state = self._state
-        active = state is not None and bool(state.enabled) and history.can_undo()
-        self.undo_button.setEnabled(bool(active))
+        running = state is not None and bool(state.enabled)
+        self.undo_button.setEnabled(bool(running and history.can_undo()))
+        self.redo_button.setEnabled(bool(running and history.can_redo()))
+
+    def _on_redo_clicked(self):
+        state = self._state
+        if state is None:
+            return
+        try:
+            from . import marking
+            marking.redo_last(state)
+        except Exception as exc:
+            journal.write("FastGCP : retablir : {!r}".format(exc))
+        self._update_undo_button()
 
     def _on_undo_clicked(self):
         state = self._state

@@ -89,6 +89,9 @@ class FakePanel(object):
     def refresh_errors(self):
         pass
 
+    def refresh_rows(self, labels=None):
+        self.refreshed = labels
+
 
 def make_state(marker):
     state = types.SimpleNamespace(panel=FakePanel(), active_marker=marker,
@@ -529,6 +532,41 @@ def test_one_selected_marker_keeps_the_active_marker_behaviour(ms, install, conf
     wait_done(state)
     assert msapi.get_projection(first, cams[2]) is not None
     assert msapi.get_projection(second, cams[2]) is None
+
+
+# -- progression, suppression, rafraichissement ------------------------------
+
+def test_accept_kept_reports_its_progress(reviewed):
+    state, rev, _marker, _cams = reviewed
+    calls = []
+    done = review.accept_kept(state, rev, lambda d, t: calls.append((d, t)))
+    assert done == 6 and calls == [(i, 6) for i in range(6)]
+
+
+def test_remove_all_projections_empties_the_marker_but_keeps_it(ms, confirmed):
+    chunk, marker, cams = confirmed
+    before = len(msapi.projection_cameras(marker))
+    assert before >= 3                       # deux pointages manuels et une proposition
+    assert msapi.remove_all_projections(marker) == before
+    assert msapi.projection_cameras(marker) == [] and marker in chunk.markers
+
+
+def test_remove_marker_takes_it_out_of_the_chunk(ms, confirmed):
+    chunk, marker, cams = confirmed
+    other = ms.Marker("AUTRE")
+    chunk.markers.append(other)
+    assert msapi.remove_marker(chunk, marker) == (True, "")
+    assert chunk.markers == [other]
+
+
+def test_forget_markers_drops_their_proposals_log_and_review(reviewed):
+    state, rev, marker, _cams = reviewed
+    state.aigcp_log = list(rev.entries)
+    aigcp.forget_markers(state, ["AUTRE"])
+    assert len(state.aigcp_applied) == 6 and len(state.aigcp_log) == 6 and state.aigcp_review is rev
+    aigcp.forget_markers(state, ["RING"])
+    assert state.aigcp_applied == [] and state.aigcp_log == []
+    assert state.aigcp_review is None and "close_review" in state.panel.calls
 
 
 # -- choix memorises ---------------------------------------------------------

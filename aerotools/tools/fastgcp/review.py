@@ -7,7 +7,9 @@ ou affiner. La fenetre est dans review_dialog.py ; ici, l'etat et ce qu'on en fa
 Chaque decision est appliquee tout de suite au projet et inscrite, comme un
 evenement, dans un fichier destine au futur reentrainement :
 
-    <config.settings_dir()>/dataset/aigcp_feedback.jsonl
+    <training.storage_dir()>/dataset/aigcp_feedback.jsonl
+    (par defaut le dossier des reglages du poste ; rien n'est ecrit si la case
+    « utiliser mes affinages manuels » des parametres est decochee)
 
 Une ligne par evenement (UTF-8, ajout en fin de fichier). Un script d'entrainement
 garde le DERNIER evenement de chaque (run, marqueur, photo). Cles (schema 1) :
@@ -30,7 +32,7 @@ import json
 import os
 
 from ... import config, journal, msapi
-from . import history
+from . import history, training
 
 SCHEMA = 1
 FILE_NAME = "aigcp_feedback.jsonl"
@@ -41,7 +43,7 @@ ACCEPTED = "accepted"
 
 
 def feedback_path():
-    return os.path.join(config.settings_dir(), "dataset", FILE_NAME)
+    return training.feedback_path()
 
 
 class Review(object):
@@ -137,8 +139,12 @@ def has_crop(entry):
 # --------------------------------------------------------------------------
 
 def record(review, entry, action, x=None, y=None):
-    """Ajoute un evenement au fichier de retours. Ne leve jamais."""
+    """Ajoute un evenement au fichier de retours. Ne leve jamais.
+
+    Ne fait rien (renvoie None) quand l'operateur a decoche la collecte."""
     try:
+        if not training.collect_enabled():
+            return None
         width, height = msapi.camera_size(entry["camera"])
         row = {
             "schema": SCHEMA,
@@ -244,12 +250,17 @@ def refine(state, review, entry, x, y):
     return True
 
 
-def accept_kept(state, review):
-    """Pose en pointage manuel toutes les propositions gardees. Renvoie leur nombre."""
+def accept_kept(state, review, progress=None):
+    """Pose en pointage manuel toutes les propositions gardees. Renvoie leur nombre.
+
+    `progress(fait, total)`, facultatif, est appele avant chaque proposition : l'interface
+    y met a jour sa barre (la pose de plusieurs centaines de points prend du temps).
+    """
     done_count = 0
-    for entry in review.entries:
-        if entry["state"] != KEPT:
-            continue
+    pending = [entry for entry in review.entries if entry["state"] == KEPT]
+    for index, entry in enumerate(pending):
+        if progress is not None:
+            progress(index, len(pending))
         marker, camera = entry["marker"], entry["camera"]
         if not _own(entry):
             continue          # l'operateur a deja pointe cette photo

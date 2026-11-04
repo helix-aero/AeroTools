@@ -283,3 +283,44 @@ def test_cancel_advance_makes_a_pending_advance_stale(world, monkeypatch):
     photos.cancel_advance()
     photos._advance(world.state, world.marker, 1, token)
     assert calls == []
+
+
+# --------------------------------------------------------------------------
+# Retablir
+# --------------------------------------------------------------------------
+
+def test_redo_puts_back_what_undo_took_away(world):
+    _place(world, 100.0, 200.0, world.a)
+    marking.undo_last(world.state)
+    assert world.a not in world.marker.projections and history.can_redo()
+    assert marking.redo_last(world.state) is True
+    assert msapi.get_projection(world.marker, world.a) == (100.0, 200.0, True)
+    assert history.can_undo() and not history.can_redo()
+    marking.undo_last(world.state)                      # on peut defaire ce qu'on vient de retablir
+    assert world.a not in world.marker.projections
+
+
+def test_redo_walks_forward_in_order(world):
+    _place(world, 1.0, 2.0, world.a)
+    _place(world, 3.0, 4.0, world.a)
+    marking.undo_last(world.state)
+    marking.undo_last(world.state)
+    marking.redo_last(world.state)
+    assert msapi.get_projection(world.marker, world.a) == (1.0, 2.0, True)
+    marking.redo_last(world.state)
+    assert msapi.get_projection(world.marker, world.a) == (3.0, 4.0, True)
+    assert marking.redo_last(world.state) is False
+
+
+def test_a_new_pin_clears_the_redo_stack(world):
+    _place(world, 1.0, 2.0, world.a)
+    marking.undo_last(world.state)
+    assert history.can_redo()
+    _place(world, 9.0, 9.0, world.b)
+    assert not history.can_redo()
+    assert marking.redo_last(world.state) is False
+
+
+def test_redo_with_nothing_to_redo_says_so(world):
+    assert marking.redo_last(world.state) is False
+    assert any(c[0] == "status" for c in world.state.panel.calls)
