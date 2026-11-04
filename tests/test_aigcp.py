@@ -25,6 +25,7 @@ STUB_FAIL = "import sys\nsys.stderr.write('boom')\nsys.exit(3)\n"
 @pytest.fixture(autouse=True)
 def _bind(ms):
     msapi.Metashape = ms
+    msapi._PROPOSALS.clear()
 
 
 @pytest.fixture
@@ -76,6 +77,9 @@ def make_state(marker):
     state = types.SimpleNamespace(panel=FakePanel(), active_marker=marker,
                                   aigcp_run=None, aigcp_applied=[])
     state.active_label = lambda: marker.label
+    # Les tests historiques repassent sur les points bleus ; la case verte reste cochee.
+    state.options = {"ai_skip_green": True, "ai_skip_blue": False}
+    state.option = lambda key: state.options.get(key, False)
     return state
 
 
@@ -180,7 +184,7 @@ def test_child_env_drops_metashape_python_variables(monkeypatch):
 
 def test_collect_items_skips_pinned_and_unusable_photos(install, world):
     chunk, marker, cams = world
-    items, skipped = aigcp.collect_items(chunk, marker)
+    items, skipped = aigcp.collect_items(chunk, marker, skip_blue=False)
     ids = [it["id"] for it in items]
     assert "0:1" not in ids                 # pointee a la main
     assert "0:2" in ids and "0:3" in ids    # proposition IA : a retester ; photo jamais pointee
@@ -193,7 +197,7 @@ def test_collect_items_skips_pinned_and_unusable_photos(install, world):
 
 def test_build_work_has_weights_conf_and_items(install, world):
     chunk, marker, _cams = world
-    items, _ = aigcp.collect_items(chunk, marker)
+    items, _ = aigcp.collect_items(chunk, marker, skip_blue=False)
     work = aigcp.build_work("damier", items)
     assert work["weights"].endswith("damier.pt") and work["conf"] == 0.25
     assert work["scales_m"] == [0.3, 0.5, 0.8]
@@ -482,3 +486,58 @@ def test_start_without_arguments_uses_the_saved_choices(install, confirmed):
     assert aigcp.start(state) is True
     assert state.aigcp_run.kind == "bombe" and state.aigcp_run.scope == "marker"
     wait_done(state)
+
+
+# -- photos deja marquees : cases vert / bleu --------------------------------
+
+def test_skip_flags_default_to_checked(local_appdata):
+    from aerotools.tools.fastgcp import session as session_mod
+    state = session_mod.Session()
+    assert aigcp.skip_flags(state) == (True, True)
+    state.set_option("ai_skip_blue", False)
+    assert aigcp.skip_flags(state) == (True, False)
+    assert aigcp.skip_flags(object()) == (True, True)
+
+
+def test_blue_points_of_metashape_are_ignored_unless_unchecked(install, world):
+    chunk, marker, cams = world            # cams[1] : point bleu de Metashape, pas une proposition
+    ids = lambda **flags: [it["id"] for it in aigcp.collect_items(chunk, marker, **flags)[0]]
+    assert "0:2" not in ids()
+    assert "0:2" in ids(skip_blue=False)
+
+
+def test_previous_ai_proposals_are_always_retried(install, world):
+    chunk, marker, cams = world
+    msapi.mark_proposal(marker, cams[1])
+    items, _ = aigcp.collect_items(chunk, marker)
+    assert "0:2" in [it["id"] for it in items]
+
+
+def test_green_points_are_ignored_unless_unchecked(install, world):
+    chunk, marker, cams = world            # cams[0] : pointage manuel
+    ids = lambda **flags: [it["id"] for it in aigcp.collect_items(chunk, marker, **flags)[0]]
+    assert "0:1" not in ids()
+    assert "0:1" in ids(skip_green=False)
+
+
+def test_unchecking_green_lets_the_ai_go_over_a_manual_pin_and_clear_restores_it(install, world):
+    chunk, marker, cams = world
+    state = make_state(marker)
+    state.options["ai_skip_green"] = False
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    assert msapi.get_projection(marker, cams[0]) == (2001.0, 1501.0, False)
+    assert msapi.is_proposal(marker, cams[0])
+    aigcp.clear(state)
+    assert msapi.get_projection(marker, cams[0]) == (2000.0, 1500.0, True)
+    assert msapi.projection_count(marker) == 2
+
+
+def test_blue_points_stay_untouched_when_checked(install, world):
+    chunk, marker, cams = world
+    state = make_state(marker)
+    state.options["ai_skip_blue"] = True
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    assert msapi.get_projection(marker, cams[1]) == (1990.0, 1490.0, False)   # intact
+    assert msapi.get_projection(marker, cams[2])[2] is False                   # photo vierge : proposition

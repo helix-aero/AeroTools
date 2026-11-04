@@ -15,6 +15,9 @@ cible, ce qui la remplace par un pointage normal.
 
 Deux modeles, jamais melanges : damier et bombe. L'operateur choisit le type.
 Portee : le marqueur actif, ou tous les marqueurs ayant au moins 2 projections.
+Photos deja marquees : par defaut l'IA ne touche ni aux pointages manuels (vert)
+ni aux points bleus de Metashape ; deux options du panneau (ai_skip_green,
+ai_skip_blue) permettent de repasser dessus, et « Effacer » rend alors l'etat d'avant.
 
 Garde-fou geometrique : quand un marqueur a au moins 2 projections (posees a la
 main ou calculees par Metashape), on mesure leur ecart a la reprojection de son
@@ -121,6 +124,14 @@ def set_choice(key, value):
     """Memorise le type ou la portee choisis dans le panneau."""
     if (key == "type" and value in TYPES) or (key == "scope" and value in SCOPES):
         config.put(SECTION, key, value)
+
+
+def skip_flags(state):
+    """(ignorer le vert, ignorer le bleu) : options du panneau, cochees par defaut."""
+    option = getattr(state, "option", None)
+    if option is None:
+        return True, True
+    return bool(option("ai_skip_green")), bool(option("ai_skip_blue"))
 
 
 def check(kind):
@@ -326,20 +337,38 @@ def marker_gate_m(chk, marker):
     return max(gate_min_m(), gate_factor() * spread)
 
 
-def collect_items(chk, marker, index=0, limit=MAX_PHOTOS):
-    """Photos sans pointage manuel ou le marqueur est attendu : liste d'items.
+def _already_marked(marker, camera, projection, skip_green, skip_blue):
+    """La photo porte-t-elle deja un point qu'on a demande de respecter ?
+
+    Vert : pointage manuel. Bleu : point calcule par Metashape. Une proposition
+    d'une detection precedente n'est ni l'un ni l'autre : on la retente.
+    """
+    if projection is None:
+        return False
+    if projection[2]:
+        return skip_green
+    if msapi.is_proposal(marker, camera):
+        return False
+    return skip_blue
+
+
+def collect_items(chk, marker, index=0, limit=MAX_PHOTOS, skip_green=True, skip_blue=True):
+    """Photos ou le marqueur est attendu et ou l'IA peut proposer : liste d'items.
 
     Chaque item : id, marker, label, camera, image_path, x_est, y_est, px_per_m,
-    gate_m (None = pas de garde-fou), rescue (recherche elargie permise).
+    gate_m (None = pas de garde-fou), rescue (recherche elargie permise), seen
+    (projection de la photo au moment du calcul : si elle change entre-temps,
+    la proposition n'est pas posee).
     Renvoie (items, nombre de photos ecartees faute d'estimation ou d'echelle).
     """
     cameras, _diag = msapi.cameras_seeing_marker(chk, marker)
     gate = marker_gate_m(chk, marker)
     label = msapi.marker_label(marker)
-    items, skipped = [], 0
+    items, skipped, respected = [], 0, 0
     for camera in cameras:
         projection = msapi.get_projection(marker, camera)
-        if projection is not None and projection[2]:
+        if _already_marked(marker, camera, projection, skip_green, skip_blue):
+            respected += 1
             continue
         estimate = msapi.marker_estimate(chk, marker, camera)
         ppm = msapi.marker_ground_scale(chk, marker, camera)
@@ -350,13 +379,16 @@ def collect_items(chk, marker, index=0, limit=MAX_PHOTOS):
         items.append({"id": "{}:{}".format(index, msapi.camera_key(camera)),
                       "marker": marker, "label": label, "camera": camera,
                       "image_path": path, "x_est": estimate[0], "y_est": estimate[1],
-                      "px_per_m": ppm, "gate_m": gate, "rescue": gate is None})
+                      "px_per_m": ppm, "gate_m": gate, "rescue": gate is None,
+                      "seen": projection})
         if len(items) >= limit:
             break
+    if respected:
+        journal.write("IA : {} : {} photo(s) deja marquee(s) ignoree(s)".format(label, respected))
     return items, skipped
 
 
-def collect_all(chk):
+def collect_all(chk, skip_green=True, skip_blue=True):
     """Items de tous les marqueurs dont la position est confirmee (2 projections ou plus).
 
     Renvoie (items, marqueurs retenus, marqueurs ignores). Les items d'une meme
@@ -369,7 +401,8 @@ def collect_all(chk):
         if msapi.marker_spread_m(chk, marker) is None:
             ignored += 1
             continue
-        found, _skipped = collect_items(chk, marker, index, MAX_PHOTOS_ALL - len(items))
+        found, _skipped = collect_items(chk, marker, index, MAX_PHOTOS_ALL - len(items),
+                                        skip_green, skip_blue)
         if found:
             used += 1
             items.extend(found)
@@ -465,7 +498,7 @@ def _start(state, kind, scope):
         return False
     label = state.active_label()
     if scope == "all":
-        items, used, ignored = collect_all(chk)
+        items, used, ignored = collect_all(chk, *skip_flags(state))
         if ignored:
             journal.write("IA : {} marqueur(s) ignore(s) : moins de 2 projections".format(ignored))
         if not items:
@@ -478,7 +511,8 @@ def _start(state, kind, scope):
         if label is None or marker is None:
             _status(state, i18n.t("aigcp.no_marker"))
             return False
-        items, skipped = collect_items(chk, marker)
+        items, skipped = collect_items(chk, marker, skip_green=skip_flags(state)[0],
+                                       skip_blue=skip_flags(state)[1])
         if skipped:
             journal.write("IA : {} photo(s) ecartee(s) (pas d'estimation ou d'echelle)".format(skipped))
         if not items:
@@ -541,9 +575,9 @@ def _apply(state, run, hits, errors):
             continue
         marker, camera = item["marker"], item["camera"]
         current = msapi.get_projection(marker, camera)
-        if current is not None and current[2]:
-            continue          # l'operateur a pointe cette photo entre temps
-        previous = current    # point bleu de Metashape eventuel, rendu a l'effacement
+        if current != item["seen"]:
+            continue          # la photo a ete pointee ou modifiee pendant le calcul
+        previous = current    # point d'avant (bleu, ou vert si on a repasse dessus), rendu a l'effacement
         done, message = msapi.set_projection(marker, camera, hit["x"], hit["y"], pinned=False)
         if not done:
             journal.write("IA : {} sur {} : {}".format(item["label"], msapi.camera_label(camera), message))

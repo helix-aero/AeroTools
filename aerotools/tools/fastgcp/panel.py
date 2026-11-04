@@ -36,6 +36,13 @@ LOG_VISIBLE_LINES = 6
 # Largeur mini du dock : le tableau des marqueurs a besoin de place.
 MIN_PANEL_WIDTH = 420
 
+# Texte de chaque case de la carte « Plus » (cle de l'option : cle de texte).
+CHECK_TEXTS = {
+    "collect_dataset": "panel.save_picks",
+    "ai_skip_green": "aigcp.skip_green",
+    "ai_skip_blue": "aigcp.skip_blue",
+}
+
 # Largeur d'un bouton du selecteur de langue (code a deux lettres).
 LANG_BUTTON_W = 32
 
@@ -1084,6 +1091,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.setSpacing(theme.PAD_S)
 
         layout.addWidget(self._check("collect_dataset", i18n.t("panel.save_picks")))
+        layout.addWidget(self._check("ai_skip_green", i18n.t(CHECK_TEXTS["ai_skip_green"])))
+        layout.addWidget(self._check("ai_skip_blue", i18n.t(CHECK_TEXTS["ai_skip_blue"])))
 
         self.log_button = _ElidedButton(i18n.t("panel.log"))
         self.log_button.setCursor(QtCore.Qt.PointingHandCursor)
@@ -1281,8 +1290,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._header.viewport().update()
 
     def _retranslate_checks(self):
-        for box in self._checks.values():
-            box.set_full_text(i18n.t("panel.save_picks"))
+        for key, box in self._checks.items():
+            box.set_full_text(i18n.t(CHECK_TEXTS[key]))
 
     def _retranslate_buttons(self):
         self.log_button.set_full_text(i18n.t("panel.log"))

@@ -39,7 +39,10 @@ FIXED = {
 # Options supprimees : ni lues, ni ecrites.
 RETIRED = ("click_only",)
 
-DEFAULTS = dict(FIXED, collect_dataset=False, show_log=False)
+# ai_skip_green / ai_skip_blue : la detection IA ignore les photos ou le marqueur est deja
+# pointe a la main (vert) ou porte un point bleu de Metashape. Coche = ignorer.
+DEFAULTS = dict(FIXED, collect_dataset=False, show_log=False,
+                ai_skip_green=True, ai_skip_blue=True)
 
 # Reglage cache (aucune option dans l'interface) : largeur d'image, en pixels,
 # visible autour du marqueur quand FastGCP zoome la vue photo. A ecrire a la

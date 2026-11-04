@@ -102,6 +102,10 @@ The choices are saved per machine.
   `msapi.marker_spread_m` measures how far they sit from the reprojection of the marker's 3D point. A detection further than
   `max(gate_min_m, gate_factor x spread)` metres from the expected position is rejected (roof, tree, a neighbouring object) and
   counted in the status line. Defaults: 0.30 m and 5. A marker with fewer projections has no guard, and the **All** scope skips it.
+- **Already marked photos.** The settings card ("More") has two checkboxes, both checked by default: *AI: skip photos already
+  marked (green)* and *AI: skip photos with a blue point*. Checked means the AI leaves those photos alone. Unchecking one lets the
+  AI go over it, and **Clear proposals** then puts the previous point back (a green one comes back green). A proposal from an
+  earlier run is always retried. A photo whose point changes while the calculation runs is left alone.
 - A proposal is a projection with `pinned=False` (blue point), remembered by `msapi.mark_proposal`. It never replaces a manual
   pin and is not counted as a pointed photo. Clicking the target replaces it with a normal pin. **Clear proposals** removes the ones
   still unvalidated and puts back the blue point that was there before, if any. Metashape's own blue points are never touched.

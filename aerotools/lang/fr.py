@@ -90,6 +90,8 @@ TEXTES = {
     "aigcp.no_python": "IA : Python d'AIGCP introuvable ({path})",
     "aigcp.no_weights": "IA : poids {kind} introuvables ({path})",
     "aigcp.no_runner": "IA : exécuteur introuvable ({path})",
+    "aigcp.skip_green": "IA : ignorer les photos pointées (vert)",
+    "aigcp.skip_blue": "IA : ignorer les photos à point bleu",
     "aigcp.type_damier": "Damier",
     "aigcp.type_bombe": "Bombe",
     "aigcp.scope_marker": "Marqueur actif",
