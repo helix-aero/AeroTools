@@ -28,7 +28,7 @@ import time
 
 from ... import config, i18n, journal, msapi, theme
 from ...qt import QtCore, QtGui, QtWidgets
-from . import history, qc
+from . import aigcp, history, qc
 
 # Lignes visibles dans le journal deplie.
 LOG_VISIBLE_LINES = 6
@@ -752,6 +752,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._last_pick = (None, 0.0)
         self._checks = {}
         self._lang_buttons = {}
+        self._aigcp_buttons = {}
         self._lang_cb = None
         # Tri du tableau : (cle, decroissant) ou None = ordre du projet.
         self._sort = None
@@ -812,6 +813,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.setContentsMargins(theme.PAD_L, theme.PAD_L, theme.PAD_L, theme.PAD_L)
         layout.setSpacing(theme.PAD)
         layout.addLayout(self._build_play())
+        layout.addWidget(self._build_aigcp_card())
         layout.addWidget(self._build_active_card())
         layout.addWidget(self._build_search())
         layout.addWidget(self._build_list(), 1)
@@ -900,6 +902,56 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.state_text.set_full_text(i18n.t("panel.state_on"))
         row.addWidget(self.state_text, 1)
         return row
+
+    def _build_aigcp_card(self):
+        """Detection IA, en haut : type de cible, portee (marqueur actif ou tous), lancer."""
+        card = QtWidgets.QFrame()
+        card.setObjectName("aeroCard")
+        layout = QtWidgets.QVBoxLayout(card)
+        pad = theme.PAD + theme.PAD_S
+        layout.setContentsMargins(pad, pad, pad, pad)
+        layout.setSpacing(theme.PAD)
+        self._eyebrow_aigcp = _eyebrow(i18n.t("panel.aigcp"))
+        layout.addWidget(self._eyebrow_aigcp)
+
+        choices = QtWidgets.QHBoxLayout()
+        choices.setContentsMargins(0, 0, 0, 0)
+        choices.setSpacing(theme.PAD)
+        choices.addWidget(self._build_segment("type", aigcp.TYPES))
+        choices.addWidget(self._build_segment("scope", aigcp.SCOPES))
+        choices.addStretch(1)
+        layout.addLayout(choices)
+
+        actions = QtWidgets.QHBoxLayout()
+        actions.setContentsMargins(0, 0, 0, 0)
+        actions.setSpacing(theme.PAD)
+        self.aigcp_button = self._tool_button("aigcp.run", self._on_aigcp_run)
+        self.aigcp_clear_button = self._tool_button("aigcp.clear", self._on_aigcp_clear)
+        actions.addWidget(self.aigcp_button, 1)
+        actions.addWidget(self.aigcp_clear_button, 1)
+        layout.addLayout(actions)
+        self._retranslate_aigcp()
+        return card
+
+    def _build_segment(self, key, values):
+        """Selecteur segmente (meme style que FR | EN) : un bouton par valeur de `values`."""
+        frame = QtWidgets.QFrame()
+        frame.setObjectName("aeroLang")
+        frame.setFixedHeight(32)
+        layout = QtWidgets.QHBoxLayout(frame)
+        layout.setContentsMargins(3, 3, 3, 3)
+        layout.setSpacing(2)
+        for value in values:
+            button = QtWidgets.QPushButton()
+            button.setObjectName("aeroLangBtn")
+            button.setProperty("active", False)
+            button.setCursor(QtCore.Qt.PointingHandCursor)
+            button.setFocusPolicy(QtCore.Qt.NoFocus)
+            button.setFixedHeight(26)
+            button.clicked.connect(functools.partial(self._on_aigcp_choice, key, value))
+            layout.addWidget(button)
+            self._aigcp_buttons[(key, value)] = button
+        return frame
 
     def _build_active_card(self):
         card = QtWidgets.QFrame()
@@ -1005,16 +1057,12 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return box
 
     def _build_tools(self):
-        """Trois boutons sous le tableau : controle des residus, import de GCP, detection IA."""
+        """Sous le tableau : controle des residus."""
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD)
         self.qc_button = self._tool_button("panel.qc", self._show_qc_menu)
-        self.import_button = self._tool_button("panel.import", self._on_import)
-        self.aigcp_button = self._tool_button("panel.aigcp", self._show_aigcp_menu)
         row.addWidget(self.qc_button, 1)
-        row.addWidget(self.import_button, 1)
-        row.addWidget(self.aigcp_button, 1)
         return row
 
     def _tool_button(self, text_key, handler):
@@ -1206,6 +1254,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             ("grid", self._retranslate_grid),
             ("checks", self._retranslate_checks),
             ("bottom_buttons", self._retranslate_buttons),
+            ("aigcp", self._retranslate_aigcp),
             ("export", self._retranslate_export),
             ("state", lambda: self._apply_toggle(self._running)),
             ("markers", self.refresh_markers),
@@ -1238,10 +1287,19 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     def _retranslate_buttons(self):
         self.log_button.set_full_text(i18n.t("panel.log"))
         self.qc_button.set_full_text(i18n.t("panel.qc"))
-        self.import_button.set_full_text(i18n.t("panel.import"))
-        self.aigcp_button.set_full_text(i18n.t("panel.aigcp"))
         self.count_pointed.set_tip(i18n.t("panel.tip_pointed"))
         self.count_photos.set_tip(i18n.t("panel.tip_seen"))
+
+    def _retranslate_aigcp(self):
+        """Textes de la carte Detection IA, largeur des boutons segmentes, etat des boutons."""
+        self._eyebrow_aigcp.set_full_text(i18n.t("panel.aigcp").upper())
+        for (key, value), button in self._aigcp_buttons.items():
+            text = i18n.t("aigcp.{}_{}".format(key, value))
+            button.setText(text)
+            button.setMinimumWidth(_text_width(button.fontMetrics(), text) + 2 * theme.PAD + theme.PAD_S)
+        self.aigcp_button.set_full_text(i18n.t("aigcp.run"))
+        self.aigcp_clear_button.set_full_text(i18n.t("aigcp.clear"))
+        self.update_aigcp()
 
     def _retranslate_export(self):
         self._set_export_text()
@@ -1770,50 +1828,40 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     # Detection IA
     # ------------------------------------------------------------------
 
-    def _show_aigcp_menu(self, _checked=False):
-        """Menu : type de cible a proposer sur les autres photos du marqueur courant."""
-        try:
-            from . import aigcp
-            state = self._state
-            label = state.active_label()
-            menu = QtWidgets.QMenu(self)
-            if label is None:
-                menu.addAction(i18n.t("aigcp.menu_no_marker")).setEnabled(False)
-            else:
-                menu.addAction(i18n.t("aigcp.menu_title", label=label)).setEnabled(False)
-                for kind in aigcp.TYPES:
-                    action = menu.addAction(i18n.t("aigcp.menu_" + kind))
-                    action.setEnabled(not aigcp.busy(state))
-                    action.triggered.connect(functools.partial(self._on_aigcp, kind))
-            if getattr(state, "aigcp_applied", None):
-                menu.addSeparator()
-                menu.addAction(i18n.t("aigcp.menu_clear")).triggered.connect(self._on_aigcp_clear)
-            self._aigcp_menu = menu
-            size = menu.sizeHint()
-            menu.popup(self.aigcp_button.mapToGlobal(
-                QtCore.QPoint(0, -size.height() - theme.PAD_S)))
-        except Exception as exc:
-            journal.write("FastGCP : menu detection IA : {!r}".format(exc))
+    def update_aigcp(self):
+        """Surligne le type et la portee choisis ; grise Lancer pendant un calcul."""
+        state = self._state
+        chosen = {"type": aigcp.selected_type(), "scope": aigcp.selected_scope()}
+        for (key, value), button in self._aigcp_buttons.items():
+            wanted = value == chosen[key]
+            try:
+                if bool(button.property("active")) != wanted:
+                    button.setProperty("active", wanted)
+                _repolish(button)
+            except RuntimeError:
+                pass
+        running = state is not None and aigcp.busy(state)
+        proposals = state is not None and bool(getattr(state, "aigcp_applied", None))
+        self.aigcp_button.setEnabled(not running)
+        self.aigcp_clear_button.setEnabled(proposals and not running)
 
-    def _on_aigcp(self, kind, _checked=False):
-        from . import aigcp
-        aigcp.start(self._state, kind)
+    def _on_aigcp_choice(self, key, value, _checked=False):
+        aigcp.set_choice(key, value)
+        self.update_aigcp()
+
+    def _on_aigcp_run(self, _checked=False):
+        try:
+            aigcp.start(self._state)
+        except Exception as exc:
+            journal.write("FastGCP : detection IA : {!r}".format(exc))
+        self.update_aigcp()
 
     def _on_aigcp_clear(self, _checked=False):
-        from . import aigcp
-        aigcp.clear(self._state)
-
-    # ------------------------------------------------------------------
-    # Import de GCP
-    # ------------------------------------------------------------------
-
-    def _on_import(self, _checked=False):
         try:
-            from . import gcp_import
-            gcp_import.run(self._state, self)
+            aigcp.clear(self._state)
         except Exception as exc:
-            self.set_status(i18n.t("imp.failed"))
-            journal.write("FastGCP : import de GCP : {!r}".format(exc))
+            journal.write("FastGCP : effacement des propositions : {!r}".format(exc))
+        self.update_aigcp()
 
     # ------------------------------------------------------------------
     # Exporter

@@ -18,6 +18,7 @@ hits = [{"id": it["id"], "found": True, "x": it["x_est"] + 1.0, "y": it["y_est"]
          "conf": 0.9, "crop_px": 200} for it in work["items"]]
 json.dump({"version": 1, "hits": hits, "errors": []}, open(args.out, "w"))
 '''
+STUB_FAR = STUB_OK.replace('it["x_est"] + 1.0', 'it["x_est"] + 40.0')
 STUB_FAIL = "import sys\nsys.stderr.write('boom')\nsys.exit(3)\n"
 
 
@@ -181,12 +182,13 @@ def test_collect_items_skips_pinned_and_unusable_photos(install, world):
     chunk, marker, cams = world
     items, skipped = aigcp.collect_items(chunk, marker)
     ids = [it["id"] for it in items]
-    assert "1" not in ids                 # pointee a la main
-    assert "2" in ids and "3" in ids      # proposition IA : a retester ; photo jamais pointee
-    assert "4" not in ids and skipped == 1  # pas de chemin d'image
+    assert "0:1" not in ids                 # pointee a la main
+    assert "0:2" in ids and "0:3" in ids    # proposition IA : a retester ; photo jamais pointee
+    assert "0:4" not in ids and skipped == 1  # pas de chemin d'image
     by_id = {it["id"]: it for it in items}
-    assert by_id["3"]["px_per_m"] == pytest.approx(25.0)
-    assert (by_id["3"]["x_est"], by_id["3"]["y_est"]) == (2000.0, 1500.0)
+    assert by_id["0:3"]["px_per_m"] == pytest.approx(25.0)
+    assert (by_id["0:3"]["x_est"], by_id["0:3"]["y_est"]) == (2000.0, 1500.0)
+    assert by_id["0:3"]["label"] == "GCP1" and by_id["0:3"]["marker"] is marker
 
 
 def test_build_work_has_weights_conf_and_items(install, world):
@@ -195,7 +197,7 @@ def test_build_work_has_weights_conf_and_items(install, world):
     work = aigcp.build_work("damier", items)
     assert work["weights"].endswith("damier.pt") and work["conf"] == 0.25
     assert work["scales_m"] == [0.3, 0.5, 0.8]
-    assert {"id", "image_path", "x_est", "y_est", "px_per_m"} == set(work["items"][0])
+    assert {"id", "image_path", "x_est", "y_est", "px_per_m", "rescue"} == set(work["items"][0])
     json.dumps(work)
 
 
@@ -345,3 +347,138 @@ def test_crop_size_follows_target_scale_and_is_bounded():
     assert aigcp_runner.crop_size(200.0, 0.5) == 400
     assert aigcp_runner.crop_size(10.0, 0.3) == aigcp_runner.CROP_MIN
     assert aigcp_runner.crop_size(5000.0, 0.8) == aigcp_runner.CROP_MAX
+
+
+# -- garde-fou geometrique ---------------------------------------------------
+
+@pytest.fixture
+def confirmed(ms, world):
+    """Marqueur a deux pointages manuels qui retombent sur la reprojection de son point 3D."""
+    chunk, marker, cams = world
+    marker.projections[cams[0]] = ms.Marker.Projection(ms.Vector(2001.0, 1500.0, 0), True)
+    marker.projections[cams[3]] = ms.Marker.Projection(ms.Vector(2000.0, 1500.0, 0), True)
+    msapi.mark_proposal(marker, cams[1])      # reste d'une detection precedente : ne compte pas
+    return chunk, marker, cams
+
+
+def test_spread_unknown_with_a_single_projection(ms, world):
+    chunk, _marker, cams = world
+    single = ms.Marker("SOLO", position=ms.Vector(0, 0, 0),
+                       projections={cams[0]: ms.Marker.Projection(ms.Vector(2000.0, 1500.0, 0), True)})
+    assert msapi.marker_spread_m(chunk, single) is None
+    items, _ = aigcp.collect_items(chunk, single)
+    assert items and all(it["gate_m"] is None and it["rescue"] is True for it in items)
+
+
+def test_projections_computed_by_metashape_count_for_the_spread(ms, world):
+    chunk, _marker, cams = world
+    blue = ms.Marker("BLEU", position=ms.Vector(0, 0, 0), projections={
+        cams[0]: ms.Marker.Projection(ms.Vector(2000.0, 1500.0, 0), False),
+        cams[1]: ms.Marker.Projection(ms.Vector(2000.0, 1500.0, 0), False)})
+    assert msapi.marker_spread_m(chunk, blue) == pytest.approx(0.0)
+
+
+def test_ai_proposals_never_count_for_the_spread(ms, world):
+    chunk, marker, cams = world
+    solo = ms.Marker("SOLO", position=ms.Vector(0, 0, 0), projections={
+        cams[0]: ms.Marker.Projection(ms.Vector(2000.0, 1500.0, 0), True),
+        cams[1]: ms.Marker.Projection(ms.Vector(1500.0, 1000.0, 0), False)})
+    chunk.markers.append(solo)
+    msapi.mark_proposal(solo, cams[1])
+    assert msapi.marker_spread_m(chunk, solo) is None
+
+
+def test_spread_is_the_worst_pin_gap_in_metres(confirmed):
+    chunk, marker, _cams = confirmed
+    assert msapi.marker_spread_m(chunk, marker) == pytest.approx(0.01)   # 1 px a 100 px/m
+
+
+def test_gate_has_a_floor_and_cuts_the_wide_search(install, confirmed):
+    chunk, marker, _cams = confirmed
+    items, _ = aigcp.collect_items(chunk, marker)
+    assert items and all(it["gate_m"] == pytest.approx(0.30) and it["rescue"] is False for it in items)
+
+
+def test_gate_grows_with_loose_pins(ms, install, confirmed):
+    chunk, marker, cams = confirmed
+    marker.projections[cams[3]] = ms.Marker.Projection(ms.Vector(2000.0, 1600.0, 0), True)
+    # cam 4 : 33,3 px/m, 100 px d'ecart = 3 m -> garde-fou 5 x 3 m
+    assert aigcp.marker_gate_m(chunk, marker) == pytest.approx(15.0, rel=0.05)
+
+
+def test_hit_far_from_the_expected_position_is_rejected_by_the_gate():
+    item = {"x_est": 100.0, "y_est": 100.0, "px_per_m": 25.0, "gate_m": 0.30}
+    near = {"found": True, "x": 103.0, "y": 100.0, "conf": 0.9, "crop_px": 400}
+    far = {"found": True, "x": 140.0, "y": 100.0, "conf": 0.9, "crop_px": 400}
+    assert aigcp.check_hit(near, item, 0.25) == (True, "")
+    assert aigcp.check_hit(far, item, 0.25) == (False, "gate")
+    assert aigcp.check_hit(far, dict(item, gate_m=None), 0.25) == (True, "")
+    assert aigcp.check_hit(dict(far, conf=0.1), item, 0.25) == (False, "conf")
+    assert aigcp.check_hit(dict(far, found=False), item, 0.25) == (False, "absent")
+    assert aigcp.check_hit(dict(far, x=900.0), dict(item, gate_m=None), 0.25) == (False, "far")
+
+
+def test_gated_detections_are_not_placed_and_are_counted(install, confirmed):
+    install.write_text(STUB_FAR)
+    chunk, marker, cams = confirmed
+    state = make_state(marker)
+    aigcp.start(state, "damier", "marker")
+    wait_done(state)
+    assert msapi.get_projection(marker, cams[2]) is None
+    assert state.aigcp_applied == []
+    assert "garde-fou" in state.panel.statuses[-1]
+
+
+# -- portee : tous les marqueurs ---------------------------------------------
+
+def test_collect_all_skips_markers_without_two_projections(ms, install, confirmed):
+    chunk, first, cams = confirmed
+    chunk.markers.append(ms.Marker("GCP2", position=ms.Vector(0, 0, 0)))
+    items, used, ignored = aigcp.collect_all(chunk)
+    assert used == 1 and ignored == 1
+    assert items and all(it["label"] == "GCP1" and it["id"].startswith("0:") for it in items)
+    assert [it["image_path"] for it in items] == sorted(it["image_path"] for it in items)
+
+
+def test_scope_all_places_proposals_for_every_confirmed_marker(ms, install, confirmed):
+    chunk, first, cams = confirmed
+    second = ms.Marker("GCP2", position=ms.Vector(0, 0, 0), projections={
+        cams[0]: ms.Marker.Projection(ms.Vector(2000.0, 1500.0, 0), True),
+        cams[3]: ms.Marker.Projection(ms.Vector(2000.0, 1500.0, 0), True)})
+    chunk.markers.append(second)
+    state = make_state(first)
+    assert aigcp.start(state, "damier", "all") is True
+    wait_done(state)
+    assert msapi.get_projection(first, cams[2])[2] is False
+    assert msapi.get_projection(second, cams[2])[2] is False
+    assert "2 marqueur(s)" in state.panel.statuses[-1]
+    assert len(state.aigcp_applied) == 4
+
+
+def test_scope_all_without_confirmed_marker_says_so(install, world):
+    _chunk, marker, cams = world
+    del marker.projections[cams[1]]           # une seule projection : position non confirmee
+    state = make_state(marker)
+    assert aigcp.start(state, "damier", "all") is False
+    assert "2 projections" in state.panel.statuses[-1]
+
+
+# -- choix memorises ---------------------------------------------------------
+
+def test_choices_default_and_persist(local_appdata):
+    assert aigcp.selected_type() == "damier" and aigcp.selected_scope() == "marker"
+    aigcp.set_choice("type", "bombe")
+    aigcp.set_choice("scope", "all")
+    assert aigcp.selected_type() == "bombe" and aigcp.selected_scope() == "all"
+    aigcp.set_choice("type", "rond")
+    aigcp.set_choice("scope", "nulle part")
+    assert aigcp.selected_type() == "bombe" and aigcp.selected_scope() == "all"
+
+
+def test_start_without_arguments_uses_the_saved_choices(install, confirmed):
+    chunk, marker, cams = confirmed
+    aigcp.set_choice("type", "bombe")
+    state = make_state(marker)
+    assert aigcp.start(state) is True
+    assert state.aigcp_run.kind == "bombe" and state.aigcp_run.scope == "marker"
+    wait_done(state)

@@ -32,7 +32,6 @@ FILES = [
     os.path.join(FASTGCP, "history.py"),
     os.path.join(FASTGCP, "marking.py"),
     os.path.join(FASTGCP, "photos.py"),
-    os.path.join(FASTGCP, "gcp_import.py"),
     os.path.join(ROOT, "aerotools", "bootstrap.py"),
 ]
 

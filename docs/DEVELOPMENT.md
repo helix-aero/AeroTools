@@ -86,26 +86,35 @@ to a file in a visible folder. No image is copied. The file format is documented
 
 ## AI detection (AIGCP)
 
-The **AI detection** button of the panel proposes the active marker on the other photos that should see it. Two models, never
-mixed: checkerboard (`damier`) and spray or chalk mark (`bombe`). The operator picks the type in the button's menu.
+The **AI detection** card, at the top of the panel, proposes a marker on the photos that should see it. Two models, never mixed:
+checkerboard (`damier`) and spray or chalk mark (`bombe`). The card has a type switch, a scope switch (**Selected marker** or
+**All**, meaning every marker that has at least 2 projections) and the **Run detection** and **Clear proposals** buttons.
+The choices are saved per machine.
 
 - The calculation never runs inside Metashape. `aigcp.py` writes a `work.json`, starts `aigcp_runner.py` in a separate Python
   that has torch and ultralytics, and reads `hits.json` when it is done. The panel stays free; the tool's heartbeat (`tool._tick`)
   polls the job and places the results.
 - The runner crops a square of `4 x S x pixels-per-metre` around the estimated position of the marker (S = 0.3 / 0.5 / 0.8 m,
   the target size is unknown), resizes it to 160 x 160, keeps the detection closest to the estimate, then re-centres on it.
-  If nothing is found it also tries four crops shifted by 0.4 of the crop size. This is the pipeline measured in
-  `DATASET_GCP_IA\modeles\RAPPORT_ENTRAINEMENT_V2.md`.
-- A proposal is a projection with `pinned=False` (blue point). It never replaces a manual pin, it is not counted as a pointed
-  photo (`msapi.projection_count` counts pinned projections only), and clicking the target replaces it with a normal pin.
-  **Clear the AI proposals** removes the ones still unvalidated.
-- Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder). `*.pt` is git-ignored:
-  copy them by hand next to the code.
+  If nothing is found it also tries four crops shifted by 0.4 of the crop size, unless the marker's position is confirmed (see
+  the guard below). This is the pipeline measured in `DATASET_GCP_IA\modeles\RAPPORT_ENTRAINEMENT_V2.md`.
+- **Guard.** When a marker has at least 2 projections (placed by hand or computed by Metashape, AI proposals excluded),
+  `msapi.marker_spread_m` measures how far they sit from the reprojection of the marker's 3D point. A detection further than
+  `max(gate_min_m, gate_factor x spread)` metres from the expected position is rejected (roof, tree, a neighbouring object) and
+  counted in the status line. Defaults: 0.30 m and 5. A marker with fewer projections has no guard, and the **All** scope skips it.
+- A proposal is a projection with `pinned=False` (blue point), remembered by `msapi.mark_proposal`. It never replaces a manual
+  pin and is not counted as a pointed photo. Clicking the target replaces it with a normal pin. **Clear proposals** removes the ones
+  still unvalidated and puts back the blue point that was there before, if any. Metashape's own blue points are never touched.
+- Picking a marker in the panel also selects it in Metashape's Reference pane: Metashape recentres on its own selected marker
+  when the photo changes (Page Up / Page Down).
+- Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder). `*.pt` is
+  git-ignored: copy them by hand next to the code.
 - Hidden settings, section `aigcp`: `python` (path of the Python with torch and ultralytics; default: `AIGCP_PYTHON`, then
-  `~/AIGCP/_env/Scripts/python.exe`), `models_dir`, `conf_damier` (0.25), `conf_bombe` (0.30).
-- Limits: at most 200 photos per run, the marker needs a 3D position (two manual pins, or reference coordinates) and an
-  aligned photo. Measured by script on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and
-  40 px): 98 to 100 % within 3 px. Not yet measured inside a real Metashape project.
+  `~/AIGCP/_env/Scripts/python.exe`), `models_dir`, `conf_damier` (0.25), `conf_bombe` (0.30), `gate_min_m` (0.30),
+  `gate_factor` (5), and the last `type` and `scope`.
+- Limits: at most 200 photos per marker and 3000 per run, a marker needs a 3D position and an aligned photo. Measured by script
+  on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and 40 px): 98 to 100 % within 3 px.
+  The guard is covered by tests but not measured on real roof false positives yet.
 
 ## Hidden settings
 

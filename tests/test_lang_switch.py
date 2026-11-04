@@ -29,6 +29,7 @@ class _Stub(object):
     _retranslate_checks = Panel._retranslate_checks
     _retranslate_buttons = Panel._retranslate_buttons
     _retranslate_export = Panel._retranslate_export
+    _retranslate_aigcp = Panel._retranslate_aigcp
 
     def __init__(self, broken=()):
         self.broken = set(broken)
@@ -59,7 +60,8 @@ class _Stub(object):
 
 
 for _name in ("_retranslate_eyebrow", "_retranslate_search", "_retranslate_grid",
-              "_retranslate_checks", "_retranslate_buttons", "_retranslate_export"):
+              "_retranslate_checks", "_retranslate_buttons", "_retranslate_export",
+              "_retranslate_aigcp"):
     setattr(_Stub, _name, (lambda n: lambda self: self._step(n))(_name))
 
 

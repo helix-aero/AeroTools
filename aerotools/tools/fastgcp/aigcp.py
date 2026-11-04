@@ -14,12 +14,23 @@ qui rend le point bleu d'avant s'il y en avait un) ou se valide en cliquant la
 cible, ce qui la remplace par un pointage normal.
 
 Deux modeles, jamais melanges : damier et bombe. L'operateur choisit le type.
+Portee : le marqueur actif, ou tous les marqueurs ayant au moins 2 projections.
+
+Garde-fou geometrique : quand un marqueur a au moins 2 projections (posees a la
+main ou calculees par Metashape), on mesure leur ecart a la reprojection de son
+point 3D : la position attendue sur les autres photos est connue a cet ecart
+pres. Une detection qui tombe a plus de max(GATE_MIN_M, GATE_FACTOR x cet ecart)
+metres de cette position est une fausse detection (toiture, arbre, objet
+voisin) : elle est ecartee, et la recherche elargie autour de l'estimation est
+coupee pour ce marqueur.
 
 Reglages caches (settings.json, section `aigcp`) :
   python      chemin du Python qui a torch + ultralytics
               (defaut : variable AIGCP_PYTHON, puis ~/AIGCP/_env/Scripts/python.exe)
   models_dir  dossier des poids damier.pt et bombe.pt (defaut : <depot>/models)
   conf_damier, conf_bombe   seuils de confiance (defauts 0,25 et 0,30)
+  gate_min_m (0,30), gate_factor (5)   garde-fou ; gate_min_m tres grand = coupe
+  type, scope   derniers choix du panneau
 """
 
 import json
@@ -34,18 +45,25 @@ from . import detection, photos
 
 SECTION = "aigcp"
 TYPES = ("damier", "bombe")
+SCOPES = ("marker", "all")
+DEFAULT_TYPE = "damier"
+DEFAULT_SCOPE = "marker"
 DEFAULT_CONF = {"damier": 0.25, "bombe": 0.30}
 SCALES_M = (0.3, 0.5, 0.8)
 MAX_PHOTOS = 200
+MAX_PHOTOS_ALL = 3000
 # Une proposition doit rester pres de l'estimation du marqueur : au plus cette
 # fraction de la taille du recadrage (la recherche elargie va jusqu'a 0,4).
 MAX_SHIFT_FRACTION = 0.7
+# Garde-fou geometrique : voir l'en-tete du module.
+GATE_MIN_M = 0.30
+GATE_FACTOR = 5.0
 RUNNER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aigcp_runner.py")
 KEEP_RUNS = 5
 
 
 # --------------------------------------------------------------------------
-# Installation : Python externe, poids
+# Installation : Python externe, poids, reglages
 # --------------------------------------------------------------------------
 
 def models_dir():
@@ -70,11 +88,39 @@ def python_path():
     return os.path.join(os.path.expanduser("~"), "AIGCP", "_env", *sub)
 
 
-def conf_for(kind):
-    value = config.get(SECTION, "conf_" + kind)
+def _number(key, default, low, high):
+    value = config.get(SECTION, key)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return DEFAULT_CONF[kind]
-    return float(value) if 0.0 < value < 1.0 else DEFAULT_CONF[kind]
+        return default
+    return float(value) if low < value < high else default
+
+
+def conf_for(kind):
+    return _number("conf_" + kind, DEFAULT_CONF[kind], 0.0, 1.0)
+
+
+def gate_min_m():
+    return _number("gate_min_m", GATE_MIN_M, 0.0, 1e9)
+
+
+def gate_factor():
+    return _number("gate_factor", GATE_FACTOR, 0.0, 1e6)
+
+
+def selected_type():
+    value = config.get(SECTION, "type")
+    return value if value in TYPES else DEFAULT_TYPE
+
+
+def selected_scope():
+    value = config.get(SECTION, "scope")
+    return value if value in SCOPES else DEFAULT_SCOPE
+
+
+def set_choice(key, value):
+    """Memorise le type ou la portee choisis dans le panneau."""
+    if (key == "type" and value in TYPES) or (key == "scope" and value in SCOPES):
+        config.put(SECTION, key, value)
 
 
 def check(kind):
@@ -121,7 +167,7 @@ def new_run_dir():
 
 
 def build_work(kind, items, conf=None):
-    """Contenu de work.json. `items` : dicts id, image_path, x_est, y_est, px_per_m."""
+    """Contenu de work.json. `items` : dicts id, image_path, x_est, y_est, px_per_m, rescue."""
     return {
         "version": 1,
         "type": kind,
@@ -132,7 +178,7 @@ def build_work(kind, items, conf=None):
         "items": [
             {"id": it["id"], "image_path": it["image_path"],
              "x_est": float(it["x_est"]), "y_est": float(it["y_est"]),
-             "px_per_m": float(it["px_per_m"])}
+             "px_per_m": float(it["px_per_m"]), "rescue": bool(it.get("rescue", True))}
             for it in items
         ],
     }
@@ -156,16 +202,37 @@ def child_env():
     return env
 
 
-def accept(hit, item, conf):
-    """Une detection est retenue si elle est trouvee, assez sure et pres de l'estimation."""
+def gap_m(hit, item):
+    """Distance, en metres au sol, entre la detection et la position attendue."""
+    gap_px = math.hypot(float(hit["x"]) - item["x_est"], float(hit["y"]) - item["y_est"])
+    return gap_px / float(item["px_per_m"])
+
+
+def check_hit(hit, item, conf):
+    """(True, "") si la detection est retenue, sinon (False, raison).
+
+    Raisons : "absent" (rien trouve), "conf" (pas assez sure), "far" (hors de la
+    zone de recherche), "gate" (incompatible avec la position 3D du marqueur).
+    """
     try:
-        if not hit.get("found") or float(hit["conf"]) < conf:
-            return False
+        if not hit.get("found"):
+            return False, "absent"
+        if float(hit["conf"]) < conf:
+            return False, "conf"
         crop = float(hit.get("crop_px") or 0)
-        gap = math.hypot(float(hit["x"]) - item["x_est"], float(hit["y"]) - item["y_est"])
-        return crop > 0 and gap <= MAX_SHIFT_FRACTION * crop
-    except (KeyError, TypeError, ValueError):
-        return False
+        gap_px = math.hypot(float(hit["x"]) - item["x_est"], float(hit["y"]) - item["y_est"])
+        if not crop > 0 or gap_px > MAX_SHIFT_FRACTION * crop:
+            return False, "far"
+        limit = item.get("gate_m")
+        if limit is not None and gap_m(hit, item) > limit:
+            return False, "gate"
+        return True, ""
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        return False, "absent"
+
+
+def accept(hit, item, conf):
+    return check_hit(hit, item, conf)[0]
 
 
 # --------------------------------------------------------------------------
@@ -247,16 +314,28 @@ class Job(object):
 
 
 # --------------------------------------------------------------------------
-# Photos a tester pour un marqueur
+# Photos a tester
 # --------------------------------------------------------------------------
 
-def collect_items(chk, marker):
+def marker_gate_m(chk, marker):
+    """Distance maximale (m) acceptee entre une detection et la position attendue,
+    ou None si la position du marqueur n'est pas assez confirmee (moins de 2 projections)."""
+    spread = msapi.marker_spread_m(chk, marker)
+    if spread is None:
+        return None
+    return max(gate_min_m(), gate_factor() * spread)
+
+
+def collect_items(chk, marker, index=0, limit=MAX_PHOTOS):
     """Photos sans pointage manuel ou le marqueur est attendu : liste d'items.
 
-    Chaque item : id (cle de la photo), camera, image_path, x_est, y_est, px_per_m.
+    Chaque item : id, marker, label, camera, image_path, x_est, y_est, px_per_m,
+    gate_m (None = pas de garde-fou), rescue (recherche elargie permise).
     Renvoie (items, nombre de photos ecartees faute d'estimation ou d'echelle).
     """
     cameras, _diag = msapi.cameras_seeing_marker(chk, marker)
+    gate = marker_gate_m(chk, marker)
+    label = msapi.marker_label(marker)
     items, skipped = [], 0
     for camera in cameras:
         projection = msapi.get_projection(marker, camera)
@@ -268,12 +347,34 @@ def collect_items(chk, marker):
         if estimate is None or ppm is None or not path:
             skipped += 1
             continue
-        items.append({"id": str(msapi.camera_key(camera)), "camera": camera,
+        items.append({"id": "{}:{}".format(index, msapi.camera_key(camera)),
+                      "marker": marker, "label": label, "camera": camera,
                       "image_path": path, "x_est": estimate[0], "y_est": estimate[1],
-                      "px_per_m": ppm})
-        if len(items) >= MAX_PHOTOS:
+                      "px_per_m": ppm, "gate_m": gate, "rescue": gate is None})
+        if len(items) >= limit:
             break
     return items, skipped
+
+
+def collect_all(chk):
+    """Items de tous les marqueurs dont la position est confirmee (2 projections ou plus).
+
+    Renvoie (items, marqueurs retenus, marqueurs ignores). Les items d'une meme
+    photo sont voisins : le runner ne la decode qu'une fois.
+    """
+    items, used, ignored = [], 0, 0
+    for index, marker in enumerate(msapi.markers(chk)):
+        if len(items) >= MAX_PHOTOS_ALL:
+            break
+        if msapi.marker_spread_m(chk, marker) is None:
+            ignored += 1
+            continue
+        found, _skipped = collect_items(chk, marker, index, MAX_PHOTOS_ALL - len(items))
+        if found:
+            used += 1
+            items.extend(found)
+    items.sort(key=lambda it: it["image_path"])
+    return items, used, ignored
 
 
 # --------------------------------------------------------------------------
@@ -319,9 +420,9 @@ class AigcpDetector(detection.Detector):
 # --------------------------------------------------------------------------
 
 class _Running(object):
-    def __init__(self, job, kind, marker, label, chunk_key, items):
-        self.job, self.kind, self.marker, self.label = job, kind, marker, label
-        self.chunk_key, self.items = chunk_key, items
+    def __init__(self, job, kind, scope, label, chunk_key, items, markers):
+        self.job, self.kind, self.scope, self.label = job, kind, scope, label
+        self.chunk_key, self.items, self.markers = chunk_key, items, markers
 
 
 def _status(state, text):
@@ -329,21 +430,28 @@ def _status(state, text):
     journal.write(text)
 
 
+def _refresh_panel(state):
+    photos.panel_call(state, "update_aigcp")
+    photos.panel_call(state, "update_active_card")
+    photos.panel_call(state, "refresh_errors")
+
+
 def busy(state):
     return getattr(state, "aigcp_run", None) is not None
 
 
-def start(state, kind):
-    """Lance la detection de `kind` sur les photos du marqueur courant. Ne leve jamais."""
+def start(state, kind=None, scope=None):
+    """Lance la detection sur le marqueur actif (scope "marker") ou sur tous
+    (scope "all"). Sans argument : les choix memorises du panneau. Ne leve jamais."""
     try:
-        return _start(state, kind)
+        return _start(state, kind or selected_type(), scope or selected_scope())
     except Exception as exc:
         _status(state, i18n.t("aigcp.failed"))
         journal.write("IA : lancement impossible : {!r}".format(exc))
         return False
 
 
-def _start(state, kind):
+def _start(state, kind, scope):
     if busy(state):
         _status(state, i18n.t("aigcp.busy"))
         return False
@@ -352,20 +460,37 @@ def _start(state, kind):
         _status(state, message)
         return False
     chk = msapi.chunk()
-    label = state.active_label()
-    marker = state.active_marker
-    if chk is None or label is None or marker is None:
+    if chk is None:
         _status(state, i18n.t("aigcp.no_marker"))
         return False
-    items, skipped = collect_items(chk, marker)
-    if skipped:
-        journal.write("IA : {} photo(s) ecartee(s) (pas d'estimation ou d'echelle)".format(skipped))
-    if not items:
-        _status(state, i18n.t("aigcp.no_photos", label=label))
-        return False
+    label = state.active_label()
+    if scope == "all":
+        items, used, ignored = collect_all(chk)
+        if ignored:
+            journal.write("IA : {} marqueur(s) ignore(s) : moins de 2 projections".format(ignored))
+        if not items:
+            _status(state, i18n.t("aigcp.no_markers"))
+            return False
+        text = i18n.t("aigcp.running_all", kind=kind, n=len(items), k=used)
+        shown = None
+    else:
+        marker = state.active_marker
+        if label is None or marker is None:
+            _status(state, i18n.t("aigcp.no_marker"))
+            return False
+        items, skipped = collect_items(chk, marker)
+        if skipped:
+            journal.write("IA : {} photo(s) ecartee(s) (pas d'estimation ou d'echelle)".format(skipped))
+        if not items:
+            _status(state, i18n.t("aigcp.no_photos", label=label))
+            return False
+        used = 1
+        text = i18n.t("aigcp.running", kind=kind, n=len(items), label=label)
+        shown = label
     job = Job(kind, build_work(kind, items), new_run_dir()).start()
-    state.aigcp_run = _Running(job, kind, marker, label, msapi.chunk_key(chk), items)
-    _status(state, i18n.t("aigcp.running", kind=kind, n=len(items), label=label))
+    state.aigcp_run = _Running(job, kind, scope, shown, msapi.chunk_key(chk), items, used)
+    _status(state, text)
+    _refresh_panel(state)
     return True
 
 
@@ -380,6 +505,7 @@ def poll(state):
         state.aigcp_run = None
         _status(state, i18n.t("aigcp.failed"))
         journal.write("IA : {}".format(exc))
+        _refresh_panel(state)
         return
     if result is None:
         return
@@ -389,6 +515,7 @@ def poll(state):
     except Exception as exc:
         _status(state, i18n.t("aigcp.failed"))
         journal.write("IA : pose des propositions impossible : {!r}".format(exc))
+    _refresh_panel(state)
 
 
 def _apply(state, run, hits, errors):
@@ -400,34 +527,51 @@ def _apply(state, run, hits, errors):
         return
     conf = conf_for(run.kind)
     by_id = {it["id"]: it for it in run.items}
-    placed = []
+    placed, gated, with_proposal = [], 0, set()
     for hit in hits:
         item = by_id.get(str(hit.get("id")))
-        if item is None or not accept(hit, item, conf):
+        if item is None:
             continue
-        camera = item["camera"]
-        current = msapi.get_projection(run.marker, camera)
+        ok, reason = check_hit(hit, item, conf)
+        if not ok:
+            if reason == "gate":
+                gated += 1
+                journal.write("IA : {} ecarte sur {} : a {:.1f} m de la position attendue (limite {:.2f} m)".format(
+                    item["label"], msapi.camera_label(item["camera"]), gap_m(hit, item), item["gate_m"]))
+            continue
+        marker, camera = item["marker"], item["camera"]
+        current = msapi.get_projection(marker, camera)
         if current is not None and current[2]:
             continue          # l'operateur a pointe cette photo entre temps
         previous = current    # point bleu de Metashape eventuel, rendu a l'effacement
-        ok, message = msapi.set_projection(run.marker, camera, hit["x"], hit["y"], pinned=False)
-        if not ok:
-            journal.write("IA : {} sur {} : {}".format(run.label, msapi.camera_label(camera), message))
+        done, message = msapi.set_projection(marker, camera, hit["x"], hit["y"], pinned=False)
+        if not done:
+            journal.write("IA : {} sur {} : {}".format(item["label"], msapi.camera_label(camera), message))
             continue
-        msapi.mark_proposal(run.marker, camera)
-        placed.append((run.marker, camera, previous))
+        msapi.mark_proposal(marker, camera)
+        placed.append((marker, camera, previous))
+        with_proposal.add(item["label"])
         journal.write("IA : {} propose en ({:.0f}, {:.0f}) sur {} (confiance {:.2f})".format(
-            run.label, hit["x"], hit["y"], msapi.camera_label(camera), hit["conf"]))
+            item["label"], hit["x"], hit["y"], msapi.camera_label(camera), hit["conf"]))
     applied = getattr(state, "aigcp_applied", None)
     if applied is None:
         applied = state.aigcp_applied = []
     applied.extend(placed)
+    _status(state, _summary(run, len(placed), len(run.items), gated, len(with_proposal)))
+
+
+def _summary(run, placed, tested, gated, markers):
+    if run.scope == "all":
+        if placed:
+            return i18n.t("aigcp.done_all", n=placed, k=markers, m=tested, g=gated)
+        return i18n.t("aigcp.none_all", m=tested, k=run.markers, g=gated)
+    if placed and gated:
+        return i18n.t("aigcp.done_gate", n=placed, m=tested, label=run.label, g=gated)
     if placed:
-        _status(state, i18n.t("aigcp.done", n=len(placed), m=len(run.items), label=run.label))
-    else:
-        _status(state, i18n.t("aigcp.none", m=len(run.items), label=run.label))
-    photos.panel_call(state, "update_active_card")
-    photos.panel_call(state, "refresh_errors")
+        return i18n.t("aigcp.done", n=placed, m=tested, label=run.label)
+    if gated:
+        return i18n.t("aigcp.none_gate", label=run.label, g=gated)
+    return i18n.t("aigcp.none", m=tested, label=run.label)
 
 
 def clear(state):
@@ -440,17 +584,16 @@ def clear(state):
             if current is None or current[2]:
                 continue      # validee ou deja effacee : on n'y touche pas
             if previous is not None:
-                ok, _message = msapi.set_projection(
+                done, _message = msapi.set_projection(
                     marker, camera, previous[0], previous[1], previous[2])
             else:
-                ok, _message = msapi.remove_projection(marker, camera)
-            removed += 1 if ok else 0
+                done, _message = msapi.remove_projection(marker, camera)
+            removed += 1 if done else 0
         except Exception:
             continue          # marqueur ou photo disparus avec le chunk
     state.aigcp_applied = []
     _status(state, i18n.t("aigcp.cleared", n=removed))
-    photos.panel_call(state, "update_active_card")
-    photos.panel_call(state, "refresh_errors")
+    _refresh_panel(state)
     return removed
 
 

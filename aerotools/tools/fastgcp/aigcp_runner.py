@@ -9,7 +9,9 @@ jamais dans celui de Metashape :
     {"version": 1, "type": "damier", "weights": "...pt", "conf": 0.25,
      "scales_m": [0.3, 0.5, 0.8], "device": "auto",
      "items": [{"id": "...", "image_path": "...", "x_est": 123.4,
-                "y_est": 456.7, "px_per_m": 210.0}, ...]}
+                "y_est": 456.7, "px_per_m": 210.0, "rescue": true}, ...]}
+`rescue` (defaut vrai) : permet la recherche elargie si rien n'est trouve au centre ;
+faux quand la position attendue est connue a quelques centimetres.
 
 `hits.json` (ecrit ici, en fin de travail) :
     {"version": 1, "seconds": 3.2, "device": "cpu",
@@ -139,7 +141,7 @@ def detect_item(detector, image, item, scales, conf):
         return best_of(detector.predict(tiles), metas, nearest)
 
     found = run([(cx, cy, s) for s in sizes], True)
-    if found is None or found[2] < conf:
+    if (found is None or found[2] < conf) and item.get("rescue", True):
         around = [(cx, cy, s) for s in sizes]
         for s in sizes:
             for dx, dy in GRID_STEPS:
@@ -176,9 +178,12 @@ def run(work_path, out_path):
     device = pick_device(work.get("device", "auto"))
     detector = Detector(work["weights"], device)
     hits, errors = [], []
+    last_path, image = None, None     # les items d'une meme photo se suivent : un seul decodage
     for item in work.get("items", []):
         try:
-            image = read_image(item["image_path"])
+            if item["image_path"] != last_path:
+                last_path, image = item["image_path"], None
+                image = read_image(last_path)
             if image is None:
                 raise ValueError("image illisible")
             row = detect_item(detector, image, item, scales, conf)
