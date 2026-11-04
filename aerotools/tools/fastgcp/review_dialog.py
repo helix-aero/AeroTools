@@ -627,6 +627,12 @@ class ReviewDialog(QtWidgets.QDialog):
         self._update_zoom_label()
         self._fill_markers()
 
+    def showEvent(self, event):
+        super(ReviewDialog, self).showEvent(event)
+        # La fenetre est reutilisee apres une fermeture : `finished` a retire l'abonnement aux reglages,
+        # on le remet (sans cela, exposition, contraste... ne repeignaient plus les vignettes).
+        self.adjust.subscribe(self._on_adjust)
+
     def _build_top(self):
         """Haut du panneau de droite : la photo choisie en grand, puis le zoom."""
         box = QtWidgets.QWidget()
