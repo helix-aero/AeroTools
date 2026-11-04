@@ -7,7 +7,7 @@ import types
 
 import pytest
 
-from aerotools import config, msapi
+from aerotools import config, i18n, msapi
 from aerotools.tools.fastgcp import aigcp, aigcp_runner, history, review
 
 STUB_OK = '''
@@ -748,20 +748,36 @@ def test_job_progress_is_none_until_the_runner_reports(install, tmp_path):
     assert job.progress() is None
 
 
-def test_progress_reaches_the_status_line_while_running(install, world):
+def test_progress_text_goes_in_the_bar_in_english_while_running(install, world):
     install.write_text(STUB_SLOW)
     _chunk, marker, _cams = world
     state = make_state(marker)
     aigcp.start(state, "damier", "marker")
     assert aigcp.progress_of(state) is None            # le runner n'a encore rien dit
+    assert aigcp.bar_text(state) == "AI (Checker) · starting…"
     end = time.time() + 15
     while aigcp.progress_of(state) is None and time.time() < end:
         aigcp.poll(state)
         time.sleep(0.05)
     assert aigcp.progress_of(state) == (2, 5)
-    assert any("2/5" in text for text in state.panel.statuses)
+    assert aigcp.bar_text(state) == "AI (Checker) · 2/5 photos"
+    assert not any("2/5" in text for text in state.panel.statuses)    # plus de doublon en bas du panneau
     wait_done(state)
     assert aigcp.progress_of(state) is None
+    assert aigcp.bar_text(state) == ""
+
+
+def test_abort_stops_the_run_and_says_so(install, world):
+    install.write_text(STUB_SLOW)
+    _chunk, marker, _cams = world
+    state = make_state(marker)
+    assert aigcp.abort(state) is False                  # rien ne tourne
+    aigcp.start(state, "damier", "marker")
+    assert aigcp.busy(state)
+    assert aigcp.abort(state) is True
+    assert not aigcp.busy(state)
+    assert i18n.t("aigcp.cancelled") in state.panel.statuses
+    assert aigcp.kind_label("bombe") == "Spray" and aigcp.kind_label("damier") == "Checker"
 
 
 # -- revue des pointes de l'IA -------------------------------------------------------

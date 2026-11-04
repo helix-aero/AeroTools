@@ -77,7 +77,7 @@ TEXTES = {
     "qc.opened": "{label} : pire photo ouverte",
 
     # -- Détection IA : propositions de pointage (aigcp.py, panel.py) --------
-    "aigcp.running": "IA ({kind}) : {n} photo(s) à tester pour {label}…",
+    "aigcp.running": "AI ({kind}): {n} photo(s) to test for {label}…",
     "aigcp.done": "IA : {n} proposition(s) sur {m} photo(s) pour {label}, à valider d'un clic",
     "aigcp.none": "IA : aucune cible retrouvée sur {m} photo(s) pour {label}",
     "aigcp.no_marker": "IA : choisis d'abord un marqueur",
@@ -135,7 +135,7 @@ TEXTES = {
     "aigcp.progress": "IA ({kind}) : {done}/{total} photo(s)…",
     "aigcp.run": "Lancer",
     "aigcp.clear": "Effacer les propositions",
-    "aigcp.running_all": "IA ({kind}) : {n} photo(s) à tester sur {k} marqueur(s)…",
+    "aigcp.running_all": "AI ({kind}): {n} photo(s) to test on {k} marker(s)…",
     "aigcp.done_all": "IA : {n} proposition(s) sur {k} marqueur(s), {m} photo(s) testées , {g} écartée(s) par le garde-fou",
     "aigcp.none_all": "IA : aucune cible retrouvée ({m} photo(s), {k} marqueur(s)) , {g} écartée(s) par le garde-fou",
     "aigcp.no_markers": "IA : aucun marqueur avec une position 3D",
@@ -364,4 +364,10 @@ TEXTES = {
     "settings.storage_content": "Contient : annotations (dataset) : {a} ligne(s) · modèles locaux (models) : {m} · détections gardées (aigcp) : {d} · essais d'entraînement (training) : {t}",
     "settings.copy_confirm": "Ce dossier ne contient encore ni annotation ni modèle. Copier dans ce dossier les {a} annotation(s) et les {m} modèle(s) local(aux) du dossier actuel ? Le dossier actuel n'est pas modifié.",
     "settings.copy_failed": "La copie a échoué : {message}",
+
+    # -- Barre de detection IA ---------------------------------------------
+    "aigcp.cancel": "Annuler",
+    "aigcp.cancelled": "IA : détection annulée",
+    "aigcp.bar": "AI ({kind}) · {done}/{total} photos",
+    "aigcp.bar_start": "AI ({kind}) · starting…",
 }

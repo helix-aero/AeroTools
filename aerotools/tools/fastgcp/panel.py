@@ -53,6 +53,8 @@ MIN_PANEL_WIDTH = 420
 # Meme hauteur pour tous les boutons et listes du panneau ; Run est un petit bouton.
 CONTROL_HEIGHT = 30
 RUN_WIDTH = 92
+CANCEL_WIDTH = 84
+PROGRESS_HEIGHT = 22                  # barre de detection (texte dedans) et bouton Annuler a sa droite
 
 # Texte de chaque case de la carte Parametres (cle de l'option : cle de texte).
 CHECK_TEXTS = {
@@ -1061,12 +1063,23 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         choices.setColumnStretch(1, 3)
         layout.addLayout(choices)
 
+        # Barre de progression avec son texte dedans, et Annuler a droite ; visibles pendant un calcul.
+        self.aigcp_bar_row = QtWidgets.QWidget()
+        bar_layout = QtWidgets.QHBoxLayout(self.aigcp_bar_row)
+        bar_layout.setContentsMargins(0, 0, 0, 0)
+        bar_layout.setSpacing(theme.PAD)
         self.aigcp_progress = QtWidgets.QProgressBar()
-        self.aigcp_progress.setObjectName("aeroProgress")
-        self.aigcp_progress.setTextVisible(False)
+        self.aigcp_progress.setObjectName("aeroProgressText")
+        self.aigcp_progress.setTextVisible(True)
+        self.aigcp_progress.setAlignment(QtCore.Qt.AlignCenter)
         self.aigcp_progress.setRange(0, 100)
-        self.aigcp_progress.setVisible(False)
-        layout.addWidget(self.aigcp_progress)
+        bar_layout.addWidget(self.aigcp_progress, 1)
+        self.aigcp_cancel_button = self._tool_button("aigcp.cancel", self._on_aigcp_cancel)
+        self.aigcp_cancel_button.setFixedSize(CANCEL_WIDTH, PROGRESS_HEIGHT)
+        self.aigcp_cancel_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        bar_layout.addWidget(self.aigcp_cancel_button, 0)
+        self.aigcp_bar_row.setVisible(False)
+        layout.addWidget(self.aigcp_bar_row)
         self._retranslate_aigcp()
         return card
 
@@ -1448,6 +1461,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.aigcp_button.set_full_text(i18n.t("aigcp.run"))
         self.aigcp_clear_button.set_full_text(i18n.t("aigcp.clear"))
         self.aigcp_review_button.set_full_text(i18n.t("aigcp.review"))
+        self.aigcp_cancel_button.set_full_text(i18n.t("aigcp.cancel"))
         self.update_aigcp()
 
     def _retranslate_credit(self):
@@ -2128,9 +2142,10 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self.aigcp_progress.setRange(0, progress[1])
             self.aigcp_progress.setValue(min(progress[0], progress[1]))
         else:
-            self.aigcp_progress.setRange(0, 0 if running else 100)
+            self.aigcp_progress.setRange(0, 100)         # plage vide = le texte ne s'afficherait pas
             self.aigcp_progress.setValue(0)
-        self.aigcp_progress.setVisible(bool(running))
+        self.aigcp_progress.setFormat(aigcp.bar_text(state) if running else "")
+        self.aigcp_bar_row.setVisible(bool(running))
 
     def _on_aigcp_combo(self, key, index):
         combo = self._aigcp_combos[key]
@@ -2170,6 +2185,13 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             aigcp.start(self._state, labels=self.selected_labels())
         except Exception as exc:
             journal.write("FastGCP : detection IA : {!r}".format(exc))
+        self.update_aigcp()
+
+    def _on_aigcp_cancel(self, _checked=False):
+        try:
+            aigcp.abort(self._state)
+        except Exception as exc:
+            journal.write("FastGCP : annulation de la detection : {!r}".format(exc))
         self.update_aigcp()
 
     def _on_aigcp_clear(self, _checked=False):

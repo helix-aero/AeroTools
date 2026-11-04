@@ -158,7 +158,7 @@ def stylesheet():
       #aeroBanner     bandeau du haut (logo AERO sur le fond clair #F3F4F1 du kit, pub) ; #aeroBannerTop : son filet vert
       #aeroCard       bloc de reglages ; #aeroCardAccent : bloc mis en avant (cadre vert)
       #aeroSection    titre de section d'une fenetre (parametres)
-      #aeroProgress   barre de progression de la detection IA
+      #aeroProgress   barre de progression fine (parametres, affinage) ; #aeroProgressText : celle de la detection IA, avec son texte
       #aeroCombo      liste deroulante (choix de la detection IA)
       #aeroThumbs     listes de la fenetre de revue ; #aeroSlider : curseur de taille
       #aeroPlayOn / #aeroPlayOff  bouton rond Pause / Play
@@ -310,6 +310,19 @@ def stylesheet():
     #aeroPanel QProgressBar#aeroProgress::chunk {{
         background: {green};
         border-radius: 3px;
+    }}
+    /* Barre de la detection IA : le texte est dedans (vert du logo, lisible sur le fond comme sur le remplissage) */
+    #aeroPanel QProgressBar#aeroProgressText {{
+        background: {ground_3};
+        border: none;
+        border-radius: 4px;
+        color: {fg_0};
+        min-height: 22px;
+        max-height: 22px;
+    }}
+    #aeroPanel QProgressBar#aeroProgressText::chunk {{
+        background: #139168;
+        border-radius: 4px;
     }}
 
     /* Play / Pause : bouton rond (l'icone est peinte) + etat en clair */

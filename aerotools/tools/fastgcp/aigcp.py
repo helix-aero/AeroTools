@@ -526,6 +526,21 @@ def _auto_review(state):
     return True if option is None else bool(option("ai_auto_review"))
 
 
+def kind_label(kind):
+    """Nom du type de cible, toujours en anglais (Spray, Checker) : c'est le nom du produit."""
+    return i18n.texts("en").get("aigcp.type_" + str(kind), str(kind))
+
+
+def bar_text(state):
+    """Texte ecrit DANS la barre de progression : type, photos traitees. Vide sans calcul."""
+    run = getattr(state, "aigcp_run", None)
+    if run is None:
+        return ""
+    if run.progress is None:
+        return i18n.t("aigcp.bar_start", kind=kind_label(run.kind))
+    return i18n.t("aigcp.bar", kind=kind_label(run.kind), done=run.progress[0], total=run.progress[1])
+
+
 def progress_of(state):
     """(photos traitees, total) du calcul en cours, ou None (pas de calcul, ou pas encore demarre)."""
     run = getattr(state, "aigcp_run", None)
@@ -570,7 +585,7 @@ def _start(state, kind, scope, labels=None):
         if not items:
             _status(state, i18n.t("aigcp.no_markers"))
             return False
-        text = i18n.t("aigcp.running_all", kind=kind, n=len(items), k=used)
+        text = i18n.t("aigcp.running_all", kind=kind_label(kind), n=len(items), k=used)
         shown = None
     else:
         marker = state.active_marker
@@ -585,7 +600,7 @@ def _start(state, kind, scope, labels=None):
             _status(state, i18n.t("aigcp.no_photos", label=label))
             return False
         used = 1
-        text = i18n.t("aigcp.running", kind=kind, n=len(items), label=label)
+        text = i18n.t("aigcp.running", kind=kind_label(kind), n=len(items), label=label)
         shown = label
     run_dir = new_run_dir()
     job = Job(kind, build_work(kind, items, crops_dir=os.path.join(run_dir, "crops")), run_dir).start()
@@ -612,9 +627,7 @@ def poll(state):
         seen = run.job.progress()
         if seen is not None and seen != run.progress:
             run.progress = seen
-            photos.panel_call(state, "set_status", i18n.t(
-                "aigcp.progress", kind=run.kind, done=seen[0], total=seen[1]))
-            photos.panel_call(state, "update_aigcp")
+            photos.panel_call(state, "update_aigcp")      # le texte est dans la barre de progression
         return
     state.aigcp_run = None
     try:
@@ -771,6 +784,16 @@ def clear(state):
     _status(state, i18n.t("aigcp.cleared", n=removed))
     _refresh_panel(state)
     return removed
+
+
+def abort(state):
+    """Bouton Annuler de la barre : arrete le calcul, rien n'est pose. True si un calcul tournait."""
+    if getattr(state, "aigcp_run", None) is None:
+        return False
+    cancel(state)
+    _status(state, i18n.t("aigcp.cancelled"))
+    _refresh_panel(state)
+    return True
 
 
 def cancel(state):

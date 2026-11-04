@@ -358,4 +358,10 @@ TEXTES = {
     "settings.storage_content": "Contains: annotations (dataset): {a} line(s) · local models (models): {m} · kept detections (aigcp): {d} · training runs (training): {t}",
     "settings.copy_confirm": "This folder holds no annotation or model yet. Copy the {a} annotation(s) and the {m} local model(s) of the current folder into it? The current folder is left untouched.",
     "settings.copy_failed": "The copy failed: {message}",
+
+    # -- Barre de detection IA ---------------------------------------------
+    "aigcp.cancel": "Cancel",
+    "aigcp.cancelled": "AI: detection cancelled",
+    "aigcp.bar": "AI ({kind}) · {done}/{total} photos",
+    "aigcp.bar_start": "AI ({kind}) · starting…",
 }
