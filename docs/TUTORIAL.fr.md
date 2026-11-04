@@ -24,7 +24,7 @@ Ce tutoriel suit l'ordre dans lequel vous allez vous en servir. Les noms de bout
 Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Metashape 2.2.
 
 1. Récupérez ce dépôt (téléchargement ou clone) et posez-le où vous voulez, par exemple sur un disque partagé.
-2. Double-cliquez sur `install\installer_aerotools.bat`. Il écrit un petit lanceur dans
+2. Double-cliquez sur `CLICK HERE TO INSTALL.bat` (à la racine ; il lance `install\installer_aerotools.bat`). Il propose d'installer aussi la détection IA (`install\installer_ia.bat`, environ 3 Go, une seule fois). Il écrit un petit lanceur dans
    `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\` et ne touche à rien d'autre.
 3. Redémarrez Metashape. Un menu **Aero** apparaît.
 4. Ouvrez **Aero > FastGCP** (raccourci **F8**). Le panneau s'accroche à droite de la fenêtre.
@@ -279,8 +279,8 @@ moins bien qu'Aero V1.0 sur les données mises de côté, la fenêtre vous le di
 
 | Symptôme | À vérifier |
 |---|---|
-| Le menu **Aero** manque | Relancez `install\installer_aerotools.bat` et redémarrez Metashape. |
-| *IA : Python d'AIGCP introuvable* | Le détecteur tourne dans son propre Python avec `torch` et `ultralytics`. Par défaut FastGCP cherche `%USERPROFILE%\AIGCP\_env\Scripts\python.exe` ; définissez la variable d'environnement `AIGCP_PYTHON`, ou la clé `python` de la section `aigcp` de `settings.json`, pour en utiliser un autre. |
+| Le menu **Aero** manque | Double-cliquez à nouveau sur `CLICK HERE TO INSTALL.bat` et redémarrez Metashape. |
+| *IA : Python d'AIGCP introuvable*, ou une boîte *Installation de la détection IA* | Le détecteur tourne dans son propre Python avec `torch` et `ultralytics`. Le plus simple : double-cliquez sur `install\installer_ia.bat` (il installe tout, environ 3 Go). Par défaut FastGCP cherche `%USERPROFILE%\AIGCP\_env\Scripts\python.exe` ; définissez la variable d'environnement `AIGCP_PYTHON`, ou la clé `python` de la section `aigcp` de `settings.json`, pour en utiliser un autre. |
 | *IA : poids … introuvables* | Copiez `damier.pt` et `bombe.pt` dans le dossier `models` du dépôt (les fichiers `*.pt` ne sont pas dans git), ou définissez `models_dir` dans la section `aigcp`. |
 | L'IA ne trouve rien | Vérifiez que le marqueur a une position 3D ou des coordonnées de référence, que les photos sont alignées, et que la liste *Ignorer* ne cache pas les photos voulues. |
 | Une photo est introuvable ou illisible | Le détecteur lit les fichiers image d'origine, au chemin que Metashape connaît. Vérifiez que le disque ou le partage est connecté. |

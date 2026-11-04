@@ -23,7 +23,7 @@ This tutorial follows the order you will use it in. Every button name is written
 You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 
 1. Get this repository (download or clone it) and put it anywhere, for example on a shared drive.
-2. Double-click `install\installer_aerotools.bat`. It writes one small launcher into
+2. Double-click `CLICK HERE TO INSTALL.bat` (at the root; it runs `install\installer_aerotools.bat`). It offers to install the AI detection too (`install\installer_ia.bat`, about 3 GB, once). It writes one small launcher into
    `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\` and touches nothing else.
 3. Restart Metashape. A new **Aero** menu appears.
 4. Open **Aero > FastGCP** (shortcut **F8**). The panel docks on the right of the window.
@@ -270,8 +270,8 @@ Aero V1.0 on the data kept aside, the window tells you. Use **Revert to Aero V1.
 
 | Symptom | What to check |
 |---|---|
-| The **Aero** menu is missing | Run `install\installer_aerotools.bat` again and restart Metashape. |
-| *AI: AIGCP Python not found* | The detector runs in its own Python with `torch` and `ultralytics`. By default FastGCP looks for `%USERPROFILE%\AIGCP\_env\Scripts\python.exe`; set the `AIGCP_PYTHON` environment variable, or the `python` key of the `aigcp` section in `settings.json`, to use another one. |
+| The **Aero** menu is missing | Double-click `CLICK HERE TO INSTALL.bat` again and restart Metashape. |
+| *AI: AIGCP Python not found*, or a box titled *AI detection setup* | The detector runs in its own Python with `torch` and `ultralytics`. The easiest fix is to double-click `install\installer_ia.bat` (it sets everything up, about 3 GB). By default FastGCP looks for `%USERPROFILE%\AIGCP\_env\Scripts\python.exe`; set the `AIGCP_PYTHON` environment variable, or the `python` key of the `aigcp` section in `settings.json`, to use another one. |
 | *AI: … weights not found* | Copy `damier.pt` and `bombe.pt` into the `models` folder of the repository (`*.pt` files are not in git), or set `models_dir` in the `aigcp` section. |
 | The AI finds nothing | Check that the marker has a 3D position or reference coordinates, that the photos are aligned, and that the *Ignore* list is not hiding the photos you want. |
 | A photo is not found or unreadable | The detector reads the original image files at the path Metashape knows. Make sure the drive or share is connected. |

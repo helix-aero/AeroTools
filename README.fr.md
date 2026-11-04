@@ -1,4 +1,5 @@
 <p align="center">
+  <br>
   <a href="https://github.com/helix-aero/AeroTools/archive/refs/heads/main.zip"><img alt="Télécharger la dernière version" src="https://img.shields.io/badge/%E2%AC%87%20T%C3%A9l%C3%A9charger-derni%C3%A8re%20version-1eca59?style=for-the-badge&labelColor=06241a"></a>
 </p>
 
@@ -15,8 +16,7 @@
 
 <p align="center">
   Planification de vol pour la cartographie aérienne, par drone et par aéronef habité.<br>
-  <a href="https://helix.aero"><b>Découvrir HELIX Flight Planner</b></a> ·
-  <a href="https://helix.aero"><b>Réserver une démo</b></a>
+  <a href="https://helix.aero"><b>Découvrir HELIX Flight Planner</b></a>&nbsp;&nbsp;&nbsp;&middot;&nbsp;&nbsp;&nbsp;<a href="https://helix.aero"><b>Réserver une démo</b></a>
 </p>
 
 ---
@@ -43,8 +43,8 @@ AeroTools, ci-dessous, est la part de notre outillage quotidien que nous partage
 **Pointez les points de calage au sol dans Agisoft Metashape en une fraction du temps, à la main ou avec une IA qui propose les pointés.**
 
 <p>
-  <a href="LICENSE"><img alt="Licence : PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/licence-PolyForm%20Noncommercial%201.0.0-blue"></a>
-  <img alt="Metashape Pro 2.x" src="https://img.shields.io/badge/Metashape%20Pro-2.x-green">
+  <a href="LICENSE"><img alt="Licence : PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/licence-PolyForm%20Noncommercial%201.0.0-blue"></a>&nbsp;&nbsp;&nbsp;
+  <img alt="Metashape Pro 2.x" src="https://img.shields.io/badge/Metashape%20Pro-2.x-green">&nbsp;&nbsp;&nbsp;
   <img alt="Windows" src="https://img.shields.io/badge/plateforme-Windows-lightgrey">
 </p>
 
@@ -80,16 +80,16 @@ manuel** et la **détection IA**, qui propose les pointés pour que vous les pas
 Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Metashape 2.2.
 
 1. Cliquez sur **Télécharger la dernière version** en haut de cette page (ou clonez ce dépôt), puis décompressez-le où vous voulez.
-2. Double-cliquez sur `install\installer_aerotools.bat`.
+2. Double-cliquez sur **`CLICK HERE TO INSTALL.bat`** (à la racine du dossier décompressé). Il ajoute le menu **Aero** à Metashape et propose d'installer aussi la détection IA.
 3. Redémarrez Metashape. Le menu **Aero** est là.
 
 L'installeur écrit un petit lanceur dans `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Rien d'autre n'est touché.
 `install\desinstaller_aerotools.bat` le retire.
 
 > [!NOTE]
-> La détection IA demande deux choses que l'installeur ne fournit pas : un Python séparé avec `torch` et `ultralytics`, et les
-> fichiers de poids `models\damier.pt` et `models\bombe.pt` (les fichiers `*.pt` ne sont pas dans git). Les outils de pointage
-> manuel fonctionnent sans eux. Voir le [tableau de dépannage](docs/TUTORIAL.fr.md#9-dépannage).
+> La détection IA demande un Python séparé avec `torch` et `ultralytics` (environ 3 Go). L'installeur propose de le mettre en
+> place pour vous (on peut aussi le lancer plus tard : `install\installer_ia.bat`). Les outils de pointage manuel fonctionnent
+> sans. Voir le [tableau de dépannage](docs/TUTORIAL.fr.md#9-dépannage).
 
 ## Démarrage rapide
 
@@ -190,7 +190,6 @@ séparée auprès de nous. Si vous voulez utiliser AeroTools en entreprise, cont
 
 <p align="center">
   Apportez une zone de levé à une démo en visioconférence et examinons le plan ensemble, ou essayez HELIX Flight Planner
-  gratuitement pendant sept jours.<br><br>
-  <a href="https://helix.aero"><b>Découvrir HELIX Flight Planner</b></a> ·
-  <a href="https://helix.aero"><b>Réserver une démo</b></a>
+  gratuitement pendant sept jours.<br><br><br>
+  <a href="https://helix.aero"><b>Découvrir HELIX Flight Planner</b></a>&nbsp;&nbsp;&nbsp;&middot;&nbsp;&nbsp;&nbsp;<a href="https://helix.aero"><b>Réserver une démo</b></a>
 </p>

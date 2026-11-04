@@ -157,6 +157,11 @@ def skip_flags(state=None):
     return choice in ("both", "green"), choice in ("both", "blue")
 
 
+def installer_path():
+    """Fichier a double-cliquer pour installer la detection IA (Python + torch + ultralytics)."""
+    return os.path.join(config.ROOT, "install", "installer_ia.bat")
+
+
 def check(kind):
     """(True, "") si la detection de ce type peut tourner, sinon (False, texte)."""
     if kind not in TYPES:
@@ -568,6 +573,8 @@ def _start(state, kind, scope, labels=None):
     ok, message = check(kind)
     if not ok:
         _status(state, message)
+        photos.panel_call(state, "show_ai_setup", i18n.t(
+            "aigcp.setup_needed", detail=message, script=installer_path()))
         return False
     chk = msapi.chunk()
     if chk is None:

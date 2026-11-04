@@ -74,6 +74,9 @@ class FakePanel(object):
         self.statuses = []
         self.calls = []
 
+    def show_ai_setup(self, text):
+        self.setups = getattr(self, "setups", []) + [text]
+
     def open_review(self):
         self.calls.append("open_review")
 
@@ -1016,3 +1019,12 @@ def test_the_log_accumulates_detections_and_forgets_cleared_proposals(install, r
     aigcp.clear(state)
     assert all(e["state"] != review.KEPT for e in state.aigcp_log)
     history.clear()
+
+
+def test_a_missing_ai_setup_is_explained_in_a_box(install, world, monkeypatch):
+    _chunk, marker, _cams = world
+    state = make_state(marker)
+    monkeypatch.setattr(aigcp, "python_path", lambda: os.path.join(os.sep, "absent", "python.exe"))
+    assert aigcp.start(state, "damier", "marker") is False
+    assert state.panel.setups and "installer_ia.bat" in state.panel.setups[0]
+    assert "python.exe" in state.panel.setups[0]

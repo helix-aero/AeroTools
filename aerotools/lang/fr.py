@@ -376,4 +376,8 @@ TEXTES = {
     # -- Photo choisie -----------------------------------------------------
     "review.preview": "Photo choisie",
     "review.preview_none": "Clique une vignette pour la voir ici en grand.",
+
+    # -- Installation de la detection IA -----------------------------------
+    "aigcp.setup_title": "Installation de la détection IA",
+    "aigcp.setup_needed": "La détection IA n'est pas encore installée sur cet ordinateur.\n\n{detail}\n\nInstallation (une seule fois) : double-clique sur\n{script}\nIl télécharge Python et les bibliothèques de calcul (environ 3 Go, connexion internet nécessaire). Puis redémarre Metashape. Le pointage à la main fonctionne sans.",
 }

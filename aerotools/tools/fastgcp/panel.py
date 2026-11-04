@@ -2188,6 +2188,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     def _on_aigcp_review(self, _checked=False):
         self.open_review()
 
+    def show_ai_setup(self, text):
+        """Explique, dans une boite, ce qu'il manque pour la detection IA et comment l'installer."""
+        try:
+            from . import dialogs
+            dialogs.inform(self, i18n.t("aigcp.setup_title"), text)
+        except Exception as exc:
+            journal.write("FastGCP : message d'installation de l'IA : {!r}".format(exc))
+
     def open_review(self):
         """Ouvre la fenetre de revue des pointes de la derniere detection. Ne leve jamais."""
         try:

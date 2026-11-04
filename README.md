@@ -1,4 +1,5 @@
 <p align="center">
+  <br>
   <a href="https://github.com/helix-aero/AeroTools/archive/refs/heads/main.zip"><img alt="Download latest version" src="https://img.shields.io/badge/%E2%AC%87%20Download-latest%20version-1eca59?style=for-the-badge&labelColor=06241a"></a>
 </p>
 
@@ -15,8 +16,7 @@
 
 <p align="center">
   Flight planning for aerial mapping, with drones and crewed aircraft.<br>
-  <a href="https://helix.aero"><b>Discover HELIX Flight Planner</b></a> ·
-  <a href="https://helix.aero"><b>Request a demo</b></a>
+  <a href="https://helix.aero"><b>Discover HELIX Flight Planner</b></a>&nbsp;&nbsp;&nbsp;&middot;&nbsp;&nbsp;&nbsp;<a href="https://helix.aero"><b>Request a demo</b></a>
 </p>
 
 ---
@@ -42,8 +42,8 @@ AeroTools, below, is the part of our daily tooling that we share with the Metash
 **Mark ground control points in Agisoft Metashape in a fraction of the time, by hand or with an AI that proposes the marks.**
 
 <p>
-  <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue"></a>
-  <img alt="Metashape Pro 2.x" src="https://img.shields.io/badge/Metashape%20Pro-2.x-green">
+  <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue"></a>&nbsp;&nbsp;&nbsp;
+  <img alt="Metashape Pro 2.x" src="https://img.shields.io/badge/Metashape%20Pro-2.x-green">&nbsp;&nbsp;&nbsp;
   <img alt="Windows" src="https://img.shields.io/badge/platform-Windows-lightgrey">
 </p>
 
@@ -78,16 +78,16 @@ again. So we wrote a tool for ourselves. It saved us enough time that we decided
 You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 
 1. Click **Download latest version** at the top of this page (or clone this repository), and unzip it anywhere you like.
-2. Double-click `install\installer_aerotools.bat`.
+2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). It adds the **Aero** menu to Metashape and offers to install the AI detection too.
 3. Restart Metashape. The **Aero** menu is there.
 
 The installer writes one small launcher into `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Nothing else is touched.
 `install\desinstaller_aerotools.bat` removes it.
 
 > [!NOTE]
-> The AI detection needs two things the installer does not provide: a separate Python with `torch` and `ultralytics`, and the
-> weight files `models\damier.pt` and `models\bombe.pt` (`*.pt` files are not stored in git). The hand-marking tools work without
-> them. See the [troubleshooting table](docs/TUTORIAL.md#9-troubleshooting).
+> The AI detection needs a separate Python with `torch` and `ultralytics` (about 3 GB). The installer offers to set it up for
+> you (it can also be run later: `install\installer_ia.bat`). The hand-marking tools work without it. See the
+> [troubleshooting table](docs/TUTORIAL.md#9-troubleshooting).
 
 ## Quick start
 
@@ -181,7 +181,6 @@ If you would like to use AeroTools in a business, get in touch. We are happy to 
 <h3 align="center">You mark the control points. Let HELIX plan the flight.</h3>
 
 <p align="center">
-  Bring a survey area to a video demo and look at the plan together, or try HELIX Flight Planner free for seven days.<br><br>
-  <a href="https://helix.aero"><b>Discover HELIX Flight Planner</b></a> ·
-  <a href="https://helix.aero"><b>Request a demo</b></a>
+  Bring a survey area to a video demo and look at the plan together, or try HELIX Flight Planner free for seven days.<br><br><br>
+  <a href="https://helix.aero"><b>Discover HELIX Flight Planner</b></a>&nbsp;&nbsp;&nbsp;&middot;&nbsp;&nbsp;&nbsp;<a href="https://helix.aero"><b>Request a demo</b></a>
 </p>

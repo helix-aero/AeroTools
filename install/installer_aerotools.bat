@@ -44,6 +44,11 @@ echo Racine AeroTools   : %AT_ROOT%
 echo.
 echo Etape suivante : fermer puis relancer Metashape, menu "Aero".
 echo.
+echo La detection IA a besoin de Python et de torch (environ 3 Go a telecharger, une seule fois).
+echo Le pointage a la main marche sans.
+choice /c ON /m "Installer aussi la detection IA maintenant ? O = oui, N = non (plus tard : install\installer_ia.bat)"
+if not errorlevel 2 call "%~dp0installer_ia.bat"
+echo.
 if exist "%AT_DIR%\active_marker_loader.py" echo ATTENTION : l'ancien script active_marker_loader.py est present dans le dossier scripts.
 if exist "%AT_DIR%\metashape_active_marker" echo ATTENTION : l'ancien dossier metashape_active_marker est present dans le dossier scripts.
 if exist "%AT_DIR%\active_marker_loader.py" echo Il peut coexister avec AeroTools, mais il vaut mieux le retirer a la main

@@ -370,4 +370,8 @@ TEXTES = {
     # -- Photo choisie -----------------------------------------------------
     "review.preview": "Selected photo",
     "review.preview_none": "Click a thumbnail to see it here, larger.",
+
+    # -- Installation de la detection IA -----------------------------------
+    "aigcp.setup_title": "AI detection setup",
+    "aigcp.setup_needed": "The AI detection is not installed on this computer yet.\n\n{detail}\n\nOne-time setup: double-click\n{script}\nIt downloads Python and the calculation libraries (about 3 GB, internet connection needed). Then restart Metashape. Hand marking works without it.",
 }
