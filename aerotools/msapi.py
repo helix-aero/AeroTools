@@ -257,7 +257,8 @@ def marker_point(chk, marker):
 
     Si le marqueur n'est pas encore triangule, on part de ses coordonnees de
     reference : c'est ce qui permet de filtrer les photos d'un GCP jamais
-    pointe.
+    pointe. Cette reference est exprimee dans le repere des marqueurs (`marker_crs`),
+    qui peut differer de celui du chunk (ex. chunk en WGS 84, marqueurs en metres).
     """
     try:
         if marker.position is not None:
@@ -266,9 +267,10 @@ def marker_point(chk, marker):
         pass
     try:
         location = marker.reference.location
-        if location is None or chk.crs is None or chk.transform.matrix is None:
+        crs = getattr(chk, "marker_crs", None) or chk.crs
+        if location is None or crs is None or chk.transform.matrix is None:
             return None
-        ecef = chk.crs.unproject(location)
+        ecef = crs.unproject(location)
         return chk.transform.matrix.inv().mulp(ecef)
     except Exception:
         return None
