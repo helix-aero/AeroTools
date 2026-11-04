@@ -59,6 +59,7 @@ TEXTES = {
     "panel.status.progress": "{done}/{total} marked",
     "panel.status.progress_chunk": "{done}/{total} marked · {name}",
     "panel.qc": "Residual check",
+    "panel.aigcp": "AI detection",
     "panel.import": "Import GCPs…",
 
     # -- Residual check and markers to watch (qc.py, panel.py) ---------------
@@ -69,6 +70,26 @@ TEXTES = {
     "qc.item_few": "{label} · {n} photo(s)",
     "qc.none": "No marker to watch",
     "qc.opened": "{label}: worst photo opened",
+
+    # -- AI detection: pick proposals (aigcp.py, panel.py) -------------------
+    "aigcp.menu_title": "Propose marker {label} on the other photos",
+    "aigcp.menu_damier": "Checkerboard target",
+    "aigcp.menu_bombe": "Spray or chalk mark",
+    "aigcp.menu_clear": "Clear the AI proposals",
+    "aigcp.menu_no_marker": "Pick a marker first",
+    "aigcp.running": "AI ({kind}): {n} photo(s) to test for {label}…",
+    "aigcp.done": "AI: {n} proposal(s) on {m} photo(s) for {label}, click to validate",
+    "aigcp.none": "AI: no target found on {m} photo(s) for {label}",
+    "aigcp.no_marker": "AI: pick a marker first",
+    "aigcp.no_photos": "AI: no photo to test for {label}",
+    "aigcp.busy": "AI: a detection is already running",
+    "aigcp.failed": "AI: detection failed (see the journal)",
+    "aigcp.chunk_changed": "AI: the chunk changed, results ignored",
+    "aigcp.cleared": "AI: {n} proposal(s) cleared",
+    "aigcp.bad_type": "AI: unknown target type ({kind})",
+    "aigcp.no_python": "AI: AIGCP Python not found ({path})",
+    "aigcp.no_weights": "AI: {kind} weights not found ({path})",
+    "aigcp.no_runner": "AI: runner not found ({path})",
 
     # -- GCP import from a text file (gcp_import.py) --------------------------
     "imp.title": "Import GCPs",

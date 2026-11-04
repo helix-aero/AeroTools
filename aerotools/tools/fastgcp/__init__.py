@@ -12,5 +12,7 @@ Modules :
   marking.py    filtre d'evenements et pose de la projection
   photos.py     filtre du panneau Photos et passage a la photo suivante
   dataset.py    enregistrement des pointages pour l'apprentissage (optionnel)
-  detection.py  point d'accroche de la detection automatique (AIGCP)
+  detection.py  point d'accroche de la detection automatique
+  aigcp.py      detection IA damier / bombe : propositions de pointage (hors Metashape)
+  aigcp_runner.py  executeur lance dans un Python externe (torch, ultralytics)
 """

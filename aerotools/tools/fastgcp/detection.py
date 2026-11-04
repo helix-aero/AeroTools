@@ -1,20 +1,18 @@
 """Point d'accroche de la detection automatique des cibles (AIGCP).
 
-Ce module n'implemente aucune IA. Il fixe seulement les types et le registre
-par lesquels un detecteur se branchera plus tard, sans qu'il faille toucher a
-marking.py : le pointage manuel appelle `notify_pin(record)`, et un futur
-detecteur lit ces pointages (ou propose les siens) via la classe `Detector`.
+Ce module ne contient aucune IA : il fixe les types par lesquels un detecteur
+se branche. Le detecteur AIGCP (damier, bombe) est dans aigcp.py ; le panneau le
+pilote directement (bouton « Detection IA »), de facon asynchrone.
 
-Contrat fichier prevu pour AIGCP (pour memoire, rien n'est code ici) :
+Contrat fichier d'AIGCP (voir aigcp.py et aigcp_runner.py) :
   - FastGCP ecrit un `work.json` : poids du modele, seuil de confiance, et une
-    liste d'items {id, image_path, boite du crop, x_estime, y_estime}.
+    liste d'items {id, image_path, x_est, y_est, px_per_m}.
   - Un executable separe, dans un environnement Python externe, lit ce fichier
-    et ecrit `hits.json` : liste de {id, x, y, conf}.
+    et ecrit `hits.json` : liste de {id, found, x, y, conf, crop_px}.
   - torch, ultralytics et CUDA ne sont JAMAIS importes dans le Python de
     Metashape : tout le calcul passe par cet executable et ces deux fichiers.
-  - Une projection posee par l'IA doit l'etre avec `pinned=False`, une
-    projection manuelle avec `pinned=True` (cote msapi.set_projection, un
-    parametre `pinned` reste a ajouter : aujourd'hui il pose toujours True).
+  - Une projection posee par l'IA l'est avec `pinned=False`, une projection
+    manuelle avec `pinned=True` (msapi.set_projection).
 
 Un detecteur se branche ainsi :
     from aerotools.tools.fastgcp import detection

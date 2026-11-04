@@ -1005,14 +1005,16 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return box
 
     def _build_tools(self):
-        """Deux boutons sous le tableau : controle des residus, import de GCP."""
+        """Trois boutons sous le tableau : controle des residus, import de GCP, detection IA."""
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD)
         self.qc_button = self._tool_button("panel.qc", self._show_qc_menu)
         self.import_button = self._tool_button("panel.import", self._on_import)
+        self.aigcp_button = self._tool_button("panel.aigcp", self._show_aigcp_menu)
         row.addWidget(self.qc_button, 1)
         row.addWidget(self.import_button, 1)
+        row.addWidget(self.aigcp_button, 1)
         return row
 
     def _tool_button(self, text_key, handler):
@@ -1237,6 +1239,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.log_button.set_full_text(i18n.t("panel.log"))
         self.qc_button.set_full_text(i18n.t("panel.qc"))
         self.import_button.set_full_text(i18n.t("panel.import"))
+        self.aigcp_button.set_full_text(i18n.t("panel.aigcp"))
         self.count_pointed.set_tip(i18n.t("panel.tip_pointed"))
         self.count_photos.set_tip(i18n.t("panel.tip_seen"))
 
@@ -1755,6 +1758,43 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 self.set_status(i18n.t("qc.opened", label=label))
         except Exception as exc:
             journal.write("FastGCP : choix dans le controle : {!r}".format(exc))
+
+    # ------------------------------------------------------------------
+    # Detection IA
+    # ------------------------------------------------------------------
+
+    def _show_aigcp_menu(self, _checked=False):
+        """Menu : type de cible a proposer sur les autres photos du marqueur courant."""
+        try:
+            from . import aigcp
+            state = self._state
+            label = state.active_label()
+            menu = QtWidgets.QMenu(self)
+            if label is None:
+                menu.addAction(i18n.t("aigcp.menu_no_marker")).setEnabled(False)
+            else:
+                menu.addAction(i18n.t("aigcp.menu_title", label=label)).setEnabled(False)
+                for kind in aigcp.TYPES:
+                    action = menu.addAction(i18n.t("aigcp.menu_" + kind))
+                    action.setEnabled(not aigcp.busy(state))
+                    action.triggered.connect(functools.partial(self._on_aigcp, kind))
+            if getattr(state, "aigcp_applied", None):
+                menu.addSeparator()
+                menu.addAction(i18n.t("aigcp.menu_clear")).triggered.connect(self._on_aigcp_clear)
+            self._aigcp_menu = menu
+            size = menu.sizeHint()
+            menu.popup(self.aigcp_button.mapToGlobal(
+                QtCore.QPoint(0, -size.height() - theme.PAD_S)))
+        except Exception as exc:
+            journal.write("FastGCP : menu detection IA : {!r}".format(exc))
+
+    def _on_aigcp(self, kind, _checked=False):
+        from . import aigcp
+        aigcp.start(self._state, kind)
+
+    def _on_aigcp_clear(self, _checked=False):
+        from . import aigcp
+        aigcp.clear(self._state)
 
     # ------------------------------------------------------------------
     # Import de GCP

@@ -66,6 +66,7 @@ TEXTES = {
     "panel.status.progress_chunk": "{done}/{total} pointés · {name}",
     "panel.qc": "Contrôle des résidus",
     "panel.import": "Importer des GCP…",
+    "panel.aigcp": "Détection IA",
 
     # -- Contrôle des résidus et marqueurs à surveiller (qc.py, panel.py) ----
     "qc.title_residual": "Résidu élevé (au-delà de {limit} m)",
@@ -75,6 +76,26 @@ TEXTES = {
     "qc.item_few": "{label} · {n} photo(s)",
     "qc.none": "Aucun marqueur à surveiller",
     "qc.opened": "{label} : pire photo ouverte",
+
+    # -- Détection IA : propositions de pointage (aigcp.py, panel.py) --------
+    "aigcp.menu_title": "Proposer le marqueur {label} sur les autres photos",
+    "aigcp.menu_damier": "Cible en damier",
+    "aigcp.menu_bombe": "Marque à la bombe ou à la craie",
+    "aigcp.menu_clear": "Effacer les propositions de l'IA",
+    "aigcp.menu_no_marker": "Choisis d'abord un marqueur",
+    "aigcp.running": "IA ({kind}) : {n} photo(s) à tester pour {label}…",
+    "aigcp.done": "IA : {n} proposition(s) sur {m} photo(s) pour {label}, à valider d'un clic",
+    "aigcp.none": "IA : aucune cible retrouvée sur {m} photo(s) pour {label}",
+    "aigcp.no_marker": "IA : choisis d'abord un marqueur",
+    "aigcp.no_photos": "IA : aucune photo à tester pour {label}",
+    "aigcp.busy": "IA : une détection est déjà en cours",
+    "aigcp.failed": "IA : la détection a échoué (voir le journal)",
+    "aigcp.chunk_changed": "IA : le chunk a changé, résultats ignorés",
+    "aigcp.cleared": "IA : {n} proposition(s) effacée(s)",
+    "aigcp.bad_type": "IA : type de cible inconnu ({kind})",
+    "aigcp.no_python": "IA : Python d'AIGCP introuvable ({path})",
+    "aigcp.no_weights": "IA : poids {kind} introuvables ({path})",
+    "aigcp.no_runner": "IA : exécuteur introuvable ({path})",
 
     # -- Import de GCP depuis un fichier texte (gcp_import.py) ---------------
     "imp.title": "Importer des GCP",

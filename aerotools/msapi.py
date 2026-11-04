@@ -148,8 +148,11 @@ def marker_label(marker):
         return ""
 
 
-def projection_cameras(marker):
+def projection_cameras(marker, pinned_only=False):
     """Cameras ou ce marqueur a deja une projection.
+
+    `pinned_only=True` ecarte les projections proposees par une detection
+    automatique (AIGCP) : seules comptent celles que l'operateur a posees.
 
     `marker.projections` ne s'itere pas de la meme facon selon la version :
     on essaie l'iteration directe, puis keys(), puis items().
@@ -182,11 +185,21 @@ def projection_cameras(marker):
                 cameras.append(cam)
         except Exception:
             continue
+    if pinned_only:
+        cameras = [cam for cam in cameras if is_pinned(marker, cam)]
     return cameras
 
 
+def is_pinned(marker, camera):
+    """False seulement si la projection est explicitement non posee a la main
+    (proposition de l'IA, point bleu de Metashape). Doute = pose."""
+    projection = get_projection(marker, camera)
+    return projection is None or bool(projection[2])
+
+
 def projection_count(marker):
-    return len(projection_cameras(marker))
+    """Nombre de photos pointees a la main (les propositions de l'IA ne comptent pas)."""
+    return len(projection_cameras(marker, pinned_only=True))
 
 
 def marker_point(chk, marker):
@@ -995,6 +1008,51 @@ def zoom_scale(camera=None, window_px=None):
         if fit:
             scale = max(scale, fit)
     return min(scale, ZOOM_MAX_SCALE)
+
+
+def marker_ground_scale(chk, marker, camera):
+    """Echelle au sol (pixels par metre) du marqueur sur cette photo, ou None.
+
+    Meme convention que le jeu d'entrainement AIGCP : focale en pixels divisee
+    par la distance camera-marqueur en metres. Ne leve jamais.
+    """
+    try:
+        point = marker_point(chk, marker)
+        if point is None or camera.transform is None:
+            return None
+        scale = chk.transform.scale or 1.0
+        focal = float(camera.sensor.calibration.f)
+        distance = (camera.center - point).norm() * scale
+        if focal <= 0 or not distance > 0:
+            return None
+        value = focal / distance
+        return value if math.isfinite(value) else None
+    except Exception:
+        return None
+
+
+def marker_estimate(chk, marker, camera):
+    """Projection du point 3D du marqueur sur cette photo : (x, y) ou None.
+
+    Contrairement a marker_anchor, ignore toute projection deja posee : c'est la
+    ou le marqueur DEVRAIT etre, pas ou il est. Ne leve jamais.
+    """
+    try:
+        image_w, image_h = camera_size(camera)
+        transform = _camera_transform(camera)
+        point = marker_point(chk, marker)
+        if image_w <= 0 or transform is None or point is None:
+            return None
+        if transform.inv().mulp(point).z <= 0:
+            return None
+        pixel = _xy(camera.project(point))
+        if pixel is None or _number(pixel[0]) is None or _number(pixel[1]) is None:
+            return None
+        if pixel[0] < 0 or pixel[1] < 0 or pixel[0] > image_w or pixel[1] > image_h:
+            return None
+        return float(pixel[0]), float(pixel[1])
+    except Exception:
+        return None
 
 
 def marker_anchor(chk, marker, camera):

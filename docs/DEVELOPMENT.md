@@ -84,6 +84,29 @@ To add a language (Spanish, say):
 When the "AI Training" switch is on, FastGCP appends one line per click (image path, clicked position, image size, marker)
 to a file in a visible folder. No image is copied. The file format is documented in `aerotools/tools/fastgcp/dataset.py`.
 
+## AI detection (AIGCP)
+
+The **AI detection** button of the panel proposes the active marker on the other photos that should see it. Two models, never
+mixed: checkerboard (`damier`) and spray or chalk mark (`bombe`). The operator picks the type in the button's menu.
+
+- The calculation never runs inside Metashape. `aigcp.py` writes a `work.json`, starts `aigcp_runner.py` in a separate Python
+  that has torch and ultralytics, and reads `hits.json` when it is done. The panel stays free; the tool's heartbeat (`tool._tick`)
+  polls the job and places the results.
+- The runner crops a square of `4 x S x pixels-per-metre` around the estimated position of the marker (S = 0.3 / 0.5 / 0.8 m,
+  the target size is unknown), resizes it to 160 x 160, keeps the detection closest to the estimate, then re-centres on it.
+  If nothing is found it also tries four crops shifted by 0.4 of the crop size. This is the pipeline measured in
+  `DATASET_GCP_IA\modeles\RAPPORT_ENTRAINEMENT_V2.md`.
+- A proposal is a projection with `pinned=False` (blue point). It never replaces a manual pin, it is not counted as a pointed
+  photo (`msapi.projection_count` counts pinned projections only), and clicking the target replaces it with a normal pin.
+  **Clear the AI proposals** removes the ones still unvalidated.
+- Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder). `*.pt` is git-ignored:
+  copy them by hand next to the code.
+- Hidden settings, section `aigcp`: `python` (path of the Python with torch and ultralytics; default: `AIGCP_PYTHON`, then
+  `~/AIGCP/_env/Scripts/python.exe`), `models_dir`, `conf_damier` (0.25), `conf_bombe` (0.30).
+- Limits: at most 200 photos per run, the marker needs a 3D position (two manual pins, or reference coordinates) and an
+  aligned photo. Measured by script on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and
+  40 px): 98 to 100 % within 3 px. Not yet measured inside a real Metashape project.
+
 ## Hidden settings
 
 Written by hand in `settings.json`, section `fastgcp`. There is no switch for them in the panel.

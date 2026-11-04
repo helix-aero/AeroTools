@@ -1,0 +1,323 @@
+import json
+import sys
+import time
+import types
+
+import pytest
+
+from aerotools import config, msapi
+from aerotools.tools.fastgcp import aigcp, aigcp_runner
+
+STUB_OK = '''
+import argparse, json
+parser = argparse.ArgumentParser()
+parser.add_argument("--work"); parser.add_argument("--out")
+args = parser.parse_args()
+work = json.load(open(args.work))
+hits = [{"id": it["id"], "found": True, "x": it["x_est"] + 1.0, "y": it["y_est"] + 1.0,
+         "conf": 0.9, "crop_px": 200} for it in work["items"]]
+json.dump({"version": 1, "hits": hits, "errors": []}, open(args.out, "w"))
+'''
+STUB_FAIL = "import sys\nsys.stderr.write('boom')\nsys.exit(3)\n"
+
+
+@pytest.fixture(autouse=True)
+def _bind(ms):
+    msapi.Metashape = ms
+
+
+@pytest.fixture
+def world(ms):
+    V, C = ms.Vector, ms.Camera
+    cams = [C(1, V(0, 0, -10)), C(2, V(0, 0, -20)), C(3, V(0, 0, -40)), C(4, V(0, 0, -30))]
+    for cam in cams:
+        cam.sensor.calibration = types.SimpleNamespace(f=1000.0)
+        cam.photo = types.SimpleNamespace(path="img_{}.jpg".format(cam.key))
+    cams[3].photo = types.SimpleNamespace(path="")
+    pinned = ms.Marker.Projection(V(2000, 1500, 0), True)
+    proposal = ms.Marker.Projection(V(1990, 1490, 0), False)
+    marker = ms.Marker("GCP1", position=V(0, 0, 0), projections={cams[0]: pinned, cams[1]: proposal})
+    chunk = ms.Chunk(cams, [marker])
+    ms.app.document.chunk = chunk
+    return chunk, marker, cams
+
+
+@pytest.fixture
+def install(tmp_path, local_appdata, monkeypatch):
+    """Poids, Python externe (celui des tests) et runner factice."""
+    models = tmp_path / "models"
+    models.mkdir()
+    for kind in aigcp.TYPES:
+        (models / (kind + ".pt")).write_bytes(b"poids")
+    config.put(aigcp.SECTION, "models_dir", str(models))
+    config.put(aigcp.SECTION, "python", sys.executable)
+    runner = tmp_path / "stub_runner.py"
+    runner.write_text(STUB_OK)
+    monkeypatch.setattr(aigcp, "RUNNER", str(runner))
+    return runner
+
+
+class FakePanel(object):
+    def __init__(self):
+        self.statuses = []
+
+    def set_status(self, text):
+        self.statuses.append(text)
+
+    def update_active_card(self):
+        pass
+
+    def refresh_errors(self):
+        pass
+
+
+def make_state(marker):
+    state = types.SimpleNamespace(panel=FakePanel(), active_marker=marker,
+                                  aigcp_run=None, aigcp_applied=[])
+    state.active_label = lambda: marker.label
+    return state
+
+
+def wait_done(state, seconds=20.0):
+    end = time.time() + seconds
+    while state.aigcp_run is not None and time.time() < end:
+        aigcp.poll(state)
+        time.sleep(0.05)
+    assert state.aigcp_run is None
+
+
+# -- msapi : projections posees, echelle, estimation -------------------------
+
+def test_projection_count_ignores_ai_proposals(world):
+    _chunk, marker, _cams = world
+    assert msapi.projection_count(marker) == 1
+    assert len(msapi.projection_cameras(marker)) == 2
+    assert [c.key for c in msapi.projection_cameras(marker, pinned_only=True)] == [1]
+
+
+def test_unreadable_projection_counts_as_pinned(ms):
+    cam = ms.Camera(1, ms.Vector(0, 0, -10))
+    marker = ms.Marker("M", projections={cam: object()})
+    assert msapi.is_pinned(marker, cam) is True
+
+
+def test_ground_scale_is_focal_over_distance(world):
+    chunk, marker, cams = world
+    assert msapi.marker_ground_scale(chunk, marker, cams[0]) == pytest.approx(100.0)
+    chunk.transform.scale = 2.0
+    assert msapi.marker_ground_scale(chunk, marker, cams[0]) == pytest.approx(50.0)
+
+
+def test_ground_scale_none_without_calibration(world):
+    chunk, marker, cams = world
+    del cams[0].sensor.calibration
+    assert msapi.marker_ground_scale(chunk, marker, cams[0]) is None
+
+
+def test_estimate_ignores_existing_projection(world):
+    chunk, marker, cams = world
+    assert msapi.marker_estimate(chunk, marker, cams[0]) == (2000.0, 1500.0)
+    assert msapi.marker_estimate(chunk, marker, cams[1]) == (2000.0, 1500.0)
+
+
+def test_estimate_none_when_point_is_behind(ms, world):
+    chunk, marker, _cams = world
+    behind = ms.Camera(9, ms.Vector(0, 0, 10))
+    assert msapi.marker_estimate(chunk, marker, behind) is None
+
+
+# -- installation ------------------------------------------------------------
+
+def test_check_reports_missing_python(local_appdata, tmp_path):
+    config.put(aigcp.SECTION, "python", str(tmp_path / "absent.exe"))
+    ok, message = aigcp.check("damier")
+    assert not ok and "absent.exe" in message
+
+
+def test_check_reports_missing_weights(local_appdata, tmp_path):
+    config.put(aigcp.SECTION, "python", sys.executable)
+    config.put(aigcp.SECTION, "models_dir", str(tmp_path))
+    ok, message = aigcp.check("bombe")
+    assert not ok and "bombe" in message
+
+
+def test_check_ok_and_unknown_type(install):
+    assert aigcp.check("damier") == (True, "")
+    assert aigcp.check("bombe") == (True, "")
+    assert aigcp.check("rond")[0] is False
+
+
+def test_conf_defaults_and_override(local_appdata):
+    assert aigcp.conf_for("damier") == 0.25
+    assert aigcp.conf_for("bombe") == 0.30
+    config.put(aigcp.SECTION, "conf_bombe", 0.5)
+    assert aigcp.conf_for("bombe") == 0.5
+    config.put(aigcp.SECTION, "conf_bombe", 7)
+    assert aigcp.conf_for("bombe") == 0.30
+
+
+def test_child_env_drops_metashape_python_variables(monkeypatch):
+    monkeypatch.setenv("PYTHONHOME", "x")
+    monkeypatch.setenv("PYTHONPATH", "y")
+    env = aigcp.child_env()
+    assert "PYTHONHOME" not in env and "PYTHONPATH" not in env
+
+
+# -- contenu du travail ------------------------------------------------------
+
+def test_collect_items_skips_pinned_and_unusable_photos(install, world):
+    chunk, marker, cams = world
+    items, skipped = aigcp.collect_items(chunk, marker)
+    ids = [it["id"] for it in items]
+    assert "1" not in ids                 # pointee a la main
+    assert "2" in ids and "3" in ids      # proposition IA : a retester ; photo jamais pointee
+    assert "4" not in ids and skipped == 1  # pas de chemin d'image
+    by_id = {it["id"]: it for it in items}
+    assert by_id["3"]["px_per_m"] == pytest.approx(25.0)
+    assert (by_id["3"]["x_est"], by_id["3"]["y_est"]) == (2000.0, 1500.0)
+
+
+def test_build_work_has_weights_conf_and_items(install, world):
+    chunk, marker, _cams = world
+    items, _ = aigcp.collect_items(chunk, marker)
+    work = aigcp.build_work("damier", items)
+    assert work["weights"].endswith("damier.pt") and work["conf"] == 0.25
+    assert work["scales_m"] == [0.3, 0.5, 0.8]
+    assert {"id", "image_path", "x_est", "y_est", "px_per_m"} == set(work["items"][0])
+    json.dumps(work)
+
+
+def test_accept_rules():
+    item = {"x_est": 100.0, "y_est": 100.0}
+    good = {"found": True, "x": 110.0, "y": 100.0, "conf": 0.8, "crop_px": 200}
+    assert aigcp.accept(good, item, 0.25)
+    assert not aigcp.accept(dict(good, found=False), item, 0.25)
+    assert not aigcp.accept(dict(good, conf=0.2), item, 0.25)
+    assert not aigcp.accept(dict(good, x=400.0), item, 0.25)     # trop loin de l'estimation
+    assert not aigcp.accept({"found": True}, item, 0.25)
+
+
+# -- calcul en arriere-plan --------------------------------------------------
+
+def test_job_returns_hits(install, tmp_path):
+    work = {"items": [{"id": "7", "x_est": 10.0, "y_est": 20.0}]}
+    job = aigcp.Job("damier", work, str(tmp_path)).start()
+    hits, errors = job.wait()
+    assert errors == [] and hits[0]["id"] == "7" and hits[0]["x"] == 11.0
+
+
+def test_job_failure_carries_runner_output(install, tmp_path):
+    install.write_text(STUB_FAIL)
+    job = aigcp.Job("damier", {"items": []}, str(tmp_path)).start()
+    with pytest.raises(RuntimeError) as info:
+        job.wait()
+    assert "boom" in str(info.value)
+
+
+def test_start_poll_places_unpinned_proposals_only(install, world):
+    chunk, marker, cams = world
+    state = make_state(marker)
+    assert aigcp.start(state, "damier") is True
+    assert aigcp.busy(state)
+    wait_done(state)
+    first = msapi.get_projection(marker, cams[0])
+    assert first == (2000.0, 1500.0, True)                       # pointage manuel intact
+    for cam in (cams[1], cams[2]):
+        x, y, pinned = msapi.get_projection(marker, cam)
+        assert (x, y, pinned) == (2001.0, 1501.0, False)
+    assert msapi.get_projection(marker, cams[3]) is None          # photo sans chemin
+    assert msapi.projection_count(marker) == 1
+    assert "2 proposition(s)" in state.panel.statuses[-1]
+    assert len(state.aigcp_applied) == 2
+
+
+def test_second_start_while_running_is_refused(install, world):
+    _chunk, marker, _cams = world
+    state = make_state(marker)
+    assert aigcp.start(state, "damier") is True
+    assert aigcp.start(state, "bombe") is False
+    wait_done(state)
+
+
+def test_start_without_install_says_why(world, local_appdata, tmp_path):
+    _chunk, marker, _cams = world
+    config.put(aigcp.SECTION, "python", str(tmp_path / "absent.exe"))
+    state = make_state(marker)
+    assert aigcp.start(state, "damier") is False
+    assert "absent.exe" in state.panel.statuses[-1]
+
+
+def test_start_without_marker(install, world):
+    state = make_state(None)
+    state.active_label = lambda: None
+    assert aigcp.start(state, "damier") is False
+    assert "marqueur" in state.panel.statuses[-1]
+
+
+def test_runner_failure_is_reported_not_raised(install, world):
+    install.write_text(STUB_FAIL)
+    _chunk, marker, _cams = world
+    state = make_state(marker)
+    aigcp.start(state, "damier")
+    wait_done(state)
+    assert "echoue" in state.panel.statuses[-1] or "échoué" in state.panel.statuses[-1]
+    assert state.aigcp_applied == []
+
+
+def test_pin_made_while_running_is_never_overwritten(install, world, ms):
+    _chunk, marker, cams = world
+    state = make_state(marker)
+    aigcp.start(state, "damier")
+    msapi.set_projection(marker, cams[2], 5.0, 6.0, pinned=True)   # l'operateur pointe la photo 3
+    wait_done(state)
+    assert msapi.get_projection(marker, cams[2]) == (5.0, 6.0, True)
+
+
+def test_chunk_change_discards_results(install, world, ms):
+    chunk, marker, cams = world
+    state = make_state(marker)
+    aigcp.start(state, "damier")
+    ms.app.document.chunk = ms.Chunk()
+    ms.app.document.chunk.key = 99
+    wait_done(state)
+    assert msapi.get_projection(marker, cams[2]) is None
+    assert state.aigcp_applied == []
+
+
+def test_clear_removes_only_unvalidated_proposals(install, world):
+    chunk, marker, cams = world
+    state = make_state(marker)
+    aigcp.start(state, "damier")
+    wait_done(state)
+    msapi.set_projection(marker, cams[2], 7.0, 8.0, pinned=True)   # validee par l'operateur
+    assert aigcp.clear(state) == 1
+    assert msapi.get_projection(marker, cams[1]) is None
+    assert msapi.get_projection(marker, cams[2]) == (7.0, 8.0, True)
+    assert msapi.get_projection(marker, cams[0]) == (2000.0, 1500.0, True)
+    assert state.aigcp_applied == []
+
+
+def test_cancel_stops_a_running_job(install, world):
+    _chunk, marker, _cams = world
+    state = make_state(marker)
+    aigcp.start(state, "damier")
+    aigcp.cancel(state)
+    assert state.aigcp_run is None
+
+
+def test_detector_contract(install, world):
+    chunk, marker, cams = world
+    detector = aigcp.AigcpDetector("bombe")
+    assert detector.status() == (True, "")
+    proposals = detector.propose(chunk, marker, [cams[2]])
+    assert len(proposals) == 1
+    assert proposals[0].camera_key == 3 and proposals[0].source == "aigcp-bombe"
+    assert (proposals[0].x, proposals[0].y) == (2001.0, 1501.0)
+
+
+# -- executeur : parties sans numpy ni torch ---------------------------------
+
+def test_crop_size_follows_target_scale_and_is_bounded():
+    assert aigcp_runner.crop_size(200.0, 0.5) == 400
+    assert aigcp_runner.crop_size(10.0, 0.3) == aigcp_runner.CROP_MIN
+    assert aigcp_runner.crop_size(5000.0, 0.8) == aigcp_runner.CROP_MAX

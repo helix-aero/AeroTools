@@ -8,7 +8,7 @@ plus sur l'application Qt.
 
 from ... import i18n, journal, msapi, qt, theme
 from ...qt import QShortcut, QtCore, QtGui, QtWidgets
-from . import history, marking, photos, session as session_mod
+from . import aigcp, history, marking, photos, session as session_mod
 
 TICK_MS = 400
 HOTKEY = "Ctrl+Shift+M"
@@ -62,6 +62,7 @@ def uninstall():
     state = session_mod.current()
 
     marking.remove_filter(state)
+    aigcp.cancel(state)
 
     timer = getattr(state, "timer", None)
     if timer is not None:
@@ -162,6 +163,7 @@ def _tick(state):
     """
     if state.panel is None:
         return
+    aigcp.poll(state)
     chunk = msapi.chunk()
     key = msapi.chunk_key(chunk)
 

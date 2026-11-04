@@ -1441,7 +1441,7 @@ def _marker_views(marker):
         position = marker.position
     except Exception:
         position = None
-    for cam in msapi.projection_cameras(marker):
+    for cam in msapi.projection_cameras(marker, pinned_only=True):
         try:
             posed = _vec_xy(marker.projections[cam].coord)
         except Exception:

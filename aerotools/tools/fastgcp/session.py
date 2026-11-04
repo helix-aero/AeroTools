@@ -105,6 +105,9 @@ class Session(object):
         # (cle de la photo, etiquette du marqueur) deja zoomes, du plus ancien
         # au plus recent : voir photos.zoom_on_marker.
         self.zoomed = []
+        # Detection IA (aigcp.py) : calcul en cours, propositions posees.
+        self.aigcp_run = None
+        self.aigcp_applied = []
         self.zoom_px = float(ZOOM_DEFAULT_PX)
         self.snap_px = SNAP_DEFAULT_PX
         self.options = dict(DEFAULTS)
@@ -154,6 +157,7 @@ class Session(object):
         self.last_filter_key = None
         self.last_cameras = []
         self.zoomed = []
+        self.aigcp_applied = []
 
 
 _SESSION = None
