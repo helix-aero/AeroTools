@@ -14,7 +14,7 @@ import os
 import shutil
 import tempfile
 
-from . import dxfout, external, geotiff, naming, plan, tiling
+from . import dxfout, external, geotiff, naming, plan, tiling, vertical
 
 TMP_NAME = ".fastexport_tmp"
 
@@ -27,7 +27,7 @@ class Context(object):
     """Tout ce dont un export a besoin ; la fenetre le remplit, les tests le remplacent par des faux."""
 
     def __init__(self, chunk, info, folder, site, date, preset, export, tools=None, crs=None, tile_m=None, cad=None,
-                 lang="fr", date_style="short", snap=None, transform=None, tick=None):
+                 lang="fr", date_style="short", snap=None, transform=None, tick=None, vertical=None, to_lonlat=None):
         self.chunk, self.info, self.folder = chunk, info, folder
         self.site, self.date, self.preset, self.cad = site, date, preset, cad or {}
         self.export = export                              # msapi.export_raster ou un faux
@@ -36,6 +36,7 @@ class Context(object):
         self.lang, self.date_style = lang, date_style
         self.snap, self.transform = snap, transform
         self.tick = tick or (lambda: None)
+        self.vertical, self.to_lonlat = vertical, to_lonlat      # grille d'altitude (id) et f(x, y) -> (lon, lat) du SCR de sortie
 
 
 class Result(object):
@@ -189,6 +190,8 @@ def run_job(ctx, job, work, report, result, images):
                 continue                                  # dalle sans donnee : rien a ecrire
             raise Failure("Metashape n'a pas ecrit le fichier")
         result.tiles += 1
+        if job.kind == plan.DEM and ctx.vertical:
+            _to_altitude(ctx, raw, sub)
         if post and not metashape_jp2:
             _convert(ctx, spec["post"] if post != "cad" else spec["ext"], raw, final)
         result.files.append((final, os.path.getsize(final)))
@@ -205,6 +208,19 @@ def run_job(ctx, job, work, report, result, images):
             _dem_image(ctx, job, raw, token, work, date_text, pixel_text, result, images)
         if post and raw != final and os.path.isfile(raw):
             os.remove(raw)
+
+
+def _to_altitude(ctx, raw, sub):
+    """Hauteurs ellipsoidales du MNT -> altitudes de la grille choisie (notre dossier Geoid). Leve Failure."""
+    if ctx.to_lonlat is None:
+        raise Failure("Altitude : SCR de sortie inconnu")
+    try:
+        grid = vertical.load_grid(ctx.vertical)
+        tmp = raw + ".alt"
+        vertical.correct_dem(raw, tmp, grid, ctx.to_lonlat, progress=lambda part: (sub(100.0 * part), ctx.tick()))
+        os.replace(tmp, raw)
+    except (ValueError, OSError) as exc:
+        raise Failure("Altitude %s : %s" % (ctx.vertical, exc))
 
 
 def _dem_image(ctx, job, dem_tif, token, work, date_text, pixel_text, result, images):

@@ -1,21 +1,18 @@
-"""Fast Export : catalogue OFFICIEL des SCR et des geoides, detection des grilles, telechargement verifie.
+"""Fast Export : catalogue OFFICIEL des SCR et des geoides, etat des grilles dans notre dossier, telechargement verifie.
 
-Sans dependance (pyproj / rasterio ne servent qu'aux tests et a ``compound_wkt``). Tourne dans le Python de
-Metashape (3.9) : lecture TIFF minimale en ``struct``, telechargement en ``urllib``.
+Sans dependance (pyproj / rasterio ne servent qu'aux tests). Tourne dans le Python de Metashape (3.9), telechargement en
+``urllib``. Les grilles sont rangees dans notre dossier `Geoid` (`own_dir`) et lues par `vertical.py` : on ne regarde jamais
+dans les dossiers de Metashape.
 
 Sources de verite
-    * Codes EPSG : registre EPSG v12.029 (2025-10-02) lu via la base de pyproj, voir test_crs_catalog.py.
+    * Codes EPSG : registre EPSG v12.029 (2025-10-02) lu via la base de pyproj.
     * Grilles : index PROJ-data https://cdn.proj.org/files.geojson (taille + sha256 de chaque fichier) ;
       les grilles IGN d'origine (RAF20.tac, RAC23.mnt...) ne sont lisibles ni par Metashape ni par PROJ :
       PROJ-data les republie au format GTG (GeoTIFF), « derived from work by France IGN ».
-    * Metashape lit les grilles GTG `.tif` posees dans le dossier `geoids` de son installation ou de
-      `%LOCALAPPDATA%\\Agisoft\\Metashape Pro\\geoids` (releve fait sur cette machine : les deux existent).
 """
 
 import hashlib
 import os
-import struct
-import sys
 import tempfile
 import urllib.parse
 import urllib.request
@@ -69,43 +66,37 @@ CRS_LIST = [
     {"epsg": 4471, "fr": "RGM04 / UTM 38S (Mayotte)", "en": "RGM04 / UTM zone 38S (Mayotte)", "kind": "proj", "family": "dom", "area": "Mayotte", "bbox": (43.68, -14.49, 46.7, -11.33)},
 ]
 
-# Composes deja enregistres a l'EPSG (releve pyproj/EPSG 12.029). Les CC n'ont PAS de compose EPSG : il faut le construire.
-EPSG_COMPOUND = {
-    (2154, 5720): 5698, (2154, 5721): 5699,        # Lambert-93 v1 + IGN69 / + IGN78 (Corse)
-    (9794, 5720): 10499, (9794, 5721): 10500,      # Lambert-93 v2b
-}
-
 # --------------------------------------------------------------------------------------------------
 # Systemes altimetriques et grilles
 # --------------------------------------------------------------------------------------------------
 # `vert_epsg` : EPSG du systeme vertical ; `horz_epsg` : repere 3D auquel la grille est rattachee.
 # `file` : nom du fichier GTG (identique chez PROJ-data et dans le dossier geoids de Metashape).
-# `size`, `sha256` : ceux de cdn.proj.org (index files.geojson du 2026-11-05). `bbox` : emprise de la grille (lon/lat).
+# `size`, `sha256` : ceux de cdn.proj.org (index files.geojson du 2026-11-05). `bbox` : emprise des noeuds de la grille (lon/lat, relevee dans le fichier).
 VERTICALS = [
     {"id": "ellipsoid", "fr": "Hauteur ellipsoidale (aucun geoide)", "en": "Ellipsoidal height (no geoid)", "vert_epsg": None,
      "file": None, "area": "partout", "bbox": (-180, -90, 180, 90)},
-    {"id": "RAF20", "fr": "NGF-IGN69 (RAF20)", "en": "NGF-IGN69 (RAF20)", "vert_epsg": 5720, "horz_epsg": 9781,
-     "file": "fr_ign_RAF20.tif", "area": "France metropolitaine continentale (PAS la Corse)", "bbox": (-5.517, 41.987, 8.517, 51.513),
+    {"id": "RAF20", "fr": "NGF-IGN69 (RAF20, RGF93 v2b)", "en": "NGF-IGN69 (RAF20, RGF93 v2b)", "vert_epsg": 5720, "horz_epsg": 9781,
+     "file": "fr_ign_RAF20.tif", "area": "France metropolitaine continentale (PAS la Corse)", "bbox": (-5.5, 42.0, 8.5, 51.5),
      "size": 342920, "sha256": "dc0cc2a38f0ea1029fe72cca3b5b7ed6dfe7e1db2a8d8482b7326ce3d6f25605",
      "url": "https://cdn.proj.org/fr_ign_RAF20.tif", "official": "https://www.ign.fr/publications-de-l-ign/Geodesie/RAF20.tac",
      "note": "Grille IGN de reference depuis 2021 ; RGF93 v2b -> IGN69.", "recommended": True},
     {"id": "RAF18b", "fr": "NGF-IGN69 (RAF18b, ancien)", "en": "NGF-IGN69 (RAF18b, legacy)", "vert_epsg": 5720, "horz_epsg": 4965,
-     "file": "fr_ign_RAF18b.tif", "area": "France metropolitaine continentale", "bbox": (-5.517, 41.987, 8.517, 51.513),
+     "file": "fr_ign_RAF18b.tif", "area": "France metropolitaine continentale", "bbox": (-5.5, 42.0, 8.5, 51.5),
      "size": 341314, "sha256": "59522db6682a42dd0fa25edd7b6b18c92ae3224324809051d80ab960a76b67e9",
      "url": "https://cdn.proj.org/fr_ign_RAF18b.tif", "official": "sur demande a geodesie@ign.fr (archivee)",
      "note": "Pour relivrer un chantier ancien calcule en RAF18b."},
-    {"id": "RAF09", "fr": "NGF-IGN69 (RAF09, ancien)", "en": "NGF-IGN69 (RAF09, legacy)", "vert_epsg": 5720, "horz_epsg": 4965,
-     "file": "fr_ign_RAF09.tif", "area": "France metropolitaine continentale", "bbox": (-5.517, 41.987, 8.517, 51.513),
+    {"id": "RAF09", "fr": "NGF-IGN69 (RAF09, RGF93 v1)", "en": "NGF-IGN69 (RAF09, RGF93 v1)", "vert_epsg": 5720, "horz_epsg": 4965,
+     "file": "fr_ign_RAF09.tif", "area": "France metropolitaine continentale", "bbox": (-5.5, 42.0, 8.5, 51.5),
      "size": 344998, "sha256": "7396144b7fe903e42f0f28a4f55bf1e01e2947c8cb134af7f13a403d64db9927",
      "url": "https://cdn.proj.org/fr_ign_RAF09.tif", "official": "https://www.ign.fr/publications-de-l-ign/Geodesie/RAF09.mnt",
      "note": "Ancienne grille, encore dans certaines commandes."},
-    {"id": "RAC23", "fr": "NGF-IGN78 Corse (RAC23)", "en": "NGF-IGN78 Corsica (RAC23)", "vert_epsg": 5721, "horz_epsg": 9781,
-     "file": "fr_ign_RAC23.tif", "area": "Corse", "bbox": (8.367, 41.188, 9.767, 43.263),
+    {"id": "RAC23", "fr": "NGF-IGN78 Corse (RAC23, RGF93 v2b)", "en": "NGF-IGN78 Corsica (RAC23, RGF93 v2b)", "vert_epsg": 5721, "horz_epsg": 9781,
+     "file": "fr_ign_RAC23.tif", "area": "Corse", "bbox": (8.3833, 41.2, 9.75, 43.25),
      "size": 9162, "sha256": "075c061558c091f0e188256d62523e95b00deb90e2436550581f041b60811bab",
      "url": "https://cdn.proj.org/fr_ign_RAC23.tif", "official": "https://www.ign.fr/publications-de-l-ign/Geodesie/RAC23.mnt",
      "note": "Grille IGN de reference pour la Corse depuis l'automne 2023 ; RGF93 v2b -> IGN78.", "recommended": True},
-    {"id": "RAC09", "fr": "NGF-IGN78 Corse (RAC09, ancien)", "en": "NGF-IGN78 Corsica (RAC09, legacy)", "vert_epsg": 5721, "horz_epsg": 4965,
-     "file": "fr_ign_RAC09.tif", "area": "Corse", "bbox": (8.4, 41.188, 9.733, 43.213),
+    {"id": "RAC09", "fr": "NGF-IGN78 Corse (RAC09, RGF93 v1)", "en": "NGF-IGN78 Corsica (RAC09, RGF93 v1)", "vert_epsg": 5721, "horz_epsg": 4965,
+     "file": "fr_ign_RAC09.tif", "area": "Corse", "bbox": (8.4167, 41.2, 9.7167, 43.2),
      "size": 8597, "sha256": "a1519cc41df3e1a6dbd8135782cca0cd6359f0cb5ec5e52cb531e4f567e59cdd",
      "url": "https://cdn.proj.org/fr_ign_RAC09.tif", "official": "sur demande a geodesie@ign.fr (archivee)",
      "note": "Ancienne grille corse ; utilisee par beaucoup de chantiers deja livres (ex. DTM_HADI_rac09)."},
@@ -138,32 +129,8 @@ VERTICALS_DOM = [
 ]
 
 
-# Ce que Metashape sait ecrire dans un export : le systeme vertical y porte le nom de la grille (releve sur 2.2.1 :
-# `VERT_CS["RAC09", VERT_DATUM["Nivellement General de la France - IGN78", 2005, AUTHORITY["EPSG","5120"]] ...]`
-# applique la grille fr_ign_RAC09.tif du dossier geoids). Les autres grilles du catalogue ne sont pas proposees.
+# Altitudes proposees a l'export (les grilles sont lues et appliquees par AeroTools : voir vertical.py).
 EXPORT_VERTICALS = ("RAF20", "RAF09", "RAC23", "RAC09", "EGM96", "ellipsoid")
-_DATUMS = {5720: ("Nivellement General de la France - IGN69", 5119), 5721: ("Nivellement General de la France - IGN78", 5120),
-           5773: ("EGM96 geoid", 5171)}
-
-
-def metashape_vertical(vertical_id):
-    """(nom du VERT_CS, nom du datum, code EPSG du datum) pour construire un SCR compose, ou None (ellipsoide, inconnu)."""
-    spec = vertical_by_id(vertical_id)
-    if spec is None or spec.get("vert_epsg") not in _DATUMS:
-        return None
-    name, code = _DATUMS[spec["vert_epsg"]]
-    return vertical_id, name, code
-
-
-def export_verticals(lon=None, lat=None):
-    """Systemes altimetriques proposables a l'export a (lon, lat) : ceux dont la grille couvre le lieu, puis l'ellipsoide."""
-    out = []
-    for vid in EXPORT_VERTICALS:
-        spec = vertical_by_id(vid)
-        if vid == "ellipsoid" or lon is None or lat is None or covers(spec, lon, lat):
-            out.append(spec)
-    out.sort(key=lambda v: (v["id"] == "ellipsoid", not v.get("recommended"), v["id"]))
-    return out
 
 
 def crs_by_epsg(epsg):
@@ -207,176 +174,57 @@ def covers(item, lon, lat):
     return bool(b) and b[0] <= lon <= b[2] and b[1] <= lat <= b[3]
 
 
-def suggest_verticals(lon, lat):
-    """Systemes altimetriques utilisables a (lon, lat), le recommande en premier.
-
-    Corse (lon > 8.5) : RAC23 / RAC09 (IGN78) ; RAF20 ne couvre PAS la Corse (grille arretee a 8,517 E,
-    41,987 N). Continent : RAF20, RAF18b, RAF09. Monde : EGM2008, EGM96. Toujours : ellipsoide.
-    """
-    out = [v for v in VERTICALS if v["id"] != "ellipsoid" and covers(v, lon, lat) and v["id"] not in ("EGM2008", "EGM96")]
-    out.sort(key=lambda v: (not v.get("recommended"), v["id"]))
-    out += [v for v in VERTICALS if v["id"] in ("EGM2008", "EGM96")]
-    out.append(vertical_by_id("ellipsoid"))
-    return out
-
-
-def registered_compound(horz_epsg, vert_epsg):
-    """EPSG du compose enregistre (Lambert-93 + IGN69/IGN78) ou None (CC42..CC50, UTM : a construire)."""
-    return EPSG_COMPOUND.get((horz_epsg, vert_epsg))
-
-
-def compound_wkt(horz_epsg, vert_epsg):
-    """WKT2 du compose horizontal + vertical (necessite pyproj ; hors Metashape). None sans pyproj."""
-    try:
-        from pyproj import CRS
-        from pyproj.crs import CompoundCRS
-    except ImportError:
-        return None
-    return CompoundCRS(name="EPSG:%d+%d" % (horz_epsg, vert_epsg), components=[CRS.from_epsg(horz_epsg), CRS.from_epsg(vert_epsg)]).to_wkt()
-
-
-def metashape_crs_string(horz_epsg, vert_epsg=None):
-    """Chaine a passer a Metashape.CoordinateSystem(...) : 'EPSG::3942', ou le compose enregistre 'EPSG::5699'.
-    Pour un compose non enregistre (CC + IGN), voir compound_wkt : Metashape accepte un WKT (a valider en console)."""
-    if vert_epsg is None:
-        return "EPSG::%d" % horz_epsg
-    reg = registered_compound(horz_epsg, vert_epsg)
-    return "EPSG::%d" % reg if reg else compound_wkt(horz_epsg, vert_epsg)
-
-
-# --------------------------------------------------------------------------------------------------
-# Lecture minimale d'un TIFF (description) : pour reconnaitre une grille par son contenu, pas par son nom
-# --------------------------------------------------------------------------------------------------
-
-def read_tiff_description(path):
-    """TIFFTAG_IMAGEDESCRIPTION (tag 270) d'un TIFF classique, ou '' (BigTIFF / illisible). Stdlib seulement."""
-    try:
-        with open(path, "rb") as fh:
-            head = fh.read(8)
-            if len(head) < 8 or head[:2] not in (b"II", b"MM"):
-                return ""
-            end = "<" if head[:2] == b"II" else ">"
-            if struct.unpack(end + "H", head[2:4])[0] != 42:
-                return ""
-            ifd = struct.unpack(end + "I", head[4:8])[0]
-            fh.seek(ifd)
-            count = struct.unpack(end + "H", fh.read(2))[0]
-            for _ in range(min(count, 512)):
-                tag, typ, n, val = struct.unpack(end + "HHI4s", fh.read(12))
-                if tag == 270 and typ == 2:
-                    if n <= 4:
-                        return val[:n].decode("ascii", "replace").rstrip("\0")
-                    off = struct.unpack(end + "I", val)[0]
-                    fh.seek(off)
-                    return fh.read(min(n, 4096)).decode("ascii", "replace").rstrip("\0")
-    except (OSError, struct.error):
-        return ""
-    return ""
-
-
-# --------------------------------------------------------------------------------------------------
-# Detection de la presence d'une grille
-# --------------------------------------------------------------------------------------------------
-
 def own_dir():
-    """Dossier « Geoid » d'AeroTools (par poste) : les grilles telechargees par la fenetre y sont rangees, puis donnees a
-    Metashape (msapi.register_geoids)."""
+    """Dossier « Geoid » d'AeroTools (par poste) : les grilles telechargees par la fenetre y sont rangees et lues. Rien n'est
+    cherche dans les dossiers de Metashape."""
     from ... import config
     return os.path.join(config.settings_dir(), "Geoid")
 
 
-def search_dirs(extra=()):
-    """Dossiers ou chercher une grille : le notre, ceux de Metashape (utilisateur, puis l'installation qui tourne : pas une
-    autre version installee a cote), puis PROJ. Ordre = priorite."""
-    dirs = [own_dir()]
-    local = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    dirs.append(os.path.join(local, "Agisoft", "Metashape Pro", "geoids"))
-    folder = os.path.dirname(sys.executable) if sys.executable else ""
-    for _ in range(2):                              # dans Metashape, sys.executable est <install>\python\python.exe
-        if folder:
-            dirs.append(os.path.join(folder, "geoids"))
-            folder = os.path.dirname(folder)
-    for var in ("PROJ_DATA", "PROJ_LIB"):
-        if os.environ.get(var):
-            dirs.append(os.environ[var])
-    dirs.append(os.path.join(local, "proj"))
-    dirs.extend(extra)
-    seen, out = set(), []
-    for d in dirs:
-        key = os.path.normcase(os.path.abspath(d))
-        if key not in seen:
-            seen.add(key)
-            out.append(d)
-    return out
+_SHA_CACHE = {}
 
 
-def find_grid(vertical_id, dirs=None):
-    """Cherche la grille d'un systeme altimetrique. Renvoie une liste de dict {path, dir, size, by, desc}.
-
-    Reconnaissance par le nom, comme le fait Metashape : nom exact, ou nom + '-N' (il range ses copies RAF20-2.tif,
-    RAF20-3.tif...). Le contenu ne decide pas : RAC09 et RAC23 portent le meme systeme vertical (IGN78) mais sont deux
-    grilles differentes, et un fichier RAC09 ne remplace pas RAC23. Liste vide = absente.
-    """
+def grid_state(vertical_id, folder=None):
+    """("ok" | "stale" | "missing", chemin) de la grille dans notre dossier. « stale » : le fichier est la mais son empreinte
+    (SHA-256) n'est pas celle de la grille officielle du catalogue : copie abimee, ancienne ou modifiee, a retelecharger."""
     spec = vertical_by_id(vertical_id)
-    if spec is None or spec.get("file") is None:
-        return []
-    base, ext = os.path.splitext(spec["file"])
-    wanted = {spec["file"].lower()} | {a.lower() for a in spec.get("alt_files", [])}
-    found = []
-    for folder in (dirs if dirs is not None else search_dirs()):
-        if not os.path.isdir(folder):
-            continue
-        try:
-            names = os.listdir(folder)
-        except OSError:
-            continue
-        for name in sorted(names):
-            low = name.lower()
-            if not low.endswith((".tif", ".tiff", ".gtx")):
-                continue
-            by = None
-            stem, e = os.path.splitext(low)
-            if low in wanted:
-                by = "name"
-            elif stem.startswith(base.lower() + "-") and stem[len(base) + 1:].isdigit() and e == ext.lower():
-                by = "copy"
-            if by:
-                path = os.path.join(folder, name)
-                found.append({"path": path, "dir": folder, "size": os.path.getsize(path), "by": by,
-                              "desc": read_tiff_description(path)})
-    return found
+    if spec is None or not spec.get("file"):
+        raise KeyError(vertical_id)
+    path = os.path.join(folder or own_dir(), spec["file"])
+    if not os.path.isfile(path):
+        return "missing", path
+    stamp = (path, os.path.getsize(path), os.path.getmtime(path))
+    if stamp not in _SHA_CACHE:
+        _SHA_CACHE[stamp] = sha256_file(path)
+    return ("ok" if _SHA_CACHE[stamp] == spec.get("sha256") else "stale"), path
 
 
-def missing_in_zone(lon, lat, dirs=None):
-    """Grilles de l'export qui couvrent (lon, lat), ne sont pas sur ce poste et se telechargent : liste de fiches.
-    Sans position, rien (on ne sait pas ce qui sert)."""
+def zone_grids(lon, lat, folder=None):
+    """[(fiche, etat)] des grilles de l'export qui couvrent (lon, lat), se telechargent, et manquent ou sont perimees. Sans position :
+    rien (on ne sait pas ce qui sert). EGM96, mondiale, est toujours demandee quand la position est connue."""
     if lon is None or lat is None:
         return []
     out = []
     for vid in EXPORT_VERTICALS:
         spec = vertical_by_id(vid)
-        if spec.get("file") and spec.get("url") and covers(spec, lon, lat) and not find_grid(vid, dirs):
-            out.append(spec)
+        if spec.get("file") and spec.get("url") and covers(spec, lon, lat):
+            state = grid_state(vid, folder)[0]
+            if state != "ok":
+                out.append((spec, state))
     return out
 
 
-def check_geoid_presence(vertical_id, dirs=None, lon=None, lat=None):
-    """Diagnostic pret pour l'interface : {'status': 'ok'|'missing'|'not_covering'|'none', 'matches': [...], 'message_key': ...}.
-
-    'none' : ellipsoide choisi, rien a verifier ; 'not_covering' : la grille existe mais ne couvre pas (lon, lat) ;
-    'missing' : a telecharger (proposer download_geoid). Les cles de message vont dans les catalogues fr/en.
-    """
+def check_geoid_presence(vertical_id, folder=None, lon=None, lat=None):
+    """Diagnostic pour l'interface : {'status': 'ok'|'stale'|'missing'|'not_covering'|'none', 'spec': fiche, 'path': chemin}."""
     spec = vertical_by_id(vertical_id)
     if spec is None:
         raise KeyError(vertical_id)
     if spec.get("file") is None:
-        return {"status": "none", "matches": [], "message_key": "export.geoid_none", "spec": spec}
+        return {"status": "none", "spec": spec, "path": None}
     if lon is not None and lat is not None and spec.get("bbox") and not covers(spec, lon, lat):
-        return {"status": "not_covering", "matches": [], "message_key": "export.geoid_not_covering", "spec": spec}
-    matches = find_grid(vertical_id, dirs)
-    if matches:
-        return {"status": "ok", "matches": matches, "message_key": "export.geoid_ok", "spec": spec}
-    return {"status": "missing", "matches": [], "message_key": "export.geoid_missing", "spec": spec}
+        return {"status": "not_covering", "spec": spec, "path": None}
+    state, path = grid_state(vertical_id, folder)
+    return {"status": state, "spec": spec, "path": path}
 
 
 # --------------------------------------------------------------------------------------------------

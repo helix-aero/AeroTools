@@ -208,9 +208,18 @@ registry and the usual folders, or pointed at by the user):
   means no DEM layer (a warning says so).
 - The native ortho export is cropped to the data (8148 x 8772 px on CITADELLE) and not to the orthomosaic box: the placement in the DXF is read from
   the GeoTIFF itself (`geotiff.py`). When the grid is imposed (other CRS, tiles) the native pixel is rounded to 0.1 mm.
-- Other coordinate systems: `msapi.target_crs` builds a compound CRS whose VERT_CS carries the grid name (`RAC23`...), `projection=` on
-  `exportRaster`, box transformed with `CoordinateSystem.transform`. Checked on the CITADELLE DEM to Lambert-93: heights drop by the geoid
-  (47.6 m), the GeoTIFF still carries the horizontal CRS only. A downloaded geoid grid is not checked live (Metashape may need a restart).
+- Other coordinate systems and heights (`vertical.py`, `tiffio.py`, `crs.py`): Metashape only reprojects XY (`exportRaster` with a plain
+  `EPSG::n` target, heights come out ellipsoidal). The altitude is computed by AeroTools: `H = h - N`, N read from a PROJ-data GTG grid
+  kept in `%LOCALAPPDATA%\HELIX\AeroTools\Geoid` (nothing is read from Metashape's own folders), bilinear like PROJ, applied to the
+  DEM tile by tile and rewritten as Deflate GeoTIFF (georeferencing tags copied). Why not Metashape: measured on 2.2.1, it picks the
+  grid by datum name (RAC09 and RAC23 give the same value, 23 cm apart from the real RAC23 at one Corsican point), ignores RAC23 with an
+  RGF93 v2b system (heights stay ellipsoidal, no error) and refuses EGM96 with a French system.
+  Checks: our N equals PROJ 9.8 to 0.03 mm (RAC23, RAF20, EGM96) and equals Metashape's own RAC09 heights to 0.3 mm on CITADELLE;
+  each correction recomputes 5 random pixels without the lattice and aborts if they differ by more than 5 mm; grids are verified by
+  SHA-256 against the catalog (a different file is "outdated" and offered for re-download).
+  Pairing rule (`vertical.compatible_verticals`): RAF09 / RAC09 start from RGF93 v1 (Lambert-93, CC42-50, EPSG 4171), RAF20 / RAC23 from
+  RGF93 v2b (9794, 9842-9850); the height list only offers the grids that match the chosen XY system and cover the project; EGM96 and
+  the ellipsoid are always offered. GTG registration (PixelIsPoint, tie point = node) was measured against PROJ.
 
 ## Aero-Space
 

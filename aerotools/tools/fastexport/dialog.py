@@ -21,7 +21,7 @@ import threading
 
 from ... import config, i18n, journal, msapi, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from . import crs, external, naming, pipeline, plan, tiling
+from . import crs, external, naming, pipeline, plan, tiling, vertical
 
 SECTION = "fastexport"
 WIDTH, HEIGHT = 840, 920
@@ -93,6 +93,7 @@ class ExportDialog(QtWidgets.QDialog):
         self._missing = None                                # (outil, cle de texte) quand un logiciel manque
         self._geoid_missing = None                          # id de la grille choisie qui manque (bloque l'export)
         self._geoid_busy = False
+        self._geoid_states = {}
         self._geoid_ids = []                                # ids proposes au telechargement (la grille choisie, ou celles de la zone)
         self._previous_preset = None
         self._tile_pixels = None
@@ -467,15 +468,17 @@ class ExportDialog(QtWidgets.QDialog):
         self._fill_vertical()
 
     def _fill_vertical(self):
+        """Altitudes proposees : celles qui vont avec le SCR horizontal choisi, a l'endroit du projet (voir vertical.py)."""
         center = self._info.get("center")
         lon, lat = center if center else (None, None)
         self.vert_box.blockSignals(True)
         self.vert_box.clear()
-        if self.crs_box.currentData() == SAME:
+        epsg = self.crs_box.currentData()
+        if epsg == SAME:
             self.vert_box.addItem(i18n.t("export.vertical_same"), SAME)
             self.vert_box.setEnabled(False)
         else:
-            for spec in crs.export_verticals(lon, lat):
+            for spec in vertical.compatible_verticals(int(epsg), lon, lat):
                 self.vert_box.addItem(crs.label(spec, self._lang), spec["id"])
             self.vert_box.setEnabled(not self._busy)
         self.vert_box.blockSignals(False)
@@ -490,35 +493,35 @@ class ExportDialog(QtWidgets.QDialog):
         self._refresh_names()
 
     def _check_geoid(self):
-        """Dit si la grille du geoide choisi est sur ce poste (sinon : bandeau orange, export bloque, bouton de telechargement).
-        Sans grille manquante pour le choix, propose celles de la zone du projet qui manquent (meme bandeau, « Plus tard » ; Exporter le fait clignoter)."""
+        """Etat de la grille d'altitude choisie dans notre dossier : absente ou perimee = bandeau orange, export gele, bouton de
+        telechargement. Sinon, propose les grilles de la zone du projet qui manquent (meme bandeau, « Plus tard » ; Exporter le fait
+        clignoter tant qu'on n'a pas choisi)."""
         if self._geoid_busy:
             return
-        msapi.register_geoids(crs.own_dir())
-        vertical = self.vert_box.currentData()
+        choice = self.vert_box.currentData()
         self._geoid_missing = None
         self._geoid_ids = []
+        self._geoid_states = {}
         text, blocking = "", False
-        if vertical not in (None, SAME, "ellipsoid"):
-            found = crs.check_geoid_presence(vertical)
-            if found["status"] == "missing":
-                spec = found["spec"]
-                self._geoid_missing = vertical
-                self._geoid_ids = [vertical] if spec.get("url") else []
-                text = i18n.t("export.geoid_missing", name=crs.label(spec, self._lang), size=size_text(spec.get("size", 0)))
-                blocking = True
-            elif not self._geoid_usable(vertical):
-                self._geoid_missing = vertical              # la grille est la, mais Metashape ne l'appliquerait pas
-                text = i18n.t("export.geoid_unusable", name=crs.label(found["spec"], self._lang))
+        lon, lat = self._info.get("center") or (None, None)
+        if choice not in (None, SAME, "ellipsoid"):
+            found = crs.check_geoid_presence(choice)
+            spec = found["spec"]
+            if found["status"] in ("missing", "stale"):
+                self._geoid_missing = choice
+                self._geoid_ids = [choice] if spec.get("url") else []
+                self._geoid_states[choice] = found["status"]
+                key = "export.geoid_missing" if found["status"] == "missing" else "export.geoid_stale"
+                text = i18n.t(key, name=crs.label(spec, self._lang), size=size_text(spec.get("size", 0)))
                 blocking = True
         if not self._geoid_missing:
-            lon, lat = self._info.get("center") or (None, None)
             declined = set(config.get(SECTION, "geoid_declined") or [])
-            todo = [spec for spec in crs.missing_in_zone(lon, lat) if spec["id"] not in declined]
+            todo = [(spec, state) for spec, state in crs.zone_grids(lon, lat) if spec["id"] not in declined]
             if todo:
-                self._geoid_ids = [spec["id"] for spec in todo]
-                text = i18n.t("export.geoid_zone", names=", ".join(crs.label(spec, self._lang) for spec in todo),
-                              size=size_text(sum(spec["size"] for spec in todo)))
+                self._geoid_ids = [spec["id"] for spec, _state in todo]
+                self._geoid_states = {spec["id"]: state for spec, state in todo}
+                text = i18n.t("export.geoid_zone", names=", ".join(crs.label(spec, self._lang) for spec, _state in todo),
+                              size=size_text(sum(spec["size"] for spec, _state in todo)))
         self._style_geoid()
         self.geoid_text.setText(text)
         self.geoid_button.setText(i18n.t("export.geoid_download" if len(self._geoid_ids) < 2 else "export.geoid_download_all"))
@@ -527,16 +530,6 @@ class ExportDialog(QtWidgets.QDialog):
         self.geoid_bar.setVisible(False)
         self.geoid_card.setVisible(bool(text))
         self._refresh_buttons()
-
-    def _geoid_usable(self, vertical):
-        """Metashape applique-t-il la grille choisie avec le SCR horizontal choisi ? (Test mesure, voir msapi.geoid_applied.)"""
-        center = self._info.get("center")
-        epsg = self.crs_box.currentData()
-        if not center or epsg in (None, SAME) or not crs.metashape_vertical(vertical):
-            return True
-        target = msapi.target_crs(int(epsg), crs.metashape_vertical(vertical))
-        flat = msapi.target_crs(int(epsg))
-        return target is None or flat is None or msapi.geoid_applied(target, flat, center)
 
     def _style_geoid(self, on=True):
         """Bandeau des grilles manquantes en orange (alerte du theme) ; `on=False` l'eteint (sert au clignotement)."""
@@ -569,6 +562,7 @@ class ExportDialog(QtWidgets.QDialog):
         self.geoid_bar.setValue(0)
         self.geoid_bar.setVisible(True)
         folder = crs.own_dir()
+        states = dict(self._geoid_states)
         state = {"done": 0, "index": 0, "errors": []}
 
         def work():
@@ -576,7 +570,8 @@ class ExportDialog(QtWidgets.QDialog):
                 state["index"] = index
                 before = state["done"]
                 try:
-                    path = crs.download_geoid(vid, folder, progress=lambda got, _t, base=before: state.update(done=base + got))
+                    path = crs.download_geoid(vid, folder, overwrite=states.get(vid) == "stale",
+                                              progress=lambda got, _t, base=before: state.update(done=base + got))
                     journal.write("Fast Export : geoide telecharge : {}".format(path))
                 except FileExistsError:
                     pass
@@ -603,13 +598,18 @@ class ExportDialog(QtWidgets.QDialog):
             return
         self.status.setText(i18n.t("export.geoid_done", name=", ".join(ids)))
 
+    def _vertical_choice(self):
+        """Identifiant de la grille d'altitude a appliquer aux MNT, ou None (SCR du projet, ou hauteurs ellipsoidales)."""
+        choice = self.vert_box.currentData()
+        return None if choice in (None, SAME, "ellipsoid") or self.crs_box.currentData() == SAME else choice
+
     def _target(self):
-        """(SCR de sortie ou None, texte d'erreur) d'apres les deux listes."""
+        """(SCR horizontal de sortie ou None, texte d'erreur). Les hauteurs sont ellipsoidales a la sortie de Metashape ; l'altitude
+        choisie est calculee ensuite par AeroTools."""
         epsg = self.crs_box.currentData()
         if epsg in (None, SAME):
             return None, ""
-        vertical = self.vert_box.currentData()
-        target = msapi.target_crs(int(epsg), crs.metashape_vertical(vertical) if vertical not in (None, "ellipsoid") else None)
+        target = msapi.target_crs(int(epsg))
         if target is None:
             return None, i18n.t("export.crs_refused")
         return target, ""
@@ -758,7 +758,6 @@ class ExportDialog(QtWidgets.QDialog):
         if self._geoid_ids and self.geoid_card.isVisible():     # grilles de la zone : Telecharger ou Plus tard d'abord
             self._flash_geoid()
             return
-        msapi.register_geoids(crs.own_dir())
         jobs = list(self._jobs)
         if self._existing(jobs):                            # l'export existe deja : ecraser ou nouvelle version
             try:
@@ -783,7 +782,8 @@ class ExportDialog(QtWidgets.QDialog):
         ctx = pipeline.Context(chunk, self._info, self._folder(), self.site.text().strip(), self._date, self.preset.currentData(),
                                msapi.export_raster, tools=dict(self.tools), crs=target, tile_m=self._tile_m(), cad=self._cad(),
                                lang=self._lang, snap=msapi.snapped_box, transform=msapi.transform_box,
-                               tick=QtWidgets.QApplication.processEvents)
+                               tick=QtWidgets.QApplication.processEvents, vertical=self._vertical_choice(),
+                               to_lonlat=msapi.lonlat_function(target) if target is not None else None)
         self._busy = True
         self.bar.setRange(0, 1000)
         self.bar.setValue(0)

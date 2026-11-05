@@ -22,7 +22,6 @@ API Metashape mobilisees :
 """
 
 import math
-import os
 
 import Metashape
 
@@ -1686,61 +1685,24 @@ def _center_lonlat(crs, box):
         return None
 
 
-def target_crs(horizontal_epsg, vertical=None):
-    """SCR de sortie : `EPSG::horizontal`, ou compose avec un systeme vertical `(nom, datum, code EPSG du datum)`.
-
-    Le nom du VERT_CS est celui de la grille (« RAC23 ») : Metashape applique alors fr_ign_RAC23.tif de son dossier geoids.
-    Renvoie None si Metashape refuse le systeme."""
+def target_crs(horizontal_epsg):
+    """SCR horizontal de sortie `EPSG::n`, ou None si Metashape le refuse. Sans systeme vertical : Metashape exporte alors les
+    hauteurs ellipsoidales, et les altitudes sont calculees par AeroTools (voir tools/fastexport/vertical.py)."""
     try:
-        base = Metashape.CoordinateSystem("EPSG::%d" % horizontal_epsg)
-        if not vertical:
-            return base
-        name, datum, code = vertical
-        wkt = 'COMPD_CS["%s + %s",%s,VERT_CS["%s",VERT_DATUM["%s",2005,AUTHORITY["EPSG","%d"]],UNIT["metre",1,AUTHORITY["EPSG","9001"]]]]' % (
-            base.name, name, base.wkt, name, datum, code)
-        return Metashape.CoordinateSystem(wkt)
+        return Metashape.CoordinateSystem("EPSG::%d" % horizontal_epsg)
     except Exception:
         return None
 
 
-_GEOIDS_GIVEN = set()
+def lonlat_function(crs):
+    """`f(x, y) -> (longitude, latitude)` en degres, dans le repere geographique propre de `crs` (celui de la grille de geoide)."""
+    geographic = crs.geogcs
 
+    def convert(x, y):
+        point = Metashape.CoordinateSystem.transform(Metashape.Vector((x, y, 0.0)), crs, geographic)
+        return float(point[0]), float(point[1])
 
-def register_geoids(folder):
-    """Donne a Metashape les grilles de geoide du dossier (`CoordinateSystem.addGeoid`), une seule fois chacune par session.
-    Renvoie la liste des chemins acceptes."""
-    accepted = []
-    try:
-        names = sorted(os.listdir(folder))
-    except OSError:
-        return accepted
-    for name in names:
-        if not name.lower().endswith((".tif", ".tiff")):
-            continue
-        path = os.path.join(folder, name)
-        if path not in _GEOIDS_GIVEN:
-            try:
-                Metashape.CoordinateSystem.addGeoid(path)
-                _GEOIDS_GIVEN.add(path)
-            except Exception as exc:
-                journal.write("Geoide refuse par Metashape : {} ({})".format(path, exc))
-                continue
-        accepted.append(path)
-    return accepted
-
-
-def geoid_applied(target, flat, lonlat):
-    """Metashape applique-t-il vraiment le geoide de `target` (SCR compose) ? On convertit une hauteur ellipsoidale de 0 au centre
-    du projet vers `target` et vers `flat` (meme SCR horizontal, sans systeme vertical) : si les deux hauteurs sont egales, le
-    geoide est ignore et l'export porterait des hauteurs ellipsoidales sous une etiquette d'altitude. Inconnu : True."""
-    try:
-        point = Metashape.Vector((lonlat[0], lonlat[1], 0.0))
-        wgs = Metashape.CoordinateSystem("EPSG::4326")
-        with_geoid = Metashape.CoordinateSystem.transform(point, wgs, target)
-        without = Metashape.CoordinateSystem.transform(point, wgs, flat)
-        return abs(float(with_geoid[2]) - float(without[2])) > 0.05
-    except Exception:
-        return True
+    return convert
 
 
 def horizontal_part(crs):
