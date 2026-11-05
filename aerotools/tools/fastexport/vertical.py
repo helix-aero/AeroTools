@@ -155,13 +155,16 @@ def _bilinear(field, fx, fy):
             + field[y0 + 1, x0] * (1 - tx) * ty + field[y0 + 1, x0 + 1] * tx * ty)
 
 
-def correct_dem(src, dst, grid, to_lonlat, progress=None, samples=5):
+def correct_dem(src, dst, grid, lonlat, reference=None, progress=None, samples=5):
     """Ecrit dans `dst` le MNT `src` (hauteurs ellipsoidales) passe en altitudes : `H = h - N`.
 
-    `to_lonlat(x, y)` : (longitude, latitude) en degres d'un point du MNT (dans le repere du MNT). N est calcule sur un semis de
-    points (un tous les ~100 m) puis interpole bilineairement a chaque pixel. Controle : `samples` pixels sont recalcules
-    directement (sans semis) ; un ecart de plus de 5 mm annule tout (ValueError). Renvoie {"min": N min, "max": N max,
-    "check_mm": ecart maximal du controle en mm}. Leve ValueError, et laisse `dst` absent, si la grille ne couvre pas tout le MNT."""
+    `lonlat(xs, ys)` : (longitudes, latitudes) en degres de points du MNT (tableaux, dans le repere du MNT). N est calcule sur un
+    semis de points (un tous les ~100 m) puis interpole bilineairement a chaque pixel.
+    * `grid` : notre lecture de la grille. `reference(lons, lats)` : N donne par PROJ (autorite) ; s'il est fourni, c'est lui qui
+      s'applique et on exige qu'il concorde avec notre calcul a 1 cm pres sur tout le semis (sinon ValueError, rien n'est ecrit).
+    * Controle : `samples` pixels sont recalcules directement (sans semis) ; plus de 5 mm d'ecart annule tout (ValueError).
+    Renvoie {"min": N min, "max": N max, "check_mm": ecart du controle, "proj_mm": ecart PROJ / nous ou None}. Leve ValueError, et
+    laisse `dst` absent, si la grille ne couvre pas tout le MNT."""
     tiff = tiffio.Tiff(src)
     if _raster_type(tiff) == RASTER_PIXEL_IS_POINT:
         raise ValueError("MNT « PixelIsPoint » non pris en charge")
@@ -177,27 +180,34 @@ def correct_dem(src, dst, grid, to_lonlat, progress=None, samples=5):
     cols, rows = _lattice(width, height, px, py)
     lx = x0 + np.linspace(0.0, width * px, cols)
     ly = y0 - np.linspace(0.0, height * py, rows)
-    n_field = np.empty((rows, cols), dtype=np.float64)
-    for r in range(rows):
-        for c in range(cols):
-            lon, lat = to_lonlat(float(lx[c]), float(ly[r]))
-            n_field[r, c] = float(grid.undulation(lon, lat))
+    grid_x, grid_y = np.meshgrid(lx, ly)
+    lon, lat = lonlat(grid_x.ravel(), grid_y.ravel())
+    n_ours = grid.undulation(lon, lat).reshape(rows, cols)
+    n_field, proj_mm = n_ours, None
+    if reference is not None:
+        n_ref = np.asarray(reference(lon, lat), dtype=np.float64).reshape(rows, cols)
+        if not np.all(np.isfinite(n_ref)):
+            raise ValueError("la grille ne couvre pas tout le MNT")
+        if np.all(np.isfinite(n_ours)):
+            proj_mm = float(np.abs(n_ref - n_ours).max()) * 1000.0
+            if proj_mm > 10.0:
+                raise ValueError("PROJ et AeroTools divergent de %.1f mm sur la grille" % proj_mm)
+        n_field = n_ref
     if not np.all(np.isfinite(n_field)):
         raise ValueError("la grille ne couvre pas tout le MNT")
 
     rng = np.random.RandomState(7)
-    picks = {}
-    for _ in range(samples):
-        row, col = int(rng.randint(0, height)), int(rng.randint(0, width))
-        picks[(row, col)] = None
+    picks = [(int(rng.randint(0, height)), int(rng.randint(0, width))) for _ in range(samples)]
+    pick_lon, pick_lat = lonlat(np.array([x0 + (c + 0.5) * px for _r, c in picks]), np.array([y0 - (r + 0.5) * py for r, _c in picks]))
+    pick_n = dict(zip(picks, grid.undulation(pick_lon, pick_lat)))
     state = {"done": 0, "worst": 0.0}
     total = max(1, len(tiff.offsets))
 
     def change(top, left, block):
         h = min(block.shape[0], height - top)
         w = min(block.shape[1], width - left)
-        u = (left + np.arange(w) + 0.5) * px / (width * px) * (cols - 1)
-        v = (top + np.arange(h) + 0.5) * py / (height * py) * (rows - 1)
+        u = (left + np.arange(w) + 0.5) / float(width) * (cols - 1)
+        v = (top + np.arange(h) + 0.5) / float(height) * (rows - 1)
         n = _bilinear(n_field, u[np.newaxis, :], v[:, np.newaxis])
         part = block[:h, :w].astype(np.float64)
         valid = np.isfinite(part)
@@ -205,11 +215,9 @@ def correct_dem(src, dst, grid, to_lonlat, progress=None, samples=5):
             valid &= part != nodata
         out = block.copy()
         out[:h, :w] = np.where(valid, part - n, part).astype(np.float32)
-        for (row, col) in picks:
+        for (row, col), direct in pick_n.items():
             if top <= row < top + h and left <= col < left + w:
-                lon, lat = to_lonlat(x0 + (col + 0.5) * px, y0 - (row + 0.5) * py)
-                direct = float(grid.undulation(lon, lat))
-                state["worst"] = max(state["worst"], abs(direct - float(n[row - top, col - left])))
+                state["worst"] = max(state["worst"], abs(float(direct) - float(n[row - top, col - left])))
         state["done"] += 1
         if progress:
             progress(state["done"] / float(total))
@@ -224,4 +232,4 @@ def correct_dem(src, dst, grid, to_lonlat, progress=None, samples=5):
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
-    return {"min": float(n_field.min()), "max": float(n_field.max()), "check_mm": state["worst"] * 1000.0}
+    return {"min": float(n_field.min()), "max": float(n_field.max()), "check_mm": state["worst"] * 1000.0, "proj_mm": proj_mm}

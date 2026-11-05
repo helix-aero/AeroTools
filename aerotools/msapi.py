@@ -1694,17 +1694,6 @@ def target_crs(horizontal_epsg):
         return None
 
 
-def lonlat_function(crs):
-    """`f(x, y) -> (longitude, latitude)` en degres, dans le repere geographique propre de `crs` (celui de la grille de geoide)."""
-    geographic = crs.geogcs
-
-    def convert(x, y):
-        point = Metashape.CoordinateSystem.transform(Metashape.Vector((x, y, 0.0)), crs, geographic)
-        return float(point[0]), float(point[1])
-
-    return convert
-
-
 def horizontal_part(crs):
     """Partie horizontale d'un SCR compose (le PROJCS / GEOGCS du COMPD_CS) ; le SCR lui-meme s'il n'est pas compose, None si illisible."""
     try:

@@ -14,7 +14,7 @@ import os
 import shutil
 import tempfile
 
-from . import dxfout, external, geotiff, naming, plan, tiling, vertical
+from . import crs, dxfout, external, geotiff, naming, plan, projtool, tiling, vertical
 
 TMP_NAME = ".fastexport_tmp"
 
@@ -27,7 +27,7 @@ class Context(object):
     """Tout ce dont un export a besoin ; la fenetre le remplit, les tests le remplacent par des faux."""
 
     def __init__(self, chunk, info, folder, site, date, preset, export, tools=None, crs=None, tile_m=None, cad=None,
-                 lang="fr", date_style="short", snap=None, transform=None, tick=None, vertical=None, to_lonlat=None):
+                 lang="fr", date_style="short", snap=None, transform=None, tick=None, vertical=None, proj=None, epsg=None):
         self.chunk, self.info, self.folder = chunk, info, folder
         self.site, self.date, self.preset, self.cad = site, date, preset, cad or {}
         self.export = export                              # msapi.export_raster ou un faux
@@ -36,7 +36,7 @@ class Context(object):
         self.lang, self.date_style = lang, date_style
         self.snap, self.transform = snap, transform
         self.tick = tick or (lambda: None)
-        self.vertical, self.to_lonlat = vertical, to_lonlat      # grille d'altitude (id) et f(x, y) -> (lon, lat) du SCR de sortie
+        self.vertical, self.proj, self.epsg = vertical, proj, epsg   # grille d'altitude (id), moteur PROJ, EPSG du SCR de sortie
 
 
 class Result(object):
@@ -211,15 +211,20 @@ def run_job(ctx, job, work, report, result, images):
 
 
 def _to_altitude(ctx, raw, sub):
-    """Hauteurs ellipsoidales du MNT -> altitudes de la grille choisie (notre dossier Geoid). Leve Failure."""
-    if ctx.to_lonlat is None:
-        raise Failure("Altitude : SCR de sortie inconnu")
+    """Hauteurs ellipsoidales du MNT -> altitudes de la grille choisie (notre dossier Geoid). PROJ calcule, notre lecteur controle.
+    Leve Failure."""
+    engine = ctx.proj
+    if engine is None or not engine.available():
+        raise Failure("Altitude : PROJ est introuvable (dossier aerotools/vendor/proj)")
     try:
         grid = vertical.load_grid(ctx.vertical)
+        spec = crs.vertical_by_id(ctx.vertical)
         tmp = raw + ".alt"
-        vertical.correct_dem(raw, tmp, grid, ctx.to_lonlat, progress=lambda part: (sub(100.0 * part), ctx.tick()))
+        vertical.correct_dem(raw, tmp, grid, lambda xs, ys: engine.lonlat(ctx.epsg, xs, ys),
+                             reference=lambda lons, lats: -engine.vertical_shift(spec["file"], lons, lats),
+                             progress=lambda part: (sub(100.0 * part), ctx.tick()))
         os.replace(tmp, raw)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, projtool.ProjError) as exc:
         raise Failure("Altitude %s : %s" % (ctx.vertical, exc))
 
 

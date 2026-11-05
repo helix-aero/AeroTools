@@ -21,7 +21,7 @@ import threading
 
 from ... import config, i18n, journal, msapi, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from . import crs, external, naming, pipeline, plan, tiling, vertical
+from . import crs, external, naming, pipeline, plan, projtool, tiling, vertical
 
 SECTION = "fastexport"
 WIDTH, HEIGHT = 840, 920
@@ -783,7 +783,8 @@ class ExportDialog(QtWidgets.QDialog):
                                msapi.export_raster, tools=dict(self.tools), crs=target, tile_m=self._tile_m(), cad=self._cad(),
                                lang=self._lang, snap=msapi.snapped_box, transform=msapi.transform_box,
                                tick=QtWidgets.QApplication.processEvents, vertical=self._vertical_choice(),
-                               to_lonlat=msapi.lonlat_function(target) if target is not None else None)
+                               proj=projtool.Proj(geoid_dir=crs.own_dir()),
+                               epsg=int(self.crs_box.currentData()) if target is not None else None)
         self._busy = True
         self.bar.setRange(0, 1000)
         self.bar.setValue(0)

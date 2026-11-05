@@ -7,7 +7,7 @@ import struct
 import numpy as np
 import pytest
 
-from aerotools.tools.fastexport import crs, tiffio, vertical
+from aerotools.tools.fastexport import crs, projtool, tiffio, vertical
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAC23 = os.path.join(HERE, "data", "fr_ign_RAC23.tif")
@@ -216,7 +216,8 @@ def test_correct_dem_refuses_a_dem_outside_the_grid_and_writes_nothing(tmp_path)
     src, dst = str(tmp_path / "dem.tif"), str(tmp_path / "alt.tif")
     make_dem(src, np.full((90, 120), 5.0, dtype=np.float32), X0, Y0, PIXEL)
     with pytest.raises(ValueError, match="ne couvre pas"):
-        vertical.correct_dem(src, dst, vertical.read_grid(RAC23), lambda x, y: (2.3, 48.8))
+        vertical.correct_dem(src, dst, vertical.read_grid(RAC23),
+                              lambda x, y: (np.full(np.shape(x), 2.3), np.full(np.shape(x), 48.8)))
     assert not os.path.exists(dst) and not os.path.exists(dst + ".part")
 
 
@@ -224,3 +225,73 @@ def test_the_lattice_is_never_bigger_than_the_cap():
     cols, rows = vertical._lattice(10 ** 7, 10 ** 7, 0.01, 0.01)
     assert cols == rows == vertical.MAX_LATTICE
     assert vertical._lattice(10, 10, 0.5, 0.5) == (2, 2)
+
+
+# -- PROJ 9 embarque ---------------------------------------------------------------------------------
+
+DATA = os.path.join(HERE, "data")
+needs_proj = pytest.mark.skipif(os.name != "nt" or not projtool.Proj().available(), reason="binaires PROJ de Windows absents")
+
+
+def engine():
+    return projtool.Proj(geoid_dir=DATA)
+
+
+@needs_proj
+def test_proj_is_the_embedded_9_series():
+    assert "Rel. 9." in engine().version()
+
+
+@needs_proj
+def test_proj_vertical_shift_matches_the_reference_values():
+    lons = np.array([p[0][0] for p in RAC23_PROJ])
+    lats = np.array([p[0][1] for p in RAC23_PROJ])
+    shift = engine().vertical_shift("fr_ign_RAC23.tif", lons, lats)
+    assert shift == pytest.approx([p[1] for p in RAC23_PROJ], abs=0.0002)
+
+
+@needs_proj
+def test_proj_shift_is_nan_outside_the_grid():
+    shift = engine().vertical_shift("fr_ign_RAC23.tif", np.array([9.0, 2.3]), np.array([42.0, 48.8]))
+    assert np.isfinite(shift[0]) and np.isnan(shift[1])
+
+
+@needs_proj
+def test_proj_converts_projected_points_to_longitude_latitude():
+    lon, lat = engine().lonlat(3942, np.array([2175840.0]), np.array([1206740.0]))
+    assert (float(lon[0]), float(lat[0])) == pytest.approx((8.7406751, 41.9170090), abs=1e-6)
+
+
+@needs_proj
+def test_proj_and_our_reader_agree_on_the_whole_lattice_of_a_dem(tmp_path):
+    src, dst = str(tmp_path / "dem.tif"), str(tmp_path / "alt.tif")
+    make_dem(src, np.full((90, 120), 100.0, dtype=np.float32), X0, Y0, PIXEL)
+    proj = engine()
+    stats = vertical.correct_dem(src, dst, vertical.read_grid(RAC23), lambda xs, ys: (fake_lonlat(np.asarray(xs), np.asarray(ys))),
+                                 reference=lambda lon, lat: -proj.vertical_shift("fr_ign_RAC23.tif", lon, lat))
+    assert stats["proj_mm"] < 1.0
+
+
+def test_a_reference_that_disagrees_with_us_stops_the_export(tmp_path):
+    src, dst = str(tmp_path / "dem.tif"), str(tmp_path / "alt.tif")
+    make_dem(src, np.full((90, 120), 100.0, dtype=np.float32), X0, Y0, PIXEL)
+    grid = vertical.read_grid(RAC23)
+    with pytest.raises(ValueError, match="divergent"):
+        vertical.correct_dem(src, dst, grid, fake_lonlat, reference=lambda lon, lat: grid.undulation(lon, lat) + 0.05)
+    assert not os.path.exists(dst)
+
+
+def test_proj_output_is_parsed_by_lot_and_failures_become_nan():
+    def fake(exe, args, text):
+        assert len(text.splitlines()) == 3
+        return "\n".join(["1 2 3 0", "4 5 inf 0", "7 8 9 0"]) + "\n"
+
+    proj = projtool.Proj(vendor=os.path.join(HERE, "no_proj"), runner=fake)
+    shift = proj.vertical_shift("x.tif", np.array([1.0, 2.0, 3.0]), np.array([1.0, 2.0, 3.0]))
+    assert shift[0] == 3.0 and np.isnan(shift[1]) and shift[2] == 9.0
+    with pytest.raises(projtool.ProjError):
+        projtool.Proj(runner=lambda *a: "1 2 3 0\n").vertical_shift("x.tif", np.array([1.0, 2.0]), np.array([1.0, 2.0]))
+
+
+def test_geographic_frame_of_a_projected_system():
+    assert [projtool.geographic_epsg(e) for e in (2154, 3942, 9794, 9842, 32632, 25832)] == [4171, 4171, 9782, 9782, 4326, 4258]
