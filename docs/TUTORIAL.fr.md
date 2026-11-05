@@ -329,14 +329,18 @@ AeroTools est fait par [HELIX AERO](https://helix.aero). Code source : [github.c
 **Aero > FastSpace** ouvre une fenêtre qui trouve les anciens projets Metashape qui mangent ton disque. Choisis un disque (ou
 **Dossier…**) et clique **Scanner** : les projets les plus lourds arrivent en premier. Pour chacun tu vois le fichier `.psx`, les
 trois dossiers au-dessus (pour reconnaître le chantier), **Dense + profondeur** (ce que libère l'allègement, en Go), **Projet entier**
-(pour juger si le supprimer vaut la peine), la part de l'un dans l'autre, la date et l'état (*Ouvert*, *Ancien verrou* laissé par un
+(pour juger si le supprimer vaut la peine), **Gardés** (les fichiers à côté du projet que la suppression ne touche pas, voir
+plus bas), la part de l'un dans l'autre, la date et l'état (*Ouvert*, *Ancien verrou* laissé par un
 plantage, ou dossier `.files` orphelin dont le `.psx` a disparu). Clique un en-tête pour trier. Survole la taille pour le détail
 (nuage dense, cartes de profondeur, points de liaison, MNT, orthos). Coche les projets, puis :
 
 - **Alléger (doux)** retire le nuage dense et les cartes de profondeur, qui se recalculent. L'alignement, les marqueurs, les MNT et
   les orthos restent, et Metashape ouvre et enregistre chaque projet pour qu'il reste cohérent.
-- **Supprimer le projet (dur)** retire le projet en entier : le `.psx` et son dossier `.files`. Vérifie d'abord que les livrables
-  sont enregistrés ailleurs.
+- **Supprimer le projet** retire le `.psx` et son dossier `.files`, rien d'autre. Les fichiers exportés à côté du projet (ortho,
+  MNT, nuages, rapports, dans le même dossier ou un niveau plus bas) ne sont pas touchés : la colonne **Gardés** les compte, et
+  le survol donne les plus gros. Un signe d'avertissement veut dire que le projet contient un MNT ou une ortho construits dans
+  Metashape et qu'aucun fichier exporté (tif, ecw, las, dxf…) n'a été trouvé à côté : ils sont dans le `.files` et partiraient
+  avec le projet, donc exporte-les d'abord si tu en as besoin.
 
 **Supprimer le projet** demande où ça part : **Corbeille** (restaurable, la place n'est libérée qu'en la vidant, indisponible sur un
 lecteur réseau) ou **Supprimer définitivement**, qui demande de taper `DELETE`. **Alléger** est toujours définitif et demande

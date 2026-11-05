@@ -1,5 +1,5 @@
 {
- "built": "2026-11-04T22:59:10",
+ "built": "2026-11-05T08:06:11",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -42,12 +42,12 @@
    "size": 436
   },
   "aerotools/lang/en.py": {
-   "sha256": "a9e45d5cfe1a65edffff2ef294dc9c50cbec8f769650b198f46f897c654ac1f2",
-   "size": 30136
+   "sha256": "b7fe4229304344a1ad8dcdcf4f47fbdad33a2cbd13c20c6ccafc82da73ccd8a7",
+   "size": 31005
   },
   "aerotools/lang/fr.py": {
-   "sha256": "7e567477012598e0bdbd56db8538d220e0e5ce200f3dc70df6f97d2340910c63",
-   "size": 32884
+   "sha256": "ab657facbbc493fefa8b898336ac1e30fb56a99d3e16eb75b57ea264d68978a1",
+   "size": 33828
   },
   "aerotools/msapi.py": {
    "sha256": "ecb6a67acb1f2a9e29aec8791085e593b008795088671304c4e8e827fe664d4e",
@@ -182,16 +182,16 @@
    "size": 419
   },
   "aerotools/tools/fastspace/actions.py": {
-   "sha256": "46b58db8d6c364bdb8ea2f040079db7cfe5f4193e270cd4ccbb0635b677a643b",
-   "size": 13258
+   "sha256": "5f15ae2c3ba66051d22668b76ce93f700c26f65b657fa718d9c730cffa4a0090",
+   "size": 13367
   },
   "aerotools/tools/fastspace/dialog.py": {
-   "sha256": "b4efbbb71889d13f8bab9c78ce5e873ee914c72cc77ee3584729241aaf3fbbaa",
-   "size": 26412
+   "sha256": "5dc64e63e0ae97876a3eeb6a5a7dfda6a745f1364252c24d9b6ddc5144ff673d",
+   "size": 28347
   },
   "aerotools/tools/fastspace/scanner.py": {
-   "sha256": "74592818bce0eb5230da3d4d965a788fe63c4102b4c51320be5c3b01ae3222a3",
-   "size": 9877
+   "sha256": "0587cf06cbbfeac0aa15a31dd1a2667fa61be053ff089db002b2b3f6cd1313e4",
+   "size": 13586
   },
   "aerotools/tools/fastspace/tool.py": {
    "sha256": "306e37f4714c016e89d4e69e41ba765838e01ad565958471385b2765dba4843c",
@@ -226,16 +226,16 @@
    "size": 15373
   },
   "docs/DEVELOPMENT.md": {
-   "sha256": "f57350d4be2fdb1bac37eabee48cf234faaf33009206e4c828d7c1f62db54f74",
-   "size": 22321
+   "sha256": "f56acbc1aa1ac8273fda2b28c01022e746f5a597708f4ba98d7d699744c2a305",
+   "size": 22847
   },
   "docs/TUTORIAL.fr.md": {
-   "sha256": "e6fda0418af700f2d3deebf285a9f4dcc16a8de66a0d8c0d850896a31b92c39f",
-   "size": 25376
+   "sha256": "a1969022e1d119dc51fb4425f4c768a3696748d21c95b0bf1fe94f69275c056e",
+   "size": 25901
   },
   "docs/TUTORIAL.md": {
-   "sha256": "f7dc30d0ba39a72b9ba649e3ea5940fc4c5e3c9fb642be4c5acd6fa8fb9a64c2",
-   "size": 22730
+   "sha256": "e817fe8d23ca8b720c759d24dff2c1ff297307f50c416ac610d14dab08473893",
+   "size": 23190
   },
   "docs/debug_adjust.py": {
    "sha256": "941c77e544a3b881a272334d76ab795c5e97d4610c90eeb25862dcc77844984a",

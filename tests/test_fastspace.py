@@ -145,6 +145,64 @@ def test_delete_refuses_an_open_project_and_removes_an_orphan(tmp_path, monkeypa
     assert actions.delete_project(orphan, actions.PERMANENT)["ok"] and not os.path.exists(orphan.files_dir)
 
 
+def test_delete_keeps_every_file_next_to_the_project(tmp_path):
+    psx = make_project(tmp_path)
+    folder = os.path.dirname(psx)
+    os.makedirs(os.path.join(folder, "Exports"))
+    for rel in ("ortho.tif", "rapport.pdf", os.path.join("Exports", "mnt.tif")):
+        with open(os.path.join(folder, rel), "wb") as handle:
+            handle.write(b"d" * 100)
+    project = scanner.measure_project(psx)
+    result = actions.delete_project(project, actions.PERMANENT)
+    assert result["ok"] and not os.path.exists(psx) and not os.path.exists(project.files_dir)
+    assert sorted(os.listdir(folder)) == ["Exports", "ortho.tif", "rapport.pdf"]
+    assert os.path.exists(os.path.join(folder, "Exports", "mnt.tif"))
+
+
+def test_kept_counts_files_next_to_the_project_but_not_projects(tmp_path):
+    psx = make_project(tmp_path, "a")
+    folder = os.path.dirname(psx)
+    other = os.path.join(folder, "b.files")
+    os.makedirs(other)
+    with open(os.path.join(folder, "b.psx"), "w") as handle:
+        handle.write("<document/>")
+    os.makedirs(os.path.join(folder, "Exports", "deep"))
+    for rel, size in (("ortho.tif", 300), ("notes.txt", 20), (os.path.join("Exports", "mnt.tif"), 200),
+                      (os.path.join("Exports", "deep", "ignored.tif"), 999)):
+        with open(os.path.join(folder, rel), "wb") as handle:
+            handle.write(b"d" * size)
+    kept = scanner.measure_project(psx).kept
+    assert kept.files == 3 and kept.size == 520 and kept.dirs == 2
+    assert kept.exports and not kept.partial
+    assert [name for _size, name in kept.biggest] == ["ortho.tif", "Exports/mnt.tif", "notes.txt"]
+
+
+def test_at_risk_when_a_built_dem_has_no_export_next_to_it(tmp_path):
+    risky = scanner.measure_project(make_project(tmp_path, "risky", extra=4000))
+    assert risky.internal_products == 4000 and risky.at_risk
+    psx = make_project(tmp_path, "safe", extra=4000)
+    with open(os.path.join(os.path.dirname(psx), "mnt.TIF"), "wb") as handle:
+        handle.write(b"d")
+    safe = scanner.measure_project(psx)
+    assert safe.kept.exports and not safe.at_risk
+    plain = scanner.measure_project(make_project(tmp_path, "plain"))
+    assert plain.internal_products == 0 and not plain.at_risk
+    assert not scanner.measure_project(make_project(tmp_path, "orph", with_psx=False)).at_risk
+
+
+def test_delete_impact_counts_a_shared_folder_once(tmp_path):
+    first = make_project(tmp_path, "one")
+    second = os.path.join(os.path.dirname(first), "two.psx")
+    with open(second, "w") as handle:
+        handle.write("<document/>")
+    os.makedirs(os.path.join(os.path.dirname(first), "two.files"))
+    with open(os.path.join(os.path.dirname(first), "ortho.tif"), "wb") as handle:
+        handle.write(b"d" * 50)
+    projects = [scanner.measure_project(first), scanner.measure_project(second)]
+    files, size, risky = scanner.delete_impact(projects)
+    assert files == 1 and size == 50 and risky == []
+
+
 def test_delete_failure_is_reported_not_raised(tmp_path, monkeypatch):
     project = scanner.measure_project(make_project(tmp_path))
 

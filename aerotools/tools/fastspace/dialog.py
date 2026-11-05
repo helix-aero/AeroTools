@@ -5,9 +5,12 @@ reconnaitre le chantier), ce que pese « nuage dense + cartes de profondeur » (
 ce que pese le projet en entier (pour voir si cela vaut la peine de le supprimer), la date et l'etat
 (ouvert, verrou oublie, dossier orphelin). Le tri se fait en cliquant un en-tete.
 
+La colonne « Gardes » dit ce qui reste a cote du projet quand on le supprime (un point d'exclamation
+signale un MNT ou une ortho internes sans export trouve).
+
 Deux boutons :
-  - Alleger (doux)      retire le nuage dense et les cartes de profondeur, garde tout le reste ;
-  - Supprimer (dur)     retire le projet entier.
+  - Alleger             retire le nuage dense et les cartes de profondeur, garde tout le reste ;
+  - Supprimer le projet retire le .psx et son .files, jamais les fichiers a cote.
 Chaque action demande de choisir corbeille ou suppression definitive ; la suppression definitive
 demande de taper DELETE. Le scan et les suppressions ne bloquent pas la fenetre ; l'allegement passe
 par l'API de Metashape, qui travaille dans le fil principal : la fenetre se fige un instant par projet.
@@ -28,9 +31,10 @@ WIDTH, HEIGHT = 1040, 680
 ROLE_PROJECT = QtCore.Qt.UserRole
 ROLE_SORT = QtCore.Qt.UserRole + 1
 SECTION = "fastspace"
-COLUMNS = ("space.col_project", "space.col_folder", "space.col_light", "space.col_total", "space.col_share",
-           "space.col_modified", "space.col_state")
+COLUMNS = ("space.col_project", "space.col_folder", "space.col_light", "space.col_total", "space.col_kept",
+           "space.col_share", "space.col_modified", "space.col_state")
 ELLIPSIS = "\u2026"
+WARNING = "\u26a0"
 TABLE_STYLE = """
     QTableWidget {{
         background: {ground_2}; alternate-background-color: {ground_3}; color: {fg_1};
@@ -209,7 +213,7 @@ class SpaceDialog(QtWidgets.QDialog):
             fg_1=theme.FG_1, fg_2=theme.FG_2, border=theme.BORDER_FAINT, soft=theme.GREEN_SOFT))
         header = self.table.horizontalHeader()
         header.setStretchLastSection(True)
-        for column, width in enumerate((230, 250, 150, 130, 60, 100)):
+        for column, width in enumerate((220, 190, 140, 110, 90, 56, 90)):
             self.table.setColumnWidth(column, width)
         self.table.itemChanged.connect(self._on_changed)
         layout.addWidget(self.table, 1)
@@ -361,20 +365,50 @@ class SpaceDialog(QtWidgets.QDialog):
         total.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.table.setItem(row, 3, total)
 
+        kept = _Item(self._kept_text(project))
+        kept.setData(ROLE_SORT, project.kept.size)
+        kept.setToolTip(self._kept_tip(project))
+        kept.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.table.setItem(row, 4, kept)
+
         share = project.light / float(project.total) if project.total else 0.0
         part = _Item("{:.0f} %".format(100 * share))
         part.setData(ROLE_SORT, share)
         part.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        self.table.setItem(row, 4, part)
+        self.table.setItem(row, 5, part)
 
         stamp = time.strftime("%Y-%m-%d", time.localtime(project.modified)) if project.modified else ""
         modified = _Item(stamp)
         modified.setData(ROLE_SORT, project.modified)
-        self.table.setItem(row, 5, modified)
+        self.table.setItem(row, 6, modified)
 
         state = _Item(self._state_of(project, here))
         state.setData(ROLE_SORT, state.text())
-        self.table.setItem(row, 6, state)
+        self.table.setItem(row, 7, state)
+
+    @staticmethod
+    def _kept_text(project):
+        if project.orphan:
+            return ""
+        text = scanner.gb(project.kept.size) if project.kept.files else "-"
+        return (WARNING + " " + text) if project.at_risk else text
+
+    @staticmethod
+    def _kept_tip(project):
+        if project.orphan:
+            return ""
+        kept = project.kept
+        lines = []
+        if kept.files or kept.dirs:
+            lines.append(i18n.t("space.tip_kept", files=kept.files, dirs=kept.dirs, size=scanner.gb(kept.size)))
+            if kept.biggest:
+                names = ", ".join("{} ({})".format(name, scanner.gb(size)) for size, name in kept.biggest)
+                lines.append(i18n.t("space.tip_biggest", names=names))
+        else:
+            lines.append(i18n.t("space.tip_kept_none"))
+        if project.at_risk:
+            lines.append(i18n.t("space.tip_kept_risk", size=scanner.gb(project.internal_products)))
+        return "\n".join(lines)
 
     @staticmethod
     def _parts_text(project):
@@ -463,6 +497,13 @@ class SpaceDialog(QtWidgets.QDialog):
         if not picked:
             return
         text = i18n.t("space.confirm_delete", n=len(picked), size=scanner.gb(sum(p.total for p in picked)))
+        files, kept_size, risky = scanner.delete_impact(picked)
+        if files:
+            text += "\n\n" + i18n.t("space.confirm_delete_kept", files=files, size=scanner.gb(kept_size))
+        if risky:
+            names = ", ".join(p.name for p in risky[:5]) + (ELLIPSIS if len(risky) > 5 else "")
+            text += "\n\n" + i18n.t("space.confirm_delete_risk", names=names,
+                           size=scanner.gb(sum(p.internal_products for p in risky)))
         self._confirm_and_run("delete", picked, text)
 
     def _confirm_and_run(self, kind, picked, text):

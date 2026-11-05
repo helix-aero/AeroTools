@@ -478,7 +478,7 @@ TEXTES = {
     "tool.fastspace.subtitle": "Libérer de la place : alléger ou supprimer les anciens projets",
     "space.title": "Fast Space",
     "space.close": "Fermer",
-    "space.intro": "Choisis un disque et lance le scan : les projets Metashape les plus lourds arrivent en premier. « Alléger » retire le nuage dense et les cartes de profondeur (ils se recalculent) et garde l'alignement, les marqueurs, les MNT et les orthos. « Supprimer » retire le projet en entier.",
+    "space.intro": "Choisis un disque et lance le scan : les projets Metashape les plus lourds arrivent en premier. « Alléger » retire le nuage dense et les cartes de profondeur (ils se recalculent) et garde l'alignement, les marqueurs, les MNT et les orthos. « Supprimer le projet » retire le .psx et son dossier .files, jamais les fichiers exportés à côté (ortho, MNT, nuages, rapports).",
     "space.folder": "Dossier…",
     "space.pick_folder": "Dossier à scanner",
     "space.drive_item": "{drive}  ({free} libres sur {total})",
@@ -507,11 +507,11 @@ TEXTES = {
     "space.selection_none": "Rien n'est coché.",
     "space.lighten": "Alléger (doux)",
     "space.lighten_tip": "Retire le nuage dense et les cartes de profondeur, garde tout le reste",
-    "space.delete": "Supprimer le projet (dur)",
-    "space.delete_tip": "Retire le projet en entier : le .psx et son dossier .files",
+    "space.delete": "Supprimer le projet",
+    "space.delete_tip": "Retire le .psx et son dossier .files. Les fichiers exportés à côté (ortho, MNT, nuages, rapports) ne sont pas touchés",
     "space.open_log": "Journal des actions",
     "space.confirm_lighten": "Alléger {n} projet(s) ?\n\nOn retire les nuages denses et les cartes de profondeur : {size}. L'alignement, les marqueurs, les MNT et les orthos restent. Metashape ouvre et enregistre chaque projet pour qu'il reste cohérent, ce qui peut être long. C'est définitif : Metashape efface lui-même ces fichiers.\n\nNe le fais jamais sur un projet que quelqu'un d'autre utilise.",
-    "space.confirm_delete": "Supprimer {n} projet(s) en entier ?\n\nLe fichier .psx et son dossier .files disparaissent : {size}. L'alignement, les marqueurs, tout. Vérifie que les livrables (orthos, nuages, rapports) sont enregistrés ailleurs.",
+    "space.confirm_delete": "Supprimer {n} projet(s) ?\n\nOn retire le fichier .psx et son dossier .files : {size}. L'alignement, les marqueurs, et les MNT ou orthos qui n'ont pas été exportés disparaissent avec.",
     "space.mode_recycle": "Envoyer à la corbeille (restaurable, la place n'est libérée qu'en la vidant)",
     "space.mode_recycle_na": "Corbeille indisponible ici (lecteur réseau)",
     "space.mode_permanent": "Supprimer définitivement (impossible à annuler)",
@@ -527,4 +527,13 @@ TEXTES = {
 
     # -- Fast Space : allegement -------------------------------------------
     "space.mode_recycle_none": "Corbeille impossible pour l'allègement : Metashape efface lui-même ses fichiers en enregistrant",
+
+    # -- Fast Space : fichiers gardes --------------------------------------
+    "space.col_kept": "Gardés",
+    "space.tip_kept": "{files} fichier(s) et {dirs} dossier(s) à côté du projet restent en place ({size}).",
+    "space.tip_biggest": "Les plus gros : {names}",
+    "space.tip_kept_none": "Rien d'autre dans le dossier du projet.",
+    "space.tip_kept_risk": "Attention : MNT ou ortho construits dans Metashape ({size}) et aucun fichier exporté trouvé à côté. Ils partiraient avec le projet.",
+    "space.confirm_delete_kept": "À côté du projet, {files} fichier(s) ({size}) restent en place.",
+    "space.confirm_delete_risk": "Attention, MNT ou ortho construits dans Metashape sans export trouvé à côté pour : {names} ({size}). Ils partent avec le projet : exporte-les d'abord si tu en as besoin.",
 }

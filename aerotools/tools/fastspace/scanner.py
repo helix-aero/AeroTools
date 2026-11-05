@@ -12,6 +12,11 @@ tout le reste :
 Ce qui est lourd ET se recalcule : le nuage dense et les cartes de profondeur. C'est ce que
 l'allegement retire ; le reste (alignement, marqueurs, MNT, ortho) reste intact.
 
+Supprimer un projet ne touche qu'au `.psx` et a son `.files`. Tout ce qui est a cote (ortho ou MNT exportes,
+nuages, rapports...) reste en place : `measure_kept` le compte pour pouvoir le dire avant de supprimer. En revanche
+un MNT ou une ortho construits dans Metashape et jamais exportes vivent dans le `.files` et partent avec lui :
+`Project.at_risk` le signale quand aucun fichier exporte n'est trouve a cote.
+
 Un dossier `.files` sans `.psx` a cote est un orphelin : un projet dont on a supprime le `.psx`
 seul. Il est signale aussi (c'est de la place perdue).
 """
@@ -30,6 +35,24 @@ PART_NAME = re.compile(r"^(?P<name>[A-Za-z_]+?)(\.\d+)?$")
 WORKERS = 8
 
 FREE, OPEN, STALE = "free", "open", "stale"
+INTERNAL_PRODUCTS = ("elevation", "orthomosaic")           # MNT et ortho construits dans Metashape
+EXPORT_EXTS = {".tif", ".tiff", ".ecw", ".jp2", ".img", ".asc", ".las", ".laz", ".dxf", ".dwg", ".xyz", ".e57",
+               ".ply", ".obj"}
+KEPT_CAP = 5000                                            # entrees lues au plus par dossier de projet
+KEPT_SHOWN = 6
+_KEPT_CACHE = {}
+
+
+class Kept(object):
+    """Ce qui reste a cote d'un projet qu'on supprime : fichiers et dossiers du meme dossier (un niveau de sous-dossiers)."""
+
+    def __init__(self):
+        self.files = 0
+        self.dirs = 0
+        self.size = 0
+        self.exports = False                               # un fichier de type MNT / ortho / nuage exporte est la
+        self.partial = False                               # dossier trop grand, comptage arrete
+        self.biggest = []                                  # [(octets, chemin relatif)]
 
 
 class Project(object):
@@ -46,6 +69,7 @@ class Project(object):
         self.modified = 0.0
         self.lock = FREE
         self.error = ""
+        self.kept = Kept()
 
     @property
     def dense(self):
@@ -67,6 +91,16 @@ class Project(object):
     @property
     def in_use(self):
         return self.lock == OPEN
+
+    @property
+    def internal_products(self):
+        """MNT + ortho construits dans Metashape : ils vivent dans le .files."""
+        return sum(self.parts.get(name, 0) for name in INTERNAL_PRODUCTS)
+
+    @property
+    def at_risk(self):
+        """Supprimer ce projet perd un MNT ou une ortho qu'on ne retrouve exporte nulle part a cote."""
+        return not self.orphan and self.internal_products > 0 and not self.kept.exports
 
     def folders(self, count=3):
         """Les `count` dossiers qui precedent le projet, du plus loin au plus proche."""
@@ -155,6 +189,59 @@ def _file_size(entry):
         return 0
 
 
+def _is_project_part(name):
+    lowered = name.lower()
+    return lowered.endswith((".psx", ".files")) or lowered in SKIP_DIRS
+
+
+def measure_kept(folder):
+    """Fichiers laisses a cote des projets dans `folder` (les .psx et .files des projets n'en font pas partie)."""
+    key = os.path.normcase(folder)
+    cached = _KEPT_CACHE.get(key)
+    if cached is not None:
+        return cached
+    kept = Kept()
+    found = []
+    seen = 0
+    stack = [(folder, "", 0)]
+    while stack and not kept.partial:
+        current, prefix, depth = stack.pop()
+        for entry in _scan(current):
+            seen += 1
+            if seen > KEPT_CAP:
+                kept.partial = True
+                break
+            name = entry.name
+            if _is_project_part(name):
+                continue
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    kept.dirs += 1
+                    if depth == 0:
+                        stack.append((entry.path, prefix + name + "/", 1))
+                    continue
+                size = entry.stat(follow_symlinks=False).st_size
+            except OSError:
+                continue
+            kept.files += 1
+            kept.size += size
+            found.append((size, prefix + name))
+            if os.path.splitext(name)[1].lower() in EXPORT_EXTS:
+                kept.exports = True
+    found.sort(reverse=True)
+    kept.biggest = found[:KEPT_SHOWN]
+    _KEPT_CACHE[key] = kept
+    return kept
+
+
+def delete_impact(projects):
+    """(fichiers gardes, octets gardes, projets a risque) si on supprime `projects`."""
+    kepts = {id(p.kept): p.kept for p in projects if not p.orphan}
+    files = sum(kept.files for kept in kepts.values())
+    size = sum(kept.size for kept in kepts.values())
+    return files, size, [p for p in projects if p.at_risk]
+
+
 def lock_state(files_dir):
     """FREE (pas de verrou), OPEN (ouvert dans un Metashape), STALE (verrou oublie apres un plantage).
 
@@ -187,6 +274,7 @@ def measure_project(psx_path):
                 times.append(os.path.getmtime(candidate))
         project.modified = max(times)
         project.lock = lock_state(project.files_dir)
+        project.kept = measure_kept(os.path.dirname(psx_path))
     except OSError as exc:
         project.error = repr(exc)
     return project
@@ -245,6 +333,7 @@ def scan(root, progress=None, cancelled=None):
     cancelled = cancelled or (lambda: False)
     progress = progress or (lambda done, total, text: None)
     started = time.time()
+    _KEPT_CACHE.clear()
     psx, orphans = find(root, cancelled, on_found=lambda path: progress(0, 0, path))
     jobs = [("psx", p) for p in psx] + [("orphan", d) for d in orphans]
     results = []

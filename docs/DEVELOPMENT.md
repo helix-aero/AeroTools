@@ -191,7 +191,11 @@ dense clouds (`chunk.point_clouds`) and the depth map sets (`chunk.depth_maps_se
 cameras and markers did not change). Measured on a copy: Metashape erases its own files on `save` (1967 MB to 1087 MB). So lightening is
 always permanent. Sending the folders to the bin first does not work: `chunk.remove` then raises `Can't open file dense_cloud.zip`
 and the project keeps ghost dense clouds. A possible later step: hard-link the folders and copy the small metadata zips to a
-side folder before the API call, then send that folder to the bin. `delete_project` can use the bin (`SHFileOperationW` with
+side folder before the API call, then send that folder to the bin. `delete_project` only ever removes the `.psx` and its `.files`, so exported files next to the project are never touched
+(`test_delete_keeps_every_file_next_to_the_project`). `scanner.measure_kept` counts those files for the **Kept** column (same
+folder plus one level of sub-folders, at most 5000 entries, cached per folder because several projects can share one),
+and `Project.at_risk` flags a project that holds a built DEM or ortho (`elevation`, `orthomosaic`) with no exported raster or
+cloud (`EXPORT_EXTS`) found there. `delete_project` can use the bin (`SHFileOperationW` with
 `FOF_ALLOWUNDO`; Windows asks itself when something is too big for the bin). `delete_project` removes the `.psx` first, then the
 `.files` folder (a failure leaves a visible orphan). Permanent deletion needs the typed word `DELETE`. `lighten` runs in the main
 thread (the API does not work elsewhere); scanning and deleting run in a worker. Actions are logged to

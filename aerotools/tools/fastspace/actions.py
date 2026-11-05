@@ -18,7 +18,8 @@ leve « Can't open file dense_cloud.zip », le projet garde des nuages denses fa
   3. les dossiers qui resteraient sont supprimes ;
   4. verification : le projet se rouvre, memes cameras et marqueurs, plus de dense ni de depth.
 
-Supprimer le projet (`delete_project`) retire le .psx et son dossier .files.
+Supprimer le projet (`delete_project`) retire le .psx et son dossier .files, et rien d'autre : les fichiers
+exportes a cote (ortho, MNT, nuages, rapports) ne sont pas touches.
 
 Jamais sur un projet ouvert (fichier `lock` tenu par un Metashape) ni sur celui qui est ouvert ici.
 Chaque action est ecrite dans un journal CSV (`<reglages>\\fastspace\\log.csv`).
@@ -325,7 +326,7 @@ def lighten(project, mode, progress=None):
 # --------------------------------------------------------------------------
 
 def delete_project(project, mode):
-    """Supprime le projet (.psx et .files), ou le dossier orphelin. Renvoie {ok, freed, in_bin, error}."""
+    """Supprime le projet (.psx et .files seulement), ou le dossier orphelin. Renvoie {ok, freed, in_bin, error}."""
     result = {"ok": False, "freed": 0, "in_bin": 0, "error": ""}
     reason = refusal(project)
     if reason:

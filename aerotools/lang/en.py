@@ -472,7 +472,7 @@ TEXTES = {
     "tool.fastspace.subtitle": "Free disk space: lighten or delete old projects",
     "space.title": "Fast Space",
     "space.close": "Close",
-    "space.intro": "Pick a drive and scan: the heaviest Metashape projects come first. \"Lighten\" removes the dense cloud and the depth maps (they can be recomputed) and keeps the alignment, markers, DEMs and orthos. \"Delete\" removes the whole project.",
+    "space.intro": "Pick a drive and scan: the heaviest Metashape projects come first. \"Lighten\" removes the dense cloud and the depth maps (they can be recomputed) and keeps the alignment, markers, DEMs and orthos. \"Delete project\" removes the .psx and its .files folder, never the files exported next to it (ortho, DEM, clouds, reports).",
     "space.folder": "Folder...",
     "space.pick_folder": "Folder to scan",
     "space.drive_item": "{drive}  ({free} free of {total})",
@@ -501,11 +501,11 @@ TEXTES = {
     "space.selection_none": "Nothing is selected.",
     "space.lighten": "Lighten (gentle)",
     "space.lighten_tip": "Removes the dense cloud and the depth maps, keeps everything else",
-    "space.delete": "Delete project (hard)",
-    "space.delete_tip": "Removes the whole project: the .psx and its .files folder",
+    "space.delete": "Delete project",
+    "space.delete_tip": "Removes the .psx and its .files folder. Files exported next to it (ortho, DEM, clouds, reports) are not touched",
     "space.open_log": "Action log",
     "space.confirm_lighten": "Lighten {n} project(s)?\n\nThe dense clouds and depth maps are removed: {size}. The alignment, markers, DEMs and orthos stay. Metashape opens and saves each project to keep it consistent, which can take a while. It is final: Metashape erases those files itself.\n\nNever do this on a project someone else is using.",
-    "space.confirm_delete": "Delete {n} whole project(s)?\n\nThe .psx file and its .files folder go away: {size}. The alignment, the markers, everything. Make sure the deliverables (orthos, clouds, reports) are saved elsewhere.",
+    "space.confirm_delete": "Delete {n} project(s)?\n\nThe .psx file and its .files folder are removed: {size}. The alignment, the markers, and any DEM or ortho that was not exported go with it.",
     "space.mode_recycle": "Send to the Recycle Bin (can be restored, the space is freed when you empty it)",
     "space.mode_recycle_na": "Recycle Bin not available here (network drive)",
     "space.mode_permanent": "Delete permanently (cannot be undone)",
@@ -521,4 +521,13 @@ TEXTES = {
 
     # -- Fast Space : allegement -------------------------------------------
     "space.mode_recycle_none": "Recycle Bin not possible when lightening: Metashape erases its own files when it saves",
+
+    # -- Fast Space : fichiers gardes --------------------------------------
+    "space.col_kept": "Kept",
+    "space.tip_kept": "{files} file(s) and {dirs} folder(s) next to the project stay in place ({size}).",
+    "space.tip_biggest": "Biggest: {names}",
+    "space.tip_kept_none": "Nothing else in the project folder.",
+    "space.tip_kept_risk": "Warning: DEM or ortho built in Metashape ({size}) and no exported file found next to it. They would go with the project.",
+    "space.confirm_delete_kept": "Next to the project, {files} file(s) ({size}) stay in place.",
+    "space.confirm_delete_risk": "Warning, DEM or ortho built in Metashape with no export found next to it for: {names} ({size}). They go with the project: export them first if you need them.",
 }
