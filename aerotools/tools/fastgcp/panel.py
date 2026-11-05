@@ -55,7 +55,8 @@ CONTROL_HEIGHT = 30
 RUN_WIDTH = 124
 RUN_HEIGHT = 40
 RUN_ICON = 14
-QC_WIDTH = 168
+QC_WIDTH = 140
+ADJUST_WIDTH = 96
 EXPORT_WIDTH = 112
 CANCEL_WIDTH = 84
 PROGRESS_HEIGHT = 22                  # barre de detection (texte dedans) et bouton Annuler a sa droite
@@ -1310,11 +1311,16 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD)
-        self.qc_button = self._tool_button("panel.qc", self._show_qc_menu)
+        self.qc_button = self._tool_button("panel.qc", self._open_qc)
         self.qc_button.setObjectName("aeroYes")
         self.qc_button.setFixedWidth(QC_WIDTH)
         self.qc_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         row.addWidget(self.qc_button, 0)
+        self.adjust_button = self._tool_button("panel.adjust", self._open_adjust)
+        self.adjust_button.setObjectName("aeroYes")
+        self.adjust_button.setFixedWidth(ADJUST_WIDTH)
+        self.adjust_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        row.addWidget(self.adjust_button, 0)
         row.addStretch(1)
 
         # Le statut (« 7/18 marques ») n'est plus affiche ; le widget reste pour les appelants existants.
@@ -2137,47 +2143,64 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 rows.append(self._row_data(chunk, marker, label))
         return rows
 
-    def _show_qc_menu(self, _checked=False):
-        """Menu des marqueurs a surveiller : residu eleve, puis moins de 3 photos."""
+    def _qc_data(self):
+        """Ce que montre la fenetre Residual check : tous les marqueurs, l'erreur de controle et de verification."""
+        rows = self._all_rows()
+        enabled = {row["label"]: msapi.marker_enabled(row["marker"]) for row in rows}
+        items = qc.table(rows, enabled)
+        return {"items": items, "groups": qc.group_rms(items), "limit": qc.residual_limit(rows)}
+
+    def _open_qc(self, _checked=False):
+        """Fenetre « Residual check » : tous les marqueurs et leur etat (voir qc_dialog.py)."""
         try:
-            rows = self._all_rows()
-            result = qc.watchlist(rows)
-            by_label = {row["label"]: row for row in rows}
-            menu = QtWidgets.QMenu(self)
-            if not result["residual"] and not result["few"]:
-                menu.addAction(i18n.t("qc.none")).setEnabled(False)
-            if result["residual"]:
-                title = i18n.t("qc.title_residual", limit=format_error(result["limit"]))
-                menu.addAction(title).setEnabled(False)
-                for item in result["residual"]:
-                    worst = msapi.worst_projection(by_label[item["label"]]["marker"])
-                    total = format_error(item["total"])
-                    if worst is None:
-                        text = i18n.t("qc.item_residual_plain", label=item["label"], total=total)
-                    else:
-                        text = i18n.t("qc.item_residual", label=item["label"], total=total,
-                                      px="{:.1f}".format(worst[1]))
-                    action = menu.addAction(text)
-                    action.triggered.connect(
-                        functools.partial(self._on_qc_pick, item["label"], True))
-            if result["few"]:
-                if result["residual"]:
-                    menu.addSeparator()
-                menu.addAction(i18n.t("qc.title_few", n=qc.MIN_PHOTOS)).setEnabled(False)
-                for item in result["few"]:
-                    action = menu.addAction(
-                        i18n.t("qc.item_few", label=item["label"], n=item["proj"]))
-                    action.triggered.connect(
-                        functools.partial(self._on_qc_pick, item["label"], False))
-            menu.addSeparator()
-            menu.addAction(i18n.t("diag.menu")).triggered.connect(self._open_diagnostic)
-            self._qc_menu = menu
-            size = menu.sizeHint()
-            button = self.qc_button
-            menu.popup(button.mapToGlobal(
-                QtCore.QPoint(0, -size.height() - theme.PAD_S)))
+            from . import qc_dialog
+            self._qc_dialog = qc_dialog.show(self, self._qc_data, self._on_qc_open, self._open_diagnostic,
+                                             getattr(self, "_qc_dialog", None))
         except Exception as exc:
             journal.write("FastGCP : controle des residus : {!r}".format(exc))
+
+    def _on_qc_open(self, item):
+        """Double-clic dans la fenetre : le marqueur, et sa pire photo quand c'est un residu eleve."""
+        self._on_qc_pick(item["label"], item["status"] == qc.RESIDUAL)
+
+    def _adjust_collect(self):
+        """Lecture des marqueurs pour « Ajuster » (fil principal) : points, cases cochees, PPK ou non."""
+        chk = msapi.chunk()
+        points, why = msapi.marker_frame_points(chk)
+        used, total = msapi.cameras_georeferenced(chk)
+        return {"points": points, "why": why, "ppk": bool(total) and used >= 0.5 * total,
+                "enabled": {p["label"]: bool(msapi.marker_enabled(p["marker"])) for p in points}}
+
+    def _adjust_apply(self, labels):
+        """Coche ces marqueurs comme points de controle et decoche les autres. Renvoie (nombre coche, erreur)."""
+        try:
+            chk = msapi.chunk()
+            points, why = msapi.marker_frame_points(chk)
+            if not points:
+                return 0, why
+            wanted, before = set(labels), []
+            count = 0
+            for point in points:
+                before.append("{}={}".format(point["label"], msapi.marker_enabled(point["marker"])))
+                on = point["label"] in wanted
+                if msapi.set_marker_enabled(point["marker"], on):
+                    count += 1 if on else 0
+            msapi.refresh()
+            journal.write("FastGCP : marqueurs de controle coches : {} (avant : {})".format(
+                ", ".join(sorted(wanted)), ", ".join(before)))
+            return count, ""
+        except Exception as exc:
+            journal.write("FastGCP : cocher les marqueurs de controle : {!r}".format(exc))
+            return 0, repr(exc)
+
+    def _open_adjust(self, _checked=False):
+        """Fenetre « Ajuster » : quels marqueurs cocher comme points de controle (voir gcp_select_dialog.py)."""
+        try:
+            from . import gcp_select_dialog
+            self._adjust_dialog = gcp_select_dialog.show(self, self._adjust_collect, self._adjust_apply,
+                                                         getattr(self, "_adjust_dialog", None))
+        except Exception as exc:
+            journal.write("FastGCP : ajustement des marqueurs de controle : {!r}".format(exc))
 
     def _open_diagnostic(self, _checked=False):
         """Fenetre du diagnostic complet du pointage (voir diagnostic.py)."""
