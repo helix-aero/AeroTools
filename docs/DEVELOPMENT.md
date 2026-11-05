@@ -201,6 +201,10 @@ Not done yet: geoid check and download, tiling, JPEG2000, DXF/DWG packaging, ECW
 (`<name>.files/<chunk>/<frame>/<part>[.N]/`: `dense_cloud`, `depth_maps`, `point_cloud` = tie points, `elevation`, `orthomosaic`...;
 a scan of 55 projects, 1.4 TB, takes about 1 s once the file system is cached). An open project is detected by its
 `.files/lock`: Metashape keeps it open, so opening it for writing fails (PermissionError); one we can open is a stale lock.
+The `orthomosaic[.N]` folder holds the orthophotos (`images*.zip`, the rectified photos: 510 GB of the 567 GB of orthomosaic data
+in 55 projects) next to the small mosaic tiles; the scanner counts them apart (`ortho_photos`), and `Orthomosaic.removeOrthophotos()`
+removes them (verified on a copy: 1.53 GB freed, mosaic and DEM intact, project re-opens). `lighten(project, mode, items=...)` takes any of
+`dense`, `depth`, `ortho`; the window's Lighten screen lets the user tick them and shows the space each one frees.
 `actions.py`: `lighten` goes through the Metashape API so the project stays consistent (`Document.open`, `chunk.remove` of the
 dense clouds (`chunk.point_clouds`) and the depth map sets (`chunk.depth_maps_sets`), `save`, then a read-only re-open that checks
 cameras and markers did not change). Measured on a copy: Metashape erases its own files on `save` (1967 MB to 1087 MB). So lightening is

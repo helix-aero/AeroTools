@@ -9,8 +9,10 @@ tout le reste :
                              elevation[.N]/ orthomosaic[.N]/ tiled_model[.N]/ model[.N]/ ...
     nom.files/lock                                   present quand le projet est ouvert
 
-Ce qui est lourd ET se recalcule : le nuage dense et les cartes de profondeur. C'est ce que
-l'allegement retire ; le reste (alignement, marqueurs, MNT, ortho) reste intact.
+Ce qui est lourd ET se recalcule : le nuage dense, les cartes de profondeur et les orthophotos (les images
+redressees `images*.zip` rangees dans le dossier `orthomosaic` : c'est la plus grosse part, la mosaique elle-meme
+ne pese presque rien). C'est ce que l'allegement peut retirer, au choix ; le reste (alignement, marqueurs, MNT,
+mosaique) reste intact.
 
 Supprimer un projet ne touche qu'au `.psx` et a son `.files`. Tout ce qui est a cote (ortho ou MNT exportes,
 nuages, rapports...) reste en place : `measure_kept` le compte pour pouvoir le dire avant de supprimer. En revanche
@@ -28,7 +30,13 @@ from concurrent.futures import ThreadPoolExecutor
 
 DENSE = "dense_cloud"
 DEPTH = "depth_maps"
-LIGHT_PARTS = (DENSE, DEPTH)
+ORTHO = "orthomosaic"
+ORTHO_PHOTOS = "ortho_photos"                              # composant virtuel : les images*.zip du dossier orthomosaic
+LIGHT_PARTS = (DENSE, DEPTH)                               # dossiers entiers retirables
+ITEMS = ("dense", "depth", "ortho")                        # ce que l'allegement peut retirer
+DEFAULT_ITEMS = ("dense", "depth")                         # coche d'office (les orthophotos : au choix)
+ITEM_PART = {"dense": DENSE, "depth": DEPTH, "ortho": ORTHO_PHOTOS}
+ORTHO_IMAGES = re.compile(r"^images\d+\.zip$", re.IGNORECASE)
 SKIP_DIRS = {"$recycle.bin", "system volume information", "windows", "program files", "program files (x86)",
              "programdata", "recovery", "$windows.~bt", "node_modules", ".git"}
 PART_NAME = re.compile(r"^(?P<name>[A-Za-z_]+?)(\.\d+)?$")
@@ -81,9 +89,16 @@ class Project(object):
         return self.parts.get(DEPTH, 0)
 
     @property
-    def light(self):
-        """Ce que l'allegement libere : nuage dense + cartes de profondeur."""
-        return self.dense + self.depth
+    def ortho_photos(self):
+        return self.parts.get(ORTHO_PHOTOS, 0)
+
+    def size_of(self, item):
+        """Octets d'un des ITEMS (dense, depth, ortho)."""
+        return self.parts.get(ITEM_PART[item], 0)
+
+    def removable(self, items=DEFAULT_ITEMS):
+        """Ce que l'allegement libere pour les ITEMS choisis."""
+        return sum(self.size_of(item) for item in items)
 
     @property
     def total(self):
@@ -139,6 +154,26 @@ def tree_size(path):
     return total
 
 
+def ortho_sizes(path):
+    """(octets des orthophotos images*.zip, octets du dossier en entier) d'un dossier `orthomosaic[.N]`."""
+    photos = total = 0
+    stack = [path]
+    while stack:
+        current = stack.pop()
+        for entry in _scan(current):
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    stack.append(entry.path)
+                    continue
+                size = entry.stat(follow_symlinks=False).st_size
+            except OSError:
+                continue
+            total += size
+            if current == path and ORTHO_IMAGES.match(entry.name):
+                photos += size
+    return photos, total
+
+
 def part_of(folder_name):
     """Nom du composant d'un dossier de frame : « depth_maps.1 » -> « depth_maps »."""
     match = PART_NAME.match(folder_name)
@@ -166,8 +201,14 @@ def measure_files(files_dir):
                 continue
             for item in _scan(frame.path):
                 if item.is_dir(follow_symlinks=False):
-                    size = tree_size(item.path)
                     name = part_of(item.name)
+                    if name == ORTHO:
+                        photos, size = ortho_sizes(item.path)
+                        parts[ORTHO_PHOTOS] = parts.get(ORTHO_PHOTOS, 0) + photos
+                        size -= photos
+                        total += photos
+                    else:
+                        size = tree_size(item.path)
                     parts[name] = parts.get(name, 0) + size
                 else:
                     size = _file_size(item)

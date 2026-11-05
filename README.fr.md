@@ -88,8 +88,8 @@ Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Met
 JPEG + fichier monde) et une taille de pixel en cm. Une taille tapée est exacte (3 cm font 3,000 cm, sur une grille de multiples
 de 3 cm) : l'ortho et le MNT se superposent pixel pour pixel.
 
-**Aero > FastSpace** scanne un disque à la recherche des anciens projets Metashape et libère de la place : les alléger (retirer le
-nuage dense et les cartes de profondeur) ou les supprimer, à la corbeille ou définitivement.
+**Aero > FastSpace** scanne un disque à la recherche des anciens projets Metashape et libère de la place : les alléger (tu choisis ce qu'on
+retire : nuages denses, cartes de profondeur, orthophotos, avec la place que chacun libère) ou les supprimer, à la corbeille ou définitivement.
 
 Plus tard, **Aero > Vérifier les mises à jour…** apporte la dernière version depuis GitHub (avec la liste des changements et leur
 poids). L'installeur demande quel moteur de détection vous voulez (léger, précis, ou les deux) et s'il faut ajouter les outils de

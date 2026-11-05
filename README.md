@@ -81,8 +81,8 @@ You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). One installer does everything: it adds the **Aero** menu to Metashape and sets up the AI detection (Python and a light detection engine, about 100 MB, a minute or two). A window shows "Please wait..." with the progress; do not close it.
 3. Restart Metashape. The **Aero** menu is there.
 
-**Aero > FastSpace** scans a drive for old Metashape projects and frees disk space: lighten them (remove the dense cloud and
-the depth maps) or delete them, to the Recycle Bin or for good.
+**Aero > FastSpace** scans a drive for old Metashape projects and frees disk space: lighten them (you choose what to
+remove: dense clouds, depth maps, orthophotos, with the space each one frees) or delete them, to the Recycle Bin or for good.
 
 **Aero > FastExport** exports the orthomosaic and/or the DEM to an `Outputs` folder next to the project, with short names
 (`SITE_260704_3cm_ortho.tif`, `SITE_260704_3cm_dtm.tif`). Pick a format (full quality GeoTIFF, compressed client quick view,

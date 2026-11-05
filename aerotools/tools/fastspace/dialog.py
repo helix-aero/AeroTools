@@ -27,12 +27,17 @@ from ...qt import QtCore, QtGui, QtWidgets
 from . import actions, scanner
 
 POLL_MS = 150
-WIDTH, HEIGHT = 1040, 680
+WIDTH, HEIGHT = 1500, 780
+SCREEN_MARGIN = 60                                         # la fenetre ne depasse jamais l'ecran
 ROLE_PROJECT = QtCore.Qt.UserRole
 ROLE_SORT = QtCore.Qt.UserRole + 1
 SECTION = "fastspace"
-COLUMNS = ("space.col_project", "space.col_folder", "space.col_light", "space.col_total", "space.col_kept",
-           "space.col_share", "space.col_modified", "space.col_state")
+COLUMNS = ("space.col_project", "space.col_folder", "space.col_dense", "space.col_depth", "space.col_ortho",
+           "space.col_total", "space.col_kept", "space.col_modified", "space.col_state")
+COLUMN_WIDTHS = (250, 210, 105, 105, 110, 110, 100, 90)    # la derniere colonne prend le reste
+COL_TOTAL = 5
+ITEM_TEXT = {"dense": ("space.item_dense", "space.hint_dense"), "depth": ("space.item_depth", "space.hint_depth"),
+             "ortho": ("space.item_ortho", "space.hint_ortho")}
 ELLIPSIS = "\u2026"
 CHECKBOX_ZONE = 30                                         # pixels depuis le bord gauche de la cellule : la case
 WARNING = "\u26a0"
@@ -80,6 +85,40 @@ class _Worker(threading.Thread):
         self.finished = True
 
 
+class _Option(QtWidgets.QFrame):
+    """Une option a choisir : une carte avec son bouton radio, cliquable partout, verte une fois choisie."""
+
+    def __init__(self, radio, danger=False, toggle=False, side=None, note=None):
+        super(_Option, self).__init__()
+        self.setObjectName("aeroOption")
+        self.setProperty("on", False)
+        self.setProperty("danger", bool(danger))
+        self.radio = radio
+        self.toggle = toggle                               # une case se coche et se decoche ; un rond ne fait que se cocher
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(4)
+        top = QtWidgets.QHBoxLayout()
+        top.addWidget(radio)
+        if side is not None:                               # texte a droite du bouton (la taille)
+            top.addStretch(1)
+            top.addWidget(side)
+        layout.addLayout(top)
+        if note is not None:                               # explication sous le bouton
+            layout.addWidget(note)
+        radio.toggled.connect(self.sync)
+
+    def sync(self, checked=None):
+        self.setProperty("on", bool(self.radio.isChecked() if checked is None else checked))
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def mousePressEvent(self, event):
+        if self.radio.isEnabled():
+            self.radio.setChecked(not self.radio.isChecked() if self.toggle else True)
+        super(_Option, self).mousePressEvent(event)
+
+
 class ForceDialog(QtWidgets.QDialog):
     """Ecran en plus avant de supprimer un projet qui semble ouvert ailleurs (fichier lock tenu)."""
 
@@ -104,18 +143,42 @@ class ForceDialog(QtWidgets.QDialog):
 class ConfirmDialog(QtWidgets.QDialog):
     """Choix du sort (corbeille ou definitif) ; le definitif demande de taper DELETE."""
 
-    def __init__(self, parent, text, recycle_ok, na_key="space.mode_recycle_na"):
+    def __init__(self, parent, text, recycle_ok, na_key="space.mode_recycle_na", choices=None):
+        """`choices` : [(cle, texte, explication, octets, projets, coche)] des cases a cocher (alleger : quoi retirer)."""
         super(ConfirmDialog, self).__init__(parent)
         self.setWindowTitle(i18n.t("space.title"))
         self.setModal(True)
-        self.setMinimumWidth(560)
+        self.setMinimumWidth(680 if choices else 560)
         self.mode = None
+        self.items = []                                     # cles des cases cochees a la validation
+        self._boxes = {}
+        self._sizes = {}
         root = ui.styled_root(self)
         layout = QtWidgets.QVBoxLayout(root)
+        self._layout = layout
         pad = theme.PAD_L
         layout.setContentsMargins(pad, pad, pad, pad)
         layout.setSpacing(theme.PAD)
         layout.addWidget(ui.label(text))
+        self.free = ui.label("", "aeroSection")
+        self._cards = []
+        for key, name, hint, size, count, checked in (choices or []):
+            box = QtWidgets.QCheckBox(name)
+            box.setChecked(bool(checked))
+            amount = ui.label(i18n.t("space.item_size", size=scanner.gb(size), n=count), "aeroSection", wrap=False)
+            note = ui.label(hint, "aeroMeta")
+            note.setContentsMargins(28, 0, 0, 0)               # sous le texte de la case, pas sous la case
+            card = _Option(box, toggle=True, side=amount, note=note)
+            card.sync()
+            box.setEnabled(size > 0)
+            if size <= 0:
+                box.setChecked(False)
+            self._boxes[key], self._sizes[key] = box, size
+            self._cards.append(card)
+            layout.addWidget(card)
+            box.toggled.connect(self._update)
+        if choices:
+            layout.addWidget(self.free)
         layout.addWidget(ui.label(i18n.t("space.choose"), "aeroSection"))
         self.recycle = QtWidgets.QRadioButton(i18n.t("space.mode_recycle" if recycle_ok else na_key))
         self.recycle.setEnabled(recycle_ok)
@@ -143,14 +206,42 @@ class ConfirmDialog(QtWidgets.QDialog):
             option.sync()
         self._update()
 
+    def showEvent(self, event):
+        super(ConfirmDialog, self).showEvent(event)
+        self._fit()
+
+    def _fit(self):
+        """Les textes qui passent a la ligne demandent plus de hauteur que ce que Qt prevoit : on la leur donne."""
+        grown = 0
+        for label in self.findChildren(QtWidgets.QLabel):
+            if label.wordWrap() and label.width() > 0:
+                need = label.heightForWidth(label.width())
+                if need > label.height():
+                    grown += need - label.height()
+                    label.setMinimumHeight(need)
+        if grown:
+            self.resize(self.width(), self.height() + grown)
+
+    def _chosen(self):
+        return [key for key, box in self._boxes.items() if box.isChecked()]
+
     def _update(self, *_args):
         permanent = self.permanent.isChecked()
         self.word.setEnabled(permanent)
         if not permanent:
             self.word.clear()
-        self.ok.setEnabled(self.recycle.isChecked() or (permanent and actions.confirmed(self.word.text())))
+        ready = self.recycle.isChecked() or (permanent and actions.confirmed(self.word.text()))
+        if self._boxes:
+            chosen = self._chosen()
+            self.free.setText(i18n.t("space.free_total", size=scanner.gb(sum(self._sizes[key] for key in chosen)))
+                              if chosen else i18n.t("space.pick_one"))
+            ready = ready and bool(chosen)
+        self.ok.setEnabled(ready)
 
     def _accept(self):
+        self.items = [key for key in scanner.ITEMS if key in self._chosen()]
+        if self._boxes and not self.items:
+            return
         if self.recycle.isChecked():
             self.mode = actions.RECYCLE
         elif self.permanent.isChecked() and actions.confirmed(self.word.text()):
@@ -183,7 +274,7 @@ class SpaceDialog(QtWidgets.QDialog):
         super(SpaceDialog, self).__init__(parent)
         self.setWindowTitle(i18n.t("space.title"))
         self.setModal(False)
-        self.resize(WIDTH, HEIGHT)
+        self.resize(*self._size())
         self.projects = []
         self._worker = None
         self._batch = None
@@ -242,8 +333,9 @@ class SpaceDialog(QtWidgets.QDialog):
             fg_1=theme.FG_1, fg_2=theme.FG_2, border=theme.BORDER_FAINT, soft=theme.GREEN_SOFT))
         header = self.table.horizontalHeader()
         header.setStretchLastSection(True)
-        for column, width in enumerate((220, 190, 140, 110, 90, 56, 90)):
+        for column, width in enumerate(COLUMN_WIDTHS):
             self.table.setColumnWidth(column, width)
+        self.table.horizontalHeaderItem(4).setToolTip(i18n.t("space.tip_col_ortho"))
         self.table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(self._on_context_menu)
         self.table.itemChanged.connect(self._on_changed)
@@ -271,6 +363,15 @@ class SpaceDialog(QtWidgets.QDialog):
         self._clock = ui.timer(self, POLL_MS, self._poll)
         self._fill_drives()
         self._refresh_buttons()
+
+    @staticmethod
+    def _size():
+        """Grande fenetre, mais jamais plus grande que l'ecran."""
+        try:
+            area = QtWidgets.QApplication.primaryScreen().availableGeometry()
+            return min(WIDTH, area.width() - SCREEN_MARGIN), min(HEIGHT, area.height() - SCREEN_MARGIN)
+        except Exception:
+            return WIDTH, HEIGHT
 
     # -- disque a scanner ----------------------------------------------------------
 
@@ -341,7 +442,8 @@ class SpaceDialog(QtWidgets.QDialog):
         self.status.setText(i18n.t(
             "space.scanned", n=len(self.projects) - orphans, orphans=orphans,
             total=scanner.gb(sum(p.total for p in self.projects)),
-            light=scanner.gb(sum(p.light for p in self.projects)), seconds="{:.0f}".format(result["seconds"])))
+            dense=scanner.gb(sum(p.dense for p in self.projects)), depth=scanner.gb(sum(p.depth for p in self.projects)),
+            ortho=scanner.gb(sum(p.ortho_photos for p in self.projects)), seconds="{:.0f}".format(result["seconds"])))
 
     # -- tableau --------------------------------------------------------------------
 
@@ -353,7 +455,7 @@ class SpaceDialog(QtWidgets.QDialog):
         for row, project in enumerate(self.projects):
             self._set_row(row, project, here)
         self.table.setSortingEnabled(True)
-        self.table.sortByColumn(3, QtCore.Qt.DescendingOrder)
+        self.table.sortByColumn(COL_TOTAL, QtCore.Qt.DescendingOrder)
         self.table.blockSignals(False)
         self._apply_filter()
         self._refresh_summary()
@@ -387,39 +489,35 @@ class SpaceDialog(QtWidgets.QDialog):
         folder.setToolTip(os.path.dirname(project.path))
         self.table.setItem(row, 1, folder)
 
-        light = _Item(scanner.gb(project.light))
-        light.setData(ROLE_SORT, project.light)
-        light.setToolTip(self._parts_text(project))
-        light.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        self.table.setItem(row, 2, light)
+        for column, item in ((2, "dense"), (3, "depth"), (4, "ortho")):
+            cell = _Item(scanner.gb(project.size_of(item)) if project.size_of(item) else "-")
+            cell.setData(ROLE_SORT, project.size_of(item))
+            cell.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            if column == 2:
+                cell.setToolTip(self._parts_text(project))
+            self.table.setItem(row, column, cell)
 
         total = _Item(scanner.gb(project.total))
         total.setData(ROLE_SORT, project.total)
         total.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        self.table.setItem(row, 3, total)
+        self.table.setItem(row, 5, total)
 
         kept = _Item(self._kept_text(project))
         kept.setData(ROLE_SORT, project.kept.size)
         kept.setToolTip(self._kept_tip(project))
         kept.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        self.table.setItem(row, 4, kept)
-
-        share = project.light / float(project.total) if project.total else 0.0
-        part = _Item("{:.0f} %".format(100 * share))
-        part.setData(ROLE_SORT, share)
-        part.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        self.table.setItem(row, 5, part)
+        self.table.setItem(row, 6, kept)
 
         stamp = time.strftime("%Y-%m-%d", time.localtime(project.modified)) if project.modified else ""
         modified = _Item(stamp)
         modified.setData(ROLE_SORT, project.modified)
-        self.table.setItem(row, 6, modified)
+        self.table.setItem(row, 7, modified)
 
         state = _Item(self._state_of(project, here))
         state.setData(ROLE_SORT, state.text())
         if project.lock_owner:
             state.setToolTip(i18n.t("space.tip_lock", owner=project.lock_owner))
-        self.table.setItem(row, 7, state)
+        self.table.setItem(row, 8, state)
 
     @staticmethod
     def _kept_text(project):
@@ -448,11 +546,12 @@ class SpaceDialog(QtWidgets.QDialog):
     @staticmethod
     def _parts_text(project):
         parts = project.parts
-        known = {"dense_cloud", "depth_maps", "point_cloud", "elevation", "orthomosaic"}
+        known = {"dense_cloud", "depth_maps", "point_cloud", "elevation", "orthomosaic", "ortho_photos"}
         other = sum(size for name, size in parts.items() if name not in known)
         return i18n.t("space.tip_parts", dense=scanner.gb(project.dense), depth=scanner.gb(project.depth),
-                      tie=scanner.gb(parts.get("point_cloud", 0)), dem=scanner.gb(parts.get("elevation", 0)),
-                      ortho=scanner.gb(parts.get("orthomosaic", 0)), other=scanner.gb(other))
+                      photos=scanner.gb(project.ortho_photos), tie=scanner.gb(parts.get("point_cloud", 0)),
+                      dem=scanner.gb(parts.get("elevation", 0)), ortho=scanner.gb(parts.get("orthomosaic", 0)),
+                      other=scanner.gb(other))
 
     def _project_at(self, row):
         item = self.table.item(row, 0)
@@ -536,7 +635,9 @@ class SpaceDialog(QtWidgets.QDialog):
             picked, key = self._highlighted(), "space.selection_rows"
         if picked:
             self.summary.setText(i18n.t(key, n=len(picked),
-                                        light=scanner.gb(sum(p.light for p in picked if not p.orphan)),
+                                        dense=scanner.gb(sum(p.dense for p in picked)),
+                                        depth=scanner.gb(sum(p.depth for p in picked)),
+                                        ortho=scanner.gb(sum(p.ortho_photos for p in picked)),
                                         total=scanner.gb(sum(p.total for p in picked))))
         else:
             self.summary.setText(i18n.t("space.selection_none"))
@@ -545,7 +646,8 @@ class SpaceDialog(QtWidgets.QDialog):
     def _refresh_buttons(self):
         picked = self._checked() if hasattr(self, "table") else []
         idle = not self._busy()
-        self.lighten_button.setEnabled(idle and any(not p.orphan and not actions.refusal(p) for p in picked))
+        self.lighten_button.setEnabled(idle and any(not p.orphan and not actions.refusal(p) and p.removable(scanner.ITEMS)
+                                                    for p in picked))
         self.delete_button.setEnabled(idle and bool(picked))
         self.close_button.setEnabled(self._batch is None)
 
@@ -599,12 +701,19 @@ class SpaceDialog(QtWidgets.QDialog):
         picked = [p for p in (self._checked() if projects is None else projects) if not p.orphan and not actions.refusal(p)]
         if not picked:
             return
-        text = i18n.t("space.confirm_lighten", n=len(picked), size=scanner.gb(sum(p.light for p in picked)))
+        text = i18n.t("space.confirm_lighten", n=len(picked))
         stale = [p for p in picked if p.lock == scanner.STALE]
         if stale:
             owners = ", ".join(sorted({p.lock_owner for p in stale if p.lock_owner})) or "?"
             text += "\n\n" + i18n.t("space.stale_note", n=len(stale), owners=owners)
-        self._confirm_and_run("lighten", picked, text)
+        saved = config.get(SECTION, "items")
+        wanted = [item for item in saved if item in scanner.ITEMS] if isinstance(saved, list) else list(scanner.DEFAULT_ITEMS)
+        choices = []
+        for item in scanner.ITEMS:
+            having = [p for p in picked if p.size_of(item)]
+            choices.append((item, i18n.t(ITEM_TEXT[item][0]), i18n.t(ITEM_TEXT[item][1]),
+                            sum(p.size_of(item) for p in picked), len(having), item in wanted))
+        self._confirm_and_run("lighten", picked, text, choices)
 
     def _on_delete(self, projects=None):
         picked = self._checked() if projects is None else list(projects)
@@ -629,18 +738,23 @@ class SpaceDialog(QtWidgets.QDialog):
                            size=scanner.gb(sum(p.internal_products for p in risky)))
         self._confirm_and_run("delete", picked, text)
 
-    def _confirm_and_run(self, kind, picked, text):
+    def _confirm_and_run(self, kind, picked, text, choices=None):
         if kind == "lighten":
             # Metashape efface lui-meme ses fichiers quand il enregistre : pas de corbeille possible.
-            dialog = ConfirmDialog(self, text, False, "space.mode_recycle_none")
+            dialog = ConfirmDialog(self, text, False, "space.mode_recycle_none", choices)
         else:
             dialog = ConfirmDialog(self, text, all(actions.recycle_available(p.path) for p in picked))
         ui.run(dialog)
         if dialog.mode is None:
             return
-        journal.write("Fast Space : {} de {} projet(s), mode {}".format(kind, len(picked), dialog.mode))
+        items = list(dialog.items)
+        if kind == "lighten":
+            config.put(SECTION, "items", items)
+        journal.write("Fast Space : {} de {} projet(s), mode {}{}".format(
+            kind, len(picked), dialog.mode, ", " + "+".join(items) if kind == "lighten" else ""))
         self._batch = {"kind": kind, "mode": dialog.mode, "todo": list(picked), "total": len(picked), "done": 0,
-                       "freed": 0, "bin": 0, "ok": 0, "failed": [], "thread": None, "current": None, "sizes": {}}
+                       "freed": 0, "bin": 0, "ok": 0, "failed": [], "thread": None, "current": None, "sizes": {},
+                       "items": items}
         self.bar.setRange(0, len(picked))
         self.bar.setValue(0)
         self.bar.setVisible(True)
@@ -662,7 +776,8 @@ class SpaceDialog(QtWidgets.QDialog):
         project = batch["todo"].pop(0)
         batch["current"] = project
         # Taille concernee AVANT l'action (l'allegement met le projet a jour) : c'est elle qu'on journalise.
-        batch["sizes"][id(project)] = project.light if batch["kind"] == "lighten" else project.total
+        batch["sizes"][id(project)] = (project.removable(batch["items"]) if batch["kind"] == "lighten"
+                                       else project.total)
         action = i18n.t("space.act_lighten" if batch["kind"] == "lighten" else "space.act_delete")
         self.status.setText(i18n.t("space.working", action=action, i=batch["done"] + 1, n=batch["total"],
                                    name=project.name))
@@ -671,7 +786,8 @@ class SpaceDialog(QtWidgets.QDialog):
             # L'API de Metashape ne travaille que dans le fil principal.
             QtWidgets.QApplication.processEvents()
             outcome = actions.lighten(project, batch["mode"],
-                                      progress=lambda text: QtWidgets.QApplication.processEvents())
+                                      progress=lambda text: QtWidgets.QApplication.processEvents(),
+                                      items=batch["items"])
             self._record(batch, project, outcome)
             batch["current"] = None
         else:
