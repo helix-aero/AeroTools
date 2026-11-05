@@ -188,9 +188,18 @@ def reload_all():
         print("[AeroTools] rechargement impossible : {!r}".format(exc))
         return False
     print("[AeroTools] code recharge depuis {}".format(here))
-    if last:
+    if last and module.reopens(last):
         return module.launch(last)
     return True
+
+
+def reopens(tool_id):
+    """True si « Recharger AeroTools » doit rouvrir cet outil (un panneau, pas une fenetre ponctuelle).
+
+    Le test se refait ici, au rechargement : un drapeau laisse par une ancienne version ne rouvre rien."""
+    from . import config
+    entry = config.tool(tool_id)
+    return bool(entry and entry.get("rouvrir", False))
 
 
 # --------------------------------------------------------------------------

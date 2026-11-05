@@ -105,6 +105,27 @@ class _Option(QtWidgets.QFrame):
         super(_Option, self).mousePressEvent(event)
 
 
+class ForceDialog(QtWidgets.QDialog):
+    """Ecran en plus avant de supprimer un projet qui semble ouvert ailleurs (fichier lock tenu)."""
+
+    def __init__(self, parent, text):
+        super(ForceDialog, self).__init__(parent)
+        self.setWindowTitle(i18n.t("space.title"))
+        self.setModal(True)
+        self.setMinimumWidth(560)
+        root = ui.styled_root(self)
+        layout = QtWidgets.QVBoxLayout(root)
+        pad = theme.PAD_L
+        layout.setContentsMargins(pad, pad, pad, pad)
+        layout.setSpacing(theme.PAD)
+        layout.addWidget(ui.label(text))
+        row = QtWidgets.QHBoxLayout()
+        row.addStretch(1)
+        row.addWidget(ui.button("space.force_confirm", self.accept, "aeroNo", width=170))
+        row.addWidget(ui.button("space.cancel", self.reject, width=110))
+        layout.addLayout(row)
+
+
 class ConfirmDialog(QtWidgets.QDialog):
     """Choix du sort (corbeille ou definitif) ; le definitif demande de taper DELETE."""
 
@@ -377,7 +398,7 @@ class SpaceDialog(QtWidgets.QDialog):
         name.setData(ROLE_PROJECT, project)
         name.setData(ROLE_SORT, project.name.lower())
         name.setToolTip(project.path)
-        locked = bool(actions.refusal(project))
+        locked = bool(actions.delete_refusal(project))
         flags = QtCore.Qt.ItemIsEnabled | QtCore.Qt.ItemIsSelectable
         if not locked:
             flags |= QtCore.Qt.ItemIsUserCheckable
@@ -421,6 +442,8 @@ class SpaceDialog(QtWidgets.QDialog):
 
         state = _Item(self._state_of(project, here))
         state.setData(ROLE_SORT, state.text())
+        if project.lock_owner:
+            state.setToolTip(i18n.t("space.tip_lock", owner=project.lock_owner))
         self.table.setItem(row, 7, state)
 
     @staticmethod
@@ -477,6 +500,8 @@ class SpaceDialog(QtWidgets.QDialog):
         for row in range(self.table.rowCount()):
             item = self.table.item(row, 0)
             if item is not None and not self.table.isRowHidden(row) and item.flags() & QtCore.Qt.ItemIsUserCheckable:
+                if value and item.data(ROLE_PROJECT).in_use:
+                    continue                    # un projet ouvert ailleurs ne se coche pas en bloc
                 item.setCheckState(QtCore.Qt.Checked if value else QtCore.Qt.Unchecked)
         self.table.blockSignals(False)
         self._refresh_summary()
@@ -545,7 +570,7 @@ class SpaceDialog(QtWidgets.QDialog):
     def _refresh_buttons(self):
         picked = self._checked() if hasattr(self, "table") else []
         idle = not self._busy()
-        self.lighten_button.setEnabled(idle and any(not p.orphan for p in picked))
+        self.lighten_button.setEnabled(idle and any(not p.orphan and not actions.refusal(p) for p in picked))
         self.delete_button.setEnabled(idle and bool(picked))
         self.close_button.setEnabled(self._batch is None)
 
@@ -572,8 +597,8 @@ class SpaceDialog(QtWidgets.QDialog):
         projects = self._highlighted()
         if not projects:
             return
-        usable = [p for p in projects if not actions.refusal(p)]
-        lightenable = [p for p in usable if not p.orphan]
+        usable = [p for p in projects if not actions.delete_refusal(p)]
+        lightenable = [p for p in projects if not p.orphan and not actions.refusal(p)]
         idle = not self._busy()
         menu = QtWidgets.QMenu(self.table)
         menu.setStyleSheet(theme.menu_stylesheet())
@@ -596,16 +621,29 @@ class SpaceDialog(QtWidgets.QDialog):
             journal.write("Fast Space : impossible d'ouvrir l'Explorateur sur {}".format(project.path))
 
     def _on_lighten(self, projects=None):
-        picked = [p for p in (self._checked() if projects is None else projects) if not p.orphan]
+        picked = [p for p in (self._checked() if projects is None else projects) if not p.orphan and not actions.refusal(p)]
         if not picked:
             return
         text = i18n.t("space.confirm_lighten", n=len(picked), size=scanner.gb(sum(p.light for p in picked)))
+        stale = [p for p in picked if p.lock == scanner.STALE]
+        if stale:
+            owners = ", ".join(sorted({p.lock_owner for p in stale if p.lock_owner})) or "?"
+            text += "\n\n" + i18n.t("space.stale_note", n=len(stale), owners=owners)
         self._confirm_and_run("lighten", picked, text)
 
     def _on_delete(self, projects=None):
         picked = self._checked() if projects is None else list(projects)
         if not picked:
             return
+        busy = [p for p in picked if p.in_use]
+        if busy:                                    # verrou tenu ailleurs : on ne continue que sur confirmation expresse
+            names = ", ".join(p.name for p in busy[:5]) + (ELLIPSIS if len(busy) > 5 else "")
+            owners = ", ".join(sorted({p.lock_owner for p in busy if p.lock_owner})) or "?"
+            force = ForceDialog(self, i18n.t("space.force_text", n=len(busy), names=names) + "\n\n"
+                                + i18n.t("space.force_owners", owners=owners))
+            ui.run(force)
+            if force.result() != QtWidgets.QDialog.Accepted:
+                return
         text = i18n.t("space.confirm_delete", n=len(picked), size=scanner.gb(sum(p.total for p in picked)))
         files, kept_size, risky = scanner.delete_impact(picked)
         if files:
@@ -663,7 +701,7 @@ class SpaceDialog(QtWidgets.QDialog):
             batch["current"] = None
         else:
             mode = batch["mode"]
-            worker = _Worker(lambda _w, p=project: actions.delete_project(p, mode))
+            worker = _Worker(lambda _w, p=project: actions.delete_project(p, mode, force=True))
             batch["thread"] = worker
             worker.start()
 

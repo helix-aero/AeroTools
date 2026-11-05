@@ -337,6 +337,53 @@ def test_lighten_refuses_open_projects_and_orphans(tmp_path, fake_metashape):
     assert "pas de .psx" in actions.lighten(orphan, actions.PERMANENT)["error"]
 
 
+def test_lighten_removes_an_old_lock_before_opening_the_project(tmp_path, fake_metashape):
+    project = scanner.measure_project(make_project(tmp_path, "stale", lock=True))
+    lock = os.path.join(project.files_dir, "lock")
+    assert project.lock == scanner.STALE and os.path.exists(lock)
+    steps = []
+    result = actions.lighten(project, actions.PERMANENT, progress=steps.append)
+    assert result["ok"], result
+    assert not os.path.exists(lock) and project.lock == scanner.FREE
+    assert steps[0] == "verrou perime" and fake_metashape["opened"][0][0] == "ro"
+
+
+def test_lighten_explains_a_read_only_failure_with_the_lock_owner(tmp_path, monkeypatch):
+    project = scanner.measure_project(make_project(tmp_path, "locked", lock=True))
+    project.lock, project.lock_owner = scanner.FREE, "OTHER-PC/HELIX"        # on saute le retrait du verrou
+
+    def read_only(path, read_only):
+        raise OSError("Document.save(): editing is disabled in read-only mode")
+
+    monkeypatch.setattr(actions, "_open", read_only)
+    error = actions.lighten(project, actions.PERMANENT)["error"]
+    assert "OTHER-PC/HELIX" in error and "editing is disabled" not in error
+
+
+def test_lock_owner_is_the_first_line_of_the_lock_file(tmp_path):
+    psx = make_project(tmp_path, "owned", lock=True)
+    files = os.path.splitext(psx)[0] + ".files"
+    with open(os.path.join(files, "lock"), "wb") as handle:
+        handle.write(b"DESKTOP-ABC/HELIX\nmore")
+    assert scanner.lock_owner(files) == "DESKTOP-ABC/HELIX"
+    assert scanner.measure_project(psx).lock_owner == "DESKTOP-ABC/HELIX"
+    assert scanner.lock_owner(str(tmp_path)) == ""
+
+
+def test_delete_can_bypass_an_open_lock_but_never_the_project_open_here(tmp_path, monkeypatch):
+    project = scanner.measure_project(make_project(tmp_path, "busy"))
+    project.lock = scanner.OPEN
+    assert actions.refusal(project) and actions.delete_refusal(project) == ""
+    assert not actions.delete_project(project, actions.PERMANENT)["ok"] and os.path.exists(project.path)
+    monkeypatch.setattr(actions, "current_document_path", lambda: project.path)
+    assert "ce Metashape" in actions.delete_refusal(project)
+    result = actions.delete_project(project, actions.PERMANENT, force=True)
+    assert not result["ok"] and os.path.exists(project.path)                 # ouvert ici : jamais
+    monkeypatch.setattr(actions, "current_document_path", lambda: "")
+    assert actions.delete_project(project, actions.PERMANENT, force=True)["ok"]
+    assert not os.path.exists(project.path)
+
+
 def test_check_snapshots():
     before = [{"label": "C", "cameras": 3, "markers": 2, "dense": 1, "depth": 1}]
     assert actions.check_snapshots(before, [{"label": "C", "cameras": 3, "markers": 2, "dense": 0, "depth": 0}]) is None

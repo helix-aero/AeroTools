@@ -111,6 +111,26 @@ def test_one_off_window_is_not_reopened_by_reload(boot, ms, monkeypatch):
     assert [entry["id"] for entry in config.TOOLS if not entry.get("rouvrir")] == ["fastspace"]
 
 
+def test_reopens_only_panels(boot):
+    assert boot.reopens("fastgcp") is True
+    assert boot.reopens("fastspace") is False
+    assert boot.reopens("nexiste-pas") is False
+
+
+def test_reload_ignores_a_stale_flag_left_by_an_old_version(boot, ms, monkeypatch):
+    launched = []
+    boot.root()
+    monkeypatch.setattr(boot, "purge_modules", lambda: None)
+    monkeypatch.setattr(importlib, "import_module", lambda name, *a, **k: boot)
+    monkeypatch.setattr(boot, "launch", lambda tool_id, reload=False: launched.append(tool_id))
+    setattr(builtins, "_AEROTOOLS_LAST_TOOL", "fastspace")           # ce que l'ancien code y laissait
+    assert boot.reload_all() is True
+    assert launched == []
+    setattr(builtins, "_AEROTOOLS_LAST_TOOL", "fastgcp")
+    boot.reload_all()
+    assert launched == ["fastgcp"]
+
+
 def test_reload_without_a_panel_opens_nothing(boot, ms, monkeypatch):
     launched = []
     monkeypatch.setattr(boot, "purge_modules", lambda: None)

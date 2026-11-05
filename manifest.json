@@ -1,5 +1,5 @@
 {
- "built": "2026-11-05T12:05:41",
+ "built": "2026-11-05T12:14:07",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -38,8 +38,8 @@
    "size": 2497
   },
   "aerotools/bootstrap.py": {
-   "sha256": "f107d3bc9dec2e3078dc0233bcb1c1e23f253f2fc4f76f5812799f0047f15c40",
-   "size": 7971
+   "sha256": "c5fb0350b8354768438a3474281fcb40e07f3ed5d53e333c9738b33ef2298499",
+   "size": 8347
   },
   "aerotools/config.py": {
    "sha256": "20cc15c86a277a8960040d2da186b52b5b5856f767b3fd4abe605f3c35f537d5",
@@ -58,12 +58,12 @@
    "size": 436
   },
   "aerotools/lang/en.py": {
-   "sha256": "0ee86620fb7dc7e8bfc7abb1f3572a450ccdf0d29507c559d5740a17a512a469",
-   "size": 32818
+   "sha256": "c457f1824d3c403eff4417a7a867d1ec98a2b36f9a66c462db9c36780ed149ed",
+   "size": 33696
   },
   "aerotools/lang/fr.py": {
-   "sha256": "530c8967614cb08d3ea150e5e8a1e7082f790b3a680f456c1b79bfded1f63ae3",
-   "size": 35712
+   "sha256": "86ccf1d850c4e53943b4fb23b1fb49c51a24568cccd9606c121133806a96da96",
+   "size": 36686
   },
   "aerotools/msapi.py": {
    "sha256": "6091fe51d47a8445a3df8c63c81c390b0946b0ec66f46017bd4317c6fb465bdd",
@@ -210,16 +210,16 @@
    "size": 419
   },
   "aerotools/tools/fastspace/actions.py": {
-   "sha256": "63089c1ad550f3fba11f705a41e60572f1bc2ab0ee23e93a67739b9c6dc7716a",
-   "size": 13970
+   "sha256": "482f2a9754f5e3bd7947cc5ee0e201ef772f2de0b21f60f5fde2ed3af4230610",
+   "size": 15144
   },
   "aerotools/tools/fastspace/dialog.py": {
-   "sha256": "9863a8f14e248a4520841c4b638a9fc1bec532de0ada04add7d9b1971ad0bf3b",
-   "size": 34081
+   "sha256": "800f75a477a0271afc9815802f34703aaeabcb245ad29f44a2a8bca7ee42d8f2",
+   "size": 36205
   },
   "aerotools/tools/fastspace/scanner.py": {
-   "sha256": "0587cf06cbbfeac0aa15a31dd1a2667fa61be053ff089db002b2b3f6cd1313e4",
-   "size": 13586
+   "sha256": "7016ae5727c0c681783ef4cdb5374ab28955baaa4d3d1535a6c8fd3224208b73",
+   "size": 14227
   },
   "aerotools/tools/fastspace/tool.py": {
    "sha256": "306e37f4714c016e89d4e69e41ba765838e01ad565958471385b2765dba4843c",
