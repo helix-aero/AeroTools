@@ -175,7 +175,8 @@ def match(frame, grid):
 
 
 def verticals_for(horizontal_epsg, lon=None, lat=None, max_size=None):
-    """Grilles d'altitude utilisables avec ce SCR a cet endroit : les plus locales d'abord (une grille nationale avant EGM).
+    """Grilles d'altitude utilisables avec ce SCR a cet endroit : les plus locales d'abord (une grille nationale avant EGM), a emprise
+    comparable la plus recente d'abord.
 
     Une grille d'un autre datum equivalent (RAC23, faite pour RGF93 v2b, avec un SCR RGF93 v1) n'est proposee que si aucune grille du
     datum exact ne donne la meme altitude (RAC09 donne deja NGF-IGN78) : on ne melange pas deux realisations quand le choix existe.
@@ -196,7 +197,7 @@ def verticals_for(horizontal_epsg, lon=None, lat=None, max_size=None):
             equivalent.append(grid)
     covered = set(item["vert_epsg"] for item in exact)
     out = exact + [item for item in equivalent if item["vert_epsg"] not in covered]
-    out.sort(key=lambda item: (area_of(item["bbox"]), [-n for n in item["added"]], item["id"]))
+    out.sort(key=lambda item: (round(math.log(max(area_of(item["bbox"]), 1e-6), 2)), [-n for n in item["added"]], item["id"]))
     return out
 
 

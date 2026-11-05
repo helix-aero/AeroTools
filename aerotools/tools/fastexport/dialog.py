@@ -496,7 +496,7 @@ class ExportDialog(QtWidgets.QDialog):
         self.vert_box.blockSignals(True)
         self.vert_box.clear()
         epsg = self.crs_box.currentData()
-        if epsg == SAME:
+        if epsg in (None, SAME):
             self.vert_box.addItem(i18n.t("export.vertical_same"), SAME)
             self.vert_box.setEnabled(False)
         else:

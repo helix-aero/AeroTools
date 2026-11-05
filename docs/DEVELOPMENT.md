@@ -208,18 +208,25 @@ registry and the usual folders, or pointed at by the user):
   means no DEM layer (a warning says so).
 - The native ortho export is cropped to the data (8148 x 8772 px on CITADELLE) and not to the orthomosaic box: the placement in the DXF is read from
   the GeoTIFF itself (`geotiff.py`). When the grid is imposed (other CRS, tiles) the native pixel is rounded to 0.1 mm.
-- Other coordinate systems and heights (`vertical.py`, `tiffio.py`, `crs.py`): Metashape only reprojects XY (`exportRaster` with a plain
-  `EPSG::n` target, heights come out ellipsoidal). The altitude is computed by AeroTools: `H = h - N`, N read from a PROJ-data GTG grid
-  kept in `%LOCALAPPDATA%\HELIX\AeroTools\Geoid` (nothing is read from Metashape's own folders), bilinear like PROJ, applied to the
-  DEM tile by tile and rewritten as Deflate GeoTIFF (georeferencing tags copied). Why not Metashape: measured on 2.2.1, it picks the
-  grid by datum name (RAC09 and RAC23 give the same value, 23 cm apart from the real RAC23 at one Corsican point), ignores RAC23 with an
-  RGF93 v2b system (heights stay ellipsoidal, no error) and refuses EGM96 with a French system.
-  Checks: our N equals PROJ 9.8 to 0.03 mm (RAC23, RAF20, EGM96) and equals Metashape's own RAC09 heights to 0.3 mm on CITADELLE;
-  each correction recomputes 5 random pixels without the lattice and aborts if they differ by more than 5 mm; grids are verified by
-  SHA-256 against the catalog (a different file is "outdated" and offered for re-download).
-  Pairing rule (`vertical.compatible_verticals`): RAF09 / RAC09 start from RGF93 v1 (Lambert-93, CC42-50, EPSG 4171), RAF20 / RAC23 from
-  RGF93 v2b (9794, 9842-9850); the height list only offers the grids that match the chosen XY system and cover the project; EGM96 and
-  the ellipsoid are always offered. GTG registration (PixelIsPoint, tie point = node) was measured against PROJ.
+- Coordinate systems and heights, worldwide (`projdb.py`, `projtool.py`, `vertical.py`, `tiffio.py`, `crs.py`; engine in `aerotools/vendor/proj`):
+  Metashape only reprojects XY (`exportRaster` to a plain `EPSG::n`, heights come out ellipsoidal in that system's frame). The altitude is
+  computed by PROJ 9.8.1 (embedded `cs2cs` + `cct`, MIT, copied from the QGIS 4.0.3 build; no pyproj, no dependency on Metashape's Python):
+  `H = h - N` with the grid imposed as `+inv +proj=vgridshift +multiplier=1`, applied to the DEM tile by tile (own TIFF reader/rewriter,
+  Deflate output, georeferencing tags copied). Our own bilinear reader recomputes the same lattice and the export stops if PROJ and our
+  reader differ by more than 1 cm; 5 random pixels are also recomputed without the lattice (5 mm).
+  Why PROJ imposed and not automatic: PROJ's automatic choice for RGF93 v1 in Corsica is RAC23, not RAC09 (23 cm on one point).
+  Why not Metashape: measured on 2.2.1, it picks the grid by datum name (RAC09 and RAC23 give the same value), ignores RAC23 with RGF93 v2b
+  (heights stay ellipsoidal, no error) and refuses EGM96 with a French system.
+  Catalogue: `proj.db` (EPSG, read-only through sqlite3) for the systems and their frames; `vendor/proj/data/files.geojson` (PROJ-data
+  index: url, size, SHA-256, extent, source and target CRS of the 160 vertical grids) for the heights; `grid_ops.json` = what `projinfo`
+  says about each grid (7 are depth surfaces: PROJ flips the vertical axis, never offered). Grids live in `%LOCALAPPDATA%/HELIX/AeroTools/Geoid`
+  (nothing is read from Metashape's folders), verified by SHA-256, downloaded from cdn.proj.org only.
+  Pairing (`projdb.verticals_for`): a grid is offered when its source frame is the datum of the chosen XY system, or an equivalent
+  geocentric modern realization (ETRS89, WGS 84, ITRF, RGF93, GDA2020, NAD83(2011)...) when no exact grid gives the same height system
+  (RAC09 stays with RGF93 v1, RAC23 with v2b). A system on a local datum (Bessel, Clarke, NTF, CH1903+...) only gets the ellipsoidal height:
+  subtracting an ETRS89 grid from Bessel heights would be wrong by metres (a 3D datum transformation through PROJ would lift that).
+  Checks: 111 grids under 1.5 MB downloaded and compared with PROJ: our reader differs by less than 0.001 mm; RAC09 matches Metashape's
+  own heights to 0.3 mm on CITADELLE; GTG registration (PixelIsPoint, tie point = node) measured against PROJ (0.03 mm).
 
 ## Aero-Space
 
