@@ -2,7 +2,7 @@
 
 Les images de ce dossier illustrent `docs/TUTORIAL.md`, `docs/TUTORIAL.fr.md` et les propositions de README.
 Huit viennent des captures Greenshot du 04/11/2026 (fenêtres « Review panel ») ; les originaux restent dans
-`Desktop\Screenshots_greenshot`, ici ce sont des copies. Cinq autres (panneau FastGCP, tableau, carte IA, Paramètres) ont été
+`Desktop\Screenshots_greenshot`, ici ce sont des copies. Cinq autres (panneau Aero-GCP, tableau, carte IA, Paramètres) ont été
 prises le 04/11/2026 directement dans Metashape ouvert, interface en anglais, sur le projet CITADELLE_Pompeani.
 
 ## Déjà là
@@ -17,7 +17,7 @@ prises le 04/11/2026 directement dans Metashape ouvert, interface en anglais, su
 | `review-panel-context-menu.png` | Menu du clic droit : Exclure, Remettre, Affiner… |
 | `review-panel-selected.png` | PS_2 : une vignette sélectionnée (contour vert, confiance 0,66), menu du clic droit ouvert, boutons Exclure et Affiner… actifs, Remettre grisé |
 | `review-panel-refined.png` | PS_11 à 400 % : première vignette affinée (croix verte, coche verte), les autres gardent la croix rouge ; 572 gardés, 1 affiné |
-| `panel-overview.png` | Le panneau FastGCP entier : en-tête, bouton Play/Pause avec « Tool active », carte AI DETECTION, marqueur actif PS_4, recherche, tableau, Residual check, Export, crédit helix.aero. Utilisée dans `README.proposition.md`, `README.proposition.fr.md` et les deux `TUTORIAL` |
+| `panel-overview.png` | Le panneau Aero-GCP entier : en-tête, bouton Play/Pause avec « Tool active », carte AI DETECTION, marqueur actif PS_4, recherche, tableau, Residual check, Export, crédit helix.aero. Utilisée dans `README.proposition.md`, `README.proposition.fr.md` et les deux `TUTORIAL` |
 | `marker-list.png` | Le tableau des marqueurs : colonnes ID, Error X/Y/Z et Proj., marqueur actif PS_4 surligné. Elle ne montre ni multi-sélection ni menu du clic droit. Utilisée dans les deux `TUTORIAL` |
 | `ai-card.png` | La carte AI DETECTION : Run (vert), Clear proposals et Review grisés, trois listes (Spray, All markers, Ignore green + blue). Utilisée dans les deux `TUTORIAL` |
 | `settings-window.png` | La fenêtre Settings : General (Open the review panel automatically, Save marker picks, Log) et AI models (dossier de stockage, Aero V1.0, Refine my model using my data). Elle laisse voir le chemin local `C:\Users\LTB1\AppData\Local\HELIX\AeroTools`. Utilisée dans les deux `TUTORIAL` |

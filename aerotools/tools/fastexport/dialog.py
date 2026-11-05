@@ -1,8 +1,15 @@
-"""Fenetre Fast Export (Qt) : on coche l'ortho et / ou le MNT, on choisit un format, on exporte.
+"""Fenetre Fast Export (Qt) : on coche l'ortho et / ou le MNT, on choisit les coordonnees et un format, on exporte.
 
 Les fichiers vont dans un dossier `Outputs` a cote du .psx, avec un nom court
-(`SITE_AAMMJJ_3cm_ortho.tif`, `SITE_AAMMJJ_3cm_mnt.tif`, `_dtm` si l'interface est en anglais). Un export refait
-le meme jour prend un numero de version (`_v2`) au lieu d'ecraser le precedent.
+(`SITE_AAMMJJ_3cm_ortho.tif`, `SITE_AAMMJJ_3cm_mnt.tif`, `_dtm` si l'interface est en anglais). Si l'export existe
+deja, la fenetre demande : ecraser ou faire une nouvelle version (`_v2`).
+
+Formats : GeoTIFF (3 reglages), JPEG 2000, ECW (Global Mapper), ou un dessin AutoCAD (TOPO.dxf / TOPO.dwg) qui pose les
+images (JPEG 2000 ou ECW) au bon endroit dans deux calques, ortho et MNT. Quand un logiciel manque (Global Mapper,
+AutoCAD, QGIS), la fenetre le dit, propose de designer le programme ou de l'acheter, et ne lance rien sans lui.
+
+Les coordonnees : le SCR du projet est affiche ; on peut exporter dans un autre SCR de la liste (catalogue officiel, rien a
+creer) avec son systeme d'altitude. Si la grille du geoide manque, la fenetre propose de la telecharger.
 
 L'export lui-meme passe par l'API de Metashape (msapi.export_raster), qui travaille dans le fil principal : la
 fenetre reste vivante grace a processEvents pendant les rappels de progression.
@@ -10,15 +17,20 @@ fenetre reste vivante grace a processEvents pendant les rappels de progression.
 
 import datetime
 import os
+import threading
 
 from ... import config, i18n, journal, msapi, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from . import naming, plan
+from . import crs, external, naming, pipeline, plan, tiling
 
 SECTION = "fastexport"
-WIDTH, HEIGHT = 760, 700
+WIDTH, HEIGHT = 840, 920
+SCREEN_MARGIN = 70
 KIND_TITLE = {plan.ORTHO: "export.ortho", plan.DEM: "export.dem"}
 CM = 100.0
+SAME = "same"
+NEW_VERSION, OVERWRITE = "new", "overwrite"
+TILE_CHOICES = 6
 
 
 def size_text(nbytes):
@@ -26,6 +38,46 @@ def size_text(nbytes):
         if nbytes >= step:
             return "{:.1f} {}".format(nbytes / step, unit)
     return "{:.0f} KB".format(nbytes / 1024.0)
+
+
+def combo(parent=None):
+    box = QtWidgets.QComboBox(parent)
+    box.setObjectName("aeroCombo")
+    box.setProperty("arrow", True)
+    box.setCursor(QtCore.Qt.PointingHandCursor)
+    box.setFocusPolicy(QtCore.Qt.NoFocus)
+    box.setMinimumHeight(36)
+    return box
+
+
+class ExistsDialog(QtWidgets.QDialog):
+    """« Ces fichiers existent deja » : ecraser, nouvelle version, ou annuler."""
+
+    def __init__(self, parent, count, next_version):
+        super(ExistsDialog, self).__init__(parent)
+        self.setWindowTitle(i18n.t("export.title"))
+        self.setModal(True)
+        self.setMinimumWidth(520)
+        self.choice = None
+        root = ui.dark_root(self)
+        layout = QtWidgets.QVBoxLayout(root)
+        pad = theme.PAD_L
+        layout.setContentsMargins(pad, pad, pad, pad)
+        layout.setSpacing(theme.PAD)
+        layout.addWidget(ui.label(i18n.t("export.exists", n=count)))
+        row = QtWidgets.QHBoxLayout()
+        row.setSpacing(theme.PAD)
+        row.addWidget(ui.big_button("export.overwrite", lambda: self._pick(OVERWRITE), "aeroBtn", width=150))
+        new = ui.big_button("export.newversion", lambda: self._pick(NEW_VERSION), "aeroGo", width=220)
+        new.setText(i18n.t("export.newversion", n=next_version))
+        row.addWidget(new)
+        row.addStretch(1)
+        row.addWidget(ui.big_button("export.cancel", self.reject, "aeroBtn", width=110))
+        layout.addLayout(row)
+
+    def _pick(self, choice):
+        self.choice = choice
+        self.accept()
 
 
 class ExportDialog(QtWidgets.QDialog):
@@ -38,11 +90,26 @@ class ExportDialog(QtWidgets.QDialog):
         self._native = {}
         self._jobs = []
         self._date = datetime.date.today()
+        self._missing = None                                # (outil, cle de texte) quand un logiciel manque
+        self._geoid_missing = None                          # id de la grille a telecharger
+        self._previous_preset = None
+        self.tools = {}
         self.setWindowTitle(i18n.t("export.title"))
         self.setModal(False)
-        self.resize(WIDTH, HEIGHT)
+        self.resize(*self._size())
         root = ui.dark_root(self)
-        layout = QtWidgets.QVBoxLayout(root)
+        outer = QtWidgets.QVBoxLayout(root)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QtWidgets.QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        outer.addWidget(scroll)
+        content = QtWidgets.QWidget()
+        scroll.setWidget(content)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        scroll.viewport().setAutoFillBackground(False)
+        content.setAutoFillBackground(False)
+        layout = QtWidgets.QVBoxLayout(content)
         pad = theme.PAD_L
         layout.setContentsMargins(pad, pad, pad, pad)
         layout.setSpacing(theme.PAD + theme.PAD_S)
@@ -68,15 +135,37 @@ class ExportDialog(QtWidgets.QDialog):
             layout.addWidget(card)
             self.cards[kind], self.fields[kind], self.native_labels[kind] = card, field, native
 
+        # -- coordonnees ----------------------------------------------------------------------
+        layout.addWidget(ui.label(i18n.t("export.crs_section"), "aeroSection"))
         self.crs = ui.label("", "aeroMeta")
         layout.addWidget(self.crs)
+        grid = QtWidgets.QGridLayout()
+        grid.setHorizontalSpacing(theme.PAD)
+        grid.setVerticalSpacing(theme.PAD_S)
+        grid.setColumnStretch(1, 1)
+        grid.addWidget(ui.label(i18n.t("export.crs_to"), "aeroMeta", wrap=False), 0, 0)
+        self.crs_box = combo()
+        self.crs_box.activated.connect(self._on_crs)
+        grid.addWidget(self.crs_box, 0, 1)
+        grid.addWidget(ui.label(i18n.t("export.vertical"), "aeroMeta", wrap=False), 1, 0)
+        self.vert_box = combo()
+        self.vert_box.activated.connect(self._on_vertical)
+        grid.addWidget(self.vert_box, 1, 1)
+        layout.addLayout(grid)
+        self.geoid_card = QtWidgets.QFrame()
+        self.geoid_card.setObjectName("aeroOption")
+        self.geoid_card.setProperty("danger", True)
+        geoid_row = QtWidgets.QHBoxLayout(self.geoid_card)
+        geoid_row.setContentsMargins(14, 10, 14, 10)
+        self.geoid_text = ui.label("")
+        geoid_row.addWidget(self.geoid_text, 1)
+        self.geoid_button = ui.button("export.geoid_download", self._download_geoid, "aeroRun", width=130)
+        geoid_row.addWidget(self.geoid_button)
+        layout.addWidget(self.geoid_card)
 
+        # -- format -----------------------------------------------------------------------------
         layout.addWidget(ui.label(i18n.t("export.preset"), "aeroSection"))
-        self.preset = QtWidgets.QComboBox()
-        self.preset.setObjectName("aeroCombo")
-        self.preset.setProperty("arrow", True)
-        self.preset.setCursor(QtCore.Qt.PointingHandCursor)
-        self.preset.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.preset = combo()
         self.preset.setMinimumHeight(40)
         for item in plan.PRESETS:
             self.preset.addItem(i18n.t(item["title"]), item["key"])
@@ -87,6 +176,57 @@ class ExportDialog(QtWidgets.QDialog):
         layout.addWidget(self.preset)
         self.preset_tip = ui.label("", "aeroMeta")
         layout.addWidget(self.preset_tip)
+
+        self.cad_box = QtWidgets.QWidget()
+        cad = QtWidgets.QGridLayout(self.cad_box)
+        cad.setContentsMargins(0, 0, 0, 0)
+        cad.setHorizontalSpacing(theme.PAD_L)
+        self.cad_format = self._radios(cad, 0, "export.cad_format", (("dxf", "export.cad_dxf"), ("dwg", "export.cad_dwg")),
+                                       config.get(SECTION, "cad_format") or "dxf")
+        self.cad_images = self._radios(cad, 1, "export.cad_images", (("jp2", "export.img_jp2"), ("ecw", "export.img_ecw")),
+                                       config.get(SECTION, "cad_images") or "jp2")
+        layout.addWidget(self.cad_box)
+
+        self.tool_card = QtWidgets.QFrame()
+        self.tool_card.setObjectName("aeroOption")
+        self.tool_card.setProperty("danger", True)
+        tool = QtWidgets.QVBoxLayout(self.tool_card)
+        tool.setContentsMargins(14, 12, 14, 12)
+        self.tool_text = ui.label("")
+        tool.addWidget(self.tool_text)
+        tool_row = QtWidgets.QHBoxLayout()
+        tool_row.setSpacing(theme.PAD)
+        self.tool_choose = ui.button("export.choose_exe", self._choose_tool, width=220)
+        tool_row.addWidget(self.tool_choose)
+        self.tool_buy = ui.button("export.buy_now", self._buy_tool, "aeroRun", width=170)
+        tool_row.addWidget(self.tool_buy)
+        tool_row.addStretch(1)
+        tool_row.addWidget(ui.button("export.cancel", self._cancel_tool, width=110))
+        tool.addLayout(tool_row)
+        layout.addWidget(self.tool_card)
+
+        # -- options avancees -------------------------------------------------------------------
+        self.adv_toggle = ui.button("export.advanced", lambda: self._set_advanced(not self.adv_box.isVisible()), width=200)
+        toggle_row = QtWidgets.QHBoxLayout()
+        toggle_row.addWidget(self.adv_toggle)
+        toggle_row.addStretch(1)
+        layout.addLayout(toggle_row)
+        self.adv_box = QtWidgets.QWidget()
+        adv = QtWidgets.QGridLayout(self.adv_box)
+        adv.setContentsMargins(0, 0, 0, 0)
+        adv.setHorizontalSpacing(theme.PAD)
+        self.tiles_check = QtWidgets.QCheckBox(i18n.t("export.tiles"))
+        self.tiles_check.toggled.connect(self._on_tiles)
+        adv.addWidget(self.tiles_check, 0, 0)
+        self.tile_box = combo()
+        self.tile_box.setMinimumWidth(140)
+        self.tile_box.activated.connect(self._refresh_names)
+        adv.addWidget(self.tile_box, 0, 1)
+        self.tile_info = ui.label("", "aeroMeta")
+        adv.addWidget(self.tile_info, 0, 2)
+        adv.setColumnStretch(2, 1)
+        layout.addWidget(self.adv_box)
+        self._set_advanced(False)
 
         layout.addWidget(ui.label(i18n.t("export.names"), "aeroSection"))
         row = QtWidgets.QHBoxLayout()
@@ -107,22 +247,24 @@ class ExportDialog(QtWidgets.QDialog):
         layout.addWidget(self.names)
         self.folder = ui.label("", "aeroMeta")
         layout.addWidget(self.folder)
-
         layout.addStretch(1)
+
+        bottom = QtWidgets.QWidget()
+        bottom_layout = QtWidgets.QVBoxLayout(bottom)
+        bottom_layout.setContentsMargins(pad, theme.PAD, pad, pad)
         self.bar = QtWidgets.QProgressBar()
         self.bar.setObjectName("aeroProgress")
         self.bar.setTextVisible(False)
         self.bar.setRange(0, 1000)
         self.bar.setVisible(False)
-        layout.addWidget(self.bar)
+        bottom_layout.addWidget(self.bar)
         line = QtWidgets.QHBoxLayout()
         line.setSpacing(theme.PAD_S)
         self.mark = ui.Mark()
         line.addWidget(self.mark, 0, QtCore.Qt.AlignTop)
         self.status = ui.label("")
         line.addWidget(self.status, 1)
-        layout.addLayout(line)
-
+        bottom_layout.addLayout(line)
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(theme.PAD)
         self.open_button = ui.big_button("export.open_folder", self._open_folder, width=170)
@@ -132,9 +274,43 @@ class ExportDialog(QtWidgets.QDialog):
         buttons.addWidget(self.go_button)
         self.close_button = ui.big_button("export.close", self.close, width=110)
         buttons.addWidget(self.close_button)
-        layout.addLayout(buttons)
+        bottom_layout.addLayout(buttons)
+        outer.addWidget(bottom)
 
         self.refresh()
+
+    @staticmethod
+    def _size():
+        try:
+            area = QtWidgets.QApplication.primaryScreen().availableGeometry()
+            return min(WIDTH, area.width() - SCREEN_MARGIN), min(HEIGHT, area.height() - SCREEN_MARGIN)
+        except Exception:
+            return WIDTH, HEIGHT
+
+    def _radios(self, grid, row, title_key, choices, saved):
+        """Une ligne de ronds (choix unique) : renvoie le groupe, dont chaque bouton porte sa valeur."""
+        group = QtWidgets.QButtonGroup(self)
+        holder = QtWidgets.QHBoxLayout()
+        holder.setSpacing(theme.PAD_L)
+        grid.addWidget(ui.label(i18n.t(title_key), "aeroMeta", wrap=False), row, 0)
+        for value, key in choices:
+            radio = QtWidgets.QRadioButton(i18n.t(key))
+            radio.setProperty("value", value)
+            radio.setCursor(QtCore.Qt.PointingHandCursor)
+            group.addButton(radio)
+            holder.addWidget(radio)
+            radio.setChecked(value == saved)
+            radio.toggled.connect(self._on_cad_choice)
+        if not group.checkedButton():
+            group.buttons()[0].setChecked(True)
+        holder.addStretch(1)
+        grid.addLayout(holder, row, 1)
+        return group
+
+    @staticmethod
+    def _value(group):
+        button = group.checkedButton()
+        return button.property("value") if button else None
 
     # -- lecture du projet ----------------------------------------------------------------
 
@@ -144,6 +320,7 @@ class ExportDialog(QtWidgets.QDialog):
             return
         self._info = msapi.raster_info()
         self._psx = msapi.document_path()
+        self._detect_tools()
         for kind in plan.KINDS:
             found = self._info.get(kind)
             card, field, native = self.cards[kind], self.fields[kind], self.native_labels[kind]
@@ -167,6 +344,7 @@ class ExportDialog(QtWidgets.QDialog):
             field.blockSignals(False)
             card.sync()
         self.crs.setText(i18n.t("export.crs", crs=self._info["crs"]) if self._info.get("crs") else "")
+        self._fill_crs()
         self.site.blockSignals(True)
         self.site.setText(naming.guess_site(self._psx) if self._psx else "")
         self.site.blockSignals(False)
@@ -178,10 +356,12 @@ class ExportDialog(QtWidgets.QDialog):
         self.status.setText("")
         self.mark.show_kind(None)
         self.bar.setVisible(False)
+        self._fill_tiles()
         self._refresh_names()
 
     @staticmethod
     def _cm_text(pixel_m):
+        """Taille de pixel en cm, sans zeros inutiles : 0.5 m -> « 50 », 0.0125 m -> « 1.25 »."""
         text = "{:.2f}".format(pixel_m * CM).rstrip("0").rstrip(".")
         return text or "0"
 
@@ -200,14 +380,217 @@ class ExportDialog(QtWidgets.QDialog):
             return self._native.get(kind, 0.0)
         return float(self.fields[kind].text().replace(",", ".").strip()) / CM
 
+    # -- logiciels externes ---------------------------------------------------------------
+
+    def _detect_tools(self):
+        self.tools = {"gm": external.find_global_mapper(config.get(SECTION, "path_gm") or ""),
+                      "acad": external.find_autocad(config.get(SECTION, "path_acad") or ""),
+                      "gdal": external.find_gdal(config.get(SECTION, "path_gdal") or "")}
+
+    def _requirement(self):
+        """(outil, cle de texte) du premier logiciel qui manque pour le format choisi, ou None."""
+        key = self.preset.currentData()
+        if key == "ecw" and not self.tools["gm"]:
+            return "gm", "export.need_ecw"
+        if key == plan.CAD:
+            if self._value(self.cad_images) == "ecw" and not self.tools["gm"]:
+                return "gm", "export.need_ecw"
+            if self._value(self.cad_images) == "jp2" and not (self.tools["gdal"] or self.tools["gm"]):
+                return "gdal", "export.need_jp2"
+            if self._value(self.cad_format) == "dwg" and not self.tools["acad"]:
+                return "acad", "export.need_dwg"
+        return None
+
+    def _check_tools(self):
+        missing = self._requirement()
+        self._missing = missing
+        self.tool_card.setVisible(bool(missing))
+        if missing:
+            tool, key = missing
+            self.tool_text.setText(i18n.t(key))
+            self.tool_buy.setText(i18n.t({"gm": "export.buy_gm", "acad": "export.buy_acad", "gdal": "export.get_qgis"}[tool]))
+        self._refresh_buttons()
+
+    def _choose_tool(self):
+        if not self._missing:
+            return
+        tool = self._missing[0]
+        filters = {"gm": "global_mapper.exe", "acad": "acad.exe accoreconsole.exe", "gdal": "gdal_translate.exe"}[tool]
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, i18n.t("export.choose_exe"), "",
+                                                        "{} ({})".format(filters.split()[0], filters))
+        if not path:
+            return
+        if tool == "gdal":
+            path = os.path.dirname(path)
+        config.put(SECTION, {"gm": "path_gm", "acad": "path_acad", "gdal": "path_gdal"}[tool], path)
+        self._detect_tools()
+        self._check_tools()
+        if self._missing and self._missing[0] == tool:
+            self.tool_text.setText(i18n.t("export.exe_invalid") + "\n\n" + i18n.t(self._missing[1]))
+
+    def _buy_tool(self):
+        if self._missing:
+            url = {"gm": external.GLOBAL_MAPPER_URL, "acad": external.AUTOCAD_URL, "gdal": external.QGIS_URL}[self._missing[0]]
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
+
+    def _cancel_tool(self):
+        """On renonce : retour au dernier format qui fonctionne."""
+        self.preset.setCurrentIndex(max(0, self.preset.findData("full")))
+        if self._value(self.cad_images) == "ecw" and not self.tools["gm"]:
+            self.cad_images.buttons()[0].setChecked(True)       # JPEG 2000
+        if self._value(self.cad_format) == "dwg" and not self.tools["acad"]:
+            self.cad_format.buttons()[0].setChecked(True)       # DXF
+        self._on_preset()
+
+    # -- coordonnees ----------------------------------------------------------------------
+
+    def _fill_crs(self):
+        center = self._info.get("center")
+        lon, lat = center if center else (None, None)
+        self.crs_box.blockSignals(True)
+        self.crs_box.clear()
+        self.crs_box.addItem(i18n.t("export.crs_same"), SAME)
+        for epsg, label in crs.crs_choices(lon, lat, self._lang):
+            self.crs_box.addItem("{}  (EPSG:{})".format(label, epsg), epsg)
+        self.crs_box.blockSignals(False)
+        self._fill_vertical()
+
+    def _fill_vertical(self):
+        center = self._info.get("center")
+        lon, lat = center if center else (None, None)
+        self.vert_box.blockSignals(True)
+        self.vert_box.clear()
+        if self.crs_box.currentData() == SAME:
+            self.vert_box.addItem(i18n.t("export.vertical_same"), SAME)
+            self.vert_box.setEnabled(False)
+        else:
+            for spec in crs.export_verticals(lon, lat):
+                self.vert_box.addItem(crs.label(spec, self._lang), spec["id"])
+            self.vert_box.setEnabled(not self._busy)
+        self.vert_box.blockSignals(False)
+        self._check_geoid()
+
+    def _on_crs(self, *_args):
+        self._fill_vertical()
+        self._refresh_names()
+
+    def _on_vertical(self, *_args):
+        self._check_geoid()
+        self._refresh_names()
+
+    def _check_geoid(self):
+        """Montre si la grille du geoide choisi est sur cette machine ; sinon propose de la telecharger."""
+        vertical = self.vert_box.currentData()
+        self._geoid_missing = None
+        self.geoid_card.setVisible(False)
+        if vertical in (None, SAME, "ellipsoid"):
+            self._refresh_buttons()
+            return
+        found = crs.check_geoid_presence(vertical)
+        if found["status"] == "missing":
+            spec = found["spec"]
+            self._geoid_missing = vertical
+            self.geoid_text.setText(i18n.t("export.geoid_missing", name=crs.label(spec, self._lang),
+                                           size=size_text(spec.get("size", 0))))
+            self.geoid_button.setEnabled(bool(spec.get("url")))
+            self.geoid_card.setVisible(True)
+        self._refresh_buttons()
+
+    def _download_geoid(self):
+        vertical = self._geoid_missing
+        if not vertical:
+            return
+        self.geoid_button.setEnabled(False)
+        self.geoid_text.setText(i18n.t("export.geoid_downloading"))
+        QtWidgets.QApplication.processEvents()
+        folder = crs.search_dirs()[0]
+        outcome = {}
+
+        def work():
+            try:
+                outcome["path"] = crs.download_geoid(vertical, folder)
+            except Exception as exc:
+                outcome["error"] = str(exc) or repr(exc)
+
+        thread = threading.Thread(target=work, daemon=True)
+        thread.start()
+        while thread.is_alive():
+            QtWidgets.QApplication.processEvents()
+            thread.join(0.1)
+        if "error" in outcome:
+            self.geoid_text.setText(i18n.t("export.geoid_failed", error=outcome["error"]))
+            self.geoid_button.setEnabled(True)
+            journal.write("Fast Export : geoide {} : {}".format(vertical, outcome["error"]))
+            return
+        journal.write("Fast Export : geoide telecharge : {}".format(outcome["path"]))
+        self._check_geoid()
+        self.status.setText(i18n.t("export.geoid_done", name=vertical))
+
+    def _target(self):
+        """(SCR de sortie ou None, texte d'erreur) d'apres les deux listes."""
+        epsg = self.crs_box.currentData()
+        if epsg in (None, SAME):
+            return None, ""
+        vertical = self.vert_box.currentData()
+        target = msapi.target_crs(int(epsg), crs.metashape_vertical(vertical) if vertical not in (None, "ellipsoid") else None)
+        if target is None:
+            return None, i18n.t("export.crs_refused")
+        return target, ""
+
+    # -- options avancees -----------------------------------------------------------------
+
+    def _set_advanced(self, shown):
+        self.adv_box.setVisible(shown)
+        self.adv_toggle.setText(("▾ " if shown else "▸ ") + i18n.t("export.advanced"))
+
+    def _fill_tiles(self):
+        """Tailles de dalle rondes, compatibles avec les pixels choisis, autour du tiers de la plus grande emprise."""
+        self.tile_box.blockSignals(True)
+        self.tile_box.clear()
+        pixels = [round(self._pixel(k), 4) for k in plan.KINDS if self.cards[k].button.isChecked() and self._pixel(k) > 0]
+        boxes = [self._info.get("box_" + k) for k in plan.KINDS if self._info.get("box_" + k)]
+        if pixels and boxes:
+            side = max(max(b[2] - b[0], b[3] - b[1]) for b in boxes)
+            try:
+                for meters in tiling.nice_tile_sizes(pixels, max(side / 3.0, 10.0), TILE_CHOICES):
+                    self.tile_box.addItem(i18n.t("export.tile_m", m=meters), float(meters))
+            except Exception:
+                pass
+        self.tile_box.blockSignals(False)
+        self.tiles_check.setEnabled(self.tile_box.count() > 0)
+        self.tile_box.setEnabled(self.tiles_check.isChecked() and self.tile_box.count() > 0)
+
+    def _on_tiles(self, *_args):
+        self.tile_box.setEnabled(self.tiles_check.isChecked() and self.tile_box.count() > 0)
+        self._refresh_names()
+
+    def _tile_m(self):
+        if self.tiles_check.isChecked() and self.tile_box.count():
+            return self.tile_box.currentData()
+        return None
+
     # -- noms -------------------------------------------------------------------------------
 
     def _on_preset(self, *_args):
         key = self.preset.currentData()
         self.preset_tip.setText(i18n.t(plan.preset(key)["tip"]))
         if self.sender() is self.preset:
+            self._previous_preset = config.get(SECTION, "preset")
             config.put(SECTION, "preset", key)
+        self.cad_box.setVisible(key == plan.CAD)
+        self._check_tools()
         self._refresh_names()
+
+    def _on_cad_choice(self, *_args):
+        if self._value(self.cad_format):
+            config.put(SECTION, "cad_format", self._value(self.cad_format))
+        if self._value(self.cad_images):
+            config.put(SECTION, "cad_images", self._value(self.cad_images))
+        self._check_tools()
+        self._refresh_names()
+
+    def _cad(self):
+        return {"format": self._value(self.cad_format) or "dxf", "images": self._value(self.cad_images) or "jp2"}
 
     def _wanted(self):
         return {kind: self._pixel(kind) for kind in plan.KINDS
@@ -215,6 +598,16 @@ class ExportDialog(QtWidgets.QDialog):
 
     def _folder(self):
         return naming.outputs_folder(self._psx) if self._psx else ""
+
+    def _plan(self, version=1):
+        """Liste des fichiers pour un numero de version (1 = noms de base ; None = premier numero libre)."""
+        wanted = self._wanted()
+        return plan.build_jobs(self.site.text().strip(), self._date, wanted, self.preset.currentData(), self._folder(),
+                               lang=self._lang, native={k for k in wanted if self._is_native(k)}, cad=self._cad(),
+                               version=version)
+
+    def _existing(self, jobs):
+        return [path for path in plan.planned_files(jobs, self.preset.currentData(), self._cad()) if os.path.exists(path)]
 
     def _refresh_names(self, *_args):
         for kind in plan.KINDS:
@@ -233,15 +626,25 @@ class ExportDialog(QtWidgets.QDialog):
             text = i18n.t("export.site_missing")
         else:
             try:
-                self._jobs = plan.build_jobs(site, self._date, wanted, self.preset.currentData(), folder,
-                                             lang=self._lang, native={k for k in wanted if self._is_native(k)})
-                lines = [job.name for job in self._jobs]
-                for job in self._jobs:
+                jobs = self._plan(1)
+                self._jobs = jobs
+                lines = []
+                key = self.preset.currentData()
+                if key == plan.CAD:
+                    lines.append(plan.cad_dxf_name(1, "dxf"))
+                    if self._cad()["format"] == "dwg":
+                        lines.append(plan.cad_dxf_name(1, "dwg"))
+                for job in jobs:
+                    lines.append(os.path.relpath(job.path, folder))
+                    if job.extra and job.extra.get("view_path"):
+                        lines.append(os.path.relpath(job.extra["view_path"], folder))
                     lines.extend(plan.aux_names(job.name, job.spec))
                 text = "\n".join(lines)
-                if self._jobs[0].version > 1:
-                    text += "\n" + i18n.t("export.version", n=self._jobs[0].version)
-                too_long = naming.check_path_length(folder, [job.name for job in self._jobs])
+                if self._tile_m():
+                    text += "\n" + i18n.t("export.tiles_note", m=int(self._tile_m()))
+                if self._existing(jobs):
+                    text += "\n" + i18n.t("export.exists_note", n=len(self._existing(jobs)))
+                too_long = naming.check_path_length(folder, [os.path.relpath(j.path, folder) for j in jobs])
                 if too_long:
                     self._jobs = []
                     text = i18n.t("export.too_long")
@@ -253,11 +656,13 @@ class ExportDialog(QtWidgets.QDialog):
         self._refresh_buttons()
 
     def _refresh_buttons(self):
-        self.go_button.setEnabled(bool(self._jobs) and not self._busy)
+        blocked = bool(self._missing) or bool(self._geoid_missing)
+        self.go_button.setEnabled(bool(self._jobs) and not self._busy and not blocked)
         self.close_button.setEnabled(not self._busy)
         self.open_button.setEnabled(bool(self._folder()) and os.path.isdir(self._folder()))
-        for widget in (self.preset, self.site):
+        for widget in (self.preset, self.site, self.crs_box):
             widget.setEnabled(not self._busy)
+        self.vert_box.setEnabled(not self._busy and self.crs_box.currentData() != SAME)
 
     # -- export -----------------------------------------------------------------------------
 
@@ -269,48 +674,75 @@ class ExportDialog(QtWidgets.QDialog):
             self._finish(i18n.t("export.no_chunk"), "error")
             return
         jobs = list(self._jobs)
+        if self._existing(jobs):                            # l'export existe deja : ecraser ou nouvelle version
+            try:
+                following = self._plan(None)[0].version
+            except ValueError:
+                following = 2
+            ask = ExistsDialog(self, len(self._existing(jobs)), following)
+            ui.run(ask)
+            if ask.choice is None:
+                return
+            if ask.choice == NEW_VERSION:
+                jobs = self._plan(None)
+        target, error = self._target()
+        if error:
+            self._finish(error, "error")
+            return
         try:
             os.makedirs(self._folder(), exist_ok=True)
         except OSError as exc:
             self._finish(i18n.t("export.failed", name=self._folder(), error=exc), "error")
             return
+        ctx = pipeline.Context(chunk, self._info, self._folder(), self.site.text().strip(), self._date, self.preset.currentData(),
+                               msapi.export_raster, tools=dict(self.tools), crs=target, tile_m=self._tile_m(), cad=self._cad(),
+                               lang=self._lang, snap=msapi.snapped_box, transform=msapi.transform_box,
+                               tick=QtWidgets.QApplication.processEvents)
         self._busy = True
         self.bar.setRange(0, 1000)
         self.bar.setValue(0)
         self.bar.setVisible(True)
         self.mark.show_kind(None)
         self._refresh_buttons()
-        total, written = len(jobs), 0
-        problem = ""
-        for index, job in enumerate(jobs):
-            self.status.setText(i18n.t("export.working", name=job.name, i=index + 1, n=total))
+
+        def progress(fraction, name):
+            self.bar.setValue(int(1000 * max(0.0, min(1.0, fraction))))
+            if name:
+                self.status.setText(i18n.t("export.working", name=name, i=1, n=len(jobs)))
             QtWidgets.QApplication.processEvents()
 
-            def progress(percent, index=index):
-                self.bar.setValue(int(1000 * (index + max(0.0, min(100.0, float(percent))) / 100.0) / total))
-                QtWidgets.QApplication.processEvents()
-
-            found = self._info.get(job.kind)
-            width, height = found[1], found[2]
-            big = plan.needs_bigtiff(width, height, 4 if job.kind == plan.ORTHO else 1,
-                                     1 if job.kind == plan.ORTHO else 4)
-            box = self._info.get("box_" + job.kind)
-            ok, error = msapi.export_raster(chunk, job.kind, job.spec, job.path,
-                                            None if job.native else job.pixel_m, box, big=big, progress=progress)
-            if ok and not os.path.isfile(job.path):
-                ok, error = False, i18n.t("export.missing")
-            if not ok:
-                problem = i18n.t("export.failed", name=job.name, error=error)
-                journal.write("Fast Export : {} : {}".format(job.path, error))
-                break
-            written += os.path.getsize(job.path)
-            journal.write("Fast Export : {}".format(job.path))
+        problem, result = "", None
+        try:
+            result = pipeline.run(ctx, jobs, progress)
+        except pipeline.Failure as exc:
+            problem = i18n.t("export.failed", name=jobs[0].name, error=exc)
+            journal.write("Fast Export : {}".format(exc))
+        except Exception as exc:
+            problem = i18n.t("export.failed", name=jobs[0].name, error=repr(exc))
+            journal.write("Fast Export : {!r}".format(exc))
         self._busy = False
         if problem:
             self._finish(problem, "error")
-        else:
-            self._finish(i18n.t("export.done", n=total, size=size_text(written)), "ok")
-            self._refresh_names()               # le numero de version suivant se met a jour
+            return
+        for path, _size in result.files:
+            journal.write("Fast Export : {}".format(path))
+        written = sum(size for _path, size in result.files)
+        text = i18n.t("export.done", n=len(result.files), size=size_text(written))
+        text += self._cad_report(result)
+        self._finish(text, "ok" if not result.warnings and not (result.check and result.check["failed"]) else "error")
+        self._refresh_names()                           # le numero de version suivant se met a jour
+
+    @staticmethod
+    def _cad_report(result):
+        lines = []
+        if result.check is not None:
+            if result.check["failed"]:
+                lines.append(i18n.t("export.check_bad", names=", ".join(result.check["failed"])))
+            elif result.check["images"]:
+                lines.append(i18n.t("export.check_ok", n=result.check["images"]))
+        if "dem_image" in result.warnings:
+            lines.append(i18n.t("export.warn_dem_image"))
+        return ("\n" + "\n".join(lines)) if lines else ""
 
     def _finish(self, text, kind):
         self.bar.setVisible(False)

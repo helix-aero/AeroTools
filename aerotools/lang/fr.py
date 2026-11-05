@@ -35,7 +35,7 @@ TEXTES = {
     ),
     "tool.fastgcp.subtitle": "Pointage GCP, à la main ou par IA",
     "tool.no_window": (
-        "FastGCP a besoin de l'interface de Metashape : "
+        "Aero-GCP a besoin de l'interface de Metashape : "
         "la fenetre principale n'a pas ete trouvee."
     ),
     "tool.chunk_unnamed": "sans nom",
@@ -228,11 +228,11 @@ TEXTES = {
     "report.ai.info_gcp_no": "Point de contrôle, non utilisé comme GCP",
     "report.ai.info_accuracy": "précision de référence {acc} m",
     "report.shots.title": "Captures",
-    "report.shots.sub": "Vue photo, panneau FastGCP",
+    "report.shots.sub": "Vue photo, panneau Aero-GCP",
     "report.shots.sub_crops": (
         "Vue photo, vignettes des marqueurs les plus écartés "
         "(cercle vert : point posé, croix orange : position estimée), "
-        "panneau FastGCP"
+        "panneau Aero-GCP"
     ),
     "report.shots.photo": "Vue photo",
     "report.shots.photo_cam": "Vue photo {camera}",
@@ -240,7 +240,7 @@ TEXTES = {
     "report.shots.fallback": "{camera} · marqueur {marker}",
     "report.shots.crop_error": "{label} · erreur {value}",
     "report.shots.crop_gap": "{camera} · écart image {gap} px",
-    "report.shots.panel": "Panneau FastGCP",
+    "report.shots.panel": "Panneau Aero-GCP",
     "report.footer.page": "Page {page} / {total}",
     "report.doc_title": "Rapport de pointage GCP {chunk}",
 
@@ -290,7 +290,7 @@ TEXTES = {
     "panel.remove_markers": "Supprimer les marqueurs ({n})",
     "panel.remove_title": "Suppression",
     "panel.remove_projections_confirm": "Supprimer toutes les projections de {n} marqueur(s) : {names} ? Les marqueurs restent dans le projet.",
-    "panel.remove_markers_confirm": "Supprimer {n} marqueur(s) du projet : {names} ? FastGCP ne pourra pas les rétablir.",
+    "panel.remove_markers_confirm": "Supprimer {n} marqueur(s) du projet : {names} ? Aero-GCP ne pourra pas les rétablir.",
     "panel.removed_projections": "{n} projection(s) supprimée(s) sur {k} marqueur(s)",
     "panel.removed_markers": "{n} marqueur(s) supprimé(s)",
     "panel.credit": "Outil créé par {site}",
@@ -451,9 +451,9 @@ TEXTES = {
     "diag.close": "Fermer",
     "review.weakest": "Détection la plus faible : {conf} %",
 
-    # -- Fast Space --------------------------------------------------------
+    # -- Aero-Space --------------------------------------------------------
     "tool.fastspace.subtitle": "Libérer de la place : alléger ou supprimer les anciens projets",
-    "space.title": "Fast Space",
+    "space.title": "Aero-Space",
     "space.close": "Fermer",
     "space.intro": "Choisis un disque et lance le scan : les projets Metashape les plus lourds arrivent en premier, avec ce qui pèse dedans. « Alléger » te laisse choisir ce qu'on retire (nuages denses, cartes de profondeur, orthophotos : tout se recalcule) et garde l'alignement, les marqueurs, les MNT et les mosaïques. « Supprimer le projet » retire le .psx et son dossier .files, jamais les fichiers exportés à côté (ortho, MNT, nuages, rapports).",
     "space.folder": "Dossier…",
@@ -500,10 +500,10 @@ TEXTES = {
     "space.failed_title": "Des projets n'ont pas été traités",
     "space.failed_line": "{name} : {error}",
 
-    # -- Fast Space : allegement -------------------------------------------
+    # -- Aero-Space : allegement -------------------------------------------
     "space.mode_recycle_none": "Corbeille impossible pour l'allègement : Metashape efface lui-même ses fichiers en enregistrant",
 
-    # -- Fast Space : fichiers gardes --------------------------------------
+    # -- Aero-Space : fichiers gardes --------------------------------------
     "space.col_kept": "Gardés",
     "space.tip_kept": "{files} fichier(s) et {dirs} dossier(s) à côté du projet restent en place ({size}).",
     "space.tip_biggest": "Les plus gros : {names}",
@@ -512,7 +512,7 @@ TEXTES = {
     "space.confirm_delete_kept": "À côté du projet, {files} fichier(s) ({size}) restent en place.",
     "space.confirm_delete_risk": "Attention, MNT ou ortho construits dans Metashape sans export trouvé à côté pour : {names} ({size}). Ils partent avec le projet : exporte-les d'abord si tu en as besoin.",
 
-    # -- Fast Space : somme de la selection --------------------------------
+    # -- Aero-Space : somme de la selection --------------------------------
     "space.selection_rows": "{n} projet(s) surlignés (pas cochés) - dense {dense}, profondeur {depth}, orthophotos {ortho} - projets entiers {total}",
 
     # -- Parametres : sections ---------------------------------------------
@@ -588,7 +588,7 @@ TEXTES = {
     # -- Ajuster : infobulle -----------------------------------------------
     "gcp.col_xyz_tip": "RMSE 3D, mesuré sur les marqueurs CTRL (non cochés)",
 
-    # -- Fast Space : options visibles et clic droit -----------------------
+    # -- Aero-Space : options visibles et clic droit -----------------------
     "space.choose": "Choisis une option",
     "space.menu_lighten": "Alléger",
     "space.menu_lighten_n": "Alléger {n} projets",
@@ -596,7 +596,7 @@ TEXTES = {
     "space.menu_delete_n": "Supprimer {n} projets",
     "space.menu_reveal": "Afficher dans l'Explorateur",
 
-    # -- Fast Space : verrous ----------------------------------------------
+    # -- Aero-Space : verrous ----------------------------------------------
     "space.force_text": "{n} projet(s) semblent ouverts dans un autre Metashape : {names}\n\nUn fichier lock dit que quelqu'un y travaille. Les supprimer quand même peut détruire ce travail.\n\nSi Metashape a planté et laissé le verrou derrière lui, tu peux continuer.",
     "space.force_owners": "Verrou écrit par : {owners}",
     "space.force_confirm": "Confirmer la suppression",
@@ -605,9 +605,9 @@ TEXTES = {
     "space.err_lock_remove": "Impossible de retirer l'ancien fichier lock : {error}",
     "space.tip_lock": "Verrou écrit par {owner}",
 
-    # -- Fast Export -------------------------------------------------------
+    # -- Aero-Exports -------------------------------------------------------
     "tool.fastexport.subtitle": "Exporter l'ortho et le MNT dans un dossier Outputs, avec des noms courts",
-    "export.title": "Fast Export",
+    "export.title": "Aero-Exports",
     "export.ortho": "Ortho",
     "export.dem": "MNT",
     "export.native": "Natif : {size}",
@@ -641,9 +641,9 @@ TEXTES = {
     "export.missing": "le fichier n'a pas été écrit",
     "export.no_chunk": "Ouvre un projet d'abord.",
 
-    # -- Fast Export : SCR -------------------------------------------------
+    # -- Aero-Exports : SCR -------------------------------------------------
     "export.crs": "Système de coordonnées : {crs}",
-    # -- Fast Space : choix de ce qu'on retire ------------------------
+    # -- Aero-Space : choix de ce qu'on retire ------------------------
     "space.col_dense": "Nuage dense",
     "space.col_depth": "Profondeur",
     "space.col_ortho": "Orthophotos",
@@ -657,4 +657,50 @@ TEXTES = {
     "space.item_size": "{size} dans {n} projet(s)",
     "space.free_total": "Place libérée : {size}",
     "space.pick_one": "Coche au moins une ligne.",
+
+    # -- Aero-Exports : coordonnees, formats, logiciels externes ------------
+    "export.preset_jp2": "JPEG 2000 (léger et net)",
+    "export.preset_jp2_tip": "Même classe de qualité que l'ECW à poids voisin. Écrit avec QGIS (OpenJPEG) ou Global Mapper.",
+    "export.preset_ecw": "ECW (demande Global Mapper)",
+    "export.preset_ecw_tip": "Le format habituel des géomètres. Écrit par Global Mapper.",
+    "export.preset_cad": "Dessin AutoCAD : DXF ou DWG",
+    "export.preset_cad_tip": "TOPO.dxf avec l'ortho et le MNT dans deux calques. Les images sont dans 00_Assets, liées en chemins relatifs.",
+    "export.crs_section": "Coordonnées",
+    "export.crs_to": "Exporter en",
+    "export.crs_same": "Comme le projet",
+    "export.vertical": "Altitudes",
+    "export.vertical_same": "Comme le projet",
+    "export.geoid_missing": "La grille de {name} n'est pas sur cet ordinateur ({size} à télécharger). Metashape en a besoin pour convertir les altitudes.",
+    "export.geoid_download": "Télécharger",
+    "export.geoid_downloading": "Téléchargement...",
+    "export.geoid_failed": "Téléchargement impossible : {error}",
+    "export.geoid_done": "{name} installé. Si l'export ne l'utilise pas, redémarre Metashape.",
+    "export.crs_refused": "Metashape refuse ce système de coordonnées.",
+    "export.advanced": "Options avancées",
+    "export.tiles": "Découper en dalles",
+    "export.tile_m": "{m} m",
+    "export.tiles_note": "Découpé en dalles de {m} m : un fichier par dalle, les dalles vides sont sautées.",
+    "export.cad_format": "Fichier",
+    "export.cad_dxf": "DXF",
+    "export.cad_dwg": "DWG",
+    "export.cad_images": "Images",
+    "export.img_jp2": "JPEG 2000",
+    "export.img_ecw": "ECW",
+    "export.need_ecw": "Pour exporter en ECW, Global Mapper doit être installé. Il n'a pas été trouvé sur cet ordinateur. Vous l'avez ? Indiquez où il se trouve. Sinon, achetez-le, ou choisissez JPEG 2000.",
+    "export.need_dwg": "Pour exporter en DWG, AutoCAD doit être installé. Il n'a pas été trouvé sur cet ordinateur. Vous l'avez ? Indiquez où il se trouve. Sinon, achetez-le, ou restez en DXF.",
+    "export.need_jp2": "Pour écrire des images JPEG 2000, QGIS (gratuit) ou Global Mapper doit être installé. Aucun des deux n'a été trouvé.",
+    "export.choose_exe": "Je l'ai : choisir le programme...",
+    "export.exe_invalid": "Ce n'est pas le bon programme.",
+    "export.buy_now": "Acheter",
+    "export.buy_gm": "Acheter Global Mapper",
+    "export.buy_acad": "Acheter AutoCAD",
+    "export.get_qgis": "Obtenir QGIS (gratuit)",
+    "export.cancel": "Annuler",
+    "export.exists": "{n} fichier(s) de cet export existent déjà dans le dossier Outputs.",
+    "export.overwrite": "Écraser",
+    "export.newversion": "Faire une nouvelle version (_v{n})",
+    "export.exists_note": "{n} fichier(s) existent déjà : on vous le demandera.",
+    "export.check_ok": "AutoCAD a ouvert le dessin : {n} image(s) se chargent bien.",
+    "export.check_bad": "AutoCAD n'a pas pu charger : {names}",
+    "export.warn_dem_image": "Pas d'image du MNT dans le dessin : il faut QGIS (GDAL). Le GeoTIFF du MNT est écrit.",
 }

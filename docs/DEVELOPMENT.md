@@ -96,7 +96,7 @@ To add a language (Spanish, say):
 
 ## Training data
 
-When the "AI Training" switch is on, FastGCP appends one line per click (image path, clicked position, image size, marker)
+When the "AI Training" switch is on, Aero-GCP appends one line per click (image path, clicked position, image size, marker)
 to a file in a visible folder. No image is copied. The file format is documented in `aerotools/tools/fastgcp/dataset.py`.
 
 ## AI detection (AIGCP)
@@ -180,7 +180,7 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
   on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and 40 px): 98 to 100 % within 3 px.
   The guard is covered by tests but not measured on real roof false positives yet.
 
-## Fast Export
+## Aero-Exports
 
 `aerotools/tools/fastexport/`: `naming.py` (short names, `Outputs` folder, versions; ported from the research prototype,
 31 tests), `plan.py` (presets and the list of files to write, pure), `dialog.py` (the window), `tool.py`. The Metashape side is
@@ -195,7 +195,7 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
 Not done yet: geoid check and download, tiling, JPEG2000, DXF/DWG packaging, ECW. The research prototypes for those are in
 `FAST_RECHERCHE/fast_export/proto` (`crs_catalog.py`, `tiling.py`, `export_post.py`, `dxf_ref.py`).
 
-## Fast Space
+## Aero-Space
 
 `aerotools/tools/fastspace/`: `scanner.py` (no Qt, no Metashape) finds `.psx` and orphan `.files` folders and measures them
 (`<name>.files/<chunk>/<frame>/<part>[.N]/`: `dense_cloud`, `depth_maps`, `point_cloud` = tie points, `elevation`, `orthomosaic`...;
@@ -273,7 +273,7 @@ The settings window (gear) has an **AI models** block: the checkbox above, the s
 
 Written by hand in `settings.json`, section `fastgcp`. There is no switch for them in the panel.
 
-- `zoom_fenetre_px` (default 400): image width, in pixels, shown around the marker when FastGCP zooms the photo view.
+- `zoom_fenetre_px` (default 400): image width, in pixels, shown around the marker when Aero-GCP zooms the photo view.
 - `recalage_max_px` (default 0, off): maximum distance, in pixels, for snapping a click onto the centre of a 2x2 checker
   target (`tools/fastgcp/snap.py`). Off by default: on CITADELLE_Pompeani (93 manual pins, 11 snapped) the manual pins sat
   0.76 px from the reprojected 3D point on average, and the snapped ones 1.83 px. When on, the raw click is kept next to the

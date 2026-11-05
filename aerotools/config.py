@@ -26,12 +26,12 @@ FONTS = os.path.join(ASSETS, "fonts")
 #   raccourci : raccourci clavier Metashape, ou None
 #   pret      : False => l'entree de menu affiche « a venir » au lieu de charger
 #   rouvrir   : True => « Recharger AeroTools » rouvre cet outil (le panneau qui reste a l'ecran) ;
-#               False => une fenetre ponctuelle (FastSpace) : fermee au rechargement, jamais rouverte
+#               False => une fenetre ponctuelle (Aero-Space) : fermee au rechargement, jamais rouverte
 TOOLS = [
     {
         "id": "fastgcp",
-        "menu": "FastGCP",
-        "titre": "FastGCP",
+        "menu": "Aero-GCP",
+        "titre": "Aero-GCP",
         "sous_titre": "tool.fastgcp.subtitle",
         "raccourci": "F8",
         "pret": True,
@@ -39,8 +39,8 @@ TOOLS = [
     },
     {
         "id": "fastspace",
-        "menu": "FastSpace",
-        "titre": "FastSpace",
+        "menu": "Aero-Space",
+        "titre": "Aero-Space",
         "sous_titre": "tool.fastspace.subtitle",
         "raccourci": None,
         "pret": True,
@@ -48,14 +48,14 @@ TOOLS = [
     },
     {
         "id": "fastexport",
-        "menu": "FastExport",
-        "titre": "FastExport",
+        "menu": "Aero-Exports",
+        "titre": "Aero-Exports",
         "sous_titre": "tool.fastexport.subtitle",
         "raccourci": None,
         "pret": True,
         "rouvrir": False,
     },
-    # La detection IA (ex-AIGCP) est dans FastGCP : plus d'entree de menu a part.
+    # La detection IA (ex-AIGCP) est dans Aero-GCP : plus d'entree de menu a part.
 ]
 
 

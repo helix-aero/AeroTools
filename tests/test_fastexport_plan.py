@@ -174,4 +174,4 @@ def test_raster_info_reads_what_exists(meta):
 def test_raster_info_without_a_chunk_is_empty(meta, monkeypatch):
     monkeypatch.setattr(msapi, "chunk", lambda: None)
     assert msapi.raster_info() == {"ortho": None, "dem": None, "box_ortho": None, "box_dem": None, "crs": "",
-                                   "dates": []}
+                                   "dates": [], "crs_object": None, "center": None}

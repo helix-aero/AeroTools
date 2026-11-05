@@ -2,7 +2,7 @@
 #
 #   1. ajoute le menu Aero a Metashape (petit lanceur dans le dossier scripts de Metashape)
 #   2. cherche un Python 3.10 a 3.13, ou installe Python 3.12 avec winget
-#   3. cree l'environnement %USERPROFILE%\AIGCP\_env (c'est la que FastGCP le cherche)
+#   3. cree l'environnement %USERPROFILE%\AIGCP\_env (c'est la que Aero-GCP le cherche)
 #   4. installe le(s) moteur(s) de detection au choix :
 #        leger   (onnxruntime, numpy, opencv : environ 100 Mo, rapide, tout PC)  [conseille]
 #        precis  (torch + ultralytics : environ 3 Go, le moteur d'origine, carte graphique si presente)
@@ -11,7 +11,7 @@
 #   6. verifie que tout s'importe et que les modeles models\*.pt et models\*.onnx sont la
 #
 # Sans option, la fenetre pose les questions (moteur ? reentrainement ?). Les memes choix se refont
-# plus tard depuis Aero > FastGCP > Parametres, qui lance cet installeur a la place de l'utilisateur.
+# plus tard depuis Aero > Aero-GCP > Parametres, qui lance cet installeur a la place de l'utilisateur.
 # Relancer ne refait que ce qui manque. Pendant les longues etapes la fenetre affiche
 # "Please wait..." (points animes), le temps ecoule et la derniere ligne de la commande.
 #
@@ -207,7 +207,7 @@ function Ask-Engine {
     Say '  Which detection engine do you want to install?' 'Cyan'
     Say ('    1  Light    about 100 MB. Fast, works on any computer. Recommended.' + $tag.light)
     Say ('    2  Precise  about 3 GB (PyTorch). The original engine; uses the graphics card if there is one.' + $tag.precise)
-    Say '    3  Both     about 3 GB. You choose which one to use in the FastGCP settings.'
+    Say '    3  Both     about 3 GB. You choose which one to use in the Aero-GCP settings.'
     while ($true) {
         $answer = (Read-Host '  Your choice [1]').Trim()
         if (-not $answer -or $answer -eq '1') { return 'light' }
@@ -221,7 +221,7 @@ function Ask-Engine {
 function Ask-Training($willHaveTorch) {
     Say ''
     Say '  Install the retraining tools?' 'Cyan'
-    Say '    They let you improve the model with your own corrections (FastGCP > Settings > Refine my model).'
+    Say '    They let you improve the model with your own corrections (Aero-GCP > Settings > Refine my model).'
     if ($willHaveTorch) {
         Say '    They only add a small package, because the Precise engine tools are already included.'
     } else {
@@ -393,7 +393,7 @@ try {
     Say ''
     if ($ready) {
         Say '  ============================================================' 'Green'
-        Say '    All done. Restart Metashape if it is open: Aero menu > FastGCP.' 'Green'
+        Say '    All done. Restart Metashape if it is open: Aero menu > Aero-GCP.' 'Green'
         Say '  ============================================================' 'Green'
         exit 0
     }

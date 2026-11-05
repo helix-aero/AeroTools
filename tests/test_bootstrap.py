@@ -26,7 +26,7 @@ def test_install_menu_is_idempotent(boot, ms):
     labels = [item[0] for item in ms.app.menu_items]
     assert "Aero/Recharger AeroTools" in labels
     assert "Aero/Verifier les mises a jour..." in labels
-    assert "Aero/FastGCP" in labels
+    assert "Aero/Aero-GCP" in labels
 
 
 def test_menu_groups_tools_upkeep_and_about_with_separators(boot, ms):
@@ -40,7 +40,7 @@ def test_menu_groups_tools_upkeep_and_about_with_separators(boot, ms):
     assert [label for _kind, label in order[first + 1:second]] == ["Aero/Verifier les mises a jour...",
                                                                   "Aero/Recharger AeroTools"]
     assert [label for _kind, label in order[second + 1:]] == ["Aero/A propos"]
-    assert labels[0] == "Aero/FastGCP"
+    assert labels[0] == "Aero/Aero-GCP"
 
 
 def test_menu_still_installs_when_separators_are_unavailable(boot, ms, monkeypatch):
@@ -106,7 +106,7 @@ def test_one_off_window_is_not_reopened_by_reload(boot, ms, monkeypatch):
 
     monkeypatch.setattr(importlib, "import_module", lambda name, *a, **k: FakeTool)
     assert boot.launch("fastgcp") is True
-    assert boot.launch("fastspace") is True          # FastSpace est une fenetre ponctuelle
+    assert boot.launch("fastspace") is True          # Aero-Space est une fenetre ponctuelle
     assert getattr(builtins, "_AEROTOOLS_LAST_TOOL") == "fastgcp"
     assert [entry["id"] for entry in config.TOOLS if not entry.get("rouvrir")] == ["fastspace", "fastexport"]
 

@@ -49,16 +49,16 @@ AeroTools, below, is the part of our daily tooling that we share with the Metash
 
 [Tutorial](docs/TUTORIAL.md) · [Version française](README.fr.md) · [Development](docs/DEVELOPMENT.md)
 
-![The FastGCP panel docked in Metashape: header, play/pause button, AI detection card, active marker, marker table, Residual check and Export buttons](docs/images/panel-overview.png)
+![The Aero-GCP panel docked in Metashape: header, play/pause button, AI detection card, active marker, marker table, Residual check and Export buttons](docs/images/panel-overview.png)
 
 We map with drones and mark a lot of ground control points (GCPs). Metashape does it, but the workflow is clumsy: you scroll
 through hundreds of photos to find the ones that see a given marker, open them one by one, zoom in by hand, click, and start
 again. So we wrote a tool for ourselves. It saved us enough time that we decided to share it.
 
-**FastGCP** is the tool. It adds an **Aero** menu to Metashape and does two things in one panel: **manual marking** and
+**Aero-GCP** is the tool. It adds an **Aero** menu to Metashape and does two things in one panel: **manual marking** and
 **AI detection** that proposes the marks for you to review.
 
-![The FastGCP Review panel: one thumbnail per photo, each with the point proposed by the AI](docs/images/review-panel-overview.png)
+![The Aero-GCP Review panel: one thumbnail per photo, each with the point proposed by the AI](docs/images/review-panel-overview.png)
 
 ## Features
 
@@ -81,17 +81,17 @@ You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). One installer does everything: it adds the **Aero** menu to Metashape and sets up the AI detection (Python and a light detection engine, about 100 MB, a minute or two). A window shows "Please wait..." with the progress; do not close it.
 3. Restart Metashape. The **Aero** menu is there.
 
-**Aero > FastSpace** scans a drive for old Metashape projects and frees disk space: lighten them (you choose what to
+**Aero > Aero-Space** scans a drive for old Metashape projects and frees disk space: lighten them (you choose what to
 remove: dense clouds, depth maps, orthophotos, with the space each one frees) or delete them, to the Recycle Bin or for good.
 
-**Aero > FastExport** exports the orthomosaic and/or the DEM to an `Outputs` folder next to the project, with short names
+**Aero > Aero-Exports** exports the orthomosaic and/or the DEM to an `Outputs` folder next to the project, with short names
 (`SITE_260704_3cm_ortho.tif`, `SITE_260704_3cm_dtm.tif`). Pick a format (full quality GeoTIFF, compressed client quick view,
 JPEG + world file) and a pixel size in cm. A pixel size you type is exact (3 cm is 3.000 cm, on a grid of multiples of 3 cm),
 so the ortho and the DEM line up pixel for pixel.
 
 Later, **Aero > Check for updates...** brings the latest version from GitHub (with the list of changes and their size).
 The installer asks which detection engine you want (light, precise, or both) and whether to add the retraining tools; the
-FastGCP settings can install any of them afterwards with one click.
+Aero-GCP settings can install any of them afterwards with one click.
 
 The installer writes one small launcher into `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Nothing else is touched.
 `install\desinstaller_aerotools.bat` removes it.
@@ -104,7 +104,7 @@ The installer writes one small launcher into `%LOCALAPPDATA%\Agisoft\Metashape P
 
 ## Quick start
 
-1. **Aero > FastGCP** (F8) opens the panel on the right of Metashape.
+1. **Aero > Aero-GCP** (F8) opens the panel on the right of Metashape.
 2. Pick a marker in the panel or in the Reference pane, then click on the target in the photo view. Repeat: the next photo opens by itself.
 3. Or let the AI do the first pass: choose the target type and the scope, then press **Run**. The Review panel opens when the
    detection ends.

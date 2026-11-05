@@ -50,17 +50,17 @@ AeroTools, ci-dessous, est la part de notre outillage quotidien que nous partage
 
 [Tutoriel](docs/TUTORIAL.fr.md) · [English version](README.md) · [Développement](docs/DEVELOPMENT.md)
 
-![Le panneau FastGCP accroché dans Metashape (interface en anglais) : en-tête, bouton Play/Pause, carte Détection IA, marqueur actif, tableau des marqueurs, boutons Residual check et Export](docs/images/panel-overview.png)
+![Le panneau Aero-GCP accroché dans Metashape (interface en anglais) : en-tête, bouton Play/Pause, carte Détection IA, marqueur actif, tableau des marqueurs, boutons Residual check et Export](docs/images/panel-overview.png)
 
 Nous cartographions avec des drones et nous pointons beaucoup de points de calage au sol (GCP). Metashape sait le faire, mais le
 déroulement est lourd : on fait défiler des centaines de photos pour trouver celles qui voient un marqueur, on les ouvre une à
 une, on zoome à la main, on clique, et on recommence. Nous avons donc écrit un outil pour nous. Il nous a fait gagner assez de
 temps pour que nous décidions de le partager.
 
-**FastGCP** est cet outil. Il ajoute un menu **Aero** à Metashape et fait deux choses dans un seul panneau : le **pointage
+**Aero-GCP** est cet outil. Il ajoute un menu **Aero** à Metashape et fait deux choses dans un seul panneau : le **pointage
 manuel** et la **détection IA**, qui propose les pointés pour que vous les passiez en revue.
 
-![Le Review panel de FastGCP : une vignette par photo, avec le point proposé par l'IA](docs/images/review-panel-overview.png)
+![Le Review panel de Aero-GCP : une vignette par photo, avec le point proposé par l'IA](docs/images/review-panel-overview.png)
 
 ## Fonctionnalités
 
@@ -83,17 +83,17 @@ Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Met
 2. Double-cliquez sur **`CLICK HERE TO INSTALL.bat`** (à la racine du dossier décompressé). Un seul installeur fait tout : il ajoute le menu **Aero** à Metashape et met en place la détection IA (Python et un moteur de détection léger, environ 100 Mo, une à deux minutes). Une fenêtre affiche « Please wait... » avec la progression ; ne la fermez pas.
 3. Redémarrez Metashape. Le menu **Aero** est là.
 
-**Aero > FastExport** exporte l'ortho et/ou le MNT dans un dossier `Outputs` à côté du projet, avec des noms courts
+**Aero > Aero-Exports** exporte l'ortho et/ou le MNT dans un dossier `Outputs` à côté du projet, avec des noms courts
 (`SITE_260704_3cm_ortho.tif`, `SITE_260704_3cm_mnt.tif`). Choisis un format (GeoTIFF pleine qualité, aperçu client compressé,
 JPEG + fichier monde) et une taille de pixel en cm. Une taille tapée est exacte (3 cm font 3,000 cm, sur une grille de multiples
 de 3 cm) : l'ortho et le MNT se superposent pixel pour pixel.
 
-**Aero > FastSpace** scanne un disque à la recherche des anciens projets Metashape et libère de la place : les alléger (tu choisis ce qu'on
+**Aero > Aero-Space** scanne un disque à la recherche des anciens projets Metashape et libère de la place : les alléger (tu choisis ce qu'on
 retire : nuages denses, cartes de profondeur, orthophotos, avec la place que chacun libère) ou les supprimer, à la corbeille ou définitivement.
 
 Plus tard, **Aero > Vérifier les mises à jour…** apporte la dernière version depuis GitHub (avec la liste des changements et leur
 poids). L'installeur demande quel moteur de détection vous voulez (léger, précis, ou les deux) et s'il faut ajouter les outils de
-réentraînement ; les paramètres de FastGCP peuvent ensuite installer chacun d'un clic.
+réentraînement ; les paramètres de Aero-GCP peuvent ensuite installer chacun d'un clic.
 
 L'installeur écrit un petit lanceur dans `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Rien d'autre n'est touché.
 `install\desinstaller_aerotools.bat` le retire.
@@ -106,7 +106,7 @@ L'installeur écrit un petit lanceur dans `%LOCALAPPDATA%\Agisoft\Metashape Pro\
 
 ## Démarrage rapide
 
-1. **Aero > FastGCP** (F8) ouvre le panneau à droite de Metashape.
+1. **Aero > Aero-GCP** (F8) ouvre le panneau à droite de Metashape.
 2. Choisissez un marqueur dans le panneau ou dans le panneau Reference, puis cliquez sur la cible dans la vue photo. Recommencez :
    la photo suivante s'ouvre toute seule.
 3. Ou laissez l'IA faire un premier passage : choisissez le type de cible et la portée, puis appuyez sur **Lancer**. Le Review

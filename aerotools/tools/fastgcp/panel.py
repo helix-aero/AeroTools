@@ -887,7 +887,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     _line_added = QtCore.Signal(str)
 
     def __init__(self, state, parent=None):
-        super(FastGcpPanel, self).__init__("FastGCP", parent)
+        super(FastGcpPanel, self).__init__("Aero-GCP", parent)
         self._state = state
         self._journal_cb = None
         self._log_open = False
@@ -1016,7 +1016,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout = QtWidgets.QHBoxLayout(header)
         layout.setContentsMargins(theme.PAD_L, theme.PAD + theme.PAD_S, theme.PAD_L, theme.PAD)
         layout.setSpacing(theme.PAD)
-        title = QtWidgets.QLabel("FastGCP")
+        title = QtWidgets.QLabel("Aero-GCP")
         title.setObjectName("aeroTitle")
         layout.addWidget(title, 1)
 

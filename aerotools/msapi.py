@@ -1640,7 +1640,8 @@ def raster_info(chk=None):
 
     `dates` : dates EXIF d'un echantillon de photos (le nom de fichier en tire la date du vol)."""
     chk = chk if chk is not None else chunk()
-    info = {"ortho": None, "dem": None, "box_ortho": None, "box_dem": None, "crs": "", "dates": []}
+    info = {"ortho": None, "dem": None, "box_ortho": None, "box_dem": None, "crs": "", "dates": [], "crs_object": None,
+            "center": None}
     if chk is None:
         return info
     info["ortho"] = _raster_of(chk, "orthomosaic")
@@ -1652,9 +1653,11 @@ def raster_info(chk=None):
             crs = getter()
             if crs is not None and str(crs.name):
                 info["crs"] = str(crs.name)
+                info["crs_object"] = crs
                 break
         except Exception:
             continue
+    info["center"] = _center_lonlat(info["crs_object"], info["box_ortho"] or info["box_dem"])
     try:
         cameras = list(chk.cameras)
         for camera in cameras[::max(1, len(cameras) // EXIF_DATE_SAMPLE)]:
@@ -1669,6 +1672,48 @@ def raster_info(chk=None):
     return info
 
 
+def _center_lonlat(crs, box):
+    """(longitude, latitude) du centre de l'emprise, en degres, ou None."""
+    if crs is None or not box:
+        return None
+    try:
+        left, bottom, right, top = box
+        point = Metashape.CoordinateSystem.transform(Metashape.Vector(((left + right) / 2.0, (bottom + top) / 2.0, 0.0)), crs,
+                                                     Metashape.CoordinateSystem("EPSG::4326"))
+        return float(point[0]), float(point[1])
+    except Exception:
+        return None
+
+
+def target_crs(horizontal_epsg, vertical=None):
+    """SCR de sortie : `EPSG::horizontal`, ou compose avec un systeme vertical `(nom, datum, code EPSG du datum)`.
+
+    Le nom du VERT_CS est celui de la grille (« RAC23 ») : Metashape applique alors fr_ign_RAC23.tif de son dossier geoids.
+    Renvoie None si Metashape refuse le systeme."""
+    try:
+        base = Metashape.CoordinateSystem("EPSG::%d" % horizontal_epsg)
+        if not vertical:
+            return base
+        name, datum, code = vertical
+        wkt = 'COMPD_CS["%s + %s",%s,VERT_CS["%s",VERT_DATUM["%s",2005,AUTHORITY["EPSG","%d"]],UNIT["metre",1,AUTHORITY["EPSG","9001"]]]]' % (
+            base.name, name, base.wkt, name, datum, code)
+        return Metashape.CoordinateSystem(wkt)
+    except Exception:
+        return None
+
+
+def transform_box(box, source, target):
+    """Emprise (gauche, bas, droite, haut) d'un SCR vers un autre : enveloppe des quatre coins, ou None."""
+    try:
+        left, bottom, right, top = box
+        corners = [Metashape.CoordinateSystem.transform(Metashape.Vector((x, y, 0.0)), source, target)
+                   for x, y in ((left, bottom), (right, bottom), (right, top), (left, top))]
+        xs, ys = [float(c[0]) for c in corners], [float(c[1]) for c in corners]
+        return min(xs), min(ys), max(xs), max(ys)
+    except Exception:
+        return None
+
+
 def snapped_box(box, pixel):
     """Emprise (gauche, bas, droite, haut) elargie aux multiples de `pixel` : la grille de l'export tombe sur des
     coordonnees rondes et chaque pixel mesure exactement `pixel`."""
@@ -1677,13 +1722,14 @@ def snapped_box(box, pixel):
             math.ceil(right / pixel - 1e-9) * pixel, math.ceil(top / pixel - 1e-9) * pixel)
 
 
-def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progress=None):
+def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None):
     """Ecrit l'ortho (kind "ortho") ou le MNT (kind "dem") dans `path`. Renvoie (ok, message d'erreur).
 
     `spec` : un reglage de tools/fastexport/plan.py. Sans `pixel` (ou sans `box`), Metashape garde sa propre grille.
     Avec `pixel` (en unites de la projection, par exemple 0.03) et `box` (emprise du raster), le pixel mesure
     exactement `pixel` et la grille est alignee sur des multiples de `pixel` : releve fait sur Metashape 2.2.1,
     ou `resolution=0.5` donnait 0.49996 (metres au sol) alors que `resolution_x/y=0.5` donne 0.5 exactement.
+    `crs` : SCR de sortie (voir target_crs) ; `box` est alors exprimee dans ce SCR (voir transform_box).
     `progress(pourcent)` est appele pendant le calcul."""
     try:
         compression = Metashape.ImageCompression()
@@ -1697,7 +1743,8 @@ def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progre
         arguments = {
             "path": path,
             "source_data": Metashape.ElevationData if kind == "dem" else Metashape.OrthomosaicData,
-            "image_format": Metashape.ImageFormatJPEG if jpeg else Metashape.ImageFormatTIFF,
+            "image_format": (Metashape.ImageFormatJP2 if spec.get("image") == "jp2"
+                             else Metashape.ImageFormatJPEG if jpeg else Metashape.ImageFormatTIFF),
             "image_compression": compression,
             "save_world": bool(spec.get("world", False)),
             "save_alpha": bool(spec.get("alpha", False)),
@@ -1708,6 +1755,10 @@ def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progre
             left, bottom, right, top = snapped_box(box, float(pixel))
             arguments["region"] = Metashape.BBox(Metashape.Vector((left, bottom)), Metashape.Vector((right, top)))
             arguments["resolution_x"] = arguments["resolution_y"] = float(pixel)
+        if crs is not None:
+            projection = Metashape.OrthoProjection()
+            projection.crs = crs
+            arguments["projection"] = projection
         if progress is not None:
             arguments["progress"] = progress
         chk.exportRaster(**arguments)

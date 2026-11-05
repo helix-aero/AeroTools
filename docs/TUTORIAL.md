@@ -1,8 +1,8 @@
-# FastGCP tutorial
+# Aero-GCP tutorial
 
 [Version française](TUTORIAL.fr.md)
 
-FastGCP is the first tool of AeroTools, the small suite we write at [HELIX AERO](https://helix.aero) for Agisoft Metashape.
+Aero-GCP is the first tool of AeroTools, the small suite we write at [HELIX AERO](https://helix.aero) for Agisoft Metashape.
 It marks ground control points (GCPs) quickly, and it can propose the marks itself with an AI detector that you review, correct
 and, if you want, retrain on your own corrections.
 
@@ -26,7 +26,7 @@ You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 2. Double-click `CLICK HERE TO INSTALL.bat` (at the root; it runs `install\installer_aerotools.bat`). This single installer also sets up the AI detection (about 100 MB, once, with a "Please wait..." display). It writes one small launcher into
    `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\` and touches nothing else.
 3. Restart Metashape. A new **Aero** menu appears.
-4. Open **Aero > FastGCP** (shortcut **F8**). The panel docks on the right of the window.
+4. Open **Aero > Aero-GCP** (shortcut **F8**). The panel docks on the right of the window.
 
 **Aero > Reload AeroTools** re-reads the code without restarting Metashape. `install\desinstaller_aerotools.bat` removes the launcher.
 
@@ -35,7 +35,7 @@ You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 > the download. Retraining ("Refine my model") also needs `torch` (about 3 GB): run `install\installer_entrainement.bat` once.
 > See [Troubleshooting](#9-troubleshooting). Everything else works without them.
 
-![The FastGCP panel docked in Metashape: header, play/pause button, AI detection card, active marker, marker table, Residual check and Export buttons](images/panel-overview.png)
+![The Aero-GCP panel docked in Metashape: header, play/pause button, AI detection card, active marker, marker table, Residual check and Export buttons](images/panel-overview.png)
 
 ## 2. Mark GCPs by hand
 
@@ -51,10 +51,10 @@ To mark a marker:
    Shift+click and **Ctrl+Shift+M** (point under the cursor) work too.
 4. The next photo that sees the marker and has no point yet opens by itself. Click again.
 
-**Ctrl+Z**, or the undo button in the header, takes back the last point. FastGCP keeps the last 100. **Ctrl+Y** or
+**Ctrl+Z**, or the undo button in the header, takes back the last point. Aero-GCP keeps the last 100. **Ctrl+Y** or
 **Ctrl+Shift+Z** puts it back.
 
-> **Note.** If the photo view is already zoomed, FastGCP keeps your zoom and only re-centres on the marker. On a photo that is
+> **Note.** If the photo view is already zoomed, Aero-GCP keeps your zoom and only re-centres on the marker. On a photo that is
 > still fitted to the window, it shows about 400 pixels around the marker (hidden setting `zoom_fenetre_px`, see
 > [DEVELOPMENT.md](DEVELOPMENT.md)).
 
@@ -78,7 +78,7 @@ stays the active marker. The selection is what **Selected markers** means in the
 | **Remove projections (n)** | Removes every projection of the selected markers (placed by hand, computed by Metashape, AI proposals). The markers stay in the project. |
 | **Remove markers (n)** | Deletes the selected markers from the project. |
 
-Both ask for confirmation first, and **FastGCP cannot bring deleted markers back**. Save your project before using them.
+Both ask for confirmation first, and **Aero-GCP cannot bring deleted markers back**. Save your project before using them.
 
 **Residual check.** The button under the table lists the markers to watch: those with a high residual (above the larger of
 3 cm and three times the low median of the chunk's errors) and those with fewer than 3 placed photos. Click an entry to open
@@ -170,7 +170,7 @@ The line at the bottom counts them: `17 kept · 1 excluded · 23 refined · 0 va
   from 50 % to 400 %. **Shift + mouse wheel** does the same. **Ctrl + mouse wheel** makes the thumbnails themselves bigger or
   smaller.
 - **View** has four sliders: **Exposure**, **Contrast**, **Saturation** and **Sharpness**. They help your eye and nothing else.
-  The photos, the crops and the points are never modified. The same values apply in the Refine window, and FastGCP remembers
+  The photos, the crops and the points are never modified. The same values apply in the Refine window, and Aero-GCP remembers
   them. **Double-click** a slider (or its name or value) to put it back to 0, or use **Reset** for all four.
 
 | Before | After |
@@ -262,7 +262,7 @@ start. A development copy (a folder with `.git`) is never updated, so nothing ge
 
 ### What retraining does
 
-Click **Refine my model using my data**. FastGCP first shows a warning that says:
+Click **Refine my model using my data**. Aero-GCP first shows a warning that says:
 
 - the model may get better on your targets and worse on others;
 - what you marked as spray is learned as spray, and what you marked as checkerboard as checkerboard, so mistakes in your
@@ -300,7 +300,7 @@ wrong, so the worst pick is set aside and the others are judged again until noth
 | Symptom | What to check |
 |---|---|
 | The **Aero** menu is missing | Double-click `CLICK HERE TO INSTALL.bat` again and restart Metashape. |
-| *AI: AIGCP Python not found*, or a box titled *AI detection setup* | The detector runs in its own light Python (ONNX Runtime). The easiest fix is to double-click `CLICK HERE TO INSTALL.bat` again (it sets everything up, about 100 MB). By default FastGCP looks for `%USERPROFILE%\AIGCP\_env\Scripts\python.exe`; set the `AIGCP_PYTHON` environment variable, or the `python` key of the `aigcp` section in `settings.json`, to use another one. |
+| *AI: AIGCP Python not found*, or a box titled *AI detection setup* | The detector runs in its own light Python (ONNX Runtime). The easiest fix is to double-click `CLICK HERE TO INSTALL.bat` again (it sets everything up, about 100 MB). By default Aero-GCP looks for `%USERPROFILE%\AIGCP\_env\Scripts\python.exe`; set the `AIGCP_PYTHON` environment variable, or the `python` key of the `aigcp` section in `settings.json`, to use another one. |
 | *AI: … weights not found* | The two files `damier.pt` and `bombe.pt` should be in the `models` folder of the download: copy them back there if you deleted them, or set `models_dir` in the `aigcp` section. |
 | The AI finds nothing | Check that the marker has a 3D position or reference coordinates, that the photos are aligned, and that the *Ignore* list is not hiding the photos you want. |
 | A photo is not found or unreadable | The detector reads the original image files at the path Metashape knows. Make sure the drive or share is connected. |
@@ -313,9 +313,9 @@ Per-machine settings live in `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`. Dev
 
 AeroTools is made by [HELIX AERO](https://helix.aero). Source: [github.com/helix-aero/AeroTools](https://github.com/helix-aero/AeroTools).
 
-## 10. Fast Space: free disk space
+## 10. Aero-Space: free disk space
 
-**Aero > FastSpace** opens a window that finds the old Metashape projects eating your disk. Pick a drive (or **Folder...**) and
+**Aero > Aero-Space** opens a window that finds the old Metashape projects eating your disk. Pick a drive (or **Folder...**) and
 click **Scan**: the heaviest projects come first. For each one you see the `.psx` file, the three folders above it (to recognise
 the job), **Dense + depth maps** (what lightening frees, in GB), **Whole project** (to judge whether deleting it is worth it),
 **Kept** (the files next to the project that deleting leaves alone, see below), the share of the first in the second, the date, and the state (*Open*, *Old lock* left by a crash, or an orphan `.files` folder

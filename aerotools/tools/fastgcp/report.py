@@ -652,7 +652,7 @@ def _fmt_date(day):
 def _footer(cv, W, H, page, total):
     y = H - 34.0
     cv.line(MARGIN, y, W - MARGIN, y, LINE, 0.6)
-    credit = "HELIX AERO {} AeroTools FastGCP {} ".format(DOT, DOT)
+    credit = "HELIX AERO {} AeroTools Aero-GCP {} ".format(DOT, DOT)
     cv.text(MARGIN, y + 15.0, credit, 7.5, MUTED)
     start = MARGIN + cv.width(credit, 7.5)
     cv.text(start, y + 15.0, SITE_TEXT, 7.5, GREEN_DEEP, "body", 2)
@@ -697,7 +697,7 @@ def _draw_band(cv, W, data):
     cv.p.drawRect(QtCore.QRectF(0, 0, W, height))
     cv.text(MARGIN, 36.0, "HELIX AERO", 9, "#ffffff", "display", 2, spacing=1.8)
     cv.link(MARGIN, 36.0, "HELIX AERO", 9, SITE_URL, "display", 2)
-    cv.text(W - MARGIN, 36.0, "AeroTools {} FastGCP".format(DOT), 9, "#ffffff", "display", 1,
+    cv.text(W - MARGIN, 36.0, "AeroTools {} Aero-GCP".format(DOT), 9, "#ffffff", "display", 1,
             align="r", alpha=0.85)
     cv.text(MARGIN, 76.0, i18n.t("report.title"), 29, "#ffffff", "display", 2)
     meta = data["meta"]
@@ -1543,7 +1543,7 @@ def _new_writer(path, title):
         pass
     writer.setResolution(DPI)
     writer.setTitle(title)
-    writer.setCreator("AeroTools FastGCP (HELIX AERO)")
+    writer.setCreator("AeroTools Aero-GCP (HELIX AERO)")
     return writer
 
 

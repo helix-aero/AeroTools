@@ -30,7 +30,7 @@ TEXTES = {
     ),
     "tool.fastgcp.subtitle": "GCP marking, by hand or with AI",
     "tool.no_window": (
-        "FastGCP needs the Metashape interface: the main window was not found."
+        "Aero-GCP needs the Metashape interface: the main window was not found."
     ),
     "tool.chunk_unnamed": "unnamed",
 
@@ -222,11 +222,11 @@ TEXTES = {
     "report.ai.info_gcp_no": "Check point, not used as GCP",
     "report.ai.info_accuracy": "reference accuracy {acc} m",
     "report.shots.title": "Screenshots",
-    "report.shots.sub": "Photo view, FastGCP panel",
+    "report.shots.sub": "Photo view, Aero-GCP panel",
     "report.shots.sub_crops": (
         "Photo view, thumbnails of the markers with the largest errors "
         "(green circle: placed point, orange cross: estimated position), "
-        "FastGCP panel"
+        "Aero-GCP panel"
     ),
     "report.shots.photo": "Photo view",
     "report.shots.photo_cam": "Photo view {camera}",
@@ -234,7 +234,7 @@ TEXTES = {
     "report.shots.fallback": "{camera} · marker {marker}",
     "report.shots.crop_error": "{label} · error {value}",
     "report.shots.crop_gap": "{camera} · image offset {gap} px",
-    "report.shots.panel": "FastGCP panel",
+    "report.shots.panel": "Aero-GCP panel",
     "report.footer.page": "Page {page} of {total}",
     "report.doc_title": "GCP Marking Report {chunk}",
 
@@ -284,7 +284,7 @@ TEXTES = {
     "panel.remove_markers": "Remove markers ({n})",
     "panel.remove_title": "Remove",
     "panel.remove_projections_confirm": "Remove all projections of {n} marker(s): {names}? The markers stay in the project.",
-    "panel.remove_markers_confirm": "Delete {n} marker(s) from the project: {names}? FastGCP cannot bring them back.",
+    "panel.remove_markers_confirm": "Delete {n} marker(s) from the project: {names}? Aero-GCP cannot bring them back.",
     "panel.removed_projections": "{n} projection(s) removed on {k} marker(s)",
     "panel.removed_markers": "{n} marker(s) deleted",
     "panel.credit": "Tool made by {site}",
@@ -445,9 +445,9 @@ TEXTES = {
     "diag.close": "Close",
     "review.weakest": "Weakest detection: {conf}%",
 
-    # -- Fast Space --------------------------------------------------------
+    # -- Aero-Space --------------------------------------------------------
     "tool.fastspace.subtitle": "Free disk space: lighten or delete old projects",
-    "space.title": "Fast Space",
+    "space.title": "Aero-Space",
     "space.close": "Close",
     "space.intro": "Pick a drive and scan: the heaviest Metashape projects come first, with what weighs inside them. \"Lighten\" lets you choose what to remove (dense clouds, depth maps, orthophotos: all can be rebuilt) and keeps the alignment, markers, DEMs and orthomosaics. \"Delete project\" removes the .psx and its .files folder, never the files exported next to it (ortho, DEM, clouds, reports).",
     "space.folder": "Folder...",
@@ -494,10 +494,10 @@ TEXTES = {
     "space.failed_title": "Some projects were not processed",
     "space.failed_line": "{name}: {error}",
 
-    # -- Fast Space : allegement -------------------------------------------
+    # -- Aero-Space : allegement -------------------------------------------
     "space.mode_recycle_none": "Recycle Bin not possible when lightening: Metashape erases its own files when it saves",
 
-    # -- Fast Space : fichiers gardes --------------------------------------
+    # -- Aero-Space : fichiers gardes --------------------------------------
     "space.col_kept": "Kept",
     "space.tip_kept": "{files} file(s) and {dirs} folder(s) next to the project stay in place ({size}).",
     "space.tip_biggest": "Biggest: {names}",
@@ -506,7 +506,7 @@ TEXTES = {
     "space.confirm_delete_kept": "Next to the project, {files} file(s) ({size}) stay in place.",
     "space.confirm_delete_risk": "Warning, DEM or ortho built in Metashape with no export found next to it for: {names} ({size}). They go with the project: export them first if you need them.",
 
-    # -- Fast Space : somme de la selection --------------------------------
+    # -- Aero-Space : somme de la selection --------------------------------
     "space.selection_rows": "{n} project(s) highlighted (not ticked) - dense {dense}, depth maps {depth}, orthophotos {ortho} - whole projects {total}",
 
     # -- Parametres : sections ---------------------------------------------
@@ -582,7 +582,7 @@ TEXTES = {
     # -- Ajuster : infobulle -----------------------------------------------
     "gcp.col_xyz_tip": "3D RMSE, measured on the CTRL markers (not ticked)",
 
-    # -- Fast Space : options visibles et clic droit -----------------------
+    # -- Aero-Space : options visibles et clic droit -----------------------
     "space.choose": "Choose one",
     "space.menu_lighten": "Lighten",
     "space.menu_lighten_n": "Lighten {n} projects",
@@ -590,7 +590,7 @@ TEXTES = {
     "space.menu_delete_n": "Delete {n} projects",
     "space.menu_reveal": "Reveal in Explorer",
 
-    # -- Fast Space : verrous ----------------------------------------------
+    # -- Aero-Space : verrous ----------------------------------------------
     "space.force_text": "{n} project(s) look open in another Metashape: {names}\n\nA lock file says someone is working on them. Deleting them anyway can destroy that work.\n\nIf Metashape crashed and left the lock behind, it is safe to go on.",
     "space.force_owners": "Lock written by: {owners}",
     "space.force_confirm": "Confirm delete",
@@ -599,9 +599,9 @@ TEXTES = {
     "space.err_lock_remove": "The old lock file could not be removed: {error}",
     "space.tip_lock": "Lock written by {owner}",
 
-    # -- Fast Export -------------------------------------------------------
+    # -- Aero-Exports -------------------------------------------------------
     "tool.fastexport.subtitle": "Export the ortho and the DEM to an Outputs folder, with short names",
-    "export.title": "Fast Export",
+    "export.title": "Aero-Exports",
     "export.ortho": "Ortho",
     "export.dem": "DEM",
     "export.native": "Native: {size}",
@@ -635,9 +635,9 @@ TEXTES = {
     "export.missing": "the file was not written",
     "export.no_chunk": "Open a project first.",
 
-    # -- Fast Export : SCR -------------------------------------------------
+    # -- Aero-Exports : SCR -------------------------------------------------
     "export.crs": "Coordinate system: {crs}",
-    # -- Fast Space : choix de ce qu'on retire ------------------------
+    # -- Aero-Space : choix de ce qu'on retire ------------------------
     "space.col_dense": "Dense cloud",
     "space.col_depth": "Depth maps",
     "space.col_ortho": "Orthophotos",
@@ -651,4 +651,50 @@ TEXTES = {
     "space.item_size": "{size} in {n} project(s)",
     "space.free_total": "Space freed: {size}",
     "space.pick_one": "Tick at least one item.",
+
+    # -- Aero-Exports : coordonnees, formats, logiciels externes ------------
+    "export.preset_jp2": "JPEG 2000 (light and sharp)",
+    "export.preset_jp2_tip": "Same quality class as ECW at a similar size. Written with QGIS (OpenJPEG) or Global Mapper.",
+    "export.preset_ecw": "ECW (needs Global Mapper)",
+    "export.preset_ecw_tip": "The usual survey format. Written by Global Mapper.",
+    "export.preset_cad": "AutoCAD drawing: DXF or DWG",
+    "export.preset_cad_tip": "TOPO.dxf with the ortho and the DEM in two layers. The images are in 00_Assets, linked with relative paths.",
+    "export.crs_section": "Coordinates",
+    "export.crs_to": "Export in",
+    "export.crs_same": "Same as the project",
+    "export.vertical": "Heights",
+    "export.vertical_same": "Same as the project",
+    "export.geoid_missing": "The grid for {name} is not on this computer ({size} to download). Metashape needs it to convert heights.",
+    "export.geoid_download": "Download",
+    "export.geoid_downloading": "Downloading...",
+    "export.geoid_failed": "Download failed: {error}",
+    "export.geoid_done": "{name} installed. If the export ignores it, restart Metashape.",
+    "export.crs_refused": "Metashape refused this coordinate system.",
+    "export.advanced": "Advanced options",
+    "export.tiles": "Split into tiles",
+    "export.tile_m": "{m} m",
+    "export.tiles_note": "Cut into tiles of {m} m: one file per tile, empty tiles are skipped.",
+    "export.cad_format": "File",
+    "export.cad_dxf": "DXF",
+    "export.cad_dwg": "DWG",
+    "export.cad_images": "Images",
+    "export.img_jp2": "JPEG 2000",
+    "export.img_ecw": "ECW",
+    "export.need_ecw": "To export ECW, Global Mapper must be installed. It was not found on this computer. Do you have it? Show us where it is. If not, buy it, or choose JPEG 2000.",
+    "export.need_dwg": "To export DWG, AutoCAD must be installed. It was not found on this computer. Do you have it? Show us where it is. If not, buy it, or stay with DXF.",
+    "export.need_jp2": "To write JPEG 2000 images, QGIS (free) or Global Mapper must be installed. Neither was found.",
+    "export.choose_exe": "I have it: choose the program...",
+    "export.exe_invalid": "This is not the right program.",
+    "export.buy_now": "Buy now",
+    "export.buy_gm": "Buy Global Mapper",
+    "export.buy_acad": "Buy AutoCAD",
+    "export.get_qgis": "Get QGIS (free)",
+    "export.cancel": "Cancel",
+    "export.exists": "{n} file(s) of this export already exist in the Outputs folder.",
+    "export.overwrite": "Overwrite",
+    "export.newversion": "Make a new version (_v{n})",
+    "export.exists_note": "{n} file(s) already exist: you will be asked.",
+    "export.check_ok": "AutoCAD opened the drawing: {n} image(s) load correctly.",
+    "export.check_bad": "AutoCAD could not load: {names}",
+    "export.warn_dem_image": "No DEM image in the drawing: it needs QGIS (GDAL). The DEM GeoTIFF was written.",
 }

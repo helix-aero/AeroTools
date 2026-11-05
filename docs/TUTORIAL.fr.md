@@ -1,8 +1,8 @@
-# Tutoriel FastGCP
+# Tutoriel Aero-GCP
 
 [English version](TUTORIAL.md)
 
-FastGCP est le premier outil d'AeroTools, la petite boîte à outils que nous écrivons chez [HELIX AERO](https://helix.aero) pour
+Aero-GCP est le premier outil d'AeroTools, la petite boîte à outils que nous écrivons chez [HELIX AERO](https://helix.aero) pour
 Agisoft Metashape. Il sert à pointer rapidement les points de calage au sol (GCP). Il peut aussi proposer lui-même les pointés
 avec un détecteur IA : vous les passez en revue, vous les corrigez et, si vous le voulez, vous réentraînez le modèle sur vos
 propres corrections.
@@ -27,7 +27,7 @@ Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Met
 2. Double-cliquez sur `CLICK HERE TO INSTALL.bat` (à la racine ; il lance `install\installer_aerotools.bat`). Cet installeur unique met aussi en place la détection IA (environ 100 Mo, une seule fois, avec un affichage « Please wait... »). Il écrit un petit lanceur dans
    `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\` et ne touche à rien d'autre.
 3. Redémarrez Metashape. Un menu **Aero** apparaît.
-4. Ouvrez **Aero > FastGCP** (raccourci **F8**). Le panneau s'accroche à droite de la fenêtre.
+4. Ouvrez **Aero > Aero-GCP** (raccourci **F8**). Le panneau s'accroche à droite de la fenêtre.
 
 **Aero > Recharger AeroTools** relit le code sans redémarrer Metashape. `install\desinstaller_aerotools.bat` retire le lanceur.
 
@@ -36,7 +36,7 @@ Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Met
 > fournis avec le téléchargement. Le réentraînement (« Affiner mon modèle ») demande en plus `torch` (environ 3 Go) : lancez une fois
 > `install\installer_entrainement.bat`. Voir le [dépannage](#9-dépannage). Tout le reste fonctionne sans eux.
 
-![Le panneau FastGCP accroché dans Metashape (interface en anglais) : en-tête, bouton Play/Pause, carte Détection IA, marqueur actif, tableau des marqueurs, boutons Residual check et Export](images/panel-overview.png)
+![Le panneau Aero-GCP accroché dans Metashape (interface en anglais) : en-tête, bouton Play/Pause, carte Détection IA, marqueur actif, tableau des marqueurs, boutons Residual check et Export](images/panel-overview.png)
 
 ## 2. Pointer les GCP à la main
 
@@ -52,9 +52,9 @@ Pour pointer un marqueur :
    Maj + clic et **Ctrl+Maj+M** (point sous le curseur) marchent aussi.
 4. La photo suivante qui voit le marqueur et n'a pas encore de point s'ouvre toute seule. Cliquez à nouveau.
 
-**Ctrl+Z**, ou le bouton Annuler de l'en-tête, reprend le dernier point. FastGCP garde les 100 derniers. **Ctrl+Y** ou **Ctrl+Maj+Z** le remet.
+**Ctrl+Z**, ou le bouton Annuler de l'en-tête, reprend le dernier point. Aero-GCP garde les 100 derniers. **Ctrl+Y** ou **Ctrl+Maj+Z** le remet.
 
-> **Note.** Si la vue photo est déjà zoomée, FastGCP garde votre zoom et se contente de recentrer sur le marqueur. Sur une photo
+> **Note.** Si la vue photo est déjà zoomée, Aero-GCP garde votre zoom et se contente de recentrer sur le marqueur. Sur une photo
 > encore ajustée à la fenêtre, il montre environ 400 pixels autour du marqueur (réglage caché `zoom_fenetre_px`, voir
 > [DEVELOPMENT.md](DEVELOPMENT.md)).
 
@@ -79,7 +79,7 @@ dernier marqueur cliqué reste le marqueur actif. Cette sélection est ce que ve
 | **Supprimer les projections (n)** | Retire toutes les projections des marqueurs sélectionnés (posées à la main, calculées par Metashape, propositions de l'IA). Les marqueurs restent dans le projet. |
 | **Supprimer les marqueurs (n)** | Supprime les marqueurs sélectionnés du projet. |
 
-Les deux demandent une confirmation, et **FastGCP ne peut pas rétablir un marqueur supprimé**. Enregistrez votre projet avant.
+Les deux demandent une confirmation, et **Aero-GCP ne peut pas rétablir un marqueur supprimé**. Enregistrez votre projet avant.
 
 **Contrôle des résidus.** Le bouton sous le tableau liste les marqueurs à surveiller : ceux dont le résidu est élevé (au-dessus du
 plus grand des deux : 3 cm ou trois fois la médiane basse des erreurs du chunk) et ceux qui ont moins de 3 photos pointées.
@@ -173,7 +173,7 @@ La ligne du bas les compte : `17 gardés · 1 exclus · 23 affinés · 0 validé
   de 50 % à 400 %. **Maj + molette** fait pareil. **Ctrl + molette** agrandit ou réduit les vignettes elles-mêmes.
 - **Affichage** a quatre curseurs : **Exposition**, **Contraste**, **Saturation** et **Netteté**. Ils aident l'œil, rien de plus. Les
   photos, les recadrages et les points ne sont jamais modifiés. Les mêmes valeurs s'appliquent dans la fenêtre d'affinage, et
-  FastGCP s'en souvient. Un **double-clic** sur un curseur (ou sur son nom ou sa valeur) le remet à 0 ; **Réinitialiser** remet
+  Aero-GCP s'en souvient. Un **double-clic** sur un curseur (ou sur son nom ou sa valeur) le remet à 0 ; **Réinitialiser** remet
   les quatre à zéro.
 
 | Avant | Après |
@@ -271,7 +271,7 @@ jamais mise à jour : rien n'est écrasé.
 
 ### Ce que fait le réentraînement
 
-Cliquez sur **Affiner mon modèle avec mes données**. FastGCP affiche d'abord un avertissement qui dit :
+Cliquez sur **Affiner mon modèle avec mes données**. Aero-GCP affiche d'abord un avertissement qui dit :
 
 - le modèle peut mieux fonctionner sur vos cibles, et moins bien sur d'autres ;
 - ce que vous avez classé en spray est appris comme du spray, ce que vous avez classé en damier comme du damier : des erreurs dans
@@ -311,7 +311,7 @@ autres, jusqu'à ce que plus rien ne dépasse.
 | Symptôme | À vérifier |
 |---|---|
 | Le menu **Aero** manque | Double-cliquez à nouveau sur `CLICK HERE TO INSTALL.bat` et redémarrez Metashape. |
-| *IA : Python d'AIGCP introuvable*, ou une boîte *Installation de la détection IA* | Le détecteur tourne dans son propre Python léger (ONNX Runtime). Le plus simple : double-cliquez à nouveau sur `CLICK HERE TO INSTALL.bat` (il installe tout, environ 100 Mo). Par défaut FastGCP cherche `%USERPROFILE%\AIGCP\_env\Scripts\python.exe` ; définissez la variable d'environnement `AIGCP_PYTHON`, ou la clé `python` de la section `aigcp` de `settings.json`, pour en utiliser un autre. |
+| *IA : Python d'AIGCP introuvable*, ou une boîte *Installation de la détection IA* | Le détecteur tourne dans son propre Python léger (ONNX Runtime). Le plus simple : double-cliquez à nouveau sur `CLICK HERE TO INSTALL.bat` (il installe tout, environ 100 Mo). Par défaut Aero-GCP cherche `%USERPROFILE%\AIGCP\_env\Scripts\python.exe` ; définissez la variable d'environnement `AIGCP_PYTHON`, ou la clé `python` de la section `aigcp` de `settings.json`, pour en utiliser un autre. |
 | *IA : poids … introuvables* | Les deux fichiers `damier.pt` et `bombe.pt` doivent être dans le dossier `models` du téléchargement : remettez-les-y si vous les avez supprimés, ou définissez `models_dir` dans la section `aigcp`. |
 | L'IA ne trouve rien | Vérifiez que le marqueur a une position 3D ou des coordonnées de référence, que les photos sont alignées, et que la liste *Ignorer* ne cache pas les photos voulues. |
 | Une photo est introuvable ou illisible | Le détecteur lit les fichiers image d'origine, au chemin que Metashape connaît. Vérifiez que le disque ou le partage est connecté. |
@@ -324,9 +324,9 @@ Les réglages du poste sont dans `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`.
 
 AeroTools est fait par [HELIX AERO](https://helix.aero). Code source : [github.com/helix-aero/AeroTools](https://github.com/helix-aero/AeroTools).
 
-## 10. Fast Space : libérer de la place
+## 10. Aero-Space : libérer de la place
 
-**Aero > FastSpace** ouvre une fenêtre qui trouve les anciens projets Metashape qui mangent ton disque. Choisis un disque (ou
+**Aero > Aero-Space** ouvre une fenêtre qui trouve les anciens projets Metashape qui mangent ton disque. Choisis un disque (ou
 **Dossier…**) et clique **Scanner** : les projets les plus lourds arrivent en premier. Pour chacun tu vois le fichier `.psx`, les
 trois dossiers au-dessus (pour reconnaître le chantier), **Dense + profondeur** (ce que libère l'allègement, en Go), **Projet entier**
 (pour juger si le supprimer vaut la peine), **Gardés** (les fichiers à côté du projet que la suppression ne touche pas, voir
