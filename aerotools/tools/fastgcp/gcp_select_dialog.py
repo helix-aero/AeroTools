@@ -14,15 +14,41 @@ from ...qt import QtCore, QtGui, QtWidgets
 from . import dialogs, gcp_select
 
 ROLE = QtCore.Qt.UserRole
-WIDTH, HEIGHT = 720, 560
+WIDTH, HEIGHT = 1060, 640
 POLL_MS = 120
-COLUMNS = ("gcp.col_count", "gcp.col_markers", "gcp.col_error", "gcp.col_z", "gcp.col_max", "gcp.col_spread")
+ERR_COLUMNS = ("gcp.col_x", "gcp.col_y", "gcp.col_z", "gcp.col_xy", "gcp.col_xyz", "gcp.col_max")
+NOW_COLUMNS = ("", "gcp.col_count") + ERR_COLUMNS + ("",)
+WIDTHS = (84, 0, 80, 80, 80, 110, 120, 80, 110)
+COLUMNS = ("gcp.col_count", "gcp.col_markers") + ERR_COLUMNS + ("gcp.col_spread",)
+ROWS_NOW = (("GCP", "#6ee79a"), ("CTRL", theme.ORANGE_BRIGHT))
 SPREAD_TEXT = {"good": "gcp.spread_good", "mid": "gcp.spread_mid", "low": "gcp.spread_low"}
 SPREAD_COLOR = {"good": "#6ee79a", "mid": "#e5c453", "low": theme.ORANGE_BRIGHT}
 
 
 def cm(meters):
     return "{:.1f}".format(meters * 100.0)
+
+
+def _cell(text, right=False, color=None, bold=False, data=None):
+    cell = QtWidgets.QTableWidgetItem(text)
+    align = QtCore.Qt.AlignRight if right else QtCore.Qt.AlignLeft
+    cell.setTextAlignment(align | QtCore.Qt.AlignVCenter)
+    if color:
+        cell.setForeground(QtGui.QBrush(QtGui.QColor(color)))
+    if bold:
+        font = cell.font()
+        font.setBold(True)
+        cell.setFont(font)
+    if data is not None:
+        cell.setData(ROLE, data)
+    return cell
+
+
+def _error_texts(stats):
+    """Err X, Y, Z, 2D, 3D, max en cm (tirets si rien a mesurer)."""
+    if not stats:
+        return ["-"] * len(ERR_COLUMNS)
+    return [cm(stats[key]) for key in ("x", "y", "z", "xy", "total", "max")]
 
 
 class _Worker(threading.Thread):
@@ -61,10 +87,6 @@ class GcpSelectDialog(QtWidgets.QDialog):
 
         top = QtWidgets.QHBoxLayout()
         top.setSpacing(theme.PAD)
-        control, self.control_number, self.control_caption = ui.tile()
-        check, self.check_number, self.check_caption = ui.tile()
-        top.addWidget(control, 1)
-        top.addWidget(check, 1)
         self.mode = QtWidgets.QComboBox()
         self.mode.setObjectName("aeroCombo")
         self.mode.setCursor(QtCore.Qt.PointingHandCursor)
@@ -73,26 +95,26 @@ class GcpSelectDialog(QtWidgets.QDialog):
         self.mode.addItem(i18n.t("gcp.mode_shift"), gcp_select.SHIFT)
         self.mode.setMinimumHeight(40)
         self.mode.activated.connect(lambda _index: self.refresh(keep_mode=True))
-        top.addWidget(self.mode, 2)
+        top.addWidget(self.mode, 1)
+        top.addStretch(1)
         layout.addLayout(top)
 
-        self.table = QtWidgets.QTableWidget(0, len(COLUMNS))
-        self.table.setHorizontalHeaderLabels([i18n.t(key) for key in COLUMNS])
-        self.table.verticalHeader().setVisible(False)
-        self.table.verticalHeader().setDefaultSectionSize(32)
-        self.table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
-        self.table.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
-        self.table.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
-        self.table.setAlternatingRowColors(True)
-        self.table.setWordWrap(False)
-        self.table.setStyleSheet(ui.table_style())
+        layout.addWidget(self._caption("gcp.now"))
+        self.now = self._make_table(NOW_COLUMNS, len(ROWS_NOW), selectable=False)
+        self.now.setFixedHeight(32 * (len(ROWS_NOW) + 1) + 12)
+        self.now.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.now.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
+        layout.addWidget(self.now)
+
+        layout.addWidget(self._caption("gcp.options"))
+        self.table = self._make_table(COLUMNS, 0)
         header = self.table.horizontalHeader()
-        header.setStretchLastSection(True)
         header.setSectionResizeMode(1, QtWidgets.QHeaderView.Stretch)
-        for column, width in enumerate((74, 0, 100, 70, 70, 100)):
+        for column, width in enumerate(WIDTHS):
             if width:
                 self.table.setColumnWidth(column, width)
-        self.table.horizontalHeaderItem(2).setToolTip(i18n.t("gcp.col_error_tip"))
+                self.now.setColumnWidth(column, width)
+        self.table.horizontalHeaderItem(COLUMNS.index("gcp.col_xyz")).setToolTip(i18n.t("gcp.col_xyz_tip"))
         self.table.itemSelectionChanged.connect(self._update)
         layout.addWidget(self.table, 1)
 
@@ -119,6 +141,37 @@ class GcpSelectDialog(QtWidgets.QDialog):
 
         self._clock = ui.timer(self, POLL_MS, self._poll)
         self.refresh()
+
+    @staticmethod
+    def _caption(key):
+        label = QtWidgets.QLabel(i18n.t(key))
+        label.setObjectName("aeroSection")
+        return label
+
+    @staticmethod
+    def _make_table(columns, rows, selectable=True):
+        table = QtWidgets.QTableWidget(rows, len(columns))
+        table.setHorizontalHeaderLabels([i18n.t(key) if key else "" for key in columns])
+        table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(32)
+        behavior = QtWidgets.QAbstractItemView
+        table.setSelectionBehavior(behavior.SelectRows)
+        table.setSelectionMode(behavior.SingleSelection if selectable else behavior.NoSelection)
+        table.setEditTriggers(behavior.NoEditTriggers)
+        table.setAlternatingRowColors(True)
+        table.setWordWrap(False)
+        table.setStyleSheet(ui.table_style())
+        table.horizontalHeader().setStretchLastSection(True)
+        return table
+
+    def _fill_now(self, control, check, total):
+        """Les deux lignes « actuel » : GCP (cochés) et CTRL (non cochés), comme Metashape les mesure."""
+        for row, ((name, color), stats) in enumerate(zip(ROWS_NOW, (control, check))):
+            count = "{}/{}".format(stats["n"] if stats else 0, total) if total else "-"
+            texts = [name, count] + _error_texts(stats) + [""]
+            for column, text in enumerate(texts):
+                self.now.setItem(row, column, _cell(text, right=column >= 2, color=color if column == 0 else None,
+                                                    bold=column == 0))
 
     # -- calcul ---------------------------------------------------------------------
 
@@ -164,6 +217,7 @@ class GcpSelectDialog(QtWidgets.QDialog):
         self._show(result)
 
     def _clear(self):
+        self._fill_now(None, None, 0)
         self.table.setRowCount(0)
         self.warning.setVisible(False)
         self._result = None
@@ -174,37 +228,20 @@ class GcpSelectDialog(QtWidgets.QDialog):
     def _show(self, result):
         self._result = result
         control, check = result["current"]
-        for number, caption, stats, key in ((self.control_number, self.control_caption, control, "gcp.now_control"),
-                                            (self.check_number, self.check_caption, check, "gcp.now_check")):
-            number.setText("{} cm".format(cm(stats["total"])) if stats else "-")
-            caption.setText(i18n.t(key, n=stats["n"] if stats else 0))
+        total = result["usable"]
+        self._fill_now(control, check, total)
         curve = result["curve"]
         self.table.setRowCount(len(curve))
         for row, item in enumerate(curve):
             recommended = row == result["recommended"]
             label = gcp_select.spread_label(item["spread"])
-            cells = (
-                (("✓ " if recommended else "") + str(item["k"]), None),
-                (", ".join(item["labels"]), None),
-                (cm(item["rmse"]), None),
-                (cm(item["z"]), None),
-                (cm(item["max"]), None),
-                (i18n.t(SPREAD_TEXT[label]), SPREAD_COLOR[label]),
-            )
-            for column, (text, color) in enumerate(cells):
-                cell = QtWidgets.QTableWidgetItem(text)
-                cell.setData(ROLE, item)
-                if column in (0, 2, 3, 4):
-                    cell.setTextAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-                else:
-                    cell.setTextAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-                if color:
-                    cell.setForeground(QtGui.QBrush(QtGui.QColor(color)))
-                if recommended:
-                    font = cell.font()
-                    font.setBold(True)
-                    cell.setFont(font)
-                self.table.setItem(row, column, cell)
+            texts = [("✓ " if recommended else "") + "{}/{}".format(item["k"], total), ", ".join(item["labels"])]
+            texts += [cm(item[key]) for key in ("x", "y", "z", "xy", "rmse", "max")]
+            texts.append(i18n.t(SPREAD_TEXT[label]))
+            for column, text in enumerate(texts):
+                color = SPREAD_COLOR[label] if column == len(texts) - 1 else None
+                self.table.setItem(row, column, _cell(text, right=column in (0,) + tuple(range(2, 8)), color=color,
+                                                      bold=recommended, data=item))
         if result["recommended"] is not None:
             self.table.selectRow(result["recommended"])
         lines = []
