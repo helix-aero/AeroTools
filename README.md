@@ -84,11 +84,6 @@ You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 **Aero > FastSpace** scans a drive for old Metashape projects and frees disk space: lighten them (remove the dense cloud and
 the depth maps) or delete them, to the Recycle Bin or for good.
 
-**Aero > FastExport** exports the orthomosaic and/or the DEM to an `Outputs` folder next to the project, with short names
-(`SITE_260704_3cm_ortho.tif`, `SITE_260704_3cm_dtm.tif`). Pick a format (full quality GeoTIFF, compressed client quick view,
-JPEG + world file) and a pixel size in cm. A pixel size you type is exact (3 cm is 3.000 cm, on a grid of multiples of 3 cm),
-so the ortho and the DEM line up pixel for pixel.
-
 Later, **Aero > Check for updates...** brings the latest version from GitHub (with the list of changes and their size).
 The installer asks which detection engine you want (light, precise, or both) and whether to add the retraining tools; the
 FastGCP settings can install any of them afterwards with one click.

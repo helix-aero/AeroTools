@@ -74,59 +74,6 @@ def tile(caption=""):
     return frame, number, title
 
 
-MARKS = {"ok": ("\u2713", theme.GREEN_BRIGHT), "error": ("\u2715", theme.ORANGE_BRIGHT)}
-
-
-class Mark(QtWidgets.QLabel):
-    """Petite coche verte (reussite) ou croix orange (echec) devant un texte d'etat."""
-
-    def __init__(self, size=16):
-        super(Mark, self).__init__()
-        self.setFixedWidth(size + 4)
-        self.setAlignment(QtCore.Qt.AlignCenter)
-        self._size = size
-        self.setVisible(False)
-
-    def show_kind(self, kind):
-        symbol, color = MARKS.get(kind, ("", ""))
-        self.setText(symbol)
-        self.setStyleSheet("color: {}; font-size: {}px; font-weight: 700; background: transparent;".format(
-            color, self._size))
-        self.setVisible(bool(symbol))
-
-
-class OptionCard(QtWidgets.QFrame):
-    """Une option : un bouton (rond ou case) dans un cadre qui passe au vert une fois choisi (orange si `danger`).
-
-    Le cadre est cliquable partout. `grid` sert a poser d'autres elements a cote du bouton (colonne 1 et suivantes)."""
-
-    def __init__(self, button, danger=False):
-        super(OptionCard, self).__init__()
-        self.setObjectName("aeroOption")
-        self.setProperty("on", False)
-        self.setProperty("danger", bool(danger))
-        self.button = button
-        self.grid = QtWidgets.QGridLayout(self)
-        self.grid.setContentsMargins(14, 12, 14, 12)
-        self.grid.setHorizontalSpacing(theme.PAD)
-        self.grid.setVerticalSpacing(theme.PAD_S)
-        self.grid.addWidget(button, 0, 0)
-        button.toggled.connect(self.sync)
-
-    def sync(self, checked=None):
-        self.setProperty("on", bool(self.button.isChecked() if checked is None else checked))
-        self.style().unpolish(self)
-        self.style().polish(self)
-
-    def mousePressEvent(self, event):
-        if self.button.isEnabled():
-            if isinstance(self.button, QtWidgets.QRadioButton):
-                self.button.setChecked(True)
-            else:
-                self.button.toggle()
-        super(OptionCard, self).mousePressEvent(event)
-
-
 TABLE_STYLE = """
     QTableWidget {{
         background: {pane}; alternate-background-color: {head}; color: {fg_1};
