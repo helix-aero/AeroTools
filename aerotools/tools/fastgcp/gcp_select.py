@@ -367,13 +367,14 @@ def analyze(points, enabled=None, model=SIMILARITY, min_photos=MIN_PHOTOS, budge
     """
     enabled = enabled or {}
     result = {"model": model, "count": len(points), "usable": 0, "few": [], "suspects": [], "curve": [],
-              "recommended": None, "current": current_stats(points, enabled), "reason": ""}
+              "recommended": None, "current": (None, None), "reason": ""}
     pool = []
     for p in points:
         if int(p.get("n") or 0) < min_photos:
             result["few"].append(p["label"])
         else:
             pool.append(p)
+    result["current"] = current_stats(pool, enabled)       # comme Reference : sans les marqueurs peu pointes
     result["usable"] = len(pool)
     need = MIN_CONTROL[model] + 1
     if len(pool) < need:

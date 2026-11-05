@@ -44,6 +44,13 @@ def test_group_rms_separates_control_and_check_points():
     assert check == (pytest.approx(0.05), 1)
 
 
+def test_group_rms_ignores_markers_with_too_few_photos():
+    rows = [row("a", 9, 0.02), row("unpinned", 0, 0.0, 0.0, 0.0), row("two", 2, 0.9)]
+    items = qc.table(rows, {"a": True, "unpinned": True, "two": False})
+    control, check = qc.group_rms(items)
+    assert control == (pytest.approx(0.02), 1) and check is None
+
+
 def test_group_rms_with_no_data_is_none():
     assert qc.group_rms(qc.table([])) == (None, None)
     assert qc.group_rms(qc.table([row("a", 9, 0.01)])) == (None, None)

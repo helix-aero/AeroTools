@@ -137,6 +137,14 @@ def test_current_stats_match_the_raw_differences():
     assert g.current_stats(points, {})[0] is None
 
 
+def test_current_values_leave_out_markers_with_too_few_photos():
+    points = make_points(count=6, noise=0.0, similarity=False, bias=(0.01, 0.0, 0.0))
+    points[0]["n"] = 0
+    result = g.analyze(points, {p["label"]: True for p in points[:2]}, model=g.SHIFT)
+    control, check = result["current"]
+    assert control["n"] == 1 and check["n"] == 4
+
+
 def test_spread_is_low_for_clustered_points_and_high_for_wide_ones():
     wide = [{"est": (0, 0, 0)}, {"est": (100, 0, 0)}, {"est": (0, 100, 0)}, {"est": (100, 100, 0)}]
     clustered = [{"est": (0, 0, 0)}, {"est": (100, 0, 0)}, {"est": (50, 3, 0)}]

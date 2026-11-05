@@ -125,8 +125,8 @@ def group_rms(items):
     `items` vient de `table`. Seuls comptent les marqueurs dont l'erreur est calculable."""
     sums = {True: [0.0, 0], False: [0.0, 0]}
     for item in items:
-        if item["total"] is None or item["role"] not in (True, False):
-            continue
+        if item["total"] is None or item["role"] not in (True, False) or item["status"] == FEW:
+            continue                # un marqueur peu pointe a une position sans valeur : on ne le compte pas
         sums[item["role"]][0] += item["total"] ** 2
         sums[item["role"]][1] += 1
 
