@@ -1616,6 +1616,15 @@ def add_menu_item(label, callback, shortcut=None):
             return False
 
 
+def add_menu_separator(menu):
+    """Ajoute un trait de separation a la fin du menu `menu`. Renvoie True si Metashape l'a accepte."""
+    try:
+        Metashape.app.addMenuSeparator(menu)
+        return True
+    except Exception:
+        return False
+
+
 def message_box(text):
     try:
         Metashape.app.messageBox(text)

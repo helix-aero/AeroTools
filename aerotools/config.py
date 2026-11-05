@@ -25,6 +25,8 @@ FONTS = os.path.join(ASSETS, "fonts")
 #   sous_titre: cle de texte (aerotools/lang/*.py) de la description de l'outil
 #   raccourci : raccourci clavier Metashape, ou None
 #   pret      : False => l'entree de menu affiche « a venir » au lieu de charger
+#   rouvrir   : True => « Recharger AeroTools » rouvre cet outil (le panneau qui reste a l'ecran) ;
+#               False => une fenetre ponctuelle (FastSpace) : fermee au rechargement, jamais rouverte
 TOOLS = [
     {
         "id": "fastgcp",
@@ -33,6 +35,7 @@ TOOLS = [
         "sous_titre": "tool.fastgcp.subtitle",
         "raccourci": "F8",
         "pret": True,
+        "rouvrir": True,
     },
     {
         "id": "fastspace",
@@ -41,6 +44,7 @@ TOOLS = [
         "sous_titre": "tool.fastspace.subtitle",
         "raccourci": None,
         "pret": True,
+        "rouvrir": False,
     },
     # La detection IA (ex-AIGCP) est dans FastGCP : plus d'entree de menu a part.
 ]

@@ -85,8 +85,11 @@ def install_menu(force=False):
         if msapi.add_menu_item(label, callback, entry.get("raccourci")):
             added += 1
 
+    # Trois blocs separes par un trait : les outils, l'entretien (mises a jour, rechargement), l'info.
+    msapi.add_menu_separator(MENU)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.update")), update_plugins)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.reload")), reload_all)
+    msapi.add_menu_separator(MENU)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.about")), about)
 
     setattr(builtins, _MENU_FLAG, True)
@@ -146,7 +149,8 @@ def launch(tool_id, reload=False):
         )
         return False
 
-    setattr(builtins, _LAST_TOOL_FLAG, tool_id)
+    if entry.get("rouvrir", False):
+        setattr(builtins, _LAST_TOOL_FLAG, tool_id)
     return True
 
 
@@ -172,7 +176,7 @@ def purge_modules():
 
 
 def reload_all():
-    """Relit le code depuis le serveur et rouvre le dernier outil utilise."""
+    """Relit le code depuis le serveur et rouvre le dernier panneau utilise (pas les fenetres ponctuelles)."""
     last = getattr(builtins, _LAST_TOOL_FLAG, None)
     here = root()
     purge_modules()
