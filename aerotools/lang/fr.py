@@ -597,4 +597,13 @@ TEXTES = {
     "space.menu_delete": "Supprimer",
     "space.menu_delete_n": "Supprimer {n} projets",
     "space.menu_reveal": "Afficher dans l'Explorateur",
+
+    # -- Fast Space : verrous ----------------------------------------------
+    "space.force_text": "{n} projet(s) semblent ouverts dans un autre Metashape : {names}\n\nUn fichier lock dit que quelqu'un y travaille. Les supprimer quand même peut détruire ce travail.\n\nSi Metashape a planté et laissé le verrou derrière lui, tu peux continuer.",
+    "space.force_owners": "Verrou écrit par : {owners}",
+    "space.force_confirm": "Confirmer la suppression",
+    "space.stale_note": "{n} projet(s) ont un ancien verrou laissé par une session plantée ({owners}). Le fichier lock est retiré d'abord pour que Metashape puisse les modifier.",
+    "space.err_read_only": "Metashape a ouvert le projet en lecture seule : un fichier lock est encore là ({owner}). Supprime le projet, ou retire le verrou si personne ne l'a ouvert.",
+    "space.err_lock_remove": "Impossible de retirer l'ancien fichier lock : {error}",
+    "space.tip_lock": "Verrou écrit par {owner}",
 }

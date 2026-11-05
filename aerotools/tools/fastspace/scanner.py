@@ -68,6 +68,7 @@ class Project(object):
         self.parts = {}                                    # composant -> octets
         self.modified = 0.0
         self.lock = FREE
+        self.lock_owner = ""                               # « machine/utilisateur » ecrit dans le fichier lock
         self.error = ""
         self.kept = Kept()
 
@@ -260,6 +261,15 @@ def lock_state(files_dir):
         return FREE
 
 
+def lock_owner(files_dir):
+    """Ce que Metashape a ecrit dans `lock` (ordinateur/utilisateur), ou "" si illisible."""
+    try:
+        with open(os.path.join(files_dir, "lock"), "rb") as handle:
+            return handle.read(120).decode("utf-8", "replace").strip().splitlines()[0][:80]
+    except (OSError, IndexError):
+        return ""
+
+
 def measure_project(psx_path):
     project = Project(psx_path)
     try:
@@ -274,6 +284,8 @@ def measure_project(psx_path):
                 times.append(os.path.getmtime(candidate))
         project.modified = max(times)
         project.lock = lock_state(project.files_dir)
+        if project.lock != FREE:
+            project.lock_owner = lock_owner(project.files_dir)
         project.kept = measure_kept(os.path.dirname(psx_path))
     except OSError as exc:
         project.error = repr(exc)
@@ -287,6 +299,8 @@ def measure_orphan(files_dir):
         project.parts, project.files_size = parts, total
         project.modified = os.path.getmtime(files_dir)
         project.lock = lock_state(files_dir)
+        if project.lock != FREE:
+            project.lock_owner = lock_owner(files_dir)
     except OSError as exc:
         project.error = repr(exc)
     return project

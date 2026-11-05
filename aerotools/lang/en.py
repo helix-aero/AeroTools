@@ -591,4 +591,13 @@ TEXTES = {
     "space.menu_delete": "Delete",
     "space.menu_delete_n": "Delete {n} projects",
     "space.menu_reveal": "Reveal in Explorer",
+
+    # -- Fast Space : verrous ----------------------------------------------
+    "space.force_text": "{n} project(s) look open in another Metashape: {names}\n\nA lock file says someone is working on them. Deleting them anyway can destroy that work.\n\nIf Metashape crashed and left the lock behind, it is safe to go on.",
+    "space.force_owners": "Lock written by: {owners}",
+    "space.force_confirm": "Confirm delete",
+    "space.stale_note": "{n} project(s) have an old lock left by a crashed session ({owners}). The lock file is removed first so Metashape can edit them.",
+    "space.err_read_only": "Metashape opened the project read-only: a lock file is still there ({owner}). Delete the project, or remove the lock if nobody has it open.",
+    "space.err_lock_remove": "The old lock file could not be removed: {error}",
+    "space.tip_lock": "Lock written by {owner}",
 }

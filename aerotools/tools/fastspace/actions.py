@@ -35,7 +35,7 @@ import stat
 import subprocess
 import time
 
-from ... import config, journal
+from ... import config, i18n, journal
 from . import scanner
 
 RECYCLE = "recycle"
@@ -75,6 +75,15 @@ def refusal(project):
     """Raison pour laquelle on ne touche pas a ce projet ("" si on peut)."""
     if project.in_use:
         return "ouvert dans un Metashape (fichier lock tenu)"
+    if not project.orphan and same_path(project.path, current_document_path()):
+        return "ouvert dans ce Metashape"
+    return ""
+
+
+def delete_refusal(project):
+    """Raison absolue de ne pas supprimer ("" si on peut) : le projet ouvert ici ne part jamais.
+
+    Un verrou tenu par un autre Metashape se contourne (ecran « Confirm delete ») : c'est `refusal` qui le dit."""
     if not project.orphan and same_path(project.path, current_document_path()):
         return "ouvert dans ce Metashape"
     return ""
@@ -306,6 +315,14 @@ def lighten(project, mode, progress=None):
         return result
     before = project.light
     try:
+        if project.lock == scanner.STALE:
+            # Un verrou laisse par une session morte (souvent un autre PC) force Metashape a ouvrir en lecture seule.
+            step("verrou perime")
+            try:
+                os.remove(os.path.join(project.files_dir, "lock"))
+            except OSError as exc:
+                raise SpaceError(i18n.t("space.err_lock_remove", error=exc))
+            project.lock = scanner.FREE
         step("lecture")
         document = _open(project.path, True)
         snap_before = snapshot(document)
@@ -336,6 +353,8 @@ def lighten(project, mode, progress=None):
         project.parts, project.files_size = after.parts, after.files_size
     except Exception as exc:
         text = str(exc) if isinstance(exc, SpaceError) else repr(exc)
+        if "read-only mode" in text:
+            text = i18n.t("space.err_read_only", owner=project.lock_owner or scanner.lock_owner(project.files_dir) or "?")
         result["error"] = text
     return result
 
@@ -344,10 +363,13 @@ def lighten(project, mode, progress=None):
 # Suppression du projet
 # --------------------------------------------------------------------------
 
-def delete_project(project, mode):
-    """Supprime le projet (.psx et .files seulement), ou le dossier orphelin. Renvoie {ok, freed, in_bin, error}."""
+def delete_project(project, mode, force=False):
+    """Supprime le projet (.psx et .files seulement), ou le dossier orphelin. Renvoie {ok, freed, in_bin, error}.
+
+    `force` : l'utilisateur a confirme malgre un verrou tenu par un autre Metashape ; seul le projet
+    ouvert dans ce Metashape reste refuse."""
     result = {"ok": False, "freed": 0, "in_bin": 0, "error": ""}
-    reason = refusal(project)
+    reason = delete_refusal(project) if force else refusal(project)
     if reason:
         result["error"] = reason
         return result
