@@ -184,10 +184,11 @@ def label(item, lang="fr"):
     return item.get(lang) or item["fr"]
 
 
-def crs_choices(lon=None, lat=None, lang="fr"):
+def crs_choices(lon=None, lat=None, lang="fr", projected_only=True):
     """Liste (epsg, libelle) a proposer. Avec lon/lat (centre du projet, degres) : les SCR dont l'emprise contient le point
-    d'abord (Lambert-93 en tete, puis la CC du lieu, UTM), puis le reste. Jamais de SCR hors catalogue."""
-    items = list(CRS_LIST)
+    d'abord (Lambert-93 en tete, puis la CC du lieu, UTM), puis le reste. Jamais de SCR hors catalogue.
+    Les SCR geographiques (degres) sont ecartes par defaut : le pixel d'un export se donne en metres."""
+    items = [c for c in CRS_LIST if not projected_only or c["kind"] != "geo"]
     if lon is not None and lat is not None:
         def inside(c):
             b = c["bbox"]

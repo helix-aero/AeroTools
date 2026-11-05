@@ -1,5 +1,5 @@
 {
- "built": "2026-11-05T17:06:09",
+ "built": "2026-11-05T20:58:23",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -66,8 +66,8 @@
    "size": 43063
   },
   "aerotools/msapi.py": {
-   "sha256": "20b180142b6bc45ef377fb466ee7d473c4769e1b4268e7dc7b288b3f3ffaa589",
-   "size": 64239
+   "sha256": "a31deae3c8f3a2d256e759d659449289a3387f8b787a24477f36900f3813a9b5",
+   "size": 65679
   },
   "aerotools/qt.py": {
    "sha256": "a023b94bfa8622d83fca66668426a33e6d079fc0af5f3e0d71dad0d7037bda38",
@@ -90,8 +90,8 @@
    "size": 352
   },
   "aerotools/tools/fastexport/crs.py": {
-   "sha256": "fa794f59a5fe3110be72693b86ba14c0ec629e165ceed67106c2f749d79cebc8",
-   "size": 27547
+   "sha256": "9de3e44a1f30ac314132416603391a5b63b0cc6067bd8705712e7bd5a7a6e125",
+   "size": 27721
   },
   "aerotools/tools/fastexport/dialog.py": {
    "sha256": "f4269159f140ae370361066595b2e68b0fd7b13243cb984b6b8ddd2402d7d31a",
@@ -114,8 +114,8 @@
    "size": 10479
   },
   "aerotools/tools/fastexport/pipeline.py": {
-   "sha256": "3ab6820bb361b51c65419f4f0f5244ae826afe4ec5407a7ffaf4b6298eb57494",
-   "size": 12498
+   "sha256": "994d17a173dad0234c90951c9d05fc99c0b3a1f1e62fb756a1d01e85e9cf52b6",
+   "size": 12599
   },
   "aerotools/tools/fastexport/plan.py": {
    "sha256": "08c7392ada2984c5b49fe851a76db91c1161d5f998230924e982c6200979dd5c",

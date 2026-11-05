@@ -175,3 +175,58 @@ def test_raster_info_without_a_chunk_is_empty(meta, monkeypatch):
     monkeypatch.setattr(msapi, "chunk", lambda: None)
     assert msapi.raster_info() == {"ortho": None, "dem": None, "box_ortho": None, "box_dem": None, "crs": "",
                                    "dates": [], "crs_object": None, "center": None}
+
+
+# -- changement de SCR : emprise ---------------------------------------------------------------------
+
+COMPOUND = ('COMPD_CS["RGF93 v1 / CC42 + RAC09",PROJCS["RGF93 v1 / CC42",GEOGCS["RGF93 v1",DATUM["D",SPHEROID["GRS 1980",6378137,298.257]]],'
+            'PROJECTION["Lambert_Conformal_Conic_2SP"],UNIT["metre",1]],VERT_CS["RAC09",VERT_DATUM["IGN78",2005]]]')
+
+
+class FakeCrs(object):
+    def __init__(self, wkt, ok=True):
+        self.wkt, self.ok = wkt, ok
+
+
+def test_horizontal_part_cuts_the_vertical_system_out(meta):
+    meta.CoordinateSystem = FakeCrs
+    flat = msapi.horizontal_part(FakeCrs(COMPOUND))
+    assert flat.wkt.startswith('PROJCS["RGF93 v1 / CC42"') and flat.wkt.endswith("UNIT[\"metre\",1]]") and "VERT_CS" not in flat.wkt
+    plain = FakeCrs('PROJCS["x"]')
+    assert msapi.horizontal_part(plain) is plain
+
+
+def test_transform_box_falls_back_to_the_horizontal_part_when_the_geoid_fails(meta):
+    meta.CoordinateSystem = FakeCrs
+    meta.Vector = lambda values: tuple(values)
+    calls = []
+
+    def transform(point, source, target):
+        calls.append((source.wkt.startswith("COMPD_CS"), target.wkt.startswith("COMPD_CS")))
+        if source.wkt.startswith("COMPD_CS") or target.wkt.startswith("COMPD_CS"):
+            raise RuntimeError("geoid grid not found")
+        return (point[0] + 1.0, point[1] + 2.0, 0.0)
+
+    meta.CoordinateSystem.transform = staticmethod(transform)
+    box = msapi.transform_box((0.0, 0.0, 10.0, 5.0), FakeCrs(COMPOUND), FakeCrs(COMPOUND.replace("RAC09", "RAC23")))
+    assert box == (1.0, 2.0, 11.0, 7.0)
+    assert msapi.transform_box.last_error == "geoid grid not found"
+
+
+def test_transform_box_gives_up_with_a_reason(meta):
+    meta.CoordinateSystem = FakeCrs
+    meta.Vector = lambda values: tuple(values)
+
+    def refuse(point, source, target):
+        raise RuntimeError("no path")
+
+    meta.CoordinateSystem.transform = staticmethod(refuse)
+    assert msapi.transform_box((0.0, 0.0, 1.0, 1.0), FakeCrs('PROJCS["a"]'), FakeCrs('PROJCS["b"]')) is None
+    assert msapi.transform_box.last_error == "no path"
+
+
+def test_the_crs_list_has_no_geographic_system_by_default():
+    from aerotools.tools.fastexport import crs
+    shown = [epsg for epsg, _label in crs.crs_choices(9.0, 42.0, "en")]
+    assert 2154 in shown and 4326 not in shown and 9782 not in shown
+    assert 4326 in [epsg for epsg, _label in crs.crs_choices(projected_only=False)]

@@ -106,7 +106,8 @@ def _grid(ctx, job):
     if ctx.crs is not None:
         moved = ctx.transform(box, ctx.info.get("crs_object"), ctx.crs)
         if moved is None:
-            raise Failure("Impossible de convertir l'emprise vers le SCR choisi")
+            reason = getattr(ctx.transform, "last_error", "")
+            raise Failure("Impossible de convertir l'emprise vers le SCR choisi" + (" (%s)" % reason if reason else ""))
         box = moved
     pixel = pixel_of(ctx, job)
     return pixel, ctx.snap(box, pixel)

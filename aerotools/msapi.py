@@ -1702,16 +1702,53 @@ def target_crs(horizontal_epsg, vertical=None):
         return None
 
 
-def transform_box(box, source, target):
-    """Emprise (gauche, bas, droite, haut) d'un SCR vers un autre : enveloppe des quatre coins, ou None."""
+def horizontal_part(crs):
+    """Partie horizontale d'un SCR compose (le PROJCS / GEOGCS du COMPD_CS) ; le SCR lui-meme s'il n'est pas compose, None si illisible."""
     try:
-        left, bottom, right, top = box
-        corners = [Metashape.CoordinateSystem.transform(Metashape.Vector((x, y, 0.0)), source, target)
-                   for x, y in ((left, bottom), (right, bottom), (right, top), (left, top))]
-        xs, ys = [float(c[0]) for c in corners], [float(c[1]) for c in corners]
-        return min(xs), min(ys), max(xs), max(ys)
+        wkt = str(crs.wkt)
+        if not wkt.lstrip().upper().startswith("COMPD_CS"):
+            return crs
+        starts = [wkt.find(tag) for tag in ("PROJCS[", "GEOGCS[") if wkt.find(tag) >= 0]
+        start = min(starts)
+        depth, quoted = 0, False
+        for i in range(wkt.index("[", start), len(wkt)):
+            char = wkt[i]
+            if char == '"':
+                quoted = not quoted
+            elif not quoted and char == "[":
+                depth += 1
+            elif not quoted and char == "]":
+                depth -= 1
+                if depth == 0:
+                    return Metashape.CoordinateSystem(wkt[start:i + 1])
     except Exception:
-        return None
+        pass
+    return None
+
+
+def transform_box(box, source, target):
+    """Emprise (gauche, bas, droite, haut) d'un SCR vers un autre : enveloppe des quatre coins, ou None.
+
+    Seul le plan compte pour une emprise : si la conversion complete echoue (grille de geoide absente, par exemple), on la
+    refait sans les altitudes. La raison du dernier echec reste dans `transform_box.last_error`."""
+    transform_box.last_error = ""
+    left, bottom, right, top = box
+    pairs = [(source, target)]
+    flat = (horizontal_part(source), horizontal_part(target))
+    if None not in flat and flat != pairs[0]:
+        pairs.append(flat)
+    for src, dst in pairs:
+        try:
+            corners = [Metashape.CoordinateSystem.transform(Metashape.Vector((x, y, 0.0)), src, dst)
+                       for x, y in ((left, bottom), (right, bottom), (right, top), (left, top))]
+            xs, ys = [float(c[0]) for c in corners], [float(c[1]) for c in corners]
+            return min(xs), min(ys), max(xs), max(ys)
+        except Exception as exc:
+            transform_box.last_error = str(exc) or repr(exc)
+    return None
+
+
+transform_box.last_error = ""
 
 
 def snapped_box(box, pixel):
