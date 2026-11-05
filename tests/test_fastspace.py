@@ -8,8 +8,11 @@ import pytest
 from aerotools.tools.fastspace import actions, scanner
 
 
-def make_project(root, name="p", dense=1000, depth=3000, tie=500, extra=0, chunks=1, with_psx=True, lock=False):
-    """Un projet factice : p.psx et p.files/<chunk>/0/{dense_cloud, depth_maps.1, point_cloud, ...}."""
+def make_project(root, name="p", dense=1000, depth=3000, tie=500, extra=0, chunks=1, with_psx=True, lock=False,
+                 photos=0, mosaic=0):
+    """Un projet factice : p.psx et p.files/<chunk>/0/{dense_cloud, depth_maps.1, point_cloud, ...}.
+
+    `photos` : octets d'orthophotos (images0.zip dans orthomosaic) ; `mosaic` : octets de la mosaique elle-meme."""
     folder = os.path.join(str(root), name + "_dir")
     files = os.path.join(folder, name + ".files")
     os.makedirs(files)
@@ -26,6 +29,13 @@ def make_project(root, name="p", dense=1000, depth=3000, tie=500, extra=0, chunk
                 os.makedirs(os.path.join(frame, part))
                 with open(os.path.join(frame, part, "data.zip"), "wb") as handle:
                     handle.write(b"x" * size)
+        if photos or mosaic:
+            ortho = os.path.join(frame, "orthomosaic")
+            os.makedirs(ortho)
+            for name_, size in (("images0.zip", photos), ("tile-1-1.tif", mosaic), ("orthomosaic.zip", 0)):
+                if size or name_ == "orthomosaic.zip":
+                    with open(os.path.join(ortho, name_), "wb") as handle:
+                        handle.write(b"o" * size)
         with open(os.path.join(frame, "frame.zip"), "wb") as handle:
             handle.write(b"f" * 5)
     if lock:
@@ -43,11 +53,27 @@ def test_part_names():
 def test_measure_project_separates_dense_depth_and_the_rest(tmp_path):
     psx = make_project(tmp_path, dense=1000, depth=3000, tie=500, chunks=2)
     project = scanner.measure_project(psx)
-    assert project.dense == 2000 and project.depth == 6000 and project.light == 8000
+    assert project.dense == 2000 and project.depth == 6000 and project.removable() == 8000
     assert project.parts["point_cloud"] == 1000
     assert project.total == project.psx_size + project.files_size
     assert project.total >= 8000 + 1000 + 10 + 10
     assert project.lock == scanner.FREE and not project.in_use
+
+
+def test_orthophotos_are_counted_apart_from_the_orthomosaic(tmp_path):
+    psx = make_project(tmp_path, dense=0, depth=0, tie=0, chunks=2, photos=5000, mosaic=300)
+    project = scanner.measure_project(psx)
+    assert project.ortho_photos == 10000 and project.parts["orthomosaic"] == 600
+    assert project.size_of("ortho") == 10000 and project.removable(scanner.ITEMS) == 10000
+    assert project.total >= 10600 and project.files_size >= 10600
+
+
+def test_removable_adds_the_chosen_items_only(tmp_path):
+    project = scanner.measure_project(make_project(tmp_path, dense=1000, depth=3000, photos=7000))
+    assert project.removable() == 4000                                     # par defaut : dense + depth
+    assert project.removable(("ortho",)) == 7000
+    assert project.removable(scanner.ITEMS) == 11000
+    assert project.removable(()) == 0
 
 
 def test_scan_finds_projects_orphans_and_sorts_by_size(tmp_path):
@@ -238,12 +264,21 @@ def test_recycle_of_nothing_is_ok_and_failure_is_reported(tmp_path):
 
 # -- allegement avec un faux Metashape ------------------------------------------------
 
+class FakeOrthomosaic(object):
+    def __init__(self, files_dir, index):
+        self._files, self._index, self.photos_removed = files_dir, index, False
+
+    def removeOrthophotos(self):
+        self.photos_removed = True
+
+
 class FakeChunk(object):
     def __init__(self, label, files_dir, index):
         self.label, self._files, self._index = label, files_dir, index
         self.cameras, self.markers = [1, 2, 3], [1, 2]
         self.point_clouds = ["dense"]
         self.depth_maps_sets = ["depth"]
+        self.orthomosaics = [FakeOrthomosaic(files_dir, index)]
 
     def remove(self, items):
         for item in items:
@@ -268,8 +303,15 @@ class FakeDocument(object):
                 frame = os.path.join(self.files, chunk, "0")
                 if os.path.isdir(frame):
                     for part in os.listdir(frame):
-                        if scanner.part_of(part) in scanner.LIGHT_PARTS:
+                        kind = scanner.part_of(part)
+                        if kind == "dense_cloud" and not self.chunks[0].point_clouds:
                             shutil.rmtree(os.path.join(frame, part))
+                        elif kind == "depth_maps" and not self.chunks[0].depth_maps_sets:
+                            shutil.rmtree(os.path.join(frame, part))
+                        elif kind == "orthomosaic" and self.chunks[0].orthomosaics[0].photos_removed:
+                            for name in os.listdir(os.path.join(frame, part)):
+                                if scanner.ORTHO_IMAGES.match(name):
+                                    os.remove(os.path.join(frame, part, name))
         self.saved = True
 
 
@@ -296,9 +338,47 @@ def test_lighten_permanent_removes_dense_and_depth_and_verifies(tmp_path, fake_m
     result = actions.lighten(project, actions.PERMANENT, progress=steps.append)
     assert result["ok"], result
     assert result["freed"] == 4000 and result["in_bin"] == 0
-    assert project.light == 0 and project.parts["point_cloud"] == 500           # le reste est intact
+    assert project.removable() == 0 and project.parts["point_cloud"] == 500    # le reste est intact
     assert [mode for mode, _ in fake_metashape["opened"]] == ["ro", "rw", "ro"]
     assert steps[0] == "lecture" and steps[-1] == "verification"
+
+
+def test_lighten_ortho_only_keeps_the_dense_cloud_and_the_mosaic(tmp_path, fake_metashape):
+    project = scanner.measure_project(make_project(tmp_path, dense=1000, depth=3000, photos=9000, mosaic=400))
+    result = actions.lighten(project, actions.PERMANENT, items=("ortho",))
+    assert result["ok"], result
+    assert result["freed"] == 9000
+    assert project.ortho_photos == 0 and project.parts["orthomosaic"] == 400
+    assert project.dense == 1000 and project.depth == 3000                   # pas choisis : intacts
+
+
+def test_lighten_everything_in_one_pass(tmp_path, fake_metashape):
+    project = scanner.measure_project(make_project(tmp_path, dense=1000, depth=3000, photos=9000))
+    result = actions.lighten(project, actions.PERMANENT, items=scanner.ITEMS)
+    assert result["ok"] and result["freed"] == 13000
+    assert project.removable(scanner.ITEMS) == 0
+
+
+def test_lighten_without_any_item_does_nothing(tmp_path, fake_metashape):
+    project = scanner.measure_project(make_project(tmp_path, photos=100))
+    result = actions.lighten(project, actions.PERMANENT, items=())
+    assert not result["ok"] and fake_metashape["opened"] == []
+
+
+def test_lighten_cleans_orthophotos_metashape_left_behind(tmp_path, fake_metashape):
+    fake_metashape["delete_on_save"] = False
+    project = scanner.measure_project(make_project(tmp_path, dense=0, depth=0, photos=5000, mosaic=100))
+    assert [os.path.basename(p) for p in actions.removable_paths(project, ("ortho",))] == ["images0.zip"]
+    result = actions.lighten(project, actions.PERMANENT, items=("ortho",))
+    assert result["ok"] and result["freed"] == 5000 and actions.removable_paths(project, ("ortho",)) == []
+
+
+def test_strip_chunk_only_touches_the_chosen_items():
+    chunk = FakeChunk("C", "x", 0)
+    assert actions.strip_chunk(chunk, ("ortho",)) == ["ortho"]
+    assert chunk.point_clouds == ["dense"] and chunk.depth_maps_sets == ["depth"]
+    assert chunk.orthomosaics[0].photos_removed
+    assert actions.strip_chunk(chunk) == ["dense", "depth"]
 
 
 def test_lighten_cleans_leftover_folders_when_metashape_keeps_them(tmp_path, fake_metashape):
@@ -306,14 +386,14 @@ def test_lighten_cleans_leftover_folders_when_metashape_keeps_them(tmp_path, fak
     project = scanner.measure_project(make_project(tmp_path, dense=1000, depth=3000))
     result = actions.lighten(project, actions.PERMANENT)
     assert result["ok"] and result["freed"] == 4000
-    assert actions.light_folders(project) == []
+    assert actions.removable_paths(project) == []
 
 
 def test_lighten_has_no_recycle_mode_and_touches_nothing_then(tmp_path, fake_metashape):
     project = scanner.measure_project(make_project(tmp_path, dense=1000, depth=3000))
     result = actions.lighten(project, actions.RECYCLE)
     assert not result["ok"] and "pas de corbeille" in result["error"]
-    assert fake_metashape["opened"] == [] and project.light == 4000
+    assert fake_metashape["opened"] == [] and project.removable() == 4000
 
 
 def test_lighten_reports_an_api_failure_and_leaves_the_files(tmp_path, monkeypatch):
@@ -325,7 +405,7 @@ def test_lighten_reports_an_api_failure_and_leaves_the_files(tmp_path, monkeypat
     monkeypatch.setattr(actions, "_open", broken)
     result = actions.lighten(project, actions.PERMANENT)
     assert not result["ok"] and "dense_cloud.zip" in result["error"]
-    assert len(actions.light_folders(project)) == 2
+    assert len(actions.removable_paths(project)) == 2
 
 
 def test_lighten_refuses_open_projects_and_orphans(tmp_path, fake_metashape):
@@ -390,6 +470,8 @@ def test_check_snapshots():
     assert "markers" in actions.check_snapshots(before, [{"label": "C", "cameras": 3, "markers": 1, "dense": 0, "depth": 0}])
     assert "reste" in actions.check_snapshots(before, [{"label": "C", "cameras": 3, "markers": 2, "dense": 1, "depth": 0}])
     assert "chunks" in actions.check_snapshots(before, [])
+    still = [{"label": "C", "cameras": 3, "markers": 2, "dense": 1, "depth": 1}]
+    assert actions.check_snapshots(before, still, ("ortho",)) is None          # dense et depth non demandes : pas un probleme
 
 
 def test_log_is_written_as_csv(tmp_path, local_appdata):
