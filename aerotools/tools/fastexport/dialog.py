@@ -91,7 +91,9 @@ class ExportDialog(QtWidgets.QDialog):
         self._jobs = []
         self._date = datetime.date.today()
         self._missing = None                                # (outil, cle de texte) quand un logiciel manque
-        self._geoid_missing = None                          # id de la grille a telecharger
+        self._geoid_missing = None                          # id de la grille choisie qui manque (bloque l'export)
+        self._geoid_busy = False
+        self._geoid_ids = []                                # ids proposes au telechargement (la grille choisie, ou celles de la zone)
         self._previous_preset = None
         self._tile_pixels = None
         self.tools = {}
@@ -155,13 +157,21 @@ class ExportDialog(QtWidgets.QDialog):
         layout.addLayout(grid)
         self.geoid_card = QtWidgets.QFrame()
         self.geoid_card.setObjectName("aeroOption")
-        self.geoid_card.setProperty("danger", True)
-        geoid_row = QtWidgets.QHBoxLayout(self.geoid_card)
-        geoid_row.setContentsMargins(14, 10, 14, 10)
+        geoid_box = QtWidgets.QVBoxLayout(self.geoid_card)
+        geoid_box.setContentsMargins(14, 10, 14, 10)
+        geoid_row = QtWidgets.QHBoxLayout()
         self.geoid_text = ui.label("")
         geoid_row.addWidget(self.geoid_text, 1)
+        self.geoid_later = ui.button("export.geoid_later", self._geoid_not_now, width=90)
+        geoid_row.addWidget(self.geoid_later)
         self.geoid_button = ui.button("export.geoid_download", self._download_geoid, "aeroRun", width=130)
         geoid_row.addWidget(self.geoid_button)
+        geoid_box.addLayout(geoid_row)
+        self.geoid_bar = QtWidgets.QProgressBar()
+        self.geoid_bar.setObjectName("aeroProgress")
+        self.geoid_bar.setTextVisible(False)
+        self.geoid_bar.setVisible(False)
+        geoid_box.addWidget(self.geoid_bar)
         layout.addWidget(self.geoid_card)
 
         # -- format -----------------------------------------------------------------------------
@@ -480,52 +490,118 @@ class ExportDialog(QtWidgets.QDialog):
         self._refresh_names()
 
     def _check_geoid(self):
-        """Montre si la grille du geoide choisi est sur cette machine ; sinon propose de la telecharger."""
+        """Dit si la grille du geoide choisi est sur ce poste (sinon : bandeau orange, export bloque, bouton de telechargement).
+        Sans grille manquante pour le choix, propose celles de la zone du projet qui manquent (meme bandeau, « Plus tard » ; Exporter le fait clignoter)."""
+        if self._geoid_busy:
+            return
+        msapi.register_geoids(crs.own_dir())
         vertical = self.vert_box.currentData()
         self._geoid_missing = None
-        self.geoid_card.setVisible(False)
-        if vertical in (None, SAME, "ellipsoid"):
-            self._refresh_buttons()
-            return
-        found = crs.check_geoid_presence(vertical)
-        if found["status"] == "missing":
-            spec = found["spec"]
-            self._geoid_missing = vertical
-            self.geoid_text.setText(i18n.t("export.geoid_missing", name=crs.label(spec, self._lang),
-                                           size=size_text(spec.get("size", 0))))
-            self.geoid_button.setEnabled(bool(spec.get("url")))
-            self.geoid_card.setVisible(True)
+        self._geoid_ids = []
+        text, blocking = "", False
+        if vertical not in (None, SAME, "ellipsoid"):
+            found = crs.check_geoid_presence(vertical)
+            if found["status"] == "missing":
+                spec = found["spec"]
+                self._geoid_missing = vertical
+                self._geoid_ids = [vertical] if spec.get("url") else []
+                text = i18n.t("export.geoid_missing", name=crs.label(spec, self._lang), size=size_text(spec.get("size", 0)))
+                blocking = True
+            elif not self._geoid_usable(vertical):
+                self._geoid_missing = vertical              # la grille est la, mais Metashape ne l'appliquerait pas
+                text = i18n.t("export.geoid_unusable", name=crs.label(found["spec"], self._lang))
+                blocking = True
+        if not self._geoid_missing:
+            lon, lat = self._info.get("center") or (None, None)
+            declined = set(config.get(SECTION, "geoid_declined") or [])
+            todo = [spec for spec in crs.missing_in_zone(lon, lat) if spec["id"] not in declined]
+            if todo:
+                self._geoid_ids = [spec["id"] for spec in todo]
+                text = i18n.t("export.geoid_zone", names=", ".join(crs.label(spec, self._lang) for spec in todo),
+                              size=size_text(sum(spec["size"] for spec in todo)))
+        self._style_geoid()
+        self.geoid_text.setText(text)
+        self.geoid_button.setText(i18n.t("export.geoid_download" if len(self._geoid_ids) < 2 else "export.geoid_download_all"))
+        self.geoid_button.setEnabled(bool(self._geoid_ids))
+        self.geoid_later.setVisible(not blocking)
+        self.geoid_bar.setVisible(False)
+        self.geoid_card.setVisible(bool(text))
         self._refresh_buttons()
 
+    def _geoid_usable(self, vertical):
+        """Metashape applique-t-il la grille choisie avec le SCR horizontal choisi ? (Test mesure, voir msapi.geoid_applied.)"""
+        center = self._info.get("center")
+        epsg = self.crs_box.currentData()
+        if not center or epsg in (None, SAME) or not crs.metashape_vertical(vertical):
+            return True
+        target = msapi.target_crs(int(epsg), crs.metashape_vertical(vertical))
+        flat = msapi.target_crs(int(epsg))
+        return target is None or flat is None or msapi.geoid_applied(target, flat, center)
+
+    def _style_geoid(self, on=True):
+        """Bandeau des grilles manquantes en orange (alerte du theme) ; `on=False` l'eteint (sert au clignotement)."""
+        self.geoid_card.setProperty("on", on)
+        self.geoid_card.setProperty("danger", True)
+        self.geoid_card.style().unpolish(self.geoid_card)
+        self.geoid_card.style().polish(self.geoid_card)
+
+    def _flash_geoid(self, steps=6):
+        """Fait clignoter le bandeau : on a cherche a exporter alors qu'une decision sur les grilles est attendue."""
+        self._style_geoid(steps % 2 == 1 or steps == 0)
+        if steps > 0:
+            QtCore.QTimer.singleShot(130, lambda: self._flash_geoid(steps - 1))
+
+    def _geoid_not_now(self):
+        """« Plus tard » : on ne reproposera pas ces grilles-la sur ce poste (le choix d'une grille manquante reste signale)."""
+        old = list(config.get(SECTION, "geoid_declined") or [])
+        config.put(SECTION, "geoid_declined", sorted(set(old) | set(self._geoid_ids)))
+        self._check_geoid()
+
     def _download_geoid(self):
-        vertical = self._geoid_missing
-        if not vertical:
+        ids = list(self._geoid_ids)
+        if not ids or self._geoid_busy:
             return
+        self._geoid_busy = True
         self.geoid_button.setEnabled(False)
-        self.geoid_text.setText(i18n.t("export.geoid_downloading"))
-        QtWidgets.QApplication.processEvents()
-        folder = crs.search_dirs()[0]
-        outcome = {}
+        self.geoid_later.setVisible(False)
+        total = sum(crs.vertical_by_id(vid).get("size", 0) for vid in ids) or 1
+        self.geoid_bar.setRange(0, total)
+        self.geoid_bar.setValue(0)
+        self.geoid_bar.setVisible(True)
+        folder = crs.own_dir()
+        state = {"done": 0, "index": 0, "errors": []}
 
         def work():
-            try:
-                outcome["path"] = crs.download_geoid(vertical, folder)
-            except Exception as exc:
-                outcome["error"] = str(exc) or repr(exc)
+            for index, vid in enumerate(ids):
+                state["index"] = index
+                before = state["done"]
+                try:
+                    path = crs.download_geoid(vid, folder, progress=lambda got, _t, base=before: state.update(done=base + got))
+                    journal.write("Fast Export : geoide telecharge : {}".format(path))
+                except FileExistsError:
+                    pass
+                except Exception as exc:
+                    state["errors"].append("{} : {}".format(vid, str(exc) or repr(exc)))
+                    journal.write("Fast Export : geoide {} : {}".format(vid, state["errors"][-1]))
+                state["done"] = before + crs.vertical_by_id(vid).get("size", 0)
 
         thread = threading.Thread(target=work, daemon=True)
         thread.start()
         while thread.is_alive():
+            name = crs.label(crs.vertical_by_id(ids[state["index"]]), self._lang)
+            self.geoid_text.setText(i18n.t("export.geoid_progress", name=name, index=state["index"] + 1, total=len(ids)))
+            self.geoid_bar.setValue(min(state["done"], total))
             QtWidgets.QApplication.processEvents()
             thread.join(0.1)
-        if "error" in outcome:
-            self.geoid_text.setText(i18n.t("export.geoid_failed", error=outcome["error"]))
-            self.geoid_button.setEnabled(True)
-            journal.write("Fast Export : geoide {} : {}".format(vertical, outcome["error"]))
-            return
-        journal.write("Fast Export : geoide telecharge : {}".format(outcome["path"]))
+        self._geoid_busy = False
         self._check_geoid()
-        self.status.setText(i18n.t("export.geoid_done", name=vertical))
+        if state["errors"]:
+            self._style_geoid()
+            self.geoid_text.setText(i18n.t("export.geoid_failed", error="; ".join(state["errors"])))
+            self.geoid_card.setVisible(True)
+            self.geoid_button.setEnabled(True)
+            return
+        self.status.setText(i18n.t("export.geoid_done", name=", ".join(ids)))
 
     def _target(self):
         """(SCR de sortie ou None, texte d'erreur) d'apres les deux listes."""
@@ -679,6 +755,10 @@ class ExportDialog(QtWidgets.QDialog):
         if chunk is None:
             self._finish(i18n.t("export.no_chunk"), "error")
             return
+        if self._geoid_ids and self.geoid_card.isVisible():     # grilles de la zone : Telecharger ou Plus tard d'abord
+            self._flash_geoid()
+            return
+        msapi.register_geoids(crs.own_dir())
         jobs = list(self._jobs)
         if self._existing(jobs):                            # l'export existe deja : ecraser ou nouvelle version
             try:

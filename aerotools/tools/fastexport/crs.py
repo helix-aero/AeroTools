@@ -278,17 +278,24 @@ def read_tiff_description(path):
 # Detection de la presence d'une grille
 # --------------------------------------------------------------------------------------------------
 
+def own_dir():
+    """Dossier « Geoid » d'AeroTools (par poste) : les grilles telechargees par la fenetre y sont rangees, puis donnees a
+    Metashape (msapi.register_geoids)."""
+    from ... import config
+    return os.path.join(config.settings_dir(), "Geoid")
+
+
 def search_dirs(extra=()):
-    """Dossiers ou chercher une grille : Metashape (utilisateur + installation) puis PROJ. Ordre = priorite."""
-    dirs = []
+    """Dossiers ou chercher une grille : le notre, ceux de Metashape (utilisateur, puis l'installation qui tourne : pas une
+    autre version installee a cote), puis PROJ. Ordre = priorite."""
+    dirs = [own_dir()]
     local = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
     dirs.append(os.path.join(local, "Agisoft", "Metashape Pro", "geoids"))
-    exe = os.path.dirname(sys.executable) if sys.executable else ""
-    if exe:
-        dirs.append(os.path.join(exe, "geoids"))
-    for pf in (os.environ.get("ProgramFiles"), os.environ.get("ProgramW6432")):
-        if pf:
-            dirs.append(os.path.join(pf, "Agisoft", "Metashape Pro", "geoids"))
+    folder = os.path.dirname(sys.executable) if sys.executable else ""
+    for _ in range(2):                              # dans Metashape, sys.executable est <install>\python\python.exe
+        if folder:
+            dirs.append(os.path.join(folder, "geoids"))
+            folder = os.path.dirname(folder)
     for var in ("PROJ_DATA", "PROJ_LIB"):
         if os.environ.get(var):
             dirs.append(os.environ[var])
@@ -303,18 +310,12 @@ def search_dirs(extra=()):
     return out
 
 
-def _desc_matches(desc, spec):
-    """La description TIFF de la grille cite le systeme vertical attendu (et le repere horizontal si connu)."""
-    if not desc or spec.get("vert_epsg") is None:
-        return False
-    return ("(EPSG::%d)" % spec["vert_epsg"]) in desc or ("(EPSG:%d)" % spec["vert_epsg"]) in desc
-
-
 def find_grid(vertical_id, dirs=None):
     """Cherche la grille d'un systeme altimetrique. Renvoie une liste de dict {path, dir, size, by, desc}.
 
-    Reconnaissance : (1) nom exact, ou nom + '-N' (Metashape range des copies RAF20-2.tif, RAF20-3.tif...),
-    (2) description TIFF citant le meme systeme vertical (sert aussi a signaler les doublons). Liste vide = absente.
+    Reconnaissance par le nom, comme le fait Metashape : nom exact, ou nom + '-N' (il range ses copies RAF20-2.tif,
+    RAF20-3.tif...). Le contenu ne decide pas : RAC09 et RAC23 portent le meme systeme vertical (IGN78) mais sont deux
+    grilles differentes, et un fichier RAC09 ne remplace pas RAC23. Liste vide = absente.
     """
     spec = vertical_by_id(vertical_id)
     if spec is None or spec.get("file") is None:
@@ -339,17 +340,24 @@ def find_grid(vertical_id, dirs=None):
                 by = "name"
             elif stem.startswith(base.lower() + "-") and stem[len(base) + 1:].isdigit() and e == ext.lower():
                 by = "copy"
-            else:
-                path = os.path.join(folder, name)
-                if low.startswith(("fr_ign_", "us_nga_", "egm")) or os.path.getsize(path) < 120 * 1024 * 1024:
-                    desc = read_tiff_description(path)
-                    if _desc_matches(desc, spec) and (spec["id"] in ("EGM2008", "EGM96") or str(spec["horz_epsg"]) in desc or "NGF" in desc):
-                        by = "description"
             if by:
                 path = os.path.join(folder, name)
                 found.append({"path": path, "dir": folder, "size": os.path.getsize(path), "by": by,
                               "desc": read_tiff_description(path)})
     return found
+
+
+def missing_in_zone(lon, lat, dirs=None):
+    """Grilles de l'export qui couvrent (lon, lat), ne sont pas sur ce poste et se telechargent : liste de fiches.
+    Sans position, rien (on ne sait pas ce qui sert)."""
+    if lon is None or lat is None:
+        return []
+    out = []
+    for vid in EXPORT_VERTICALS:
+        spec = vertical_by_id(vid)
+        if spec.get("file") and spec.get("url") and covers(spec, lon, lat) and not find_grid(vid, dirs):
+            out.append(spec)
+    return out
 
 
 def check_geoid_presence(vertical_id, dirs=None, lon=None, lat=None):
