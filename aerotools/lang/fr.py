@@ -589,4 +589,12 @@ TEXTES = {
 
     # -- Ajuster : infobulle -----------------------------------------------
     "gcp.col_xyz_tip": "RMSE 3D, mesuré sur les marqueurs CTRL (non cochés)",
+
+    # -- Fast Space : options visibles et clic droit -----------------------
+    "space.choose": "Choisis une option",
+    "space.menu_lighten": "Alléger",
+    "space.menu_lighten_n": "Alléger {n} projets",
+    "space.menu_delete": "Supprimer",
+    "space.menu_delete_n": "Supprimer {n} projets",
+    "space.menu_reveal": "Afficher dans l'Explorateur",
 }

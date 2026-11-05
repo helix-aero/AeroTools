@@ -73,6 +73,8 @@ RADIUS_S = 4
 
 ARROW_DOWN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui", "arrow_down.png").replace("\\", "/")
 CHECK_MARK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui", "check.png").replace("\\", "/")
+RADIO_OFF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui", "radio_off.png").replace("\\", "/")
+RADIO_ON = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui", "radio_on.png").replace("\\", "/")
 
 _FONTS_LOADED = False
 _TITLE_FAMILY = "Segoe UI"
@@ -146,10 +148,20 @@ def menu_stylesheet():
         background: {green_soft};
         color: {fg_0};
     }}
+    QMenu::item:disabled {{
+        color: {fg_4};
+        background: transparent;
+    }}
+    QMenu::separator {{
+        height: 1px;
+        background: {border_strong};
+        margin: 4px 8px;
+    }}
     """.format(
         ground_2=GROUND_2,
         fg_0=FG_0,
         fg_1=FG_1,
+        fg_4=FG_4,
         green_soft=GREEN_SOFT,
         border_strong=BORDER_STRONG,
         radius_s=RADIUS_S,
@@ -545,6 +557,37 @@ def stylesheet():
         border-color: {fg_4};
     }}
 
+    /* Choix exclusif : un rond vide ou plein, dans une carte qui passe au vert une fois choisie */
+    #aeroPanel QRadioButton {{
+        color: {fg_0};
+        spacing: 12px;
+        background: transparent;
+    }}
+    #aeroPanel QRadioButton:disabled {{
+        color: {fg_4};
+    }}
+    #aeroPanel QRadioButton::indicator {{
+        width: 20px;
+        height: 20px;
+        image: url({radio_off});
+    }}
+    #aeroPanel QRadioButton::indicator:checked {{
+        image: url({radio_on});
+    }}
+    #aeroPanel QFrame#aeroOption {{
+        background: {ground_1};
+        border: 1px solid {border_strong};
+        border-radius: {radius}px;
+    }}
+    #aeroPanel QFrame#aeroOption[on="true"] {{
+        background: {green_soft};
+        border: 1px solid {green};
+    }}
+    #aeroPanel QFrame#aeroOption[on="true"][danger="true"] {{
+        background: rgba(255, 82, 16, 0.14);
+        border: 1px solid {orange_bright};
+    }}
+
     /* Tableau des marqueurs : un cadre arrondi, la grille dedans sans bordure */
     #aeroPanel #aeroGridBox {{
         background: {ground_2};
@@ -782,6 +825,8 @@ def stylesheet():
         orange_bright=ORANGE_BRIGHT,
         arrow=ARROW_DOWN,
         check=CHECK_MARK,
+        radio_off=RADIO_OFF,
+        radio_on=RADIO_ON,
         title=title_family(),
         text=text_family(),
     )

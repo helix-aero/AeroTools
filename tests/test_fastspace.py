@@ -97,6 +97,24 @@ def test_lock_states(tmp_path):
         ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(handle))
 
 
+def test_reveal_selects_the_project_file_in_explorer(tmp_path, monkeypatch):
+    project = tmp_path / "site one" / "a.psx"
+    project.parent.mkdir()
+    project.write_text("x")
+    launched = []
+    monkeypatch.setattr(actions.subprocess, "Popen", lambda command, *a, **k: launched.append(command))
+    monkeypatch.setattr(actions.os, "name", "nt")
+    assert actions.reveal(str(project)) is True
+    assert launched == ['explorer /select,"{}"'.format(os.path.normpath(str(project)))]
+
+
+def test_reveal_does_nothing_for_a_missing_path(tmp_path, monkeypatch):
+    launched = []
+    monkeypatch.setattr(actions.subprocess, "Popen", lambda command, *a, **k: launched.append(command))
+    assert actions.reveal(str(tmp_path / "gone" / "a.psx")) is False
+    assert launched == []
+
+
 def test_confirmation_word():
     assert actions.confirmed("DELETE") and actions.confirmed(" delete ")
     assert not actions.confirmed("") and not actions.confirmed("del") and not actions.confirmed("DELETE IT")
