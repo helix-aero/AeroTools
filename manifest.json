@@ -1,5 +1,5 @@
 {
- "built": "2026-11-05T08:15:31",
+ "built": "2026-11-05T08:18:53",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -186,8 +186,8 @@
    "size": 13367
   },
   "aerotools/tools/fastspace/dialog.py": {
-   "sha256": "e524df39ff00001b12c09ca7789365169f043cdea2a85951802989b6a4959492",
-   "size": 28901
+   "sha256": "f0473501257528c500fb902cdd4b4496deb16e49f4bb6c5573ba7b68e9eeaa57",
+   "size": 30749
   },
   "aerotools/tools/fastspace/scanner.py": {
    "sha256": "0587cf06cbbfeac0aa15a31dd1a2667fa61be053ff089db002b2b3f6cd1313e4",

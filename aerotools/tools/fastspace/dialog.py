@@ -34,6 +34,7 @@ SECTION = "fastspace"
 COLUMNS = ("space.col_project", "space.col_folder", "space.col_light", "space.col_total", "space.col_kept",
            "space.col_share", "space.col_modified", "space.col_state")
 ELLIPSIS = "\u2026"
+CHECKBOX_ZONE = 30                                         # pixels depuis le bord gauche de la cellule : la case
 WARNING = "\u26a0"
 TABLE_STYLE = """
     QTableWidget {{
@@ -217,6 +218,7 @@ class SpaceDialog(QtWidgets.QDialog):
             self.table.setColumnWidth(column, width)
         self.table.itemChanged.connect(self._on_changed)
         self.table.itemSelectionChanged.connect(self._refresh_summary)
+        self.table.viewport().installEventFilter(self)
         layout.addWidget(self.table, 1)
 
         self.summary = ui.label("")
@@ -456,6 +458,36 @@ class SpaceDialog(QtWidgets.QDialog):
             if item is not None and not self.table.isRowHidden(row) and item.checkState() == QtCore.Qt.Checked:
                 found.append(item.data(ROLE_PROJECT))
         return found
+
+    def eventFilter(self, source, event):
+        """Un clic sur la case d'une ligne surlignee coche ou decoche toutes les lignes surlignees."""
+        if (source is self.table.viewport() and event.type() == QtCore.QEvent.MouseButtonPress
+                and event.button() == QtCore.Qt.LeftButton
+                and not event.modifiers() & (QtCore.Qt.ShiftModifier | QtCore.Qt.ControlModifier)):
+            index = self.table.indexAt(event.pos())
+            if index.isValid() and index.column() == 0 and self._toggle_highlighted(event.pos(), index):
+                return True
+        return super(SpaceDialog, self).eventFilter(source, event)
+
+    def _toggle_highlighted(self, pos, index):
+        """True si le clic etait sur la case d'une ligne parmi plusieurs surlignees (et a ete traite ici)."""
+        if pos.x() - self.table.visualRect(index).left() > CHECKBOX_ZONE:
+            return False
+        rows = {item.row() for item in self.table.selectedItems() if not self.table.isRowHidden(item.row())}
+        clicked = self.table.item(index.row(), 0)
+        if len(rows) < 2 or index.row() not in rows or clicked is None:
+            return False
+        if not clicked.flags() & QtCore.Qt.ItemIsUserCheckable:
+            return False
+        state = QtCore.Qt.Unchecked if clicked.checkState() == QtCore.Qt.Checked else QtCore.Qt.Checked
+        self.table.blockSignals(True)
+        for row in rows:
+            item = self.table.item(row, 0)
+            if item is not None and item.flags() & QtCore.Qt.ItemIsUserCheckable:
+                item.setCheckState(state)
+        self.table.blockSignals(False)
+        self._refresh_summary()
+        return True
 
     def _highlighted(self):
         """Projets des lignes surlignees (clic, Maj ou Ctrl) : sert a la somme, pas aux boutons."""
