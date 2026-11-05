@@ -5,8 +5,9 @@ Deux sorts possibles pour ce qu'on retire :
              sur un lecteur reseau Windows n'a pas de corbeille) ;
   PERMANENT  suppression definitive. L'interface demande alors de taper DELETE.
 
-Alleger (`lighten`) retire le nuage dense et les cartes de profondeur, en gardant l'alignement, les
-marqueurs, les MNT et les orthos. Pour que le projet reste coherent (Metashape garde la liste de ses
+Alleger (`lighten`) retire, au choix, le nuage dense, les cartes de profondeur et les orthophotos (les images
+redressees de l'ortho, `Orthomosaic.removeOrthophotos()`), en gardant l'alignement, les marqueurs, les MNT et les
+mosaiques. Pour que le projet reste coherent (Metashape garde la liste de ses
 nuages denses dans le fichier du projet), on passe par l'API de Metashape, qui efface lui-meme ses
 fichiers a l'enregistrement (mesure sur une copie : 1967 Mo -> 1087 Mo, projet rouvert sans erreur).
 L'allegement est donc toujours PERMANENT : il n'y a pas de corbeille possible. Essai fait : envoyer les
@@ -14,9 +15,9 @@ dossiers a la corbeille AVANT, puis laisser l'API nettoyer, echoue (`chunk.remov
 leve « Can't open file dense_cloud.zip », le projet garde des nuages denses fantomes).
 
   1. lecture seule : on note les chunks, cameras, marqueurs ;
-  2. l'API retire les nuages denses et les cartes de profondeur de chaque chunk et enregistre ;
-  3. les dossiers qui resteraient sont supprimes ;
-  4. verification : le projet se rouvre, memes cameras et marqueurs, plus de dense ni de depth.
+  2. l'API retire ce qui a ete choisi dans chaque chunk et enregistre ;
+  3. les dossiers et fichiers qui resteraient sont supprimes ;
+  4. verification : le projet se rouvre, memes cameras et marqueurs, plus rien de ce qui a ete choisi.
 
 Supprimer le projet (`delete_project`) retire le .psx et son dossier .files, et rien d'autre : les fichiers
 exportes a cote (ortho, MNT, nuages, rapports) ne sont pas touches.
@@ -210,8 +211,8 @@ def log_action(action, mode, project, ok, message="", size=0):
 # Allegement
 # --------------------------------------------------------------------------
 
-def light_folders(project):
-    """Dossiers dense_cloud* et depth_maps* du projet (chemins complets)."""
+def removable_paths(project, items=scanner.DEFAULT_ITEMS):
+    """Dossiers (dense_cloud*, depth_maps*) et fichiers (orthomosaic*/images*.zip) du projet qui font partie de `items`."""
     found = []
     try:
         chunks = list(os.scandir(project.files_dir))
@@ -224,8 +225,14 @@ def light_folders(project):
             if not frame.is_dir(follow_symlinks=False):
                 continue
             for item in scanner._scan(frame.path):
-                if item.is_dir(follow_symlinks=False) and scanner.part_of(item.name) in scanner.LIGHT_PARTS:
+                if not item.is_dir(follow_symlinks=False):
+                    continue
+                part = scanner.part_of(item.name)
+                if part == scanner.DENSE and "dense" in items or part == scanner.DEPTH and "depth" in items:
                     found.append(item.path)
+                elif part == scanner.ORTHO and "ortho" in items:
+                    found.extend(entry.path for entry in scanner._scan(item.path)
+                                 if entry.is_file(follow_symlinks=False) and scanner.ORTHO_IMAGES.match(entry.name))
     return found
 
 
@@ -261,41 +268,56 @@ def snapshot(document):
     return rows
 
 
-def strip_chunk(chunk):
-    """Retire le nuage dense et les cartes de profondeur d'un chunk. Renvoie ce qui a ete retire."""
+def _orthomosaics(chunk):
+    items = getattr(chunk, "orthomosaics", None)
+    if items is not None:
+        return list(items)
+    single = getattr(chunk, "orthomosaic", None)
+    return [single] if single is not None else []
+
+
+def strip_chunk(chunk, items=scanner.DEFAULT_ITEMS):
+    """Retire d'un chunk ce que `items` demande (dense, depth, ortho). Renvoie ce qui a ete retire."""
     removed = []
-    _name, dense = _dense_list(chunk)
-    if dense:
-        chunk.remove(dense)
-        removed.append("dense")
-    sets = getattr(chunk, "depth_maps_sets", None)
-    if sets:
-        chunk.remove(list(sets))
-        removed.append("depth")
-    elif sets is None and getattr(chunk, "depth_maps", None) is not None:
-        chunk.depth_maps = None
-        removed.append("depth")
+    if "dense" in items:
+        _name, dense = _dense_list(chunk)
+        if dense:
+            chunk.remove(dense)
+            removed.append("dense")
+    if "depth" in items:
+        sets = getattr(chunk, "depth_maps_sets", None)
+        if sets:
+            chunk.remove(list(sets))
+            removed.append("depth")
+        elif sets is None and getattr(chunk, "depth_maps", None) is not None:
+            chunk.depth_maps = None
+            removed.append("depth")
+    if "ortho" in items:
+        for mosaic in _orthomosaics(chunk):
+            mosaic.removeOrthophotos()
+            removed.append("ortho")
     return removed
 
 
-def check_snapshots(before, after):
-    """None si le projet est comme avant (sauf dense et depth), sinon le texte du probleme."""
+def check_snapshots(before, after, items=scanner.DEFAULT_ITEMS):
+    """None si le projet est comme avant (sauf ce que `items` retire), sinon le texte du probleme."""
     if len(before) != len(after):
         return "nombre de chunks different ({} -> {})".format(len(before), len(after))
     for old, new in zip(before, after):
         for key in ("cameras", "markers"):
             if old[key] != new[key]:
                 return "chunk {} : {} different ({} -> {})".format(old["label"], key, old[key], new[key])
-        if new["dense"] or new["depth"]:
+        if ("dense" in items and new["dense"]) or ("depth" in items and new["depth"]):
             return "chunk {} : il reste du dense ou des cartes de profondeur".format(old["label"])
     return None
 
 
-def lighten(project, mode, progress=None):
-    """Allege un projet. Renvoie un dict {ok, freed, in_bin, error, steps}.
+def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
+    """Allege un projet : retire ce que `items` demande (dense, depth, ortho). Renvoie {ok, freed, in_bin, error, steps}.
 
     A lancer dans le fil principal de Metashape (l'API ne sait pas travailler ailleurs).
     `progress(texte)` annonce chaque etape."""
+    items = tuple(item for item in scanner.ITEMS if item in items)
     progress = progress or (lambda text: None)
     result = {"ok": False, "freed": 0, "in_bin": 0, "error": "", "steps": []}
 
@@ -313,7 +335,10 @@ def lighten(project, mode, progress=None):
     if mode != PERMANENT:
         result["error"] = "l'allegement passe par Metashape, qui efface lui-meme ses fichiers : pas de corbeille"
         return result
-    before = project.light
+    if not items:
+        result["error"] = "rien a retirer : aucune case cochee"
+        return result
+    before = project.removable(items)
     try:
         if project.lock == scanner.STALE:
             # Un verrou laisse par une session morte (souvent un autre PC) force Metashape a ouvrir en lecture seule.
@@ -331,24 +356,24 @@ def lighten(project, mode, progress=None):
         step("nettoyage du projet")
         document = _open(project.path, False)
         for chunk in document.chunks:
-            strip_chunk(chunk)
+            strip_chunk(chunk, items)
         document.save()
         document = None
         gc.collect()
-        left = light_folders(project)
+        left = removable_paths(project, items)
         if left:
             step("dossiers restants")
-            for folder in left:
-                remove_path(folder)
+            for path in left:
+                remove_path(path)
         step("verification")
         document = _open(project.path, True)
-        problem = check_snapshots(snap_before, snapshot(document))
+        problem = check_snapshots(snap_before, snapshot(document), items)
         document = None
         gc.collect()
         if problem:
             raise SpaceError("verification : " + problem)
         after = scanner.measure_project(project.path)
-        result["freed"] = max(0, before - after.light)
+        result["freed"] = max(0, before - after.removable(items))
         result["ok"] = True
         project.parts, project.files_size = after.parts, after.files_size
     except Exception as exc:
