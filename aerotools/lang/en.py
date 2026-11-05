@@ -636,4 +636,7 @@ TEXTES = {
     "export.failed": "{name}: {error}",
     "export.missing": "the file was not written",
     "export.no_chunk": "Open a project first.",
+
+    # -- Fast Export : SCR -------------------------------------------------
+    "export.crs": "Coordinate system: {crs}",
 }
