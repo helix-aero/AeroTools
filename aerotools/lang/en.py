@@ -497,7 +497,7 @@ TEXTES = {
     "space.state_stale": "Old lock",
     "space.state_orphan": ".files folder without .psx",
     "space.tip_parts": "Dense cloud {dense}, depth maps {depth}, tie points {tie}, DEMs {dem}, orthos {ortho}, other {other}",
-    "space.selection": "{n} project(s) selected: lightening frees about {light}, deleting them frees {total}.",
+    "space.selection": "{n} project(s) ticked - {light} / {total}  (lighten / delete)",
     "space.selection_none": "Nothing is selected.",
     "space.lighten": "Lighten (gentle)",
     "space.lighten_tip": "Removes the dense cloud and the depth maps, keeps everything else",
@@ -530,4 +530,7 @@ TEXTES = {
     "space.tip_kept_risk": "Warning: DEM or ortho built in Metashape ({size}) and no exported file found next to it. They would go with the project.",
     "space.confirm_delete_kept": "Next to the project, {files} file(s) ({size}) stay in place.",
     "space.confirm_delete_risk": "Warning, DEM or ortho built in Metashape with no export found next to it for: {names} ({size}). They go with the project: export them first if you need them.",
+
+    # -- Fast Space : somme de la selection --------------------------------
+    "space.selection_rows": "{n} project(s) highlighted (not ticked) - {light} / {total}  (lighten / delete)",
 }

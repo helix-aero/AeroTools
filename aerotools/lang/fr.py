@@ -503,7 +503,7 @@ TEXTES = {
     "space.state_stale": "Ancien verrou",
     "space.state_orphan": "Dossier .files sans .psx",
     "space.tip_parts": "Nuage dense {dense}, cartes de profondeur {depth}, points de liaison {tie}, MNT {dem}, orthos {ortho}, autre {other}",
-    "space.selection": "{n} projet(s) coché(s) : alléger libère environ {light}, les supprimer libère {total}.",
+    "space.selection": "{n} projet(s) cochés - {light} / {total}  (alléger / supprimer)",
     "space.selection_none": "Rien n'est coché.",
     "space.lighten": "Alléger (doux)",
     "space.lighten_tip": "Retire le nuage dense et les cartes de profondeur, garde tout le reste",
@@ -536,4 +536,7 @@ TEXTES = {
     "space.tip_kept_risk": "Attention : MNT ou ortho construits dans Metashape ({size}) et aucun fichier exporté trouvé à côté. Ils partiraient avec le projet.",
     "space.confirm_delete_kept": "À côté du projet, {files} fichier(s) ({size}) restent en place.",
     "space.confirm_delete_risk": "Attention, MNT ou ortho construits dans Metashape sans export trouvé à côté pour : {names} ({size}). Ils partent avec le projet : exporte-les d'abord si tu en as besoin.",
+
+    # -- Fast Space : somme de la selection --------------------------------
+    "space.selection_rows": "{n} projet(s) surlignés (pas cochés) - {light} / {total}  (alléger / supprimer)",
 }

@@ -216,6 +216,7 @@ class SpaceDialog(QtWidgets.QDialog):
         for column, width in enumerate((220, 190, 140, 110, 90, 56, 90)):
             self.table.setColumnWidth(column, width)
         self.table.itemChanged.connect(self._on_changed)
+        self.table.itemSelectionChanged.connect(self._refresh_summary)
         layout.addWidget(self.table, 1)
 
         self.summary = ui.label("")
@@ -456,10 +457,19 @@ class SpaceDialog(QtWidgets.QDialog):
                 found.append(item.data(ROLE_PROJECT))
         return found
 
-    def _refresh_summary(self):
+    def _highlighted(self):
+        """Projets des lignes surlignees (clic, Maj ou Ctrl) : sert a la somme, pas aux boutons."""
+        rows = sorted({item.row() for item in self.table.selectedItems()})
+        found = [self._project_at(row) for row in rows if not self.table.isRowHidden(row)]
+        return [project for project in found if project is not None]
+
+    def _refresh_summary(self, *_args):
         picked = self._checked()
+        key = "space.selection"
+        if not picked:
+            picked, key = self._highlighted(), "space.selection_rows"
         if picked:
-            self.summary.setText(i18n.t("space.selection", n=len(picked),
+            self.summary.setText(i18n.t(key, n=len(picked),
                                         light=scanner.gb(sum(p.light for p in picked if not p.orphan)),
                                         total=scanner.gb(sum(p.total for p in picked))))
         else:
