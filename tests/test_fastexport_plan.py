@@ -223,10 +223,3 @@ def test_transform_box_gives_up_with_a_reason(meta):
     meta.CoordinateSystem.transform = staticmethod(refuse)
     assert msapi.transform_box((0.0, 0.0, 1.0, 1.0), FakeCrs('PROJCS["a"]'), FakeCrs('PROJCS["b"]')) is None
     assert msapi.transform_box.last_error == "no path"
-
-
-def test_the_crs_list_has_no_geographic_system_by_default():
-    from aerotools.tools.fastexport import crs
-    shown = [epsg for epsg, _label in crs.crs_choices(9.0, 42.0, "en")]
-    assert 2154 in shown and 4326 not in shown and 9782 not in shown
-    assert 4326 in [epsg for epsg, _label in crs.crs_choices(projected_only=False)]

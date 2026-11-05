@@ -7,7 +7,7 @@ import struct
 import numpy as np
 import pytest
 
-from aerotools.tools.fastexport import crs, projtool, tiffio, vertical
+from aerotools.tools.fastexport import crs, projdb, projtool, tiffio, vertical
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAC23 = os.path.join(HERE, "data", "fr_ign_RAC23.tif")
@@ -28,80 +28,96 @@ def touch(folder, name, content=b"x"):
 
 # -- dossier, etat -------------------------------------------------------------------------------
 
+RAC23_ID, RAC09_ID = "fr_ign_RAC23", "fr_ign_RAC09"
+
+
 def test_own_dir_is_a_geoid_folder_in_the_aerotools_settings(monkeypatch, tmp_path):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     assert crs.own_dir() == os.path.join(str(tmp_path), "HELIX", "AeroTools", "Geoid")
 
 
-def test_the_official_file_is_ok_and_a_different_one_is_stale(tmp_path, monkeypatch):
-    spec = crs.vertical_by_id("RAC23")
+def test_the_official_file_is_ok_and_a_different_one_is_stale(tmp_path):
+    spec = crs.vertical_by_id(RAC23_ID)
     shutil.copy(RAC23, str(tmp_path / spec["file"]))
     assert hashlib.sha256(open(RAC23, "rb").read()).hexdigest() == spec["sha256"]       # le fichier de test est l'officiel
-    assert crs.grid_state("RAC23", str(tmp_path))[0] == "ok"
+    assert crs.grid_state(RAC23_ID, str(tmp_path))[0] == "ok"
     touch(tmp_path, spec["file"], b"autre chose")
-    assert crs.grid_state("RAC23", str(tmp_path))[0] == "stale"
-    assert crs.grid_state("RAC09", str(tmp_path))[0] == "missing"
+    assert crs.grid_state(RAC23_ID, str(tmp_path))[0] == "stale"
+    assert crs.grid_state(RAC09_ID, str(tmp_path))[0] == "missing"
 
 
 def test_a_rac09_file_never_stands_for_rac23(tmp_path):
     touch(tmp_path, "fr_ign_RAC09.tif")
     touch(tmp_path, "fr_ign_RAC09-2.tif")
-    assert crs.grid_state("RAC23", str(tmp_path))[0] == "missing"
+    assert crs.grid_state(RAC23_ID, str(tmp_path))[0] == "missing"
 
 
-def test_zone_in_corsica_asks_for_the_corsican_grids_and_the_world_one(tmp_path):
-    ids = [spec["id"] for spec, _state in crs.zone_grids(*CORSICA, folder=str(tmp_path))]
-    assert ids == ["RAC23", "RAC09", "EGM96"]
-    assert all(state == "missing" for _spec, state in crs.zone_grids(*CORSICA, folder=str(tmp_path)))
+def zone(epsg, place, folder):
+    return [(spec["id"], state) for spec, state in crs.zone_grids(epsg, place[0], place[1], folder=str(folder))]
 
 
-def test_zone_on_the_continent_asks_for_the_french_grids(tmp_path):
-    assert [spec["id"] for spec, _s in crs.zone_grids(*PARIS, folder=str(tmp_path))] == ["RAF20", "RAF09", "EGM96"]
+def test_zone_asks_for_the_small_grids_of_the_project_frame(tmp_path):
+    assert zone(3942, CORSICA, tmp_path) == [(RAC09_ID, "missing"), ("us_nga_egm96_15", "missing")]    # v1 : RAC09, pas RAC23 ; EGM2008 (80 Mo) pas ici
+    assert zone(9842, CORSICA, tmp_path) == [(RAC23_ID, "missing"), ("us_nga_egm96_15", "missing")]
+    assert [i for i, _s in zone(2154, PARIS, tmp_path)][:1] != []
 
 
 def test_zone_lists_an_outdated_grid_and_skips_a_good_one(tmp_path):
-    spec = crs.vertical_by_id("RAC23")
+    spec = crs.vertical_by_id(RAC23_ID)
     shutil.copy(RAC23, str(tmp_path / spec["file"]))
-    assert [s["id"] for s, _state in crs.zone_grids(*CORSICA, folder=str(tmp_path))] == ["RAC09", "EGM96"]
+    assert zone(9842, CORSICA, tmp_path) == [("us_nga_egm96_15", "missing")]
     touch(tmp_path, spec["file"], b"abime")
-    assert ("RAC23", "stale") in [(s["id"], state) for s, state in crs.zone_grids(*CORSICA, folder=str(tmp_path))]
+    assert (RAC23_ID, "stale") in zone(9842, CORSICA, tmp_path)
 
 
-def test_zone_without_position_asks_for_nothing(tmp_path):
-    assert crs.zone_grids(None, None, folder=str(tmp_path)) == []
+def test_zone_without_position_or_frame_asks_for_nothing(tmp_path):
+    assert crs.zone_grids(3942, None, None, folder=str(tmp_path)) == []
+    assert crs.zone_grids(None, 9.0, 42.0, folder=str(tmp_path)) == []
 
 
-# -- quelle grille pour quel repere ----------------------------------------------------------------
+# -- quelle grille pour quel systeme, dans le monde (regle lue dans PROJ : voir projdb.py) -------------
 
 def ids(epsg, place=CORSICA):
     return [spec["id"] for spec in vertical.compatible_verticals(epsg, *place)]
 
 
-def test_a_v1_system_gets_the_v1_grids():
-    assert ids(3942) == ["RAC09", "EGM96", "ellipsoid"]                  # CC42 de base : RAC09, pas RAC23
-    assert ids(2154) == ["RAC09", "EGM96", "ellipsoid"]
-    assert ids(2154, PARIS) == ["RAF09", "EGM96", "ellipsoid"]
+def test_a_v1_system_gets_the_v1_grid_and_a_v2b_system_the_v2b_one():
+    assert ids(3942)[0] == RAC09_ID and RAC23_ID not in ids(3942)                # CC42 de base : RAC09, pas RAC23
+    assert ids(9842)[0] == RAC23_ID and RAC09_ID not in ids(9842)
+    assert "fr_ign_RAF09" in ids(2154, PARIS) and "fr_ign_RAF20" not in ids(2154, PARIS)
+    assert "fr_ign_RAF20" in ids(9794, PARIS) and "fr_ign_RAF09" not in ids(9794, PARIS)
 
 
-def test_a_v2b_system_gets_the_v2b_grids():
-    assert ids(9842) == ["RAC23", "EGM96", "ellipsoid"]
-    assert ids(9794, PARIS) == ["RAF20", "EGM96", "ellipsoid"]
+def test_every_list_ends_with_the_ellipsoid_and_offers_the_world_grids_when_the_frame_is_modern():
+    for epsg, place in ((3942, CORSICA), (32632, CORSICA), (25832, PARIS)):
+        listing = ids(epsg, place)
+        assert listing[-1] == "ellipsoid" and "us_nga_egm96_15" in listing
 
 
-def test_a_system_without_frame_gets_the_recent_grids():
-    assert ids(32632) == ["RAC23", "EGM96", "ellipsoid"]
-    assert vertical.horizontal_frame(32632) is None
-    assert (vertical.horizontal_frame(3942), vertical.horizontal_frame(9842), vertical.horizontal_frame(4171)) == ("v1", "v2b", "v1")
+def test_other_countries_get_their_own_grids():
+    assert any(i.startswith("ch_swisstopo_chgeo2004") for i in ids(25832, (6.14, 46.2)))        # Suisse, ETRS89 UTM
+    assert "us_noaa_g2018u0" in ids(6347, (-74.0, 40.7))                                        # Etats-Unis, NAD83(2011)
+    assert any(i.startswith("au_ga_AUSGeoid2020") for i in ids(7856, (151.2, -33.9)))           # Australie, GDA2020
 
 
-def test_every_catalog_system_has_a_frame_that_matches_its_name():
-    for item in crs.CRS_LIST:
-        name = item["en"]
-        frame = vertical.horizontal_frame(item["epsg"])
-        if "v2b" in name:
-            assert frame == "v2b", name
-        elif "RGF93 v1" in name:
-            assert frame == "v1", name
+def test_a_local_datum_only_gets_the_ellipsoidal_height():
+    assert ids(2056, (6.14, 46.2)) == ["ellipsoid"]                                              # CH1903+ / LV95 : datum local
+    assert ids(27572, PARIS) == ["ellipsoid"]                                                    # NTF : datum local
+
+
+def test_the_list_never_offers_a_grid_that_does_not_cover_the_project():
+    assert "us_noaa_g2018u0" not in ids(6347, CORSICA)
+    assert RAC23_ID not in ids(9842, (2.3, 48.8))
+
+
+def test_frames_and_xy_candidates_come_from_the_proj_database():
+    assert projdb.frame_of(3942)["family"] == "global" and projdb.frame_of(2056)["family"] != "global"
+    assert projdb.geographic_epsg(3942) == 4171 and projdb.geographic_epsg(9842) == 9782 and projdb.geographic_epsg(32632) == 4326
+    corsica = [code for code, _name in projdb.candidates(*CORSICA, limit=12)]
+    assert {3942, 9842, 2154, 32632}.issubset(set(corsica)) and corsica.index(3942) < corsica.index(32632)
+    assert [code for code, _n in projdb.candidates(*CORSICA, text="lambert-93")][:1] == [2154]
+    assert projdb.candidates(None, None, text="3942") == [(3942, "RGF93 v1 / CC42")]
+    assert projdb.candidates(None, None) == []
 
 
 # -- lecture de grille (valeurs de PROJ) -----------------------------------------------------------------
@@ -114,7 +130,7 @@ def test_the_reader_matches_proj_on_rac23():
 
 def test_the_catalog_footprint_is_the_node_footprint_of_the_file():
     grid = vertical.read_grid(RAC23)
-    assert crs.vertical_by_id("RAC23")["bbox"] == pytest.approx(tuple(round(v, 4) for v in grid.bounds()), abs=0.0002)
+    assert crs.vertical_by_id(RAC23_ID)["bbox"] == pytest.approx(tuple(round(v, 4) for v in grid.bounds()), abs=0.0002)
 
 
 def test_outside_the_grid_there_is_no_value():
@@ -295,3 +311,15 @@ def test_proj_output_is_parsed_by_lot_and_failures_become_nan():
 
 def test_geographic_frame_of_a_projected_system():
     assert [projtool.geographic_epsg(e) for e in (2154, 3942, 9794, 9842, 32632, 25832)] == [4171, 4171, 9782, 9782, 4326, 4258]
+
+
+def test_depth_surfaces_are_never_offered_as_heights():
+    flipped = [g["id"] for g in projdb.grids() if g["depth"]]
+    assert "dk_sdfi_dklat_2022" in flipped and len(flipped) == 7
+    assert not set(flipped) & set(ids(25832, (10.2, 56.1)))                    # Danemark, ETRS89 UTM
+
+
+def test_every_grid_of_the_catalog_is_a_height_offset_with_its_sha256():
+    for grid in projdb.grids():
+        assert len(grid["sha256"]) == 64 and grid["size"] > 0 and grid["url"].startswith("https://cdn.proj.org/")
+        assert grid["bbox"][0] <= grid["bbox"][2] and grid["bbox"][1] < grid["bbox"][3]

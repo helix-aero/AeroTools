@@ -21,7 +21,7 @@ import threading
 
 from ... import config, i18n, journal, msapi, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from . import crs, external, naming, pipeline, plan, projtool, tiling, vertical
+from . import crs, external, naming, pipeline, plan, projdb, projtool, tiling, vertical
 
 SECTION = "fastexport"
 WIDTH, HEIGHT = 840, 920
@@ -94,6 +94,7 @@ class ExportDialog(QtWidgets.QDialog):
         self._geoid_missing = None                          # id de la grille choisie qui manque (bloque l'export)
         self._geoid_busy = False
         self._geoid_states = {}
+        self._project_epsg = None
         self._geoid_ids = []                                # ids proposes au telechargement (la grille choisie, ou celles de la zone)
         self._previous_preset = None
         self._tile_pixels = None
@@ -147,14 +148,19 @@ class ExportDialog(QtWidgets.QDialog):
         grid.setHorizontalSpacing(theme.PAD)
         grid.setVerticalSpacing(theme.PAD_S)
         grid.setColumnStretch(1, 1)
-        grid.addWidget(ui.label(i18n.t("export.crs_to"), "aeroMeta", wrap=False), 0, 0)
+        grid.addWidget(ui.label(i18n.t("export.crs_find"), "aeroMeta", wrap=False), 0, 0)
+        self.crs_search = QtWidgets.QLineEdit()
+        self.crs_search.setPlaceholderText(i18n.t("export.crs_find_hint"))
+        self.crs_search.textChanged.connect(self._on_search)
+        grid.addWidget(self.crs_search, 0, 1)
+        grid.addWidget(ui.label(i18n.t("export.crs_to"), "aeroMeta", wrap=False), 1, 0)
         self.crs_box = combo()
         self.crs_box.activated.connect(self._on_crs)
-        grid.addWidget(self.crs_box, 0, 1)
-        grid.addWidget(ui.label(i18n.t("export.vertical"), "aeroMeta", wrap=False), 1, 0)
+        grid.addWidget(self.crs_box, 1, 1)
+        grid.addWidget(ui.label(i18n.t("export.vertical"), "aeroMeta", wrap=False), 2, 0)
         self.vert_box = combo()
         self.vert_box.activated.connect(self._on_vertical)
-        grid.addWidget(self.vert_box, 1, 1)
+        grid.addWidget(self.vert_box, 2, 1)
         layout.addLayout(grid)
         self.geoid_card = QtWidgets.QFrame()
         self.geoid_card.setObjectName("aeroOption")
@@ -331,6 +337,8 @@ class ExportDialog(QtWidgets.QDialog):
         if self._busy:
             return
         self._info = msapi.raster_info()
+        crs_object = self._info.get("crs_object")
+        self._project_epsg = msapi.project_epsg(crs_object) if crs_object is not None else None
         self._psx = msapi.document_path()
         self._detect_tools()
         for kind in plan.KINDS:
@@ -457,15 +465,29 @@ class ExportDialog(QtWidgets.QDialog):
     # -- coordonnees ----------------------------------------------------------------------
 
     def _fill_crs(self):
+        """Systemes proposes : ceux du lieu du projet (base EPSG de PROJ), ou le resultat de la recherche saisie."""
         center = self._info.get("center")
         lon, lat = center if center else (None, None)
+        text = self.crs_search.text().strip()
+        previous = self.crs_box.currentData()
         self.crs_box.blockSignals(True)
         self.crs_box.clear()
         self.crs_box.addItem(i18n.t("export.crs_same"), SAME)
-        for epsg, label in crs.crs_choices(lon, lat, self._lang):
-            self.crs_box.addItem("{}  (EPSG:{})".format(label, epsg), epsg)
+        shown = projdb.candidates(lon, lat, text or None) if projdb.available() else []
+        own = self._project_epsg
+        if own and not text and all(code != own for code, _name in shown):
+            row = projdb.candidates(lon, lat, text=str(own), limit=1)
+            shown = row + shown
+        for epsg, name in shown:
+            self.crs_box.addItem("{}  (EPSG:{})".format(name, epsg), epsg)
+        index = self.crs_box.findData(previous) if text or previous != SAME else 0
+        self.crs_box.setCurrentIndex(max(0, index))
         self.crs_box.blockSignals(False)
         self._fill_vertical()
+
+    def _on_search(self, *_args):
+        self._fill_crs()
+        self._refresh_names()
 
     def _fill_vertical(self):
         """Altitudes proposees : celles qui vont avec le SCR horizontal choisi, a l'endroit du projet (voir vertical.py)."""
@@ -478,7 +500,7 @@ class ExportDialog(QtWidgets.QDialog):
             self.vert_box.addItem(i18n.t("export.vertical_same"), SAME)
             self.vert_box.setEnabled(False)
         else:
-            for spec in vertical.compatible_verticals(int(epsg), lon, lat):
+            for spec in vertical.compatible_verticals(int(epsg), lon, lat, folder=crs.own_dir()):
                 self.vert_box.addItem(crs.label(spec, self._lang), spec["id"])
             self.vert_box.setEnabled(not self._busy)
         self.vert_box.blockSignals(False)
@@ -516,7 +538,7 @@ class ExportDialog(QtWidgets.QDialog):
                 blocking = True
         if not self._geoid_missing:
             declined = set(config.get(SECTION, "geoid_declined") or [])
-            todo = [(spec, state) for spec, state in crs.zone_grids(lon, lat) if spec["id"] not in declined]
+            todo = [(spec, state) for spec, state in crs.zone_grids(self._project_epsg, lon, lat) if spec["id"] not in declined]
             if todo:
                 self._geoid_ids = [spec["id"] for spec, _state in todo]
                 self._geoid_states = {spec["id"]: state for spec, state in todo}

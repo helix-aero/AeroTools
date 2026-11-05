@@ -15,7 +15,7 @@ import os
 
 import numpy as np
 
-from . import crs, tiffio
+from . import crs, projdb, tiffio
 
 NODATA_LIMIT = -1000.0          # une ondulation plus petite que ca est une valeur « pas de donnee »
 LATTICE_STEP_M = 100.0          # pas du semis de points ou l'on calcule l'ondulation d'un MNT (elle varie de quelques cm par km)
@@ -83,39 +83,23 @@ def _raster_type(tiff):
 
 
 # --------------------------------------------------------------------------------------------------
-# Quelle grille pour quel repere
+# Quelle grille pour quel repere (la regle vient de PROJ : voir projdb.py)
 # --------------------------------------------------------------------------------------------------
-# RGF93 v1 : EPSG 2154 (Lambert-93), 3942-3950 (CC42-CC50), 4171. RGF93 v2b : 9794, 9842-9850, 9782.
-# Une grille est faite pour un repere : RAF09 / RAF18b / RAC09 partent de RGF93 v1 (EPSG 4965), RAF20 / RAC23 de RGF93 v2b
-# (EPSG 9781). Le choix d'une altitude n'est propose qu'avec le repere qui lui correspond.
-V1_EPSG = frozenset([2154, 4171] + list(range(3942, 3951)))
-V2B_EPSG = frozenset([9794, 9782] + list(range(9842, 9851)))
-GRID_FRAME = {4965: "v1", 9781: "v2b"}
 
-
-def horizontal_frame(epsg):
-    """"v1", "v2b", ou None (UTM, WGS 84... : ni l'un ni l'autre)."""
-    epsg = int(epsg)
-    return "v1" if epsg in V1_EPSG else "v2b" if epsg in V2B_EPSG else None
-
-
-def compatible_verticals(epsg, lon=None, lat=None):
-    """Systemes d'altitude proposables avec ce repere horizontal, a la position (lon, lat) : liste de fiches du catalogue.
-
-    Les grilles francaises du bon repere qui couvrent le lieu (la plus recente d'abord pour v2b ; pour v1, RAC09 / RAF09 : c'est
-    ce que contiennent les chantiers en v1), puis EGM96 (mondial, valable partout), puis l'ellipsoide. Sans repere connu
-    (UTM, WGS 84), on propose les grilles recentes (v2b)."""
-    frame = horizontal_frame(epsg) or "v2b"
+def compatible_verticals(epsg, lon=None, lat=None, folder=None):
+    """Altitudes proposables avec ce SCR horizontal a la position (lon, lat), dans le monde entier : fiches de grilles du meme repere
+    (la plus locale d'abord), puis l'ellipsoide. `folder` : si une grille est deja la et qu'elle ne couvre pas le centre du projet
+    (emprise rectangulaire mais donnees seulement sur le pays), on l'ecarte."""
     out = []
-    for vid in crs.EXPORT_VERTICALS:
-        spec = crs.vertical_by_id(vid)
-        if vid in ("ellipsoid", "EGM96"):
-            continue
-        if GRID_FRAME.get(spec.get("horz_epsg")) == frame and (lon is None or lat is None or crs.covers(spec, lon, lat)):
-            out.append(spec)
-    out.sort(key=lambda spec: spec["id"])
-    out.append(crs.vertical_by_id("EGM96"))
-    out.append(crs.vertical_by_id("ellipsoid"))
+    for spec in projdb.verticals_for(epsg, lon, lat):
+        if folder and lon is not None and lat is not None and crs.grid_state(spec["id"], folder)[0] == "ok":
+            try:
+                if not np.isfinite(float(load_grid(spec["id"], folder).undulation(lon, lat))):
+                    continue
+            except ValueError:
+                pass
+        out.append(spec)
+    out.append(crs.vertical_by_id(projdb.ELLIPSOID_ID))
     return out
 
 

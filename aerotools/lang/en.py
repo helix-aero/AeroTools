@@ -662,6 +662,8 @@ TEXTES = {
     "export.crs_section": "Coordinates",
     "export.crs_to": "Export in",
     "export.crs_same": "Same as the project",
+    "export.crs_find": "Search",
+    "export.crs_find_hint": "Name or EPSG code (for example Lambert-93, 2154, UTM 33N)",
     "export.vertical": "Heights",
     "export.vertical_same": "Same as the project",
     "export.geoid_missing": "The grid for {name} is not on this computer ({size} to download). AeroTools needs it to convert heights.",

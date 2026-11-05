@@ -25,15 +25,9 @@ class ProjError(Exception):
 
 
 def geographic_epsg(horizontal_epsg):
-    """SCR geographique du meme repere que `horizontal_epsg` : celui dans lequel on interroge les grilles."""
-    epsg = int(horizontal_epsg)
-    if epsg == 2154 or 3942 <= epsg <= 3950 or epsg == 4171:
-        return 4171                                      # RGF93 v1
-    if epsg == 9794 or 9842 <= epsg <= 9850 or epsg == 9782:
-        return 9782                                      # RGF93 v2b
-    if epsg in (25831, 25832):
-        return 4258                                      # ETRS89
-    return 4326
+    """SCR geographique du meme repere que `horizontal_epsg` (d'apres la base de PROJ) : celui dans lequel on interroge les grilles."""
+    from . import projdb
+    return projdb.geographic_epsg(horizontal_epsg)
 
 
 class Proj(object):

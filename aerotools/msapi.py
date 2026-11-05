@@ -1694,6 +1694,17 @@ def target_crs(horizontal_epsg):
         return None
 
 
+def project_epsg(crs):
+    """Code EPSG (entier) du SCR horizontal du projet, ou None (SCR personnalise, sans code)."""
+    try:
+        part = horizontal_part(crs)
+        text = str(part.authority) if part is not None else ""
+        number = text.replace("EPSG::", "").replace("EPSG:", "")
+        return int(number) if text.startswith("EPSG") and number.isdigit() else None
+    except Exception:
+        return None
+
+
 def horizontal_part(crs):
     """Partie horizontale d'un SCR compose (le PROJCS / GEOGCS du COMPD_CS) ; le SCR lui-meme s'il n'est pas compose, None si illisible."""
     try:

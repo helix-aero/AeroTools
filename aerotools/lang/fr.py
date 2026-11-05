@@ -668,6 +668,8 @@ TEXTES = {
     "export.crs_section": "Coordonnées",
     "export.crs_to": "Exporter en",
     "export.crs_same": "Comme le projet",
+    "export.crs_find": "Rechercher",
+    "export.crs_find_hint": "Nom ou code EPSG (par exemple Lambert-93, 2154, UTM 33N)",
     "export.vertical": "Altitudes",
     "export.vertical_same": "Comme le projet",
     "export.geoid_missing": "La grille de {name} n'est pas sur cet ordinateur ({size} à télécharger). AeroTools en a besoin pour convertir les altitudes.",
