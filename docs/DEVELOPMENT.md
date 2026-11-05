@@ -180,6 +180,21 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
   on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and 40 px): 98 to 100 % within 3 px.
   The guard is covered by tests but not measured on real roof false positives yet.
 
+## Fast Export
+
+`aerotools/tools/fastexport/`: `naming.py` (short names, `Outputs` folder, versions; ported from the research prototype,
+31 tests), `plan.py` (presets and the list of files to write, pure), `dialog.py` (the window), `tool.py`. The Metashape side is
+`msapi.raster_info` and `msapi.export_raster` (`Chunk.exportRaster`). Measured on Metashape 2.2.1 on a real project:
+- `resolution=0.5` is meters on the ground and gave a 0.49996 pixel in the projection (CC42); `resolution_x/y=0.5` plus a
+  `region` snapped outward to multiples of the pixel gives exactly 0.5 and an aligned origin, for the ortho and the DEM
+  (same grid, so they line up). A pixel size left untouched exports on Metashape's own grid (no region, no resampling).
+- Compression: LZW keeps the alpha band, `TiffCompressionJPEG` writes YCbCr JPEG (no alpha, so the quick view uses a white
+  background), the DEM is Float32 + Deflate with nodata -32767. A JPEG export writes a `.jgw` and a `.prj` (compound CRS with the geoid).
+- A region with no data writes no file (matters for tiling).
+- The GeoTIFF carries the horizontal CRS only, the geoid is in the `.prj` of the JPEG.
+Not done yet: geoid check and download, tiling, JPEG2000, DXF/DWG packaging, ECW. The research prototypes for those are in
+`FAST_RECHERCHE/fast_export/proto` (`crs_catalog.py`, `tiling.py`, `export_post.py`, `dxf_ref.py`).
+
 ## Fast Space
 
 `aerotools/tools/fastspace/`: `scanner.py` (no Qt, no Metashape) finds `.psx` and orphan `.files` folders and measures them

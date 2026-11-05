@@ -83,6 +83,11 @@ Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Met
 2. Double-cliquez sur **`CLICK HERE TO INSTALL.bat`** (à la racine du dossier décompressé). Un seul installeur fait tout : il ajoute le menu **Aero** à Metashape et met en place la détection IA (Python et un moteur de détection léger, environ 100 Mo, une à deux minutes). Une fenêtre affiche « Please wait... » avec la progression ; ne la fermez pas.
 3. Redémarrez Metashape. Le menu **Aero** est là.
 
+**Aero > FastExport** exporte l'ortho et/ou le MNT dans un dossier `Outputs` à côté du projet, avec des noms courts
+(`SITE_260704_3cm_ortho.tif`, `SITE_260704_3cm_mnt.tif`). Choisis un format (GeoTIFF pleine qualité, aperçu client compressé,
+JPEG + fichier monde) et une taille de pixel en cm. Une taille tapée est exacte (3 cm font 3,000 cm, sur une grille de multiples
+de 3 cm) : l'ortho et le MNT se superposent pixel pour pixel.
+
 **Aero > FastSpace** scanne un disque à la recherche des anciens projets Metashape et libère de la place : les alléger (retirer le
 nuage dense et les cartes de profondeur) ou les supprimer, à la corbeille ou définitivement.
 
