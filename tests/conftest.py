@@ -116,12 +116,17 @@ class Chunk(object):
 class FakeApp(object):
     def __init__(self):
         self.menu_items = []
+        self.menu_order = []            # entrees et traits dans l'ordre : ("item", label) ou ("separator", menu)
         self.messages = []
         self.document = types.SimpleNamespace(chunk=None)
         self.photo_view = None
 
     def addMenuItem(self, label, callback, shortcut=None):
         self.menu_items.append((label, callback, shortcut))
+        self.menu_order.append(("item", label))
+
+    def addMenuSeparator(self, menu):
+        self.menu_order.append(("separator", menu))
 
     def messageBox(self, text):
         self.messages.append(text)

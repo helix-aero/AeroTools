@@ -18,6 +18,25 @@ from .qt import QtCore, QtWidgets
 POLL_MS = 150
 WIDTH = 640
 CHANNELS = (("main", "update.channel_stable"), ("dev", "update.channel_test"))
+MARKS = {"ok": ("\u2713", theme.GREEN_BRIGHT), "error": ("\u2715", theme.ORANGE_BRIGHT)}
+
+
+class _Mark(QtWidgets.QLabel):
+    """Petite coche verte (reussite) ou croix orange (echec) devant un texte d'etat."""
+
+    def __init__(self, size=16):
+        super(_Mark, self).__init__()
+        self.setFixedWidth(size + 4)
+        self.setAlignment(QtCore.Qt.AlignCenter)
+        self._size = size
+        self.setVisible(False)
+
+    def show_kind(self, kind):
+        symbol, color = MARKS.get(kind, ("", ""))
+        self.setText(symbol)
+        self.setStyleSheet("color: {}; font-size: {}px; font-weight: 700; background: transparent;".format(
+            color, self._size))
+        self.setVisible(bool(symbol))
 
 
 class _Worker(threading.Thread):
@@ -57,7 +76,12 @@ class _Row(object):
         self.info = ui.label("", "aeroMeta")
         left.addWidget(self.info)
         self.status = ui.label("")
-        left.addWidget(self.status)
+        self.mark = _Mark()
+        line = QtWidgets.QHBoxLayout()
+        line.setSpacing(theme.PAD_S)
+        line.addWidget(self.mark, 0, QtCore.Qt.AlignTop)
+        line.addWidget(self.status, 1)
+        left.addLayout(line)
         self.bar = QtWidgets.QProgressBar()
         self.bar.setObjectName("aeroProgress")
         self.bar.setTextVisible(False)
@@ -67,6 +91,11 @@ class _Row(object):
         outer.addLayout(left, 1)
         self.button = ui.button("update.update", functools.partial(on_update, plugin["id"]), "aeroRun", width=150)
         outer.addWidget(self.button, 0, QtCore.Qt.AlignVCenter)
+
+    def set_status(self, text, kind=None):
+        """Texte d'etat ; `kind` : "ok" (coche verte), "error" (croix orange) ou rien."""
+        self.status.setText(text)
+        self.mark.show_kind(kind)
 
     def show_info(self):
         data = updater.installed_info(self.plugin)
@@ -104,7 +133,12 @@ class UpdateDialog(QtWidgets.QDialog):
             row.show_info()
         layout.addStretch(1)
         self.footer = ui.label("", "aeroMeta")
-        layout.addWidget(self.footer)
+        self.footer_mark = _Mark()
+        foot = QtWidgets.QHBoxLayout()
+        foot.setSpacing(theme.PAD_S)
+        foot.addWidget(self.footer_mark, 0, QtCore.Qt.AlignTop)
+        foot.addWidget(self.footer, 1)
+        layout.addLayout(foot)
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(theme.PAD)
         self.channel = QtWidgets.QComboBox()
@@ -139,6 +173,10 @@ class UpdateDialog(QtWidgets.QDialog):
     def _busy(self):
         return self._worker is not None
 
+    def _set_footer(self, text, kind=None):
+        self.footer.setText(text)
+        self.footer_mark.show_kind(kind if text else None)
+
     def _available(self):
         return [pid for pid, result in self._results.items() if result.get("state") == "update"]
 
@@ -158,18 +196,18 @@ class UpdateDialog(QtWidgets.QDialog):
         state = result.get("state")
         row.show_info()
         if state == "update":
-            row.status.setText(i18n.t("update.status_available", n=len(result["changes"]),
-                                      size=updater.format_size(result["bytes"])))
+            row.set_status(i18n.t("update.status_available", n=len(result["changes"]),
+                                  size=updater.format_size(result["bytes"])))
             shown = [c["path"] for c in result["changes"][:12]]
             more = len(result["changes"]) - len(shown)
             row.status.setToolTip("\n".join(shown + (["..."] if more > 0 else [])))
         elif state == "current":
-            row.status.setText(i18n.t("update.status_current"))
+            row.set_status(i18n.t("update.status_current"), "ok")
             row.status.setToolTip("")
         elif state == "dev":
-            row.status.setText(i18n.t("update.status_dev"))
+            row.set_status(i18n.t("update.status_dev"))
         else:
-            row.status.setText(i18n.t("update.status_error", message=result.get("message", "")))
+            row.set_status(i18n.t("update.status_error", message=result.get("message", "")), "error")
 
     # -- verification ------------------------------------------------------------
 
@@ -188,9 +226,9 @@ class UpdateDialog(QtWidgets.QDialog):
         if self._busy():
             return
         for row in self.rows.values():
-            row.status.setText(i18n.t("update.status_checking"))
+            row.set_status(i18n.t("update.status_checking"))
             row.bar.setVisible(False)
-        self.footer.setText("")
+        self._set_footer("")
 
         def job(_worker):
             return {plugin["id"]: updater.check(plugin) for plugin in updater.plugins()}
@@ -203,7 +241,7 @@ class UpdateDialog(QtWidgets.QDialog):
                 self._results[pid] = state
                 self._show_result(pid)
         if not self._available():
-            self.footer.setText("")
+            self._set_footer("")
 
     # -- mise a jour -------------------------------------------------------------
 
@@ -220,8 +258,8 @@ class UpdateDialog(QtWidgets.QDialog):
         for pid in ids:
             self.rows[pid].bar.setValue(0)
             self.rows[pid].bar.setVisible(True)
-            self.rows[pid].status.setText(i18n.t("update.status_updating", done="0 B", total="..."))
-        self.footer.setText(i18n.t("update.warning"))
+            self.rows[pid].set_status(i18n.t("update.status_updating", done="0 B", total="..."))
+        self._set_footer(i18n.t("update.warning"))
 
         def job(worker):
             out = {}
@@ -246,20 +284,20 @@ class UpdateDialog(QtWidgets.QDialog):
             row.bar.setVisible(False)
             applied = entry.get("apply") or {}
             if not applied.get("ok"):
-                row.status.setText(i18n.t("update.status_failed", message=applied.get("error", "")))
+                row.set_status(i18n.t("update.status_failed", message=applied.get("error", "")), "error")
                 problems = True
                 continue
             if applied.get("updated"):
                 self.updated = True
             count, bad = entry.get("verify", (0, []))
             if bad:
-                row.status.setText(i18n.t("update.status_verify_bad", n=len(bad)))
+                row.set_status(i18n.t("update.status_verify_bad", n=len(bad)), "error")
                 problems = True
             else:
-                row.status.setText(i18n.t("update.status_done", n=count))
+                row.set_status(i18n.t("update.status_done", n=count), "ok")
             row.show_info()
             self._results[pid] = {"state": "current", "changes": [], "bytes": 0}
-        self.footer.setText(i18n.t("update.finished") if self.updated and not problems else "")
+        self._set_footer(i18n.t("update.finished") if self.updated and not problems else "", "ok")
 
     # -- fil de travail ----------------------------------------------------------
 
@@ -281,12 +319,12 @@ class UpdateDialog(QtWidgets.QDialog):
             row = self.rows[pid]
             if done < 0:
                 row.bar.setRange(0, 0)
-                row.status.setText(i18n.t("update.status_verifying"))
+                row.set_status(i18n.t("update.status_verifying"))
             else:
                 row.bar.setRange(0, 1000)
                 row.bar.setValue(int(1000 * done / float(max(1, total))))
-                row.status.setText(i18n.t("update.status_updating", done=updater.format_size(done),
-                                          total=updater.format_size(total)))
+                row.set_status(i18n.t("update.status_updating", done=updater.format_size(done),
+                                      total=updater.format_size(total)))
         if not worker.finished:
             return
         self._clock.stop()

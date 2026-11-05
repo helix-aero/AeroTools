@@ -29,6 +29,26 @@ def test_install_menu_is_idempotent(boot, ms):
     assert "Aero/FastGCP" in labels
 
 
+def test_menu_groups_tools_upkeep_and_about_with_separators(boot, ms):
+    boot.install_menu()
+    order = ms.app.menu_order
+    kinds = [kind for kind, _label in order]
+    labels = [label for kind, label in order if kind == "item"]
+    assert kinds.count("separator") == 2
+    first, second = kinds.index("separator"), len(kinds) - 1 - kinds[::-1].index("separator")
+    assert [label for kind, label in order[:first]] == ["Aero/" + entry["menu"] for entry in config.TOOLS]
+    assert [label for _kind, label in order[first + 1:second]] == ["Aero/Verifier les mises a jour...",
+                                                                  "Aero/Recharger AeroTools"]
+    assert [label for _kind, label in order[second + 1:]] == ["Aero/A propos"]
+    assert labels[0] == "Aero/FastGCP"
+
+
+def test_menu_still_installs_when_separators_are_unavailable(boot, ms, monkeypatch):
+    monkeypatch.delattr(type(ms.app), "addMenuSeparator")
+    assert boot.install_menu() is True
+    assert len(ms.app.menu_items) == len(config.TOOLS) + 3
+
+
 def test_install_menu_force_registers_again(boot, ms):
     boot.install_menu()
     count = len(ms.app.menu_items)
@@ -74,6 +94,32 @@ def test_launch_calls_install_of_ready_tool(boot, ms, monkeypatch):
     assert boot.launch("fastgcp") is True
     assert called == ["install"]
     assert getattr(builtins, "_AEROTOOLS_LAST_TOOL") == "fastgcp"
+
+
+def test_one_off_window_is_not_reopened_by_reload(boot, ms, monkeypatch):
+    opened = []
+
+    class FakeTool(object):
+        @staticmethod
+        def install():
+            opened.append("install")
+
+    monkeypatch.setattr(importlib, "import_module", lambda name, *a, **k: FakeTool)
+    assert boot.launch("fastgcp") is True
+    assert boot.launch("fastspace") is True          # FastSpace est une fenetre ponctuelle
+    assert getattr(builtins, "_AEROTOOLS_LAST_TOOL") == "fastgcp"
+    assert [entry["id"] for entry in config.TOOLS if not entry.get("rouvrir")] == ["fastspace"]
+
+
+def test_reload_without_a_panel_opens_nothing(boot, ms, monkeypatch):
+    launched = []
+    monkeypatch.setattr(boot, "purge_modules", lambda: None)
+    monkeypatch.setattr(importlib, "import_module",
+                        lambda name, *a, **k: type("M", (), {"launch": staticmethod(lambda t: launched.append(t))}))
+    boot.launch  # le drapeau est vide : aucun outil n'a ete ouvert
+    assert not hasattr(builtins, "_AEROTOOLS_LAST_TOOL")
+    assert boot.reload_all() is True
+    assert launched == []
 
 
 def test_launch_survives_failing_tool(boot, ms, monkeypatch):
