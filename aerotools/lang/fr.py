@@ -302,21 +302,11 @@ TEXTES = {
     "panel.credit": "Outil créé par {site}",
     "panel.github_tip": "Code source sur GitHub",
     "settings.title": "Paramètres",
-    "settings.general": "Général",
-    "settings.ai_models": "Modèles IA",
-    "settings.use_refine": "Utiliser mes affinages manuels pour construire le jeu d'entraînement",
-    "settings.storage": "Dossier de stockage",
+    "settings.use_refine": "Garder mes corrections",
     "settings.browse": "Parcourir…",
     "settings.storage_pick": "Dossier de stockage (dataset, models, training dedans)",
-    "settings.data_counts": "{p} point(s) corrigé(s) ou validé(s) et {r} proposition(s) rejetée(s) enregistré(s) (damier : {damier}, bombe : {bombe})",
-    "settings.data_none": "Aucune annotation pour l'instant : corrige ou exclus des propositions dans le Review panel.",
-    "settings.model": "Modèle IA",
-    "settings.add": "Ajouter…",
-    "settings.add_soon": "Bientôt disponible",
     "settings.manage": "Gérer…",
-    "settings.model_base": "Modèle d'origine, toujours disponible.",
-    "settings.model_local": "Modèle local entraîné sur tes données ({types}).",
-    "settings.refine_model": "Affiner mon modèle avec mes données",
+    "settings.refine_model": "Entraîner",
     "settings.revert": "Revenir à {name}",
     "settings.reverted": "Modèle d'origine rétabli.",
     "settings.train_title": "Affiner le modèle IA",
@@ -332,7 +322,6 @@ TEXTES = {
     "settings.manage_title": "Gérer les modèles",
     "settings.delete": "Supprimer",
     "settings.delete_confirm": "Supprimer le modèle {name} ? Cette action est définitive.",
-    "settings.base_locked": "Le modèle d'origine ne peut pas être supprimé. L'étoile marque le modèle utilisé.",
     "settings.close": "Fermer",
 
     # -- Rapport : photos exclues ------------------------------------------
@@ -360,7 +349,6 @@ TEXTES = {
 
     # -- Dossier de stockage -----------------------------------------------
     "settings.open_folder": "Ouvrir",
-    "settings.storage_content": "Contient : annotations (dataset) : {a} ligne(s) · modèles locaux (models) : {m} · détections gardées (aigcp) : {d} · essais d'entraînement (training) : {t}",
     "settings.copy_confirm": "Ce dossier ne contient encore ni annotation ni modèle. Copier dans ce dossier les {a} annotation(s) et les {m} modèle(s) local(aux) du dossier actuel ? Le dossier actuel n'est pas modifié.",
     "settings.copy_failed": "La copie a échoué : {message}",
 
@@ -384,17 +372,12 @@ TEXTES = {
     # -- Outils d'entrainement ---------------------------------------------
 
     # -- Moteurs de detection et installation ------------------------------
-    "settings.engine_title": "Moteur de détection",
-    "settings.engine_choice": "Moteur utilisé pour détecter les cibles",
-    "settings.engine_auto": "Automatique (le précis s'il est installé, sinon le léger)",
-    "settings.engine_light": "Léger : rapide, tout ordinateur (environ 100 Mo)",
-    "settings.engine_precise": "Précis : le moteur d'origine, PyTorch (environ 3 Go)",
-    "settings.engine_note": "Les deux placent les cibles pratiquement au même endroit (mesuré sur 569 cibles : 99 % à moins de 0,05 px). Le léger calcule sur le processeur, le précis utilise la carte graphique s'il y en a une.",
+    "settings.engine_auto": "Automatique",
+    "settings.engine_light": "Léger  ·  100 Mo",
+    "settings.engine_precise": "Précis  ·  3 Go",
     "settings.engine_name_light": "Moteur léger",
     "settings.engine_name_precise": "Moteur précis",
     "settings.engine_name_training": "Outils de réentraînement",
-    "settings.engine_row": "{name} : {state}",
-    "settings.engine_in_use": "Moteur utilisé en ce moment : {name}.",
     "settings.engine_none": "Aucun moteur n'est installé : installe-en un avec le bouton ci-dessus.",
     "settings.engine_custom_python": "Un Python personnalisé est réglé ({path}) : l'installation automatique est désactivée, installe les modules toi-même.",
     "settings.engine_missing_offer": "Ce moteur n'est pas encore installé. Installer {what} maintenant ?",
@@ -447,9 +430,7 @@ TEXTES = {
     "update.update_all": "Tout mettre à jour",
     "update.close": "Fermer",
     "update.channel": "Branche suivie : {channel}",
-    "settings.update_title": "Mises à jour",
-    "settings.update_note": "AeroTools se met à jour depuis GitHub : tu vois ce qui a changé et son poids avant de valider.",
-    "settings.update_open": "Rechercher les mises à jour…",
+    "settings.update_open": "Vérifier les mises à jour",
 
     # -- Diagnostic du pointage --------------------------------------------
     "diag.menu": "Diagnostic complet du pointage…",
@@ -539,4 +520,19 @@ TEXTES = {
 
     # -- Fast Space : somme de la selection --------------------------------
     "space.selection_rows": "{n} projet(s) surlignés (pas cochés) - {light} / {total}  (alléger / supprimer)",
+
+    # -- Parametres : sections ---------------------------------------------
+    "settings.sec_detect": "Détection",
+    "settings.sec_model": "Modèle",
+    "settings.sec_data": "Données",
+    "settings.sec_train": "Entraînement",
+    "settings.sec_options": "Options",
+    "settings.installed": "Installé",
+    "settings.stat_notes": "Corrections",
+    "settings.stat_models": "Modèles",
+    "settings.stat_detections": "Détections",
+    "settings.stat_trainings": "Essais",
+    "settings.flow_fixes": "Corrections",
+    "settings.flow_model": "Modèle actif",
+    "settings.train_need_data": "Corrige des cibles dans la revue pour pouvoir entraîner",
 }

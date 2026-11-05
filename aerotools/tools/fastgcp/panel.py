@@ -52,7 +52,11 @@ MIN_PANEL_WIDTH = 420
 
 # Meme hauteur pour tous les boutons et listes du panneau ; Run est un petit bouton.
 CONTROL_HEIGHT = 30
-RUN_WIDTH = 92
+RUN_WIDTH = 124
+RUN_HEIGHT = 40
+RUN_ICON = 14
+QC_WIDTH = 168
+EXPORT_WIDTH = 112
 CANCEL_WIDTH = 84
 PROGRESS_HEIGHT = 22                  # barre de detection (texte dedans) et bouton Annuler a sa droite
 
@@ -282,6 +286,28 @@ def _play_icon(running):
     """PAUSE quand l'outil tourne (sur le vert), PLAY quand il est coupe."""
     color = theme.GREEN_ON if running else theme.FG_1
     return QtGui.QIcon(_play_pixmap(running, color))
+
+
+def _run_pixmap(color):
+    """Triangle plein qui pointe vers la droite (le bouton Run)."""
+    def build():
+        def draw(painter):
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.setBrush(QtGui.QColor(color))
+            painter.drawPolygon(QtGui.QPolygonF([
+                QtCore.QPointF(3.4, 1.8),
+                QtCore.QPointF(13.0, 8.0),
+                QtCore.QPointF(3.4, 14.2),
+            ]))
+        return _paint(PLAY_ICON, PLAY_ICON, draw)
+    return _cached(("run", color), build)
+
+
+def _run_icon():
+    icon = QtGui.QIcon()
+    icon.addPixmap(_run_pixmap(theme.GREEN_ON), QtGui.QIcon.Normal)
+    icon.addPixmap(_run_pixmap(theme.FG_4), QtGui.QIcon.Disabled)
+    return icon
 
 
 STATE_DOT = 10
@@ -574,6 +600,35 @@ class _ElidedLabel(QtWidgets.QLabel):
         super(_ElidedLabel, self).changeEvent(event)
         if event.type() in (QtCore.QEvent.FontChange, QtCore.QEvent.StyleChange):
             self._elide()
+
+
+class _Switch(QtWidgets.QPushButton):
+    """Interrupteur rond ON / OFF : piste verte et pastille a droite quand l'outil tourne, grise sinon."""
+
+    WIDTH, HEIGHT = 46, 26
+
+    def __init__(self, parent=None):
+        super(_Switch, self).__init__(parent)
+        self._on = True
+        self.setFixedSize(self.WIDTH, self.HEIGHT)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+
+    def set_on(self, on):
+        self._on = bool(on)
+        self.update()
+
+    def paintEvent(self, _event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        width, height = float(self.width()), float(self.height())
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.setBrush(QtGui.QColor(theme.GREEN if self._on else theme.GROUND_4))
+        painter.drawRoundedRect(QtCore.QRectF(0, 0, width, height), height / 2.0, height / 2.0)
+        knob = height - 6.0
+        left = width - knob - 3.0 if self._on else 3.0
+        painter.setBrush(QtGui.QColor("#ffffff" if self._on else theme.FG_2))
+        painter.drawEllipse(QtCore.QRectF(left, 3.0, knob, knob))
+        painter.end()
 
 
 class _ElidedButton(QtWidgets.QPushButton):
@@ -908,7 +963,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.addWidget(self._build_active_card())
         layout.addWidget(self._build_search())
         layout.addWidget(self._build_list(), 1)
-        layout.addLayout(self._build_tools())
         self._build_more()                # ouverte dans la fenetre Parametres, jamais dans la colonne
         layout.addLayout(self._build_footer())
         layout.addLayout(self._build_credit())
@@ -1010,16 +1064,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD + theme.PAD_S)
 
-        self.toggle = QtWidgets.QPushButton()
-        self.toggle.setObjectName("aeroPlayOn")
-        self.toggle.setCursor(QtCore.Qt.PointingHandCursor)
-        self.toggle.setFixedSize(PLAY_BUTTON, PLAY_BUTTON)
-        self.toggle.setIconSize(QtCore.QSize(PLAY_ICON, PLAY_ICON))
+        self.toggle = _Switch()
         self.toggle.clicked.connect(self._on_toggle_clicked)
         row.addWidget(self.toggle, 0)
 
+        # La pastille d'etat est remplacee par l'interrupteur ; elle reste pour les appelants existants.
         self.state_dot = QtWidgets.QLabel()
         self.state_dot.setFixedSize(STATE_DOT, STATE_DOT)
+        self.state_dot.setVisible(False)
         row.addWidget(self.state_dot, 0, QtCore.Qt.AlignVCenter)
 
         self.state_text = _ElidedLabel("aeroState")
@@ -1044,13 +1096,15 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         actions.setSpacing(theme.PAD)
         self.aigcp_button = self._tool_button("aigcp.run", self._on_aigcp_run)
         self.aigcp_button.setObjectName("aeroRun")
-        self.aigcp_button.setFixedWidth(RUN_WIDTH)
+        self.aigcp_button.setFixedSize(RUN_WIDTH, RUN_HEIGHT)
+        self.aigcp_button.setIcon(_run_icon())
+        self.aigcp_button.setIconSize(QtCore.QSize(RUN_ICON, RUN_ICON))
         self.aigcp_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         self.aigcp_clear_button = self._tool_button("aigcp.clear", self._on_aigcp_clear)
         self.aigcp_review_button = self._tool_button("aigcp.review", self._on_aigcp_review)
         actions.addWidget(self.aigcp_button, 0)
-        actions.addWidget(self.aigcp_clear_button, 1)
-        actions.addWidget(self.aigcp_review_button, 1)
+        actions.addWidget(self.aigcp_clear_button, 1, QtCore.Qt.AlignVCenter)
+        actions.addWidget(self.aigcp_review_button, 1, QtCore.Qt.AlignVCenter)
         layout.addLayout(actions)
 
         # Deux lignes de listes : type et portee, puis les photos a laisser tranquilles.
@@ -1102,11 +1156,10 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
     def _build_active_card(self):
         card = QtWidgets.QFrame()
-        card.setObjectName("aeroCard")
+        card.setObjectName("aeroCardActive")
         layout = QtWidgets.QVBoxLayout(card)
-        pad = theme.PAD + theme.PAD_S
-        layout.setContentsMargins(pad, pad, pad, pad)
-        layout.setSpacing(theme.PAD)
+        layout.setContentsMargins(theme.PAD + theme.PAD_S, theme.PAD_S + 2, theme.PAD + theme.PAD_S, theme.PAD_S + 2)
+        layout.setSpacing(theme.PAD_S)
 
         # Une seule ligne : intitule, identifiant (tronque a 10 caracteres), compteurs.
         line = QtWidgets.QHBoxLayout()
@@ -1208,15 +1261,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.list = grid
         return box
 
-    def _build_tools(self):
-        """Sous le tableau : controle des residus."""
-        row = QtWidgets.QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(theme.PAD)
-        self.qc_button = self._tool_button("panel.qc", self._show_qc_menu)
-        row.addWidget(self.qc_button, 1)
-        return row
-
     def _tool_button(self, text_key, handler):
         button = _ElidedButton(i18n.t(text_key))
         button.setObjectName("aeroGhost")
@@ -1262,19 +1306,28 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return box
 
     def _build_footer(self):
-        """Statut a gauche, bouton Exporter a droite."""
+        """Une ligne : controle des residus (contour vert) a gauche, Exporter (plein vert) a droite."""
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD)
+        self.qc_button = self._tool_button("panel.qc", self._show_qc_menu)
+        self.qc_button.setObjectName("aeroYes")
+        self.qc_button.setFixedWidth(QC_WIDTH)
+        self.qc_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        row.addWidget(self.qc_button, 0)
+        row.addStretch(1)
+
+        # Le statut (« 7/18 marques ») n'est plus affiche ; le widget reste pour les appelants existants.
         self.status = _ElidedLabel("aeroStatus")
-        row.addWidget(self.status, 1)
+        self.status.setVisible(False)
+        row.addWidget(self.status, 0)
 
         self.export_button = QtWidgets.QPushButton()
         self._set_export_text()
-        self.export_button.setObjectName("aeroGhost")
+        self.export_button.setObjectName("aeroRun")
         self.export_button.setProperty("pill", True)
         self.export_button.setCursor(QtCore.Qt.PointingHandCursor)
-        self.export_button.setFixedHeight(CONTROL_HEIGHT)
+        self.export_button.setFixedSize(EXPORT_WIDTH, CONTROL_HEIGHT)
         self.export_button.setIconSize(QtCore.QSize(EXPORT_ICON, EXPORT_ICON))
         self.export_button.clicked.connect(self._show_export_menu)
         self.export_menu = QtWidgets.QMenu(self.export_button)
@@ -1292,7 +1345,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD_S)
-        row.addStretch(1)
         self.credit = QtWidgets.QLabel()
         self.credit.setObjectName("aeroMeta")
         self.credit.setTextFormat(QtCore.Qt.RichText)
@@ -1335,7 +1387,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self.github_button.setIcon(QtGui.QIcon(_github_pixmap(theme.FG_2)))
             self.undo_button.setIcon(_undo_icon())
             self.redo_button.setIcon(_undo_icon(mirror=True))
-            self.export_button.setIcon(QtGui.QIcon(_export_pixmap(theme.FG_2)))
+            self.export_button.setIcon(QtGui.QIcon(_export_pixmap(theme.GREEN_ON)))
             self.export_menu.setStyleSheet(theme.menu_stylesheet())
             self._paint_placeholder()
             self.count_pointed.apply_theme()
@@ -1519,13 +1571,11 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     def _apply_toggle(self, running):
         """Aligne bouton, pastille et texte d'etat sur `running`."""
         self._running = bool(running)
-        self.toggle.setObjectName("aeroPlayOn" if running else "aeroPlayOff")
-        self.toggle.setIcon(_play_icon(running))
+        self.toggle.set_on(running)
         self.state_dot.setPixmap(_state_dot_pixmap(running))
         self.state_text.set_full_text(
             i18n.t("panel.state_on" if running else "panel.state_off"))
         self.state_text.setObjectName("aeroState" if running else "aeroStateOff")
-        _repolish(self.toggle)
         _repolish(self.state_text)
         self._update_undo_button()
 

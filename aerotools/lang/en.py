@@ -296,21 +296,11 @@ TEXTES = {
     "panel.credit": "Tool made by {site}",
     "panel.github_tip": "Source code on GitHub",
     "settings.title": "Settings",
-    "settings.general": "General",
-    "settings.ai_models": "AI models",
-    "settings.use_refine": "Use manual refinements to build the training dataset",
-    "settings.storage": "Storage location",
+    "settings.use_refine": "Keep my corrections",
     "settings.browse": "Browse…",
     "settings.storage_pick": "Storage folder (dataset, models, training inside)",
-    "settings.data_counts": "{p} corrected or validated point(s) and {r} rejected proposal(s) kept (checkerboard: {damier}, spray: {bombe})",
-    "settings.data_none": "No annotation yet: correct or exclude proposals in the Review panel.",
-    "settings.model": "AI model",
-    "settings.add": "Add…",
-    "settings.add_soon": "Coming soon",
     "settings.manage": "Manage…",
-    "settings.model_base": "Original model, always available.",
-    "settings.model_local": "Local model trained on your data ({types}).",
-    "settings.refine_model": "Refine my model using my data",
+    "settings.refine_model": "Train",
     "settings.revert": "Revert to {name}",
     "settings.reverted": "Original model restored.",
     "settings.train_title": "Refine the AI model",
@@ -326,7 +316,6 @@ TEXTES = {
     "settings.manage_title": "Manage models",
     "settings.delete": "Delete",
     "settings.delete_confirm": "Delete the model {name}? This cannot be undone.",
-    "settings.base_locked": "The original model cannot be deleted. The star marks the model in use.",
     "settings.close": "Close",
 
     # -- Rapport : photos exclues ------------------------------------------
@@ -354,7 +343,6 @@ TEXTES = {
 
     # -- Dossier de stockage -----------------------------------------------
     "settings.open_folder": "Open",
-    "settings.storage_content": "Contains: annotations (dataset): {a} line(s) · local models (models): {m} · kept detections (aigcp): {d} · training runs (training): {t}",
     "settings.copy_confirm": "This folder holds no annotation or model yet. Copy the {a} annotation(s) and the {m} local model(s) of the current folder into it? The current folder is left untouched.",
     "settings.copy_failed": "The copy failed: {message}",
 
@@ -378,17 +366,12 @@ TEXTES = {
     # -- Outils d'entrainement ---------------------------------------------
 
     # -- Moteurs de detection et installation ------------------------------
-    "settings.engine_title": "Detection engine",
-    "settings.engine_choice": "Engine used to detect the targets",
-    "settings.engine_auto": "Automatic (Precise if installed, otherwise Light)",
-    "settings.engine_light": "Light: fast, any computer (about 100 MB)",
-    "settings.engine_precise": "Precise: the original engine, PyTorch (about 3 GB)",
-    "settings.engine_note": "Both place the targets practically at the same spot (measured on 569 targets: 99% within 0.05 px). Light computes on the processor, Precise uses the graphics card if there is one.",
+    "settings.engine_auto": "Automatic",
+    "settings.engine_light": "Light  ·  100 MB",
+    "settings.engine_precise": "Precise  ·  3 GB",
     "settings.engine_name_light": "Light engine",
     "settings.engine_name_precise": "Precise engine",
     "settings.engine_name_training": "Retraining tools",
-    "settings.engine_row": "{name}: {state}",
-    "settings.engine_in_use": "Engine in use right now: {name}.",
     "settings.engine_none": "No engine is installed: install one with the button above.",
     "settings.engine_custom_python": "A custom Python is set ({path}): automatic installation is off, install the modules yourself.",
     "settings.engine_missing_offer": "This engine is not installed yet. Install {what} now?",
@@ -441,9 +424,7 @@ TEXTES = {
     "update.update_all": "Update all",
     "update.close": "Close",
     "update.channel": "Branch followed: {channel}",
-    "settings.update_title": "Updates",
-    "settings.update_note": "AeroTools updates from GitHub: you see what changed and how big it is before you confirm.",
-    "settings.update_open": "Check for updates...",
+    "settings.update_open": "Check for updates",
 
     # -- Diagnostic du pointage --------------------------------------------
     "diag.menu": "Full marking diagnostic...",
@@ -533,4 +514,19 @@ TEXTES = {
 
     # -- Fast Space : somme de la selection --------------------------------
     "space.selection_rows": "{n} project(s) highlighted (not ticked) - {light} / {total}  (lighten / delete)",
+
+    # -- Parametres : sections ---------------------------------------------
+    "settings.sec_detect": "Detection",
+    "settings.sec_model": "Model",
+    "settings.sec_data": "Data",
+    "settings.sec_train": "Training",
+    "settings.sec_options": "Options",
+    "settings.installed": "Installed",
+    "settings.stat_notes": "Corrections",
+    "settings.stat_models": "Models",
+    "settings.stat_detections": "Detections",
+    "settings.stat_trainings": "Runs",
+    "settings.flow_fixes": "Corrections",
+    "settings.flow_model": "Active model",
+    "settings.train_need_data": "Correct some targets in the review to be able to train",
 }

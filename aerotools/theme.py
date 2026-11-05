@@ -14,6 +14,8 @@ Alerte : orange #ff5210 (outil a l'arret).
 Degrade du logo : #163056 -> #139168 -> #03a132, du bas gauche vers le haut droit.
 """
 
+import os
+
 # --------------------------------------------------------------------------
 # Jetons
 # --------------------------------------------------------------------------
@@ -43,6 +45,13 @@ GREEN_SOFT = "rgba(30, 202, 89, 0.18)"
 
 GREEN_DEEP = "#03a132"
 
+# Fenetre Parametres : fond sombre, sections presque noires (comme les volets de Metashape).
+WINDOW = "#303030"
+PANE = "#1b1b1b"
+PANE_HEAD = "#262626"
+BTN = "#525252"
+BTN_HOVER = "#646464"
+
 ORANGE = "#ff5210"
 ORANGE_BRIGHT = "#ff7a3c"
 ORANGE_DEEP = "#b83504"
@@ -61,6 +70,8 @@ PAD_L = 16
 
 RADIUS = 6
 RADIUS_S = 4
+
+ARROW_DOWN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui", "arrow_down.png").replace("\\", "/")
 
 _FONTS_LOADED = False
 _TITLE_FAMILY = "Segoe UI"
@@ -231,6 +242,11 @@ def stylesheet():
     #aeroPanel #aeroCard {{
         background: {ground_2};
         border: 1px solid {border_faint};
+        border-radius: {radius}px;
+    }}
+    #aeroPanel #aeroCardActive {{
+        background: #4b5650;
+        border: 1px solid rgba(30, 202, 89, 0.32);
         border-radius: {radius}px;
     }}
     #aeroPanel #aeroCardAccent {{
@@ -560,6 +576,148 @@ def stylesheet():
         font-size: 9pt;
     }}
 
+    /* Fenetre Parametres : fond sombre, sections noires, gros boutons au texte centre */
+    #aeroPanel[settings="true"] {{
+        background: {window};
+    }}
+    #aeroPanel #aeroPane {{
+        background: {pane};
+        border: 1px solid {border_soft};
+        border-radius: 8px;
+    }}
+    #aeroPanel #aeroPaneHead {{
+        background: {pane_head};
+        border: none;
+        border-bottom: 1px solid {border_faint};
+        border-top-left-radius: 8px;
+        border-top-right-radius: 8px;
+    }}
+    #aeroPanel #aeroPaneBody, #aeroPanel #aeroBare {{
+        background: transparent;
+        border: none;
+    }}
+    #aeroPanel #aeroPaneTitle {{
+        color: {fg_0};
+        font-family: "{title}";
+        font-size: 11pt;
+        font-weight: 700;
+    }}
+    #aeroPanel #aeroBadge {{
+        background: {green};
+        color: {green_on};
+        border-radius: 10px;
+        font-family: "{title}";
+        font-size: 9pt;
+        font-weight: 700;
+    }}
+    #aeroPanel #aeroBottom {{
+        background: {pane_head};
+        border-top: 1px solid {border_soft};
+    }}
+    #aeroPanel #aeroPane QPushButton {{
+        background: {btn};
+        color: {fg_0};
+        border: 1px solid {border_strong};
+        border-radius: 8px;
+        min-height: 26px;
+        padding: 4px 14px;
+        font-size: 10pt;
+        font-weight: 700;
+    }}
+    #aeroPanel #aeroPane QPushButton:hover {{
+        background: {btn_hover};
+    }}
+    #aeroPanel #aeroPane QComboBox#aeroCombo {{
+        padding: 8px 10px;
+        min-height: 24px;
+        font-size: 10pt;
+    }}
+    #aeroPanel #aeroPane QComboBox#aeroCombo::drop-down {{
+        border: none;
+        width: 28px;
+    }}
+    #aeroPanel #aeroPane QComboBox#aeroCombo::down-arrow {{
+        image: url({arrow});
+        width: 12px;
+        height: 8px;
+        margin-right: 10px;
+    }}
+    #aeroPanel #aeroPane QLineEdit {{
+        padding: 8px 10px;
+        font-size: 10pt;
+    }}
+    #aeroPanel #aeroPane QCheckBox {{
+        padding: 5px 0;
+        font-size: 10pt;
+    }}
+    #aeroPanel QPushButton#aeroBtn, #aeroPanel #aeroPane QPushButton#aeroBtn {{
+        background: {btn};
+        color: {fg_0};
+        border: 1px solid {border_strong};
+        border-radius: 8px;
+        padding: 0 18px;
+        font-family: "{title}";
+        font-size: 10pt;
+        font-weight: 700;
+        text-align: center;
+    }}
+    #aeroPanel QPushButton#aeroBtn:hover, #aeroPanel #aeroPane QPushButton#aeroBtn:hover {{
+        background: {btn_hover};
+    }}
+    #aeroPanel QPushButton#aeroBtn:disabled, #aeroPanel #aeroPane QPushButton#aeroBtn:disabled {{
+        background: {pane_head};
+        color: {fg_4};
+        border-color: {border_faint};
+    }}
+    #aeroPanel QPushButton#aeroGo, #aeroPanel #aeroPane QPushButton#aeroGo {{
+        background: {green};
+        color: {green_on};
+        border: none;
+        border-radius: 8px;
+        padding: 0 18px;
+        font-family: "{title}";
+        font-size: 10.5pt;
+        font-weight: 700;
+        text-align: center;
+    }}
+    #aeroPanel QPushButton#aeroGo:hover, #aeroPanel #aeroPane QPushButton#aeroGo:hover {{
+        background: {green_bright};
+    }}
+    #aeroPanel QPushButton#aeroGo:disabled, #aeroPanel #aeroPane QPushButton#aeroGo:disabled {{
+        background: {pane_head};
+        color: {fg_4};
+    }}
+    #aeroPanel #aeroStat {{
+        background: {pane_head};
+        border: 1px solid {border_faint};
+        border-radius: 8px;
+    }}
+    #aeroPanel #aeroStatNum {{
+        color: {fg_0};
+        font-family: "{title}";
+        font-size: 14pt;
+        font-weight: 700;
+    }}
+    #aeroPanel #aeroStatLabel {{
+        color: {fg_3};
+        font-size: 8pt;
+    }}
+    #aeroPanel #aeroArrow {{
+        color: {fg_3};
+        font-size: 16pt;
+    }}
+    #aeroPanel #aeroChipOk {{
+        background: {green_soft};
+        color: #6ee79a;
+        border-radius: 11px;
+        padding: 3px 12px;
+        font-weight: 700;
+    }}
+    #aeroPanel #aeroWarn {{
+        color: {orange_bright};
+        font-size: 9pt;
+    }}
+
     /* Barres de defilement */
     #aeroPanel QScrollBar:vertical {{
         background: transparent;
@@ -605,6 +763,13 @@ def stylesheet():
         logo_2=LOGO_2,
         radius=RADIUS,
         radius_s=RADIUS_S,
+        window=WINDOW,
+        pane=PANE,
+        pane_head=PANE_HEAD,
+        btn=BTN,
+        btn_hover=BTN_HOVER,
+        orange_bright=ORANGE_BRIGHT,
+        arrow=ARROW_DOWN,
         title=title_family(),
         text=text_family(),
     )
