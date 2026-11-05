@@ -32,6 +32,7 @@ import gc
 import os
 import shutil
 import stat
+import subprocess
 import time
 
 from ... import config, journal
@@ -77,6 +78,24 @@ def refusal(project):
     if not project.orphan and same_path(project.path, current_document_path()):
         return "ouvert dans ce Metashape"
     return ""
+
+
+def reveal(path):
+    """Ouvre l'Explorateur sur le projet (fichier selectionne) ou, a defaut, sur son dossier.
+
+    Renvoie True si l'Explorateur a ete lance."""
+    path = os.path.normpath(path)
+    try:
+        if os.name == "nt" and os.path.exists(path):
+            subprocess.Popen('explorer /select,"{}"'.format(path))
+            return True
+        folder = path if os.path.isdir(path) else os.path.dirname(path)
+        if os.name == "nt" and os.path.isdir(folder):
+            os.startfile(folder)
+            return True
+    except OSError:
+        pass
+    return False
 
 
 def is_network(path):

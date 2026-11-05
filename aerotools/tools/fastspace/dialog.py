@@ -80,6 +80,31 @@ class _Worker(threading.Thread):
         self.finished = True
 
 
+class _Option(QtWidgets.QFrame):
+    """Une option a choisir : une carte avec son bouton radio, cliquable partout, verte une fois choisie."""
+
+    def __init__(self, radio, danger=False):
+        super(_Option, self).__init__()
+        self.setObjectName("aeroOption")
+        self.setProperty("on", False)
+        self.setProperty("danger", bool(danger))
+        self.radio = radio
+        layout = QtWidgets.QHBoxLayout(self)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.addWidget(radio)
+        radio.toggled.connect(self.sync)
+
+    def sync(self, checked=None):
+        self.setProperty("on", bool(self.radio.isChecked() if checked is None else checked))
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def mousePressEvent(self, event):
+        if self.radio.isEnabled():
+            self.radio.setChecked(True)
+        super(_Option, self).mousePressEvent(event)
+
+
 class ConfirmDialog(QtWidgets.QDialog):
     """Choix du sort (corbeille ou definitif) ; le definitif demande de taper DELETE."""
 
@@ -87,7 +112,7 @@ class ConfirmDialog(QtWidgets.QDialog):
         super(ConfirmDialog, self).__init__(parent)
         self.setWindowTitle(i18n.t("space.title"))
         self.setModal(True)
-        self.setMinimumWidth(520)
+        self.setMinimumWidth(560)
         self.mode = None
         root = ui.styled_root(self)
         layout = QtWidgets.QVBoxLayout(root)
@@ -95,11 +120,16 @@ class ConfirmDialog(QtWidgets.QDialog):
         layout.setContentsMargins(pad, pad, pad, pad)
         layout.setSpacing(theme.PAD)
         layout.addWidget(ui.label(text))
+        layout.addWidget(ui.label(i18n.t("space.choose"), "aeroSection"))
         self.recycle = QtWidgets.QRadioButton(i18n.t("space.mode_recycle" if recycle_ok else na_key))
         self.recycle.setEnabled(recycle_ok)
         self.permanent = QtWidgets.QRadioButton(i18n.t("space.mode_permanent"))
-        layout.addWidget(self.recycle)
-        layout.addWidget(self.permanent)
+        self._group = QtWidgets.QButtonGroup(self)          # les deux ronds sont dans des cartes separees
+        self._group.addButton(self.recycle)
+        self._group.addButton(self.permanent)
+        self._options = [_Option(self.recycle), _Option(self.permanent, danger=True)]
+        for option in self._options:
+            layout.addWidget(option)
         self.word = QtWidgets.QLineEdit()
         self.word.setPlaceholderText(i18n.t("space.type_delete", word=actions.CONFIRM_WORD))
         layout.addWidget(self.word)
@@ -113,6 +143,8 @@ class ConfirmDialog(QtWidgets.QDialog):
         self.permanent.toggled.connect(self._update)
         self.word.textChanged.connect(self._update)
         (self.recycle if recycle_ok else self.permanent).setChecked(True)
+        for option in self._options:
+            option.sync()
         self._update()
 
     def _update(self, *_args):
@@ -216,6 +248,8 @@ class SpaceDialog(QtWidgets.QDialog):
         header.setStretchLastSection(True)
         for column, width in enumerate((220, 190, 140, 110, 90, 56, 90)):
             self.table.setColumnWidth(column, width)
+        self.table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._on_context_menu)
         self.table.itemChanged.connect(self._on_changed)
         self.table.itemSelectionChanged.connect(self._refresh_summary)
         self.table.viewport().installEventFilter(self)
@@ -527,15 +561,49 @@ class SpaceDialog(QtWidgets.QDialog):
 
     # -- actions --------------------------------------------------------------------
 
-    def _on_lighten(self):
-        picked = [p for p in self._checked() if not p.orphan]
+    def _on_context_menu(self, pos):
+        """Clic droit : alleger / supprimer les lignes surlignees ; un seul projet : l'afficher dans l'Explorateur."""
+        index = self.table.indexAt(pos)
+        if not index.isValid():
+            return
+        if not self.table.item(index.row(), 0).isSelected():
+            self.table.clearSelection()
+            self.table.selectRow(index.row())
+        projects = self._highlighted()
+        if not projects:
+            return
+        usable = [p for p in projects if not actions.refusal(p)]
+        lightenable = [p for p in usable if not p.orphan]
+        idle = not self._busy()
+        menu = QtWidgets.QMenu(self.table)
+        menu.setStyleSheet(theme.menu_stylesheet())
+        many = len(projects) > 1
+        lighten = menu.addAction(i18n.t("space.menu_lighten_n", n=len(projects)) if many else i18n.t("space.menu_lighten"))
+        lighten.setEnabled(idle and bool(lightenable))
+        lighten.triggered.connect(lambda *_a: self._on_lighten(lightenable))
+        delete = menu.addAction(i18n.t("space.menu_delete_n", n=len(projects)) if many else i18n.t("space.menu_delete"))
+        delete.setEnabled(idle and bool(usable))
+        delete.triggered.connect(lambda *_a: self._on_delete(usable))
+        if not many:
+            menu.addSeparator()
+            reveal = menu.addAction(i18n.t("space.menu_reveal"))
+            reveal.triggered.connect(lambda *_a: self._reveal(projects[0]))
+        (getattr(menu, "exec_", None) or getattr(menu, "exec"))(self.table.viewport().mapToGlobal(pos))
+
+    @staticmethod
+    def _reveal(project):
+        if not actions.reveal(project.path):
+            journal.write("Fast Space : impossible d'ouvrir l'Explorateur sur {}".format(project.path))
+
+    def _on_lighten(self, projects=None):
+        picked = [p for p in (self._checked() if projects is None else projects) if not p.orphan]
         if not picked:
             return
         text = i18n.t("space.confirm_lighten", n=len(picked), size=scanner.gb(sum(p.light for p in picked)))
         self._confirm_and_run("lighten", picked, text)
 
-    def _on_delete(self):
-        picked = self._checked()
+    def _on_delete(self, projects=None):
+        picked = self._checked() if projects is None else list(projects)
         if not picked:
             return
         text = i18n.t("space.confirm_delete", n=len(picked), size=scanner.gb(sum(p.total for p in picked)))
