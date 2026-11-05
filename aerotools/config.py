@@ -34,6 +34,14 @@ TOOLS = [
         "raccourci": "F8",
         "pret": True,
     },
+    {
+        "id": "fastspace",
+        "menu": "FastSpace",
+        "titre": "FastSpace",
+        "sous_titre": "tool.fastspace.subtitle",
+        "raccourci": None,
+        "pret": True,
+    },
     # La detection IA (ex-AIGCP) est dans FastGCP : plus d'entree de menu a part.
 ]
 

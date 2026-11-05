@@ -1,8 +1,7 @@
 """AIGCP dans FastGCP : proposer des pointages avec les modeles de detection.
 
 Le calcul ne tourne JAMAIS dans le Python de Metashape. FastGCP ecrit un
-`work.json`, lance `aigcp_runner.py` dans un Python a part (celui qui a torch et
-ultralytics), puis relit `hits.json` (contrat decrit dans aigcp_runner.py). Le
+`work.json`, lance `aigcp_runner.py` dans un Python a part (celui d'onnxruntime, sans torch), puis relit `hits.json` (contrat decrit dans aigcp_runner.py). Le
 panneau reste libre pendant ce temps : `poll()` est appele par le battement de
 tool.py et pose les propositions quand le calcul est fini.
 
@@ -35,7 +34,7 @@ Cela protege aussi un marqueur sans aucune projection, ou le garde-fou
 ci-dessus n'a rien a comparer.
 
 Reglages caches (settings.json, section `aigcp`) :
-  python      chemin du Python qui a torch + ultralytics
+  python      chemin du Python d'AIGCP (onnxruntime, numpy, opencv ; torch seulement pour l'entrainement)
               (defaut : variable AIGCP_PYTHON, puis ~/AIGCP/_env/Scripts/python.exe)
   models_dir  dossier des poids damier.pt et bombe.pt (defaut : <depot>/models)
   conf_damier, conf_bombe   seuils de confiance (defauts 0,25 et 0,30)
@@ -52,7 +51,7 @@ import subprocess
 import time
 
 from ... import config, i18n, journal, msapi
-from . import consensus, detection, photos, review
+from . import consensus, detection, engines, photos, review
 
 SECTION = "aigcp"
 TYPES = ("damier", "bombe")
@@ -158,7 +157,7 @@ def skip_flags(state=None):
 
 
 def installer_path():
-    """Fichier a double-cliquer pour installer la detection IA (Python + torch + ultralytics)."""
+    """Fichier a double-cliquer pour installer la detection IA (Python + onnxruntime)."""
     return os.path.join(config.ROOT, "CLICK HERE TO INSTALL.bat")
 
 
@@ -174,7 +173,22 @@ def check(kind):
         return False, i18n.t("aigcp.no_weights", kind=kind, path=weights)
     if not os.path.isfile(RUNNER):
         return False, i18n.t("aigcp.no_runner", path=RUNNER)
+    wanted = engines.missing()
+    if wanted is not None:
+        return False, i18n.t(engines.MISSING_TEXT[wanted])
     return True, ""
+
+
+def setup_target():
+    """Ce que l'installeur sait poser pour que la detection marche : "light", "precise", ou None.
+
+    None quand le defaut n'est pas dans l'environnement standard (Python choisi a la main) ou
+    quand il ne manque pas un moteur (poids absents, par exemple)."""
+    if not engines.can_install():
+        return None
+    if not os.path.isfile(python_path()):
+        return "precise" if engines.selected() == "precise" else "light"
+    return engines.missing()
 
 
 # --------------------------------------------------------------------------
@@ -216,6 +230,7 @@ def build_work(kind, items, conf=None, crops_dir=None):
         "conf": conf_for(kind) if conf is None else float(conf),
         "scales_m": list(SCALES_M),
         "device": "auto",
+        "engine": engines.runner_engine(),
         "items": [
             {"id": it["id"], "image_path": it["image_path"],
              "x_est": float(it["x_est"]), "y_est": float(it["y_est"]),
@@ -573,8 +588,13 @@ def _start(state, kind, scope, labels=None):
     ok, message = check(kind)
     if not ok:
         _status(state, message)
-        photos.panel_call(state, "show_ai_setup", i18n.t(
-            "aigcp.setup_needed", detail=message, script=installer_path()))
+        target = setup_target()
+        if target is None:
+            text = i18n.t("aigcp.setup_needed", detail=message, script=installer_path())
+        else:
+            text = i18n.t("aigcp.setup_offer", detail=message,
+                          what=i18n.t(engines.WHAT_TEXT[target]))
+        photos.panel_call(state, "show_ai_setup", text, target)
         return False
     chk = msapi.chunk()
     if chk is None:

@@ -80,16 +80,24 @@ manuel** et la **détection IA**, qui propose les pointés pour que vous les pas
 Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Metashape 2.2.
 
 1. Cliquez sur **Télécharger la dernière version** en haut de cette page (ou clonez ce dépôt), puis décompressez-le où vous voulez.
-2. Double-cliquez sur **`CLICK HERE TO INSTALL.bat`** (à la racine du dossier décompressé). Un seul installeur fait tout : il ajoute le menu **Aero** à Metashape et met en place la détection IA (Python et `torch`, environ 3 Go, quelques minutes). Une fenêtre affiche « Please wait... » avec la progression ; ne la fermez pas.
+2. Double-cliquez sur **`CLICK HERE TO INSTALL.bat`** (à la racine du dossier décompressé). Un seul installeur fait tout : il ajoute le menu **Aero** à Metashape et met en place la détection IA (Python et un moteur de détection léger, environ 100 Mo, une à deux minutes). Une fenêtre affiche « Please wait... » avec la progression ; ne la fermez pas.
 3. Redémarrez Metashape. Le menu **Aero** est là.
+
+**Aero > FastSpace** scanne un disque à la recherche des anciens projets Metashape et libère de la place : les alléger (retirer le
+nuage dense et les cartes de profondeur) ou les supprimer, à la corbeille ou définitivement.
+
+Plus tard, **Aero > Vérifier les mises à jour…** apporte la dernière version depuis GitHub (avec la liste des changements et leur
+poids). L'installeur demande quel moteur de détection vous voulez (léger, précis, ou les deux) et s'il faut ajouter les outils de
+réentraînement ; les paramètres de FastGCP peuvent ensuite installer chacun d'un clic.
 
 L'installeur écrit un petit lanceur dans `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Rien d'autre n'est touché.
 `install\desinstaller_aerotools.bat` le retire.
 
 > [!NOTE]
-> La détection IA demande un Python séparé avec `torch` et `ultralytics` (environ 3 Go). Le même installeur le met en place
-> (relancez-le quand vous voulez : il ne refait que ce qui manque). Les outils de pointage manuel fonctionnent sans. Voir le
-> [tableau de dépannage](docs/TUTORIAL.fr.md#9-dépannage).
+> La détection IA tourne dans un Python séparé et léger (ONNX Runtime, environ 100 Mo ; ni `torch`, ni carte graphique nécessaire).
+> Le même installeur le met en place (relancez-le quand vous voulez : il ne refait que ce qui manque). Les outils de pointage manuel
+> fonctionnent sans. Seul le réentraînement du modèle (« Affiner mon modèle ») demande les outils lourds (`torch`, environ 3 Go) :
+> double-cliquez sur `install\installer_entrainement.bat` si vous en avez besoin. Voir le [tableau de dépannage](docs/TUTORIAL.fr.md#9-dépannage).
 
 ## Démarrage rapide
 

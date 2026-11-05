@@ -23,15 +23,16 @@ This tutorial follows the order you will use it in. Every button name is written
 You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 
 1. Get this repository (download or clone it) and put it anywhere, for example on a shared drive.
-2. Double-click `CLICK HERE TO INSTALL.bat` (at the root; it runs `install\installer_aerotools.bat`). This single installer also sets up the AI detection (about 3 GB, once, with a "Please wait..." display). It writes one small launcher into
+2. Double-click `CLICK HERE TO INSTALL.bat` (at the root; it runs `install\installer_aerotools.bat`). This single installer also sets up the AI detection (about 100 MB, once, with a "Please wait..." display). It writes one small launcher into
    `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\` and touches nothing else.
 3. Restart Metashape. A new **Aero** menu appears.
 4. Open **Aero > FastGCP** (shortcut **F8**). The panel docks on the right of the window.
 
 **Aero > Reload AeroTools** re-reads the code without restarting Metashape. `install\desinstaller_aerotools.bat` removes the launcher.
 
-> **Note.** The AI detection needs a separate Python with `torch` and `ultralytics` (about 3 GB): the installer offers to set it
-> up (the same installer, run it again if needed). The two weight files `models\damier.pt` and `models\bombe.pt` come with the download.
+> **Note.** The AI detection runs in a separate light Python (ONNX Runtime, about 100 MB): the installer sets it up (the same
+> installer, run it again if needed). The models `models\damier.onnx` and `models\bombe.onnx` (and their `.pt` source weights) come with
+> the download. Retraining ("Refine my model") also needs `torch` (about 3 GB): run `install\installer_entrainement.bat` once.
 > See [Troubleshooting](#9-troubleshooting). Everything else works without them.
 
 ![The FastGCP panel docked in Metashape: header, play/pause button, AI detection card, active marker, marker table, Residual check and Export buttons](images/panel-overview.png)
@@ -122,8 +123,9 @@ When the detection ends, the Review panel opens by itself (setting *Open the rev
 
 ## 5. The Review panel
 
-Markers with proposals are on the left (`PS_1  40/41`: proposals still kept out of the marker's total). In the middle, one
-thumbnail per photo: a crop around the proposed point, a red cross on it, the confidence in the corner and the photo name
+Markers with proposals are on the left (`PS_1  40/41  ·  62 %`: proposals still kept out of the marker's total, then the
+weakest confidence of the marker). **The most doubtful markers come first**, and inside a marker the least sure photos come
+first, so you check the risky ones before the obvious ones. In the middle, one thumbnail per photo: a crop around the proposed point, a red cross on it, the confidence in the corner and the photo name
 below.
 
 ![The Review panel on marker PS_1: kept proposals have a red cross, refined ones a green cross and a green check, and one excluded thumbnail is dimmed with a red cross](images/review-panel-overview.png)
@@ -229,6 +231,24 @@ The **gear** in the header opens the Settings window.
   training. No image is copied.
 - **Log**: the journal of the tool. If something breaks, paste its last lines in an issue.
 
+**Updates**
+
+**Check for updates...** (also in the **Aero** menu) opens the list of installed modules with their version and the date of the
+last update. It looks at GitHub and says, for each one, how many files changed and how much there is to download. Click
+**Update** on the line, or **Update all** at the bottom right. Do not close the window while it runs: every file is downloaded
+and checked first, then replaced (if anything fails, the old files are put back), then the installed files are read again to
+confirm. At the end AeroTools reloads by itself, no restart of Metashape. New entries of the Aero menu, if any, appear at the next
+start. A development copy (a folder with `.git`) is never updated, so nothing gets overwritten.
+
+**Detection engine**
+
+- **Light**: ONNX Runtime on the processor, about 100 MB, any computer. **Precise**: the original engine (PyTorch, about 3 GB),
+  graphics card used if there is one. **Automatic** uses Precise when it is installed, otherwise Light. On our test (569 targets)
+  both put 99 % of the targets within 0.05 px of each other.
+- The three lines below tell what is installed (*Light engine*, *Precise engine*, *Retraining tools*). When something is
+  missing, **Install** does it for you: a black window shows the progress (do not close it), then the line turns to *installed*.
+  The same happens if you start a detection or a retraining without what it needs: a box offers to install it.
+
 **AI models**
 
 - *Use manual refinements to build the training dataset*: when checked, every decision you take in the Review panel
@@ -266,12 +286,21 @@ Aero V1.0 on the data kept aside, the window tells you. Use **Revert to Aero V1.
 > Aero V1.0. That is no measurable difference, not an improvement. Retraining is an experiment: we do not promise that it
 > makes detection better. Try the new model on a project you know, and press **Revert to Aero V1.0** if it does not do better.
 
+### The full diagnostic
+
+Under the marker list, the **Residual check** button lists the markers to watch. Its last line, **Full marking diagnostic...**, opens a
+window that goes further. For each manual pick (green dot) it recomputes the marker's 3D position **without that photo**, projects it
+back and tells how many pixels it falls from your pick. A few pixels is normal. It lists the doubtful picks (gap above 3 px, or
+4 times the median of the project), the photos that are off on several markers, and the markers with too few picks or AI proposals
+not yet validated. Double-click a line to open the photo, zoomed on the marker. A very shifted pick would make its neighbours look
+wrong, so the worst pick is set aside and the others are judged again until nothing sticks out.
+
 ## 9. Troubleshooting
 
 | Symptom | What to check |
 |---|---|
 | The **Aero** menu is missing | Double-click `CLICK HERE TO INSTALL.bat` again and restart Metashape. |
-| *AI: AIGCP Python not found*, or a box titled *AI detection setup* | The detector runs in its own Python with `torch` and `ultralytics`. The easiest fix is to double-click `CLICK HERE TO INSTALL.bat` again (it sets everything up, about 3 GB). By default FastGCP looks for `%USERPROFILE%\AIGCP\_env\Scripts\python.exe`; set the `AIGCP_PYTHON` environment variable, or the `python` key of the `aigcp` section in `settings.json`, to use another one. |
+| *AI: AIGCP Python not found*, or a box titled *AI detection setup* | The detector runs in its own light Python (ONNX Runtime). The easiest fix is to double-click `CLICK HERE TO INSTALL.bat` again (it sets everything up, about 100 MB). By default FastGCP looks for `%USERPROFILE%\AIGCP\_env\Scripts\python.exe`; set the `AIGCP_PYTHON` environment variable, or the `python` key of the `aigcp` section in `settings.json`, to use another one. |
 | *AI: … weights not found* | The two files `damier.pt` and `bombe.pt` should be in the `models` folder of the download: copy them back there if you deleted them, or set `models_dir` in the `aigcp` section. |
 | The AI finds nothing | Check that the marker has a 3D position or reference coordinates, that the photos are aligned, and that the *Ignore* list is not hiding the photos you want. |
 | A photo is not found or unreadable | The detector reads the original image files at the path Metashape knows. Make sure the drive or share is connected. |
@@ -283,3 +312,28 @@ Per-machine settings live in `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`. Dev
 [DEVELOPMENT.md](DEVELOPMENT.md).
 
 AeroTools is made by [HELIX AERO](https://helix.aero). Source: [github.com/helix-aero/AeroTools](https://github.com/helix-aero/AeroTools).
+
+## 10. Fast Space: free disk space
+
+**Aero > FastSpace** opens a window that finds the old Metashape projects eating your disk. Pick a drive (or **Folder...**) and
+click **Scan**: the heaviest projects come first. For each one you see the `.psx` file, the three folders above it (to recognise
+the job), **Dense + depth maps** (what lightening frees, in GB), **Whole project** (to judge whether deleting it is worth it),
+**Kept** (the files next to the project that deleting leaves alone, see below), the share of the first in the second, the date, and the state (*Open*, *Old lock* left by a crash, or an orphan `.files` folder
+whose `.psx` is gone). Click a header to sort. Hover the size to see the detail (dense cloud, depth maps, tie points, DEMs,
+orthos). Tick the projects, then:
+
+- **Lighten (gentle)** removes the dense cloud and the depth maps, which can be recomputed. The alignment, markers, DEMs and
+  orthos stay, and Metashape opens and saves each project so that it stays consistent.
+- **Delete project** removes the `.psx` and its `.files` folder, and nothing else. The files exported next to the project (ortho,
+  DEM, clouds, reports, in the same folder or one level down) are not touched: the **Kept** column counts them, hover it for the
+  biggest ones. A warning sign there means the project holds a DEM or an ortho built in Metashape and no exported file (tif,
+  ecw, las, dxf...) was found next to it: those are inside the `.files` and would go with the project, so export them first if
+  you need them.
+
+**Delete project** asks where it goes: **Recycle Bin** (you can restore it; the space is freed when you empty the bin; not available
+on a network drive) or **Delete permanently**, which asks you to type `DELETE`. **Lighten** is always final and always asks you to
+type `DELETE`: Metashape erases those files itself when it saves the project, so there is no Recycle Bin for it. A project that is open in a Metashape (even on another
+computer) is never touched. Every action is written to a log (the **Action log** button).
+
+**Test it on a copy first.** Copy a small project (the `.psx` and its `.files` folder) to a test folder, scan that folder, and
+try both modes on the copy before using it on real work.

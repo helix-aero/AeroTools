@@ -745,12 +745,14 @@ class ReviewDialog(QtWidgets.QDialog):
     def _marker_text(self, label):
         entries = self.review.entries_for(label)
         kept = sum(1 for e in entries if e["state"] in (review.KEPT, review.REFINED, review.ACCEPTED))
-        return "{}   {}/{}".format(label, kept, len(entries))
+        return "{}   {}/{}   ·  {:.0f} %".format(label, kept, len(entries), 100 * self.review.weakest(label))
 
     def _fill_markers(self):
         self.markers.clear()
         for label in self.review.labels():
             self.markers.addItem(self._marker_text(label))
+            self.markers.item(self.markers.count() - 1).setToolTip(
+                i18n.t("review.weakest", conf="{:.0f}".format(100 * self.review.weakest(label))))
         if self.markers.count():
             self.markers.setCurrentRow(0)
         self._update_summary()

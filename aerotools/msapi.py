@@ -398,6 +398,98 @@ def marker_errors(chk, marker):
     return {"x": x, "y": y, "z": z, "total": math.sqrt(x * x + y * y + z * z)}
 
 
+def marker_enabled(marker):
+    """True si le marqueur sert de point de controle (case cochee dans Reference), None si illisible."""
+    try:
+        return bool(marker.reference.enabled)
+    except Exception:
+        return None
+
+
+def set_marker_enabled(marker, value):
+    """Coche ou decoche le marqueur dans Reference. Renvoie True si c'est fait."""
+    try:
+        marker.reference.enabled = bool(value)
+        return True
+    except Exception:
+        return False
+
+
+def cameras_georeferenced(chk):
+    """(cameras dont la position de reference est utilisee, cameras alignees) : PPK / RTK si la plupart le sont."""
+    used = total = 0
+    for cam in _cameras(chk):
+        if _camera_transform(cam) is None:
+            continue
+        total += 1
+        try:
+            if cam.reference.enabled and cam.reference.location is not None:
+                used += 1
+        except Exception:
+            continue
+    return used, total
+
+
+def marker_frame_points(chk):
+    """Marqueurs avec position estimee ET reference, dans un meme repere local en metres.
+
+    Renvoie ([{label, marker, n, est, ref}], pourquoi). `est` : position estimee (avec la matrice du
+    chunk), `ref` : position de reference, toutes deux en est / nord / haut autour d'un meme point
+    (chemin A de `marker_errors`, avec le geoide du systeme de coordonnees) ; sans systeme de
+    coordonnees, repere du chunk en metres. `pourquoi` n'est rempli que si la liste est vide."""
+    try:
+        crs = getattr(chk, "marker_crs", None) or chk.crs
+        matrix = chk.transform.matrix
+    except Exception as exc:
+        return [], "lecture du chunk impossible : {!r}".format(exc)
+    items = []
+    for marker in markers(chk):
+        try:
+            position, reference = marker.position, marker.reference.location
+        except Exception:
+            continue
+        if position is not None and reference is not None:
+            items.append((marker, position, reference))
+    if not items:
+        return [], "aucun marqueur avec une position estimee et une reference"
+    if matrix is None:
+        return [], "le chunk n'a pas de matrice de transformation"
+    try:
+        scale = float(chk.transform.scale or 1.0)
+    except Exception:
+        scale = 1.0
+
+    def local_path_a():
+        origin = crs.unproject(items[0][2])
+        local = crs.localframe(origin)
+        return (lambda position, reference: (_components(local.mulp(matrix.mulp(position))),
+                                              _components(local.mulp(crs.unproject(reference)))))
+
+    def projected_path():
+        return (lambda position, reference: (_components(crs.project(matrix.mulp(position))), _components(reference)))
+
+    def chunk_path():
+        return (lambda position, reference: (_components(matrix.mulp(position)), _components(reference)))
+
+    attempts = [("repere local", local_path_a), ("repere projete", projected_path)] if crs is not None else []
+    attempts.append(("repere du chunk", chunk_path))
+    notes = []
+    for name, build in attempts:
+        try:
+            convert = build()
+            points = []
+            for marker, position, reference in items:
+                est, ref = convert(position, reference)
+                if not (_finite(est) and _finite(ref)):
+                    raise ValueError("valeur non finie")
+                points.append({"label": marker_label(marker), "marker": marker, "n": projection_count(marker),
+                               "est": est, "ref": ref})
+            return points, ""
+        except Exception as exc:
+            notes.append("{} : {!r}".format(name, exc))
+    return [], " ; ".join(notes)
+
+
 def _diagnostic(chk, marker, position, reference, notes):
     """Phrase unique qui dit pourquoi le calcul a echoue."""
     parts = ["calcul impossible pour {} (chunk {})".format(
@@ -1136,6 +1228,14 @@ def pixel_ray(camera, x, y):
         if origin is None or vector is None or not _finite(origin + vector):
             return None
         return origin, vector
+    except Exception:
+        return None
+
+
+def project_point(camera, point):
+    """Pixel (x, y) ou le point 3D (coordonnees internes du chunk) tombe sur cette photo, ou None."""
+    try:
+        return _xy(camera.project(Metashape.Vector(list(_components(point)))))
     except Exception:
         return None
 

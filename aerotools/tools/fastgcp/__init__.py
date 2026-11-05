@@ -14,5 +14,5 @@ Modules :
   dataset.py    enregistrement des pointages pour l'apprentissage (optionnel)
   detection.py  point d'accroche de la detection automatique
   aigcp.py      detection IA damier / bombe : propositions de pointage (hors Metashape)
-  aigcp_runner.py  executeur lance dans un Python externe (torch, ultralytics)
+  aigcp_runner.py  executeur lance dans un Python externe (onnxruntime ; torch en repli)
 """

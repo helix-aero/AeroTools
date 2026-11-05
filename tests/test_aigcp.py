@@ -8,7 +8,7 @@ import types
 import pytest
 
 from aerotools import config, i18n, msapi
-from aerotools.tools.fastgcp import aigcp, aigcp_runner, history, review
+from aerotools.tools.fastgcp import aigcp, aigcp_runner, engines, history, review
 
 STUB_OK = '''
 import argparse, json
@@ -66,6 +66,8 @@ def install(tmp_path, local_appdata, monkeypatch):
     runner = tmp_path / "stub_runner.py"
     runner.write_text(STUB_OK)
     monkeypatch.setattr(aigcp, "RUNNER", str(runner))
+    # Le Python des tests n'a pas onnxruntime : on declare le moteur leger installe.
+    monkeypatch.setattr(engines, "status", lambda *a, **k: {"python": True, "light": True, "precise": False, "training": False})
     return runner
 
 
@@ -74,8 +76,9 @@ class FakePanel(object):
         self.statuses = []
         self.calls = []
 
-    def show_ai_setup(self, text):
+    def show_ai_setup(self, text, target=None):
         self.setups = getattr(self, "setups", []) + [text]
+        self.setup_targets = getattr(self, "setup_targets", []) + [target]
 
     def open_review(self):
         self.calls.append("open_review")

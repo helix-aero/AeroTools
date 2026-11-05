@@ -78,16 +78,24 @@ again. So we wrote a tool for ourselves. It saved us enough time that we decided
 You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 
 1. Click **Download latest version** at the top of this page (or clone this repository), and unzip it anywhere you like.
-2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). One installer does everything: it adds the **Aero** menu to Metashape and sets up the AI detection (Python and `torch`, about 3 GB, a few minutes). A window shows "Please wait..." with the progress; do not close it.
+2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). One installer does everything: it adds the **Aero** menu to Metashape and sets up the AI detection (Python and a light detection engine, about 100 MB, a minute or two). A window shows "Please wait..." with the progress; do not close it.
 3. Restart Metashape. The **Aero** menu is there.
+
+**Aero > FastSpace** scans a drive for old Metashape projects and frees disk space: lighten them (remove the dense cloud and
+the depth maps) or delete them, to the Recycle Bin or for good.
+
+Later, **Aero > Check for updates...** brings the latest version from GitHub (with the list of changes and their size).
+The installer asks which detection engine you want (light, precise, or both) and whether to add the retraining tools; the
+FastGCP settings can install any of them afterwards with one click.
 
 The installer writes one small launcher into `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Nothing else is touched.
 `install\desinstaller_aerotools.bat` removes it.
 
 > [!NOTE]
-> The AI detection needs a separate Python with `torch` and `ultralytics` (about 3 GB). The same installer sets it up (run it
-> again at any time: it only redoes what is missing). The hand-marking tools work without it. See the
-> [troubleshooting table](docs/TUTORIAL.md#9-troubleshooting).
+> The AI detection runs in a separate, light Python (ONNX Runtime, about 100 MB; no `torch`, no graphics card needed). The same
+> installer sets it up (run it again at any time: it only redoes what is missing). The hand-marking tools work without it.
+> Only retraining the model ("Refine my model") needs the heavy tools (`torch`, about 3 GB): double-click
+> `install\installer_entrainement.bat` if you want that. See the [troubleshooting table](docs/TUTORIAL.md#9-troubleshooting).
 
 ## Quick start
 

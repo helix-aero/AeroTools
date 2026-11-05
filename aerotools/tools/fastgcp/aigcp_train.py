@@ -341,11 +341,18 @@ def train_kind(runner, YOLO, kind, work, device, progress, index):
     shutil.copy2(last, os.path.join(work["out_dir"], kind + ".pt"))
     progress.update(stage="eval")
     after = evaluate(YOLO, os.path.join(work["out_dir"], kind + ".pt"), yaml, device)
+    # Le moteur de detection (ONNX Runtime, sans torch) lit ce fichier : on l'exporte a cote des poids.
+    onnx_error = None
+    try:
+        YOLO(os.path.join(work["out_dir"], kind + ".pt")).export(
+            format="onnx", imgsz=OUT, dynamic=True, simplify=True, opset=17)
+    except Exception as exc:
+        onnx_error = repr(exc)
     warning = None
     if after["map50"] < before["map50"] - WARN_MARGIN:
         warning = "{}: the new model scores lower than the base on your validation set ({:.3f} vs {:.3f})".format(
             kind, after["map50"], before["map50"])
-    return {"ok": True, "samples": stats, "epochs": epochs, "batch": batch,
+    return {"ok": True, "samples": stats, "epochs": epochs, "batch": batch, "onnx_error": onnx_error,
             "metrics": {"base": before, "new": after}, "warning": warning,
             "val_independent": not stats["val_is_train"], "seconds": round(time.time() - started, 1)}
 

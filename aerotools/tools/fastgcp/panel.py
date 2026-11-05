@@ -52,7 +52,12 @@ MIN_PANEL_WIDTH = 420
 
 # Meme hauteur pour tous les boutons et listes du panneau ; Run est un petit bouton.
 CONTROL_HEIGHT = 30
-RUN_WIDTH = 92
+RUN_WIDTH = 124
+RUN_HEIGHT = 40
+RUN_ICON = 14
+QC_WIDTH = 140
+ADJUST_WIDTH = 96
+EXPORT_WIDTH = 112
 CANCEL_WIDTH = 84
 PROGRESS_HEIGHT = 22                  # barre de detection (texte dedans) et bouton Annuler a sa droite
 
@@ -282,6 +287,28 @@ def _play_icon(running):
     """PAUSE quand l'outil tourne (sur le vert), PLAY quand il est coupe."""
     color = theme.GREEN_ON if running else theme.FG_1
     return QtGui.QIcon(_play_pixmap(running, color))
+
+
+def _run_pixmap(color):
+    """Triangle plein qui pointe vers la droite (le bouton Run)."""
+    def build():
+        def draw(painter):
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.setBrush(QtGui.QColor(color))
+            painter.drawPolygon(QtGui.QPolygonF([
+                QtCore.QPointF(3.4, 1.8),
+                QtCore.QPointF(13.0, 8.0),
+                QtCore.QPointF(3.4, 14.2),
+            ]))
+        return _paint(PLAY_ICON, PLAY_ICON, draw)
+    return _cached(("run", color), build)
+
+
+def _run_icon():
+    icon = QtGui.QIcon()
+    icon.addPixmap(_run_pixmap(theme.GREEN_ON), QtGui.QIcon.Normal)
+    icon.addPixmap(_run_pixmap(theme.FG_4), QtGui.QIcon.Disabled)
+    return icon
 
 
 STATE_DOT = 10
@@ -574,6 +601,35 @@ class _ElidedLabel(QtWidgets.QLabel):
         super(_ElidedLabel, self).changeEvent(event)
         if event.type() in (QtCore.QEvent.FontChange, QtCore.QEvent.StyleChange):
             self._elide()
+
+
+class _Switch(QtWidgets.QPushButton):
+    """Interrupteur rond ON / OFF : piste verte et pastille a droite quand l'outil tourne, grise sinon."""
+
+    WIDTH, HEIGHT = 46, 26
+
+    def __init__(self, parent=None):
+        super(_Switch, self).__init__(parent)
+        self._on = True
+        self.setFixedSize(self.WIDTH, self.HEIGHT)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+
+    def set_on(self, on):
+        self._on = bool(on)
+        self.update()
+
+    def paintEvent(self, _event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        width, height = float(self.width()), float(self.height())
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.setBrush(QtGui.QColor(theme.GREEN if self._on else theme.GROUND_4))
+        painter.drawRoundedRect(QtCore.QRectF(0, 0, width, height), height / 2.0, height / 2.0)
+        knob = height - 6.0
+        left = width - knob - 3.0 if self._on else 3.0
+        painter.setBrush(QtGui.QColor("#ffffff" if self._on else theme.FG_2))
+        painter.drawEllipse(QtCore.QRectF(left, 3.0, knob, knob))
+        painter.end()
 
 
 class _ElidedButton(QtWidgets.QPushButton):
@@ -908,7 +964,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.addWidget(self._build_active_card())
         layout.addWidget(self._build_search())
         layout.addWidget(self._build_list(), 1)
-        layout.addLayout(self._build_tools())
         self._build_more()                # ouverte dans la fenetre Parametres, jamais dans la colonne
         layout.addLayout(self._build_footer())
         layout.addLayout(self._build_credit())
@@ -1010,16 +1065,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD + theme.PAD_S)
 
-        self.toggle = QtWidgets.QPushButton()
-        self.toggle.setObjectName("aeroPlayOn")
-        self.toggle.setCursor(QtCore.Qt.PointingHandCursor)
-        self.toggle.setFixedSize(PLAY_BUTTON, PLAY_BUTTON)
-        self.toggle.setIconSize(QtCore.QSize(PLAY_ICON, PLAY_ICON))
+        self.toggle = _Switch()
         self.toggle.clicked.connect(self._on_toggle_clicked)
         row.addWidget(self.toggle, 0)
 
+        # La pastille d'etat est remplacee par l'interrupteur ; elle reste pour les appelants existants.
         self.state_dot = QtWidgets.QLabel()
         self.state_dot.setFixedSize(STATE_DOT, STATE_DOT)
+        self.state_dot.setVisible(False)
         row.addWidget(self.state_dot, 0, QtCore.Qt.AlignVCenter)
 
         self.state_text = _ElidedLabel("aeroState")
@@ -1044,13 +1097,15 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         actions.setSpacing(theme.PAD)
         self.aigcp_button = self._tool_button("aigcp.run", self._on_aigcp_run)
         self.aigcp_button.setObjectName("aeroRun")
-        self.aigcp_button.setFixedWidth(RUN_WIDTH)
+        self.aigcp_button.setFixedSize(RUN_WIDTH, RUN_HEIGHT)
+        self.aigcp_button.setIcon(_run_icon())
+        self.aigcp_button.setIconSize(QtCore.QSize(RUN_ICON, RUN_ICON))
         self.aigcp_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         self.aigcp_clear_button = self._tool_button("aigcp.clear", self._on_aigcp_clear)
         self.aigcp_review_button = self._tool_button("aigcp.review", self._on_aigcp_review)
         actions.addWidget(self.aigcp_button, 0)
-        actions.addWidget(self.aigcp_clear_button, 1)
-        actions.addWidget(self.aigcp_review_button, 1)
+        actions.addWidget(self.aigcp_clear_button, 1, QtCore.Qt.AlignVCenter)
+        actions.addWidget(self.aigcp_review_button, 1, QtCore.Qt.AlignVCenter)
         layout.addLayout(actions)
 
         # Deux lignes de listes : type et portee, puis les photos a laisser tranquilles.
@@ -1102,11 +1157,10 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
     def _build_active_card(self):
         card = QtWidgets.QFrame()
-        card.setObjectName("aeroCard")
+        card.setObjectName("aeroCardActive")
         layout = QtWidgets.QVBoxLayout(card)
-        pad = theme.PAD + theme.PAD_S
-        layout.setContentsMargins(pad, pad, pad, pad)
-        layout.setSpacing(theme.PAD)
+        layout.setContentsMargins(theme.PAD + theme.PAD_S, theme.PAD_S + 2, theme.PAD + theme.PAD_S, theme.PAD_S + 2)
+        layout.setSpacing(theme.PAD_S)
 
         # Une seule ligne : intitule, identifiant (tronque a 10 caracteres), compteurs.
         line = QtWidgets.QHBoxLayout()
@@ -1208,15 +1262,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.list = grid
         return box
 
-    def _build_tools(self):
-        """Sous le tableau : controle des residus."""
-        row = QtWidgets.QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(theme.PAD)
-        self.qc_button = self._tool_button("panel.qc", self._show_qc_menu)
-        row.addWidget(self.qc_button, 1)
-        return row
-
     def _tool_button(self, text_key, handler):
         button = _ElidedButton(i18n.t(text_key))
         button.setObjectName("aeroGhost")
@@ -1262,19 +1307,33 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return box
 
     def _build_footer(self):
-        """Statut a gauche, bouton Exporter a droite."""
+        """Une ligne : controle des residus (contour vert) a gauche, Exporter (plein vert) a droite."""
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD)
+        self.qc_button = self._tool_button("panel.qc", self._open_qc)
+        self.qc_button.setObjectName("aeroYes")
+        self.qc_button.setFixedWidth(QC_WIDTH)
+        self.qc_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        row.addWidget(self.qc_button, 0)
+        self.adjust_button = self._tool_button("panel.adjust", self._open_adjust)
+        self.adjust_button.setObjectName("aeroYes")
+        self.adjust_button.setFixedWidth(ADJUST_WIDTH)
+        self.adjust_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        row.addWidget(self.adjust_button, 0)
+        row.addStretch(1)
+
+        # Le statut (« 7/18 marques ») n'est plus affiche ; le widget reste pour les appelants existants.
         self.status = _ElidedLabel("aeroStatus")
-        row.addWidget(self.status, 1)
+        self.status.setVisible(False)
+        row.addWidget(self.status, 0)
 
         self.export_button = QtWidgets.QPushButton()
         self._set_export_text()
-        self.export_button.setObjectName("aeroGhost")
+        self.export_button.setObjectName("aeroRun")
         self.export_button.setProperty("pill", True)
         self.export_button.setCursor(QtCore.Qt.PointingHandCursor)
-        self.export_button.setFixedHeight(CONTROL_HEIGHT)
+        self.export_button.setFixedSize(EXPORT_WIDTH, CONTROL_HEIGHT)
         self.export_button.setIconSize(QtCore.QSize(EXPORT_ICON, EXPORT_ICON))
         self.export_button.clicked.connect(self._show_export_menu)
         self.export_menu = QtWidgets.QMenu(self.export_button)
@@ -1292,7 +1351,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD_S)
-        row.addStretch(1)
         self.credit = QtWidgets.QLabel()
         self.credit.setObjectName("aeroMeta")
         self.credit.setTextFormat(QtCore.Qt.RichText)
@@ -1335,7 +1393,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self.github_button.setIcon(QtGui.QIcon(_github_pixmap(theme.FG_2)))
             self.undo_button.setIcon(_undo_icon())
             self.redo_button.setIcon(_undo_icon(mirror=True))
-            self.export_button.setIcon(QtGui.QIcon(_export_pixmap(theme.FG_2)))
+            self.export_button.setIcon(QtGui.QIcon(_export_pixmap(theme.GREEN_ON)))
             self.export_menu.setStyleSheet(theme.menu_stylesheet())
             self._paint_placeholder()
             self.count_pointed.apply_theme()
@@ -1519,13 +1577,11 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     def _apply_toggle(self, running):
         """Aligne bouton, pastille et texte d'etat sur `running`."""
         self._running = bool(running)
-        self.toggle.setObjectName("aeroPlayOn" if running else "aeroPlayOff")
-        self.toggle.setIcon(_play_icon(running))
+        self.toggle.set_on(running)
         self.state_dot.setPixmap(_state_dot_pixmap(running))
         self.state_text.set_full_text(
             i18n.t("panel.state_on" if running else "panel.state_off"))
         self.state_text.setObjectName("aeroState" if running else "aeroStateOff")
-        _repolish(self.toggle)
         _repolish(self.state_text)
         self._update_undo_button()
 
@@ -2087,45 +2143,93 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 rows.append(self._row_data(chunk, marker, label))
         return rows
 
-    def _show_qc_menu(self, _checked=False):
-        """Menu des marqueurs a surveiller : residu eleve, puis moins de 3 photos."""
+    def _qc_data(self):
+        """Ce que montre la fenetre Residual check : tous les marqueurs, l'erreur de controle et de verification."""
+        rows = self._all_rows()
+        enabled = {row["label"]: msapi.marker_enabled(row["marker"]) for row in rows}
+        items = qc.table(rows, enabled)
+        return {"items": items, "groups": qc.group_rms(items), "limit": qc.residual_limit(rows)}
+
+    def _open_qc(self, _checked=False):
+        """Fenetre « Residual check » : tous les marqueurs et leur etat (voir qc_dialog.py)."""
         try:
-            rows = self._all_rows()
-            result = qc.watchlist(rows)
-            by_label = {row["label"]: row for row in rows}
-            menu = QtWidgets.QMenu(self)
-            if not result["residual"] and not result["few"]:
-                menu.addAction(i18n.t("qc.none")).setEnabled(False)
-            if result["residual"]:
-                title = i18n.t("qc.title_residual", limit=format_error(result["limit"]))
-                menu.addAction(title).setEnabled(False)
-                for item in result["residual"]:
-                    worst = msapi.worst_projection(by_label[item["label"]]["marker"])
-                    total = format_error(item["total"])
-                    if worst is None:
-                        text = i18n.t("qc.item_residual_plain", label=item["label"], total=total)
-                    else:
-                        text = i18n.t("qc.item_residual", label=item["label"], total=total,
-                                      px="{:.1f}".format(worst[1]))
-                    action = menu.addAction(text)
-                    action.triggered.connect(
-                        functools.partial(self._on_qc_pick, item["label"], True))
-            if result["few"]:
-                if result["residual"]:
-                    menu.addSeparator()
-                menu.addAction(i18n.t("qc.title_few", n=qc.MIN_PHOTOS)).setEnabled(False)
-                for item in result["few"]:
-                    action = menu.addAction(
-                        i18n.t("qc.item_few", label=item["label"], n=item["proj"]))
-                    action.triggered.connect(
-                        functools.partial(self._on_qc_pick, item["label"], False))
-            self._qc_menu = menu
-            size = menu.sizeHint()
-            button = self.qc_button
-            menu.popup(button.mapToGlobal(
-                QtCore.QPoint(0, -size.height() - theme.PAD_S)))
+            from . import qc_dialog
+            self._qc_dialog = qc_dialog.show(self, self._qc_data, self._on_qc_open, self._open_diagnostic,
+                                             getattr(self, "_qc_dialog", None))
         except Exception as exc:
             journal.write("FastGCP : controle des residus : {!r}".format(exc))
+
+    def _on_qc_open(self, item):
+        """Double-clic dans la fenetre : le marqueur, et sa pire photo quand c'est un residu eleve."""
+        self._on_qc_pick(item["label"], item["status"] == qc.RESIDUAL)
+
+    def _adjust_collect(self):
+        """Lecture des marqueurs pour « Ajuster » (fil principal) : points, cases cochees, PPK ou non."""
+        chk = msapi.chunk()
+        points, why = msapi.marker_frame_points(chk)
+        used, total = msapi.cameras_georeferenced(chk)
+        return {"points": points, "why": why, "ppk": bool(total) and used >= 0.5 * total,
+                "enabled": {p["label"]: bool(msapi.marker_enabled(p["marker"])) for p in points}}
+
+    def _adjust_apply(self, labels):
+        """Coche ces marqueurs comme points de controle et decoche les autres. Renvoie (nombre coche, erreur)."""
+        try:
+            chk = msapi.chunk()
+            points, why = msapi.marker_frame_points(chk)
+            if not points:
+                return 0, why
+            wanted, before = set(labels), []
+            count = 0
+            for point in points:
+                before.append("{}={}".format(point["label"], msapi.marker_enabled(point["marker"])))
+                on = point["label"] in wanted
+                if msapi.set_marker_enabled(point["marker"], on):
+                    count += 1 if on else 0
+            msapi.refresh()
+            journal.write("FastGCP : marqueurs de controle coches : {} (avant : {})".format(
+                ", ".join(sorted(wanted)), ", ".join(before)))
+            return count, ""
+        except Exception as exc:
+            journal.write("FastGCP : cocher les marqueurs de controle : {!r}".format(exc))
+            return 0, repr(exc)
+
+    def _open_adjust(self, _checked=False):
+        """Fenetre « Ajuster » : quels marqueurs cocher comme points de controle (voir gcp_select_dialog.py)."""
+        try:
+            from . import gcp_select_dialog
+            self._adjust_dialog = gcp_select_dialog.show(self, self._adjust_collect, self._adjust_apply,
+                                                         getattr(self, "_adjust_dialog", None))
+        except Exception as exc:
+            journal.write("FastGCP : ajustement des marqueurs de controle : {!r}".format(exc))
+
+    def _open_diagnostic(self, _checked=False):
+        """Fenetre du diagnostic complet du pointage (voir diagnostic.py)."""
+        try:
+            from . import diagnostic, diagnostic_dialog
+
+            def compute():
+                return diagnostic.analyze(diagnostic.collect(msapi.chunk()), self._all_rows())
+
+            self._diag_dialog = diagnostic_dialog.show(
+                self, compute, self._on_diag_open, getattr(self, "_diag_dialog", None))
+        except Exception as exc:
+            journal.write("FastGCP : diagnostic du pointage : {!r}".format(exc))
+
+    def _on_diag_open(self, item):
+        """Un element du diagnostic : marqueur courant, puis la photo concernee si on la connait."""
+        try:
+            label, camera = item.get("label"), item.get("camera")
+            if label and not self.set_active_marker_by_label(label):
+                return
+            if camera is None:
+                return
+            ok, _message = msapi.open_photo(camera)
+            marker = self._find_marker(label) if label else None
+            if ok and marker is not None:
+                from . import photos
+                photos.zoom_on_marker(self._state, marker, camera, force=True)
+        except Exception as exc:
+            journal.write("FastGCP : ouverture depuis le diagnostic : {!r}".format(exc))
 
     def _on_qc_pick(self, label, open_worst, _checked=False):
         """Un clic dans le menu : marqueur courant ; pour un residu, ouvre la pire photo."""
@@ -2188,11 +2292,18 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     def _on_aigcp_review(self, _checked=False):
         self.open_review()
 
-    def show_ai_setup(self, text):
-        """Explique, dans une boite, ce qu'il manque pour la detection IA et comment l'installer."""
+    def show_ai_setup(self, text, target=None):
+        """Explique ce qu'il manque pour la detection IA. Avec `target` (moteur que l'installeur sait
+        poser), la boite propose de l'installer tout de suite ; sans, elle dit comment faire."""
         try:
             from . import dialogs
-            dialogs.inform(self, i18n.t("aigcp.setup_title"), text)
+            if target is None:
+                dialogs.inform(self, i18n.t("aigcp.setup_title"), text)
+                return
+            if dialogs.ask(self, i18n.t("aigcp.setup_title"), text):
+                from . import install_ui
+                install_ui.run(self, target, confirm=False)
+                self.update_aigcp()
         except Exception as exc:
             journal.write("FastGCP : message d'installation de l'IA : {!r}".format(exc))
 

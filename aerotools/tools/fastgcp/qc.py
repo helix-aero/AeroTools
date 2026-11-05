@@ -77,3 +77,60 @@ def watchlist(rows, min_photos=MIN_PHOTOS):
     residual.sort(key=lambda item: -item["total"])
     few.sort(key=lambda item: item["proj"])
     return {"limit": limit, "residual": residual, "few": few}
+
+
+# Etat d'un marqueur dans la fenetre « Residual check », du plus urgent au moins urgent.
+RESIDUAL, FEW, NONE, OK = "residual", "few", "none", "ok"
+_ORDER = {RESIDUAL: 0, FEW: 1, NONE: 2, OK: 3}
+
+
+def status(row, limit, min_photos=MIN_PHOTOS):
+    """FEW (pas assez de photos, y compris aucune), NONE (pas de calcul possible), RESIDUAL ou OK."""
+    if is_few(row, min_photos):
+        return FEW
+    total = total_error(row)
+    if total is None:
+        return NONE
+    return RESIDUAL if total > limit else OK
+
+
+def table(rows, enabled=None, min_photos=MIN_PHOTOS):
+    """Tous les marqueurs, les plus urgents d'abord (la fenetre montre aussi ceux qui vont bien).
+
+    Chaque element : label, proj, x, y, z, total (metres ou None), role (True = controle, False =
+    verification, None = inconnu), status."""
+    rows = list(rows)
+    enabled = enabled or {}
+    limit = residual_limit(rows)
+    out = []
+    for row in rows:
+        label = row.get("label", "")
+        out.append({"label": label, "proj": int(row.get("proj") or 0), "x": row.get("x"), "y": row.get("y"),
+                    "z": row.get("z"), "total": total_error(row), "role": enabled.get(label),
+                    "status": status(row, limit, min_photos)})
+
+    def key(item):
+        kind = item["status"]
+        if kind == FEW:
+            return (_ORDER[kind], item["proj"], item["label"])
+        return (_ORDER[kind], -(item["total"] or 0.0), item["label"])
+
+    out.sort(key=key)
+    return out
+
+
+def group_rms(items):
+    """(controle, verification) : chacun (racine de la moyenne des carres 3D en metres, nombre) ou None.
+
+    `items` vient de `table`. Seuls comptent les marqueurs dont l'erreur est calculable."""
+    sums = {True: [0.0, 0], False: [0.0, 0]}
+    for item in items:
+        if item["total"] is None or item["role"] not in (True, False) or item["status"] == FEW:
+            continue                # un marqueur peu pointe a une position sans valeur : on ne le compte pas
+        sums[item["role"]][0] += item["total"] ** 2
+        sums[item["role"]][1] += 1
+
+    def finish(pair):
+        return (math.sqrt(pair[0] / pair[1]), pair[1]) if pair[1] else None
+
+    return finish(sums[True]), finish(sums[False])

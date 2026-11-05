@@ -20,11 +20,12 @@ def boot(ms, clean_bootstrap_flags):
 def test_install_menu_is_idempotent(boot, ms):
     assert boot.install_menu() is True
     count = len(ms.app.menu_items)
-    assert count == len(config.TOOLS) + 2
+    assert count == len(config.TOOLS) + 3
     assert boot.install_menu() is False
     assert len(ms.app.menu_items) == count
     labels = [item[0] for item in ms.app.menu_items]
     assert "Aero/Recharger AeroTools" in labels
+    assert "Aero/Verifier les mises a jour..." in labels
     assert "Aero/FastGCP" in labels
 
 

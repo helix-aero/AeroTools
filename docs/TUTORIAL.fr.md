@@ -24,16 +24,17 @@ Ce tutoriel suit l'ordre dans lequel vous allez vous en servir. Les noms de bout
 Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Metashape 2.2.
 
 1. Récupérez ce dépôt (téléchargement ou clone) et posez-le où vous voulez, par exemple sur un disque partagé.
-2. Double-cliquez sur `CLICK HERE TO INSTALL.bat` (à la racine ; il lance `install\installer_aerotools.bat`). Cet installeur unique met aussi en place la détection IA (environ 3 Go, une seule fois, avec un affichage « Please wait... »). Il écrit un petit lanceur dans
+2. Double-cliquez sur `CLICK HERE TO INSTALL.bat` (à la racine ; il lance `install\installer_aerotools.bat`). Cet installeur unique met aussi en place la détection IA (environ 100 Mo, une seule fois, avec un affichage « Please wait... »). Il écrit un petit lanceur dans
    `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\` et ne touche à rien d'autre.
 3. Redémarrez Metashape. Un menu **Aero** apparaît.
 4. Ouvrez **Aero > FastGCP** (raccourci **F8**). Le panneau s'accroche à droite de la fenêtre.
 
 **Aero > Recharger AeroTools** relit le code sans redémarrer Metashape. `install\desinstaller_aerotools.bat` retire le lanceur.
 
-> **Note.** La détection IA demande un Python séparé avec `torch` et `ultralytics` (environ 3 Go) : l'installeur propose de le
-> mettre en place (le même installeur, relancez-le si besoin). Les deux fichiers de poids `models\damier.pt` et `models\bombe.pt` sont
-> fournis avec le téléchargement. Voir le [dépannage](#9-dépannage). Tout le reste fonctionne sans eux.
+> **Note.** La détection IA tourne dans un Python séparé et léger (ONNX Runtime, environ 100 Mo) : l'installeur le met en place (le
+> même installeur, relancez-le si besoin). Les modèles `models\damier.onnx` et `models\bombe.onnx` (et leurs poids sources `.pt`) sont
+> fournis avec le téléchargement. Le réentraînement (« Affiner mon modèle ») demande en plus `torch` (environ 3 Go) : lancez une fois
+> `install\installer_entrainement.bat`. Voir le [dépannage](#9-dépannage). Tout le reste fonctionne sans eux.
 
 ![Le panneau FastGCP accroché dans Metashape (interface en anglais) : en-tête, bouton Play/Pause, carte Détection IA, marqueur actif, tableau des marqueurs, boutons Residual check et Export](images/panel-overview.png)
 
@@ -236,6 +237,26 @@ L'**engrenage** de l'en-tête ouvre la fenêtre Paramètres.
   visible, pour un futur entraînement. Aucune image n'est copiée.
 - **Journal** : le journal de l'outil. Si quelque chose casse, collez ses dernières lignes dans une issue.
 
+**Mises à jour**
+
+**Rechercher les mises à jour…** (aussi dans le menu **Aero**) ouvre la liste des modules installés avec leur version et la date de
+la dernière mise à jour. Elle interroge GitHub et dit, pour chacun, combien de fichiers ont changé et combien il y a à télécharger.
+Clique sur **Mettre à jour** sur la ligne, ou sur **Tout mettre à jour** en bas à droite. Ne ferme pas la fenêtre pendant ce temps :
+chaque fichier est d'abord téléchargé et vérifié, puis remplacé (si quelque chose échoue, les anciens fichiers sont remis), puis les
+fichiers installés sont relus pour confirmer. À la fin AeroTools se recharge tout seul, sans redémarrer Metashape. Les nouvelles
+entrées du menu Aero, s'il y en a, apparaissent au démarrage suivant. Une copie de développement (un dossier avec `.git`) n'est
+jamais mise à jour : rien n'est écrasé.
+
+**Moteur de détection**
+
+- **Léger** : ONNX Runtime sur le processeur, environ 100 Mo, tout ordinateur. **Précis** : le moteur d'origine (PyTorch, environ
+  3 Go), carte graphique utilisée s'il y en a une. **Automatique** prend le précis s'il est installé, sinon le léger. Sur notre
+  test (569 cibles), les deux placent 99 % des cibles à moins de 0,05 px l'une de l'autre.
+- Les trois lignes dessous disent ce qui est installé (*Moteur léger*, *Moteur précis*, *Outils de réentraînement*). Quand
+  quelque chose manque, **Installer** le fait à ta place : une fenêtre noire montre l'avancement (ne la ferme pas), puis la ligne
+  passe à *installé*. C'est pareil si tu lances une détection ou un réentraînement sans ce qu'il faut : une boîte propose de
+  l'installer.
+
 **Modèles IA**
 
 - *Utiliser mes affinages manuels pour construire le jeu d'entraînement* : cochée, chaque décision prise dans le Review panel
@@ -275,12 +296,22 @@ moins bien qu'Aero V1.0 sur les données mises de côté, la fenêtre vous le di
 > une expérience : nous ne promettons pas qu'il améliore la détection. Essayez le nouveau modèle sur un projet que vous connaissez,
 > et cliquez sur **Revenir à Aero V1.0** s'il ne fait pas mieux.
 
+### Le diagnostic complet
+
+Sous la liste des marqueurs, le bouton **Contrôle des résidus** liste les marqueurs à surveiller. Sa dernière ligne, **Diagnostic complet du
+pointage…**, ouvre une fenêtre qui va plus loin. Pour chaque pointage manuel (point vert), elle recalcule la position 3D du marqueur
+**sans cette photo**, la reprojette et dit à combien de pixels elle tombe de ton pointage. Quelques pixels, c'est normal. Elle liste les
+pointages douteux (écart de plus de 3 px, ou 4 fois la médiane du projet), les photos décalées sur plusieurs marqueurs, et les
+marqueurs qui ont trop peu de pointages ou des propositions de l'IA pas encore validées. Double-clique une ligne pour ouvrir la photo,
+zoomée sur le marqueur. Un pointage très décalé fait paraître ses voisins fautifs : on met donc le pire de côté et on rejuge les
+autres, jusqu'à ce que plus rien ne dépasse.
+
 ## 9. Dépannage
 
 | Symptôme | À vérifier |
 |---|---|
 | Le menu **Aero** manque | Double-cliquez à nouveau sur `CLICK HERE TO INSTALL.bat` et redémarrez Metashape. |
-| *IA : Python d'AIGCP introuvable*, ou une boîte *Installation de la détection IA* | Le détecteur tourne dans son propre Python avec `torch` et `ultralytics`. Le plus simple : double-cliquez à nouveau sur `CLICK HERE TO INSTALL.bat` (il installe tout, environ 3 Go). Par défaut FastGCP cherche `%USERPROFILE%\AIGCP\_env\Scripts\python.exe` ; définissez la variable d'environnement `AIGCP_PYTHON`, ou la clé `python` de la section `aigcp` de `settings.json`, pour en utiliser un autre. |
+| *IA : Python d'AIGCP introuvable*, ou une boîte *Installation de la détection IA* | Le détecteur tourne dans son propre Python léger (ONNX Runtime). Le plus simple : double-cliquez à nouveau sur `CLICK HERE TO INSTALL.bat` (il installe tout, environ 100 Mo). Par défaut FastGCP cherche `%USERPROFILE%\AIGCP\_env\Scripts\python.exe` ; définissez la variable d'environnement `AIGCP_PYTHON`, ou la clé `python` de la section `aigcp` de `settings.json`, pour en utiliser un autre. |
 | *IA : poids … introuvables* | Les deux fichiers `damier.pt` et `bombe.pt` doivent être dans le dossier `models` du téléchargement : remettez-les-y si vous les avez supprimés, ou définissez `models_dir` dans la section `aigcp`. |
 | L'IA ne trouve rien | Vérifiez que le marqueur a une position 3D ou des coordonnées de référence, que les photos sont alignées, et que la liste *Ignorer* ne cache pas les photos voulues. |
 | Une photo est introuvable ou illisible | Le détecteur lit les fichiers image d'origine, au chemin que Metashape connaît. Vérifiez que le disque ou le partage est connecté. |
@@ -292,3 +323,29 @@ Les réglages du poste sont dans `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`.
 [DEVELOPMENT.md](DEVELOPMENT.md).
 
 AeroTools est fait par [HELIX AERO](https://helix.aero). Code source : [github.com/helix-aero/AeroTools](https://github.com/helix-aero/AeroTools).
+
+## 10. Fast Space : libérer de la place
+
+**Aero > FastSpace** ouvre une fenêtre qui trouve les anciens projets Metashape qui mangent ton disque. Choisis un disque (ou
+**Dossier…**) et clique **Scanner** : les projets les plus lourds arrivent en premier. Pour chacun tu vois le fichier `.psx`, les
+trois dossiers au-dessus (pour reconnaître le chantier), **Dense + profondeur** (ce que libère l'allègement, en Go), **Projet entier**
+(pour juger si le supprimer vaut la peine), **Gardés** (les fichiers à côté du projet que la suppression ne touche pas, voir
+plus bas), la part de l'un dans l'autre, la date et l'état (*Ouvert*, *Ancien verrou* laissé par un
+plantage, ou dossier `.files` orphelin dont le `.psx` a disparu). Clique un en-tête pour trier. Survole la taille pour le détail
+(nuage dense, cartes de profondeur, points de liaison, MNT, orthos). Coche les projets, puis :
+
+- **Alléger (doux)** retire le nuage dense et les cartes de profondeur, qui se recalculent. L'alignement, les marqueurs, les MNT et
+  les orthos restent, et Metashape ouvre et enregistre chaque projet pour qu'il reste cohérent.
+- **Supprimer le projet** retire le `.psx` et son dossier `.files`, rien d'autre. Les fichiers exportés à côté du projet (ortho,
+  MNT, nuages, rapports, dans le même dossier ou un niveau plus bas) ne sont pas touchés : la colonne **Gardés** les compte, et
+  le survol donne les plus gros. Un signe d'avertissement veut dire que le projet contient un MNT ou une ortho construits dans
+  Metashape et qu'aucun fichier exporté (tif, ecw, las, dxf…) n'a été trouvé à côté : ils sont dans le `.files` et partiraient
+  avec le projet, donc exporte-les d'abord si tu en as besoin.
+
+**Supprimer le projet** demande où ça part : **Corbeille** (restaurable, la place n'est libérée qu'en la vidant, indisponible sur un
+lecteur réseau) ou **Supprimer définitivement**, qui demande de taper `DELETE`. **Alléger** est toujours définitif et demande
+toujours de taper `DELETE` : Metashape efface lui-même ces fichiers quand il enregistre le projet, il n'y a donc pas de corbeille. Un projet ouvert dans un Metashape (même sur un autre
+ordinateur) n'est jamais touché. Chaque action est écrite dans un journal (bouton **Journal des actions**).
+
+**Teste d'abord sur une copie.** Copie un petit projet (le `.psx` et son dossier `.files`) dans un dossier de test, scanne ce
+dossier, et essaie les deux modes sur la copie avant de l'utiliser sur du vrai travail.

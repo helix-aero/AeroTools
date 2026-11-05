@@ -52,7 +52,7 @@ Per-machine settings (theme, language, options) live in `%LOCALAPPDATA%\HELIX\Ae
 
 - Every Metashape call goes through `msapi.py`. Tools never import `Metashape` directly.
 - Python 3.9 syntax, PySide2 first, PySide6 as well. Import Qt through `aerotools/qt.py`.
-- No third-party dependency. Anything heavy (torch, ultralytics) stays out of Metashape's Python.
+- No third-party dependency. Anything heavy (onnxruntime, numpy, opencv; torch and ultralytics for training only) stays out of Metashape's Python.
 - The report and the panel only use Qt for drawing, so they work inside Metashape.
 
 ## Tests
@@ -108,7 +108,9 @@ green, blue or none). With **Selected markers**, Shift+click or Ctrl+click in th
 detection covers all of them (one selected marker: the active one). Buttons: **Run detection**, **Clear proposals**, **Review**. The choices are saved per machine.
 
 - The calculation never runs inside Metashape. `aigcp.py` writes a `work.json`, starts `aigcp_runner.py` in a separate Python
-  that has torch and ultralytics, and reads `hits.json` when it is done. The panel stays free; the tool's heartbeat (`tool._tick`)
+  (ONNX Runtime, numpy, opencv; no torch), and reads `hits.json` when it is done. The runner groups the markers by photo, decodes
+  the next photos in background threads, and runs all the crops of a photo through the model in batches (about 2.7x faster than
+  one crop at a time on the benchmark run, same results to 0.74 px). It falls back on ultralytics (torch) when there is no `.onnx`. The panel stays free; the tool's heartbeat (`tool._tick`)
   polls the job and places the results.
 - The runner crops a square of `4 x S x pixels-per-metre` around the estimated position of the marker (S = 0.3 / 0.5 / 0.8 m,
   the target size is unknown), resizes it to 160 x 160, keeps the detection closest to the estimate, then re-centres on it.
@@ -167,14 +169,66 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
   *Use manual refinements to build the training dataset* is unchecked.
 - Picking a marker in the panel also selects it in Metashape's Reference pane: Metashape recentres on its own selected marker
   when the photo changes (Page Up / Page Down).
-- Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder). They are stored in git
-  (the base model "Aero V1.0", released with the code); any other `*.pt` file stays git-ignored.
-- Hidden settings, section `aigcp`: `python` (path of the Python with torch and ultralytics; default: `AIGCP_PYTHON`, then
+- Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder) and their ONNX export
+  `models/damier.onnx`, `models/bombe.onnx` (what the runner reads; export with `YOLO(...).export(format="onnx", imgsz=160, dynamic=True,
+  simplify=True, opset=17)`; the training does it by itself). They are stored in git (the base model "Aero V1.0", released with the
+  code); any other `*.pt` / `*.onnx` file stays git-ignored.
+- Hidden settings, section `aigcp`: `engine` (auto, light, precise), `python` (path of the Python of the detection engine; default: `AIGCP_PYTHON`, then
   `~/AIGCP/_env/Scripts/python.exe`), `models_dir`, `conf_damier` (0.25), `conf_bombe` (0.30), `gate_min_m` (0.30),
   `gate_factor` (5), `consensus_m` (0.25), and the last `type`, `scope`, `ignore` and `review_thumb` (thumbnail size).
 - Limits: the review keeps only the last detection; at most 200 photos per marker and 3000 per run, a marker needs a 3D position and an aligned photo. Measured by script
   on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and 40 px): 98 to 100 % within 3 px.
   The guard is covered by tests but not measured on real roof false positives yet.
+
+## Fast Space
+
+`aerotools/tools/fastspace/`: `scanner.py` (no Qt, no Metashape) finds `.psx` and orphan `.files` folders and measures them
+(`<name>.files/<chunk>/<frame>/<part>[.N]/`: `dense_cloud`, `depth_maps`, `point_cloud` = tie points, `elevation`, `orthomosaic`...;
+a scan of 55 projects, 1.4 TB, takes about 1 s once the file system is cached). An open project is detected by its
+`.files/lock`: Metashape keeps it open, so opening it for writing fails (PermissionError); one we can open is a stale lock.
+`actions.py`: `lighten` goes through the Metashape API so the project stays consistent (`Document.open`, `chunk.remove` of the
+dense clouds (`chunk.point_clouds`) and the depth map sets (`chunk.depth_maps_sets`), `save`, then a read-only re-open that checks
+cameras and markers did not change). Measured on a copy: Metashape erases its own files on `save` (1967 MB to 1087 MB). So lightening is
+always permanent. Sending the folders to the bin first does not work: `chunk.remove` then raises `Can't open file dense_cloud.zip`
+and the project keeps ghost dense clouds. A possible later step: hard-link the folders and copy the small metadata zips to a
+side folder before the API call, then send that folder to the bin. `delete_project` only ever removes the `.psx` and its `.files`, so exported files next to the project are never touched
+(`test_delete_keeps_every_file_next_to_the_project`). `scanner.measure_kept` counts those files for the **Kept** column (same
+folder plus one level of sub-folders, at most 5000 entries, cached per folder because several projects can share one),
+and `Project.at_risk` flags a project that holds a built DEM or ortho (`elevation`, `orthomosaic`) with no exported raster or
+cloud (`EXPORT_EXTS`) found there. `delete_project` can use the bin (`SHFileOperationW` with
+`FOF_ALLOWUNDO`; Windows asks itself when something is too big for the bin). `delete_project` removes the `.psx` first, then the
+`.files` folder (a failure leaves a visible orphan). Permanent deletion needs the typed word `DELETE`. `lighten` runs in the main
+thread (the API does not work elsewhere); scanning and deleting run in a worker. Actions are logged to
+`%LOCALAPPDATA%\HELIX\AeroTools\fastspace\log.csv`. Tests use a fake Metashape document (`tests/test_fastspace.py`); the
+Metashape API part was checked on a copy in the Metashape console; the window itself should be tried on a copy before real work.
+
+## Engines and installation
+
+`engines.py` (no Qt) knows which engines the external Python has (one short subprocess, cached 20 s): `light` (onnxruntime, numpy,
+opencv), `precise` (torch, ultralytics), `training` (precise + onnx). The setting `aigcp.engine` is `auto` (precise if present, else
+light), `light` or `precise`; `work.json` gets `"engine": "onnx" | "torch"` and the runner never swaps a chosen engine silently.
+`aigcp.check` fails with a clear text when the chosen engine is missing, and `aigcp.setup_target` says what the installer can add.
+`install_ui.py` runs `install/install_all.ps1 -Yes -Engine ... [-Training] -PauseOnError` in a visible console and waits for it
+(the "Install" buttons of the settings, the box after a failed detection, the retraining pre-check). The installer asks
+the engine question itself when you double-click it.
+
+## Updates
+
+`aerotools/updater.py` (no Qt) and `update_dialog.py` (the window, menu Aero > Check for updates and Settings > Updates). The
+repository publishes `manifest.json`: SHA-256 and size of every shipped file (code, models, installer, assets, docs; text files
+are hashed with LF line endings). **Run `python install/make_manifest.py` before every push**: `tests/test_updater.py` fails when
+the manifest is stale. Bump `aerotools.__version__` for a release. The update compares the disk to the remote manifest, downloads
+the differences to `%LOCALAPPDATA%\HELIX\AeroTools\updates`, checks each file, backs up the old ones, replaces them, writes
+`manifest.json` last, and puts everything back if a step fails. A folder with `.git` is never updated. Hidden settings, section
+`update`: `channel` (`main` by default, `dev` to follow the test branch; the updates window has a Stable / Test selector that writes it) and `base_url` (tests, mirrors; `file:///` works).
+Test an update safely with two folders and `base_url` pointing at the first.
+
+## Diagnostic of the marking
+
+`diagnostic.py` (no Qt): cross-validation of each manual pick (3D position from the other rays, `consensus.triangulate`, gap in
+pixels on the judged photo), peeling the worst pick until nothing exceeds 3 px so a bad pick does not accuse its neighbours;
+threshold `max(3 px, 4 x median)`; suspect photos; markers with too few picks. `tests/test_diagnostic.py` checks it on synthetic
+cameras where the shifted pick is known. Window: `diagnostic_dialog.py`, opened from the "Residual check" menu.
 
 ## AI models and retraining
 
@@ -184,8 +238,8 @@ The settings window (gear) has an **AI models** block: the checkbox above, the s
 
 - `training.py` (no Qt) holds the registry (`<storage>/models/<id>/<type>.pt` + `meta.json`, numbers never reused thanks to
   `counter.json`), the active model (`aigcp.weights_path` follows it, a local model that lacks a type falls back on the original
-  weights) and `Training`, which runs `aigcp_train.py` in the external Python (the one with torch and ultralytics, never inside
-  Metashape). The window asks for confirmation first (graphics card used heavily, do not touch the computer, the result may be
+  weights) and `Training`, which runs `aigcp_train.py` in the external Python (needs torch, ultralytics and onnx: `install/installer_entrainement.bat`;
+  never inside Metashape). The window asks for confirmation first (graphics card used heavily, do not touch the computer, the result may be
   better on the user's targets and worse elsewhere, wrong annotations give a worse model, the original model is never modified).
 - The training starts again from the original weights each time, with all the feedback. Per type: crops around the final point
   of every `refined` and `accepted` event (positives, 25 per target at most, refined first), crops at the AI position of every
