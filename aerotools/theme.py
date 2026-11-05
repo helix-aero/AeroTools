@@ -72,6 +72,7 @@ RADIUS = 6
 RADIUS_S = 4
 
 ARROW_DOWN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui", "arrow_down.png").replace("\\", "/")
+CHECK_MARK = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ui", "check.png").replace("\\", "/")
 
 _FONTS_LOADED = False
 _TITLE_FAMILY = "Segoe UI"
@@ -520,8 +521,8 @@ def stylesheet():
         color: {fg_0};
     }}
     #aeroPanel QCheckBox::indicator {{
-        width: 14px;
-        height: 14px;
+        width: 16px;
+        height: 16px;
         border-radius: 3px;
         border: 1px solid {border_strong};
         background: {field_bg};
@@ -529,6 +530,11 @@ def stylesheet():
     #aeroPanel QCheckBox::indicator:checked {{
         background: {green};
         border-color: {green};
+        image: url({check});
+    }}
+    #aeroPanel QCheckBox::indicator:checked:disabled {{
+        background: {fg_4};
+        border-color: {fg_4};
     }}
     #aeroPanel QCheckBox::indicator:disabled {{
         border-color: {fg_4};
@@ -770,6 +776,7 @@ def stylesheet():
         btn_hover=BTN_HOVER,
         orange_bright=ORANGE_BRIGHT,
         arrow=ARROW_DOWN,
+        check=CHECK_MARK,
         title=title_family(),
         text=text_family(),
     )
