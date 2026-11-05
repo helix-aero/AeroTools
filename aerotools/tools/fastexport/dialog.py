@@ -68,9 +68,6 @@ class ExportDialog(QtWidgets.QDialog):
             layout.addWidget(card)
             self.cards[kind], self.fields[kind], self.native_labels[kind] = card, field, native
 
-        self.crs = ui.label("", "aeroMeta")
-        layout.addWidget(self.crs)
-
         layout.addWidget(ui.label(i18n.t("export.preset"), "aeroSection"))
         self.preset = QtWidgets.QComboBox()
         self.preset.setObjectName("aeroCombo")
@@ -166,7 +163,6 @@ class ExportDialog(QtWidgets.QDialog):
             card.button.blockSignals(False)
             field.blockSignals(False)
             card.sync()
-        self.crs.setText(i18n.t("export.crs", crs=self._info["crs"]) if self._info.get("crs") else "")
         self.site.blockSignals(True)
         self.site.setText(naming.guess_site(self._psx) if self._psx else "")
         self.site.blockSignals(False)
