@@ -80,31 +80,6 @@ class _Worker(threading.Thread):
         self.finished = True
 
 
-class _Option(QtWidgets.QFrame):
-    """Une option a choisir : une carte avec son bouton radio, cliquable partout, verte une fois choisie."""
-
-    def __init__(self, radio, danger=False):
-        super(_Option, self).__init__()
-        self.setObjectName("aeroOption")
-        self.setProperty("on", False)
-        self.setProperty("danger", bool(danger))
-        self.radio = radio
-        layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.addWidget(radio)
-        radio.toggled.connect(self.sync)
-
-    def sync(self, checked=None):
-        self.setProperty("on", bool(self.radio.isChecked() if checked is None else checked))
-        self.style().unpolish(self)
-        self.style().polish(self)
-
-    def mousePressEvent(self, event):
-        if self.radio.isEnabled():
-            self.radio.setChecked(True)
-        super(_Option, self).mousePressEvent(event)
-
-
 class ForceDialog(QtWidgets.QDialog):
     """Ecran en plus avant de supprimer un projet qui semble ouvert ailleurs (fichier lock tenu)."""
 
@@ -148,7 +123,7 @@ class ConfirmDialog(QtWidgets.QDialog):
         self._group = QtWidgets.QButtonGroup(self)          # les deux ronds sont dans des cartes separees
         self._group.addButton(self.recycle)
         self._group.addButton(self.permanent)
-        self._options = [_Option(self.recycle), _Option(self.permanent, danger=True)]
+        self._options = [ui.OptionCard(self.recycle), ui.OptionCard(self.permanent, danger=True)]
         for option in self._options:
             layout.addWidget(option)
         self.word = QtWidgets.QLineEdit()

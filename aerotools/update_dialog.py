@@ -18,25 +18,6 @@ from .qt import QtCore, QtWidgets
 POLL_MS = 150
 WIDTH = 640
 CHANNELS = (("main", "update.channel_stable"), ("dev", "update.channel_test"))
-MARKS = {"ok": ("\u2713", theme.GREEN_BRIGHT), "error": ("\u2715", theme.ORANGE_BRIGHT)}
-
-
-class _Mark(QtWidgets.QLabel):
-    """Petite coche verte (reussite) ou croix orange (echec) devant un texte d'etat."""
-
-    def __init__(self, size=16):
-        super(_Mark, self).__init__()
-        self.setFixedWidth(size + 4)
-        self.setAlignment(QtCore.Qt.AlignCenter)
-        self._size = size
-        self.setVisible(False)
-
-    def show_kind(self, kind):
-        symbol, color = MARKS.get(kind, ("", ""))
-        self.setText(symbol)
-        self.setStyleSheet("color: {}; font-size: {}px; font-weight: 700; background: transparent;".format(
-            color, self._size))
-        self.setVisible(bool(symbol))
 
 
 class _Worker(threading.Thread):
@@ -76,7 +57,7 @@ class _Row(object):
         self.info = ui.label("", "aeroMeta")
         left.addWidget(self.info)
         self.status = ui.label("")
-        self.mark = _Mark()
+        self.mark = ui.Mark()
         line = QtWidgets.QHBoxLayout()
         line.setSpacing(theme.PAD_S)
         line.addWidget(self.mark, 0, QtCore.Qt.AlignTop)
@@ -133,7 +114,7 @@ class UpdateDialog(QtWidgets.QDialog):
             row.show_info()
         layout.addStretch(1)
         self.footer = ui.label("", "aeroMeta")
-        self.footer_mark = _Mark()
+        self.footer_mark = ui.Mark()
         foot = QtWidgets.QHBoxLayout()
         foot.setSpacing(theme.PAD_S)
         foot.addWidget(self.footer_mark, 0, QtCore.Qt.AlignTop)

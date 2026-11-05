@@ -46,6 +46,15 @@ TOOLS = [
         "pret": True,
         "rouvrir": False,
     },
+    {
+        "id": "fastexport",
+        "menu": "FastExport",
+        "titre": "FastExport",
+        "sous_titre": "tool.fastexport.subtitle",
+        "raccourci": None,
+        "pret": True,
+        "rouvrir": False,
+    },
     # La detection IA (ex-AIGCP) est dans FastGCP : plus d'entree de menu a part.
 ]
 
