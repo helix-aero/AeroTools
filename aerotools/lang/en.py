@@ -417,7 +417,9 @@ TEXTES = {
     "update.update": "Update",
     "update.update_all": "Update all",
     "update.close": "Close",
-    "update.channel": "Branch followed: {channel}",
+    "update.channel_stable": "Stable",
+    "update.channel_test": "Test",
+    "update.channel_tip": "Stable: the validated version. Test: the latest changes, not yet validated.",
     "settings.update_open": "Check for updates",
 
     # -- Diagnostic du pointage --------------------------------------------

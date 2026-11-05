@@ -79,6 +79,11 @@ def channel():
     return value if isinstance(value, str) and value.strip() else "main"
 
 
+def set_channel(value):
+    """Retient la branche suivie (reglage du poste). Renvoie True si l'ecriture a abouti."""
+    return config.put(SECTION, "channel", value)
+
+
 def base_url(plugin):
     value = config.get(SECTION, "base_url")
     if isinstance(value, str) and value.strip():

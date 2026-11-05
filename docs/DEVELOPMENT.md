@@ -220,7 +220,7 @@ are hashed with LF line endings). **Run `python install/make_manifest.py` before
 the manifest is stale. Bump `aerotools.__version__` for a release. The update compares the disk to the remote manifest, downloads
 the differences to `%LOCALAPPDATA%\HELIX\AeroTools\updates`, checks each file, backs up the old ones, replaces them, writes
 `manifest.json` last, and puts everything back if a step fails. A folder with `.git` is never updated. Hidden settings, section
-`update`: `channel` (`main` by default, `dev` to follow the test branch) and `base_url` (tests, mirrors; `file:///` works).
+`update`: `channel` (`main` by default, `dev` to follow the test branch; the updates window has a Stable / Test selector that writes it) and `base_url` (tests, mirrors; `file:///` works).
 Test an update safely with two folders and `base_url` pointing at the first.
 
 ## Diagnostic of the marking

@@ -283,6 +283,11 @@ def stylesheet():
         border: none;
         width: 18px;
     }}
+    #aeroPanel QComboBox#aeroCombo[arrow="true"]::down-arrow {{
+        image: url({arrow});
+        width: 12px;
+        height: 8px;
+    }}
     #aeroPanel QComboBox QAbstractItemView {{
         background: {ground_2};
         color: {fg_0};

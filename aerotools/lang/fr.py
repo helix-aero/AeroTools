@@ -423,7 +423,9 @@ TEXTES = {
     "update.update": "Mettre à jour",
     "update.update_all": "Tout mettre à jour",
     "update.close": "Fermer",
-    "update.channel": "Branche suivie : {channel}",
+    "update.channel_stable": "Stable",
+    "update.channel_test": "Test",
+    "update.channel_tip": "Stable : la version validée. Test : les dernières modifications, pas encore validées.",
     "settings.update_open": "Vérifier les mises à jour",
 
     # -- Diagnostic du pointage --------------------------------------------

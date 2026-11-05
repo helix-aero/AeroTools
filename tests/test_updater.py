@@ -180,6 +180,15 @@ def test_default_url_follows_the_channel(local_appdata):
     assert updater.file_url(plugin, "CLICK HERE TO INSTALL.bat").endswith("/dev/CLICK%20HERE%20TO%20INSTALL.bat")
 
 
+def test_set_channel_switches_between_stable_and_test(local_appdata):
+    plugin = {"id": "x", "title": "X", "repo": "helix-aero/AeroTools", "root": "."}
+    assert updater.channel() == "main"
+    assert updater.set_channel("dev")
+    assert updater.channel() == "dev" and updater.base_url(plugin).endswith("/AeroTools/dev")
+    assert updater.set_channel("main")
+    assert updater.base_url(plugin).endswith("/AeroTools/main")
+
+
 def test_format_size():
     assert updater.format_size(512) == "512 B"
     assert updater.format_size(18 * 1024 * 1024 + 400000) == "18.4 MB"

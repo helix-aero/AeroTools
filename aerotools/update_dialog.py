@@ -17,6 +17,7 @@ from .qt import QtCore, QtWidgets
 
 POLL_MS = 150
 WIDTH = 640
+CHANNELS = (("main", "update.channel_stable"), ("dev", "update.channel_test"))
 
 
 class _Worker(threading.Thread):
@@ -106,8 +107,22 @@ class UpdateDialog(QtWidgets.QDialog):
         layout.addWidget(self.footer)
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(theme.PAD)
-        self.channel = ui.label("", "aeroMeta", wrap=False)
-        buttons.addWidget(self.channel, 1)
+        self.channel = QtWidgets.QComboBox()
+        self.channel.setObjectName("aeroCombo")
+        self.channel.setProperty("arrow", True)
+        self.channel.setCursor(QtCore.Qt.PointingHandCursor)
+        self.channel.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.channel.setMinimumWidth(130)
+        self.channel.setToolTip(i18n.t("update.channel_tip"))
+        for value, key in CHANNELS:
+            self.channel.addItem(i18n.t(key), value)
+        current = updater.channel()
+        if self.channel.findData(current) < 0:
+            self.channel.addItem(current, current)       # branche saisie a la main dans settings.json
+        self.channel.setCurrentIndex(self.channel.findData(current))
+        self.channel.activated.connect(lambda _index: self._on_channel())
+        buttons.addWidget(self.channel)
+        buttons.addStretch(1)
         self.check_button = ui.button("update.check", self._start_check, width=200)
         buttons.addWidget(self.check_button)
         self.all_button = ui.button("update.update_all", self._on_update_all, "aeroRun", width=170)
@@ -115,8 +130,6 @@ class UpdateDialog(QtWidgets.QDialog):
         self.close_button = ui.button("update.close", self.accept, width=96)
         buttons.addWidget(self.close_button)
         layout.addLayout(buttons)
-        if updater.channel() != "main":
-            self.channel.setText(i18n.t("update.channel", channel=updater.channel()))
         self._clock = ui.timer(self, POLL_MS, self._poll)
         self._update_buttons()
         QtCore.QTimer.singleShot(0, self._start_check)
@@ -132,6 +145,7 @@ class UpdateDialog(QtWidgets.QDialog):
     def _update_buttons(self):
         busy = self._busy()
         self.check_button.setEnabled(not busy)
+        self.channel.setEnabled(not busy)
         self.close_button.setEnabled(not busy)
         self.all_button.setEnabled(not busy and bool(self._available()))
         for pid, row in self.rows.items():
@@ -158,6 +172,17 @@ class UpdateDialog(QtWidgets.QDialog):
             row.status.setText(i18n.t("update.status_error", message=result.get("message", "")))
 
     # -- verification ------------------------------------------------------------
+
+    def _on_channel(self):
+        """Stable ou Test : on retient le choix puis on verifie tout de suite sur cette branche."""
+        value = self.channel.currentData()
+        if self._busy() or not value or value == updater.channel():
+            return
+        updater.set_channel(value)
+        journal.write("Mises a jour : branche suivie = {}".format(value))
+        self._results.clear()
+        self._update_buttons()
+        self._start_check()
 
     def _start_check(self):
         if self._busy():
