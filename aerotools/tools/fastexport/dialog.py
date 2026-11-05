@@ -93,6 +93,7 @@ class ExportDialog(QtWidgets.QDialog):
         self._missing = None                                # (outil, cle de texte) quand un logiciel manque
         self._geoid_missing = None                          # id de la grille a telecharger
         self._previous_preset = None
+        self._tile_pixels = None
         self.tools = {}
         self.setWindowTitle(i18n.t("export.title"))
         self.setModal(False)
@@ -545,9 +546,12 @@ class ExportDialog(QtWidgets.QDialog):
 
     def _fill_tiles(self):
         """Tailles de dalle rondes, compatibles avec les pixels choisis, autour du tiers de la plus grande emprise."""
+        pixels = [round(self._pixel(k), 4) for k in plan.KINDS if self.cards[k].button.isChecked() and self._pixel(k) > 0]
+        if pixels == self._tile_pixels and self.tile_box.count():
+            return                                         # memes pixels : on garde la taille deja choisie
+        self._tile_pixels = pixels
         self.tile_box.blockSignals(True)
         self.tile_box.clear()
-        pixels = [round(self._pixel(k), 4) for k in plan.KINDS if self.cards[k].button.isChecked() and self._pixel(k) > 0]
         boxes = [self._info.get("box_" + k) for k in plan.KINDS if self._info.get("box_" + k)]
         if pixels and boxes:
             side = max(max(b[2] - b[0], b[3] - b[1]) for b in boxes)
@@ -612,6 +616,8 @@ class ExportDialog(QtWidgets.QDialog):
     def _refresh_names(self, *_args):
         for kind in plan.KINDS:
             self.fields[kind].setEnabled(self.cards[kind].button.isChecked() and bool(self._info.get(kind)))
+        if hasattr(self, "tile_box"):
+            self._fill_tiles()
         self._jobs, text = [], ""
         folder = self._folder()
         wanted = self._wanted()

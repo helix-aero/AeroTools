@@ -1,5 +1,5 @@
 {
- "built": "2026-11-05T17:01:28",
+ "built": "2026-11-05T17:06:09",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -94,8 +94,8 @@
    "size": 27547
   },
   "aerotools/tools/fastexport/dialog.py": {
-   "sha256": "3ef417e21ccb25b993066e36632011993f7bfa1fdc9eba86932011c63c635493",
-   "size": 34937
+   "sha256": "f4269159f140ae370361066595b2e68b0fd7b13243cb984b6b8ddd2402d7d31a",
+   "size": 35248
   },
   "aerotools/tools/fastexport/dxfout.py": {
    "sha256": "f79fb7a7a7b981f64ee4243da57275089227a22ea33ed7ac93faafc155460005",
@@ -298,8 +298,8 @@
    "size": 15373
   },
   "docs/DEVELOPMENT.md": {
-   "sha256": "05794d27cc8a643ff76867b7b7a570408756d197f450c9e21b500195a7e45a64",
-   "size": 24810
+   "sha256": "e7ebae9bb2b583e0645779059e1bdf361039771d9ce1e15e53db32ce396bd794",
+   "size": 26845
   },
   "docs/TUTORIAL.fr.md": {
    "sha256": "d32c9091833b5a77d3d7b14b7132bdfb3c214b2fe1231c183eb0c11ae5fab589",

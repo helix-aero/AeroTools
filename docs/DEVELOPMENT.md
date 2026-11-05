@@ -192,8 +192,25 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
   background), the DEM is Float32 + Deflate with nodata -32767. A JPEG export writes a `.jgw` and a `.prj` (compound CRS with the geoid).
 - A region with no data writes no file (matters for tiling).
 - The GeoTIFF carries the horizontal CRS only, the geoid is in the `.prj` of the JPEG.
-Not done yet: geoid check and download, tiling, JPEG2000, DXF/DWG packaging, ECW. The research prototypes for those are in
-`FAST_RECHERCHE/fast_export/proto` (`crs_catalog.py`, `tiling.py`, `export_post.py`, `dxf_ref.py`).
+Formats and external tools (`pipeline.py`, `external.py`, `dxfout.py`, `plan.py`; nothing is hard-coded, programs are found in the
+registry and the usual folders, or pointed at by the user):
+- ECW: Global Mapper script `EXPORT_RASTER ... TYPE=ECW TARGET_COMPRESSION=10` (works from a script with the user's licence, Global Mapper 26;
+  GDAL cannot write ECW without a Hexagon OEM key).
+- JPEG 2000: QGIS GDAL `JP2OpenJPEG QUALITY=5`, else Global Mapper `TYPE=JPEG2000`, else Metashape's own `ImageFormatJP2`.
+  Measured on the CITADELLE ortho (RGB, 48.6 MB raw): ECW 10:1 = 4.6 MB, 36.8 dB; ECW 20:1 = 2.8 MB, 34.5 dB; JP2 GDAL q5 = 5.2 MB, 42.4 dB;
+  JP2 GDAL q3 = 3.3 MB, 38.4 dB; JP2 Global Mapper 20:1 = 4.4 MB, 41.4 dB; Metashape JP2 = 13 MB, 55.2 dB. PSNR favours JPEG 2000 at equal
+  size; visual comparison is left to the user. GDAL cannot decode ECW (no plugin): ECW was decoded back with Global Mapper to measure it.
+- DXF: written by hand (R2000, no library). AutoCAD wants plot style objects, ByBlock/ByLayer linetypes and the empty VPORT/VIEW/UCS/DIMSTYLE
+  tables. Checked with `accoreconsole.exe /i TOPO.dxf /s script` (`-IMAGE R *` then `-IMAGE ?`): 0 audit errors, JPEG 2000 and ECW both
+  "loaded and relinked" through relative paths; ezdxf `recover` reads it with no error. Not checked: the AutoCAD window itself.
+- DWG: `_SAVEAS 2018` in accoreconsole from the DXF.
+- DEM in a drawing: GeoTIFF float kept in `00_Assets\DTM` plus a colour-relief image (`gdaldem color-relief`, no hillshade) for the layer; no GDAL
+  means no DEM layer (a warning says so).
+- The native ortho export is cropped to the data (8148 x 8772 px on CITADELLE) and not to the orthomosaic box: the placement in the DXF is read from
+  the GeoTIFF itself (`geotiff.py`). When the grid is imposed (other CRS, tiles) the native pixel is rounded to 0.1 mm.
+- Other coordinate systems: `msapi.target_crs` builds a compound CRS whose VERT_CS carries the grid name (`RAC23`...), `projection=` on
+  `exportRaster`, box transformed with `CoordinateSystem.transform`. Checked on the CITADELLE DEM to Lambert-93: heights drop by the geoid
+  (47.6 m), the GeoTIFF still carries the horizontal CRS only. A downloaded geoid grid is not checked live (Metashape may need a restart).
 
 ## Aero-Space
 
