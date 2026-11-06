@@ -600,7 +600,7 @@ TEXTES = {
     "space.tip_lock": "Lock written by {owner}",
 
     # -- Aero-Exports -------------------------------------------------------
-    "tool.fastexport.subtitle": "Export the ortho and the DEM to an Outputs folder, with short names",
+    "tool.aeroexports.subtitle": "Export the ortho and the DEM to an Outputs folder, with short names",
     "export.title": "Aero-Exports",
     "export.ortho": "Ortho",
     "export.dem": "DEM",

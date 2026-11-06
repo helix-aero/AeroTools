@@ -64,7 +64,7 @@ python -m pytest tests -q
 `tests/` uses fake `Metashape` and Qt modules, so it runs anywhere.
 `tests_qt/run_qt_selftest.py` sends real mouse events through the real click filter. Run it with Metashape's own Python
 (`python\python.exe` in the Metashape folder) and with a Python that has PySide6.
-`tests_qt/run_qt_fastexport.py` does the same for Fast Export (both windows, DEM card, pixel field, layout at several font scales, coordinate trap); it needs numpy for the preview cases.
+`tests_qt/run_qt_aeroexports.py` does the same for Aero-Exports (both windows, DEM card, pixel field, layout at several font scales, coordinate trap); it needs numpy for the preview cases.
 
 ## Languages
 
@@ -183,7 +183,12 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
 
 ## Aero-Exports
 
-`aerotools/tools/fastexport/`: `naming.py` (short names, `Outputs` folder, versions; ported from the research prototype,
+Aero-Exports was first called "Fast Export" (package `fastexport`). The package, the tool id and the settings section are now all
+`aeroexports`. Migration: `config.load_settings` copies an old `fastexport` section of `settings.json` to `aeroexports` when that
+one does not exist yet (the old section is left in place, so nothing is lost; test in `tests/test_config.py`). The git branch kept
+the old name until it is renamed at push time.
+
+`aerotools/tools/aeroexports/`: `naming.py` (short names, `Outputs` folder, versions; ported from the research prototype,
 31 tests), `plan.py` (presets and the list of files to write, pure), `dialog.py` (the window), `tool.py`. The Metashape side is
 `msapi.raster_info` and `msapi.export_raster` (`Chunk.exportRaster`). Measured on Metashape 2.2.1 on a real project:
 - `resolution=0.5` is meters on the ground and gave a 0.49996 pixel in the projection (CC42); `resolution_x/y=0.5` plus a
@@ -240,7 +245,7 @@ registry and the usual folders, or pointed at by the user):
 
 `look.py` (the setting), `palettes.json` (palettes as data), `preview.py` (model of a small DEM, numpy only), `previewwin.py` (the window).
 - A `Look` is `palette, shading (none | sun | lights4 | slope), azimuth, altitude, strength, stretch (auto | full | custom), low, high`. It is saved
-  in `settings.json` (section `fastexport`, key `dem_look`), and `relief.render` paints the DXF/DWG DEM image with that same look: what the
+  in `settings.json` (section `aeroexports`, key `dem_look`), and `relief.render` paints the DXF/DWG DEM image with that same look: what the
   preview shows is what lands in AutoCAD. The default look is the one the export always had (Metashape palette, sun from 315 degrees at 45,
   strength 0.8, full range), except along the data border (see below).
 - Palettes: the package file `palettes.json` (metashape, relief, rainbow, gray, viridis, terrain, hot), plus an optional `palettes.json` in the
@@ -255,7 +260,7 @@ registry and the usual folders, or pointed at by the user):
 - A coloured DEM picture can also be written next to a JPEG 2000 or ECW export (`plan.PICTURE_PRESETS`, option on the DEM card).
 - No-data pixels are filled from their data neighbours before the slope is computed (`relief.fill_for_shading`). Filling them with the lowest
   height drew a dark line along every border of the data (visible on the CITADELLE DEM); only the pixels touching no data changed.
-- Tests: `tests/test_fastexport_look*.py`, `test_fastexport_preview.py`; `python -B tests_qt\run_qt_fastexport.py` runs the window, the DEM
+- Tests: `tests/test_aeroexports_look*.py`, `test_aeroexports_preview.py`; `python -B tests_qt\run_qt_aeroexports.py` runs the window, the DEM
   card and the pixel field with real Qt events, without Metashape (14 cases, PySide6 here, also meant for Metashape's PySide2).
 
 ### Window layout (two panels), coordinate trap, shared controls
@@ -279,7 +284,7 @@ registry and the usual folders, or pointed at by the user):
   what to pick. Unticking the raster in degrees gives back "Same as the project". Exporting a drawing, tiles or a pixel in cm from a raster in
   degrees without a projected system is refused in words before any file is written (`_degrees_blocks`).
 - The error line names the file that really failed: `pipeline.Context.failed` is set before each file (and for TOPO.dxf / .dwg).
-- Tests: `python -B tests_qtun_qt_fastexport.py` (29 cases) includes the layout at x1, x1.25, x1.5 and x2 font scale for both windows
+- Tests: `python -B tests_qt\run_qt_aeroexports.py` (29 cases) includes the layout at x1, x1.25, x1.5 and x2 font scale for both windows
   (`rescale` grows every font, `cut_off` lists any widget past its panel's right edge or the window's) and a small 1024 px screen.
   Offscreen Qt has no real DPI scaling, so this is an approximation of 125-200 %; the real check is Metashape on a scaled display.
 

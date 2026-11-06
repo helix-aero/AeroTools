@@ -1597,7 +1597,7 @@ def reset_photo_filter():
 
 
 # --------------------------------------------------------------------------
-# Export d'ortho et de MNT (Fast Export)
+# Export d'ortho et de MNT (Aero-Exports)
 # --------------------------------------------------------------------------
 
 _TIFF_COMPRESSION = {"none": "TiffCompressionNone", "lzw": "TiffCompressionLZW", "jpeg": "TiffCompressionJPEG",
@@ -1710,7 +1710,7 @@ def _center_lonlat(crs, box):
 
 def target_crs(horizontal_epsg):
     """SCR horizontal de sortie `EPSG::n`, ou None si Metashape le refuse. Sans systeme vertical : Metashape exporte alors les
-    hauteurs ellipsoidales, et les altitudes sont calculees par AeroTools (voir tools/fastexport/vertical.py)."""
+    hauteurs ellipsoidales, et les altitudes sont calculees par AeroTools (voir tools/aeroexports/vertical.py)."""
     try:
         return Metashape.CoordinateSystem("EPSG::%d" % horizontal_epsg)
     except Exception:
@@ -1797,7 +1797,7 @@ def snapped_box(box, pixel):
 def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None):
     """Ecrit l'ortho (kind "ortho") ou le MNT (kind "dem") dans `path`. Renvoie (ok, message d'erreur).
 
-    `spec` : un reglage de tools/fastexport/plan.py. Sans `pixel` (ou sans `box`), Metashape garde sa propre grille.
+    `spec` : un reglage de tools/aeroexports/plan.py. Sans `pixel` (ou sans `box`), Metashape garde sa propre grille.
     Avec `pixel` (en unites de la projection, par exemple 0.03) et `box` (emprise du raster), le pixel mesure
     exactement `pixel` et la grille est alignee sur des multiples de `pixel` : releve fait sur Metashape 2.2.1,
     ou `resolution=0.5` donnait 0.49996 (metres au sol) alors que `resolution_x/y=0.5` donne 0.5 exactement.

@@ -606,7 +606,7 @@ TEXTES = {
     "space.tip_lock": "Verrou écrit par {owner}",
 
     # -- Aero-Exports -------------------------------------------------------
-    "tool.fastexport.subtitle": "Exporter l'ortho et le MNT dans un dossier Outputs, avec des noms courts",
+    "tool.aeroexports.subtitle": "Exporter l'ortho et le MNT dans un dossier Outputs, avec des noms courts",
     "export.title": "Aero-Exports",
     "export.ortho": "Ortho",
     "export.dem": "MNT",

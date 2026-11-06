@@ -49,3 +49,48 @@ def test_registry():
     assert config.tool("nexiste-pas") is None
     ids = [entry["id"] for entry in config.TOOLS]
     assert len(ids) == len(set(ids))
+
+
+# -- Settings migration: the Aero-Exports section used to be called "fastexport" ---------------------------------------
+
+def _write_settings(data):
+    os.makedirs(config.settings_dir(), exist_ok=True)
+    with open(config.settings_path(), "w", encoding="utf-8") as handle:
+        json.dump(data, handle)
+
+
+def _read_settings():
+    with open(config.settings_path(), encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def test_legacy_fastexport_section_is_copied_to_aeroexports(local_appdata):
+    old = {"cad_format": "dwg", "cad_images": "tif", "cad_clip": False, "dem_look": {"palette": "x"}}
+    _write_settings({"fastexport": old, "fastgcp": {"auto_filter": False}})
+    assert config.get("aeroexports", "cad_format") == "dwg"
+    assert config.get("aeroexports", "cad_clip") is False
+    assert config.get("aeroexports", "dem_look") == {"palette": "x"}
+    saved = _read_settings()
+    assert saved["aeroexports"] == old                    # copied on first read and written back
+    assert saved["fastexport"] == old                     # the old data is not deleted
+    assert saved["fastgcp"] == {"auto_filter": False}
+
+
+def test_legacy_section_never_overwrites_an_existing_aeroexports_section(local_appdata):
+    _write_settings({"fastexport": {"cad_format": "dwg"}, "aeroexports": {"cad_format": "dxf"}})
+    assert config.get("aeroexports", "cad_format") == "dxf"
+    assert _read_settings()["fastexport"] == {"cad_format": "dwg"}
+
+
+def test_legacy_copy_is_independent_of_the_old_section(local_appdata):
+    _write_settings({"fastexport": {"cad_format": "dwg"}})
+    assert config.put("aeroexports", "cad_format", "dxf") is True
+    saved = _read_settings()
+    assert saved["aeroexports"]["cad_format"] == "dxf"
+    assert saved["fastexport"]["cad_format"] == "dwg"
+
+
+def test_no_legacy_section_means_no_aeroexports_section(local_appdata):
+    _write_settings({"fastgcp": {"x": 1}})
+    assert config.get("aeroexports", "cad_format") is None
+    assert _read_settings() == {"fastgcp": {"x": 1}}

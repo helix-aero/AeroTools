@@ -4,6 +4,7 @@ Les reglages sont ranges par poste (LOCALAPPDATA) et non sur le serveur :
 chaque PC garde ses propres cases cochees, le code reste commun.
 """
 
+import copy
 import json
 import os
 
@@ -47,10 +48,10 @@ TOOLS = [
         "rouvrir": False,
     },
     {
-        "id": "fastexport",
+        "id": "aeroexports",
         "menu": "Aero-Exports",
         "titre": "Aero-Exports",
-        "sous_titre": "tool.fastexport.subtitle",
+        "sous_titre": "tool.aeroexports.subtitle",
         "raccourci": None,
         "pret": True,
         "rouvrir": False,
@@ -80,14 +81,35 @@ def settings_path():
     return os.path.join(settings_dir(), "settings.json")
 
 
+# Sections renommees : {nouveau nom: ancien nom}. Aero-Exports s'appelait « fastexport » : les choix deja enregistres
+# (cad_format, cad_images, cad_clip, dem_look...) sont recopies vers la nouvelle section a la premiere lecture, sans
+# toucher a l'ancienne (un retour en arriere ne perd rien).
+LEGACY_SECTIONS = {"aeroexports": "fastexport"}
+
+
+def _migrate_legacy_sections(data):
+    """Recopie les anciennes sections vers les nouvelles si celles-ci n'existent pas. True si `data` a change."""
+    changed = False
+    for new_name, old_name in LEGACY_SECTIONS.items():
+        old = data.get(old_name)
+        if new_name not in data and isinstance(old, dict):
+            data[new_name] = copy.deepcopy(old)
+            changed = True
+    return changed
+
+
 def load_settings():
     """Reglages du poste. Jamais d'exception : un fichier casse = reglages vides."""
     try:
         with open(settings_path(), "r", encoding="utf-8") as handle:
             data = json.load(handle)
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            return {}
     except Exception:
         return {}
+    if _migrate_legacy_sections(data):
+        save_settings(data)
+    return data
 
 
 def save_settings(data):
