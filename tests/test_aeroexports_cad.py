@@ -159,8 +159,8 @@ class Env(object):
         self.exports = []
         self.empty_tiles = set()
 
-    def export(self, chunk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None):
-        self.exports.append((kind, os.path.basename(path), pixel, box, crs))
+    def export(self, chunk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None, clip_to_boundary=True):
+        self.exports.append((kind, os.path.basename(path), pixel, box, crs, clip_to_boundary))
         left, bottom, right, top = box if box else (1000.0, 2000.0, 1100.0, 2050.0)
         if box and (round(left), round(bottom)) in self.empty_tiles:
             return True, ""                                   # dalle sans donnee : Metashape n'ecrit rien
@@ -301,10 +301,10 @@ def test_tiles_export_one_file_per_tile_and_skip_empty_ones(tmp_path, monkeypatc
     jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
     ctx = fake_context(tmp_path, env, "full", tile_m=50)
     result = pipeline.run(ctx, jobs, lambda f, t: None)
-    names = sorted(name for _kind, name, _p, _b, _c in env.exports)
+    names = sorted(name for _kind, name, _p, _b, _c, _f in env.exports)
     assert names == ["EDF_260704_50cm_R01C01_ortho.tif", "EDF_260704_50cm_R01C02_ortho.tif"] or len(names) == 2
     assert result.tiles == len(env.exports) - 1               # une dalle vide : rien d'ecrit
-    boxes = [b for _k, _n, _p, b, _c in env.exports]
+    boxes = [b for _k, _n, _p, b, _c, _f in env.exports]
     assert all(box[2] - box[0] <= 50.0 + 1e-6 for box in boxes)
 
 
@@ -323,7 +323,7 @@ def test_a_target_crs_converts_the_box_and_is_passed_to_metashape(tmp_path):
     ctx = fake_context(tmp_path, env, "full", crs="L93")
     ctx.transform = lambda box, source, target: (10.0, 20.0, 60.0, 45.0)
     pipeline.run(ctx, jobs, lambda f, t: None)
-    kind, name, pixel, box, crs = env.exports[0]
+    kind, name, pixel, box, crs, _clip = env.exports[0]
     assert box == (10.0, 20.0, 60.0, 45.0) and crs == "L93" and pixel == 0.5
 
 

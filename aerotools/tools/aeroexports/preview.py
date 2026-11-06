@@ -196,7 +196,7 @@ def usable_export(paths, psx=None, box=None, native=None):
     return None
 
 
-def fetch_small(export, chunk, box, work, target=TARGET):
+def fetch_small(export, chunk, box, work, target=TARGET, clip=True):
     """Ask Metashape (`export` is msapi.export_raster or a fake) for the DEM at about `target` pixels on the long side, in
     the project's coordinate system, into the folder `work`. Returns the file path. Raises ValueError.
 
@@ -206,7 +206,8 @@ def fetch_small(export, chunk, box, work, target=TARGET):
         raise ValueError("no DEM extent")
     pixel = max(box[2] - box[0], box[3] - box[1]) / float(target)
     path = os.path.join(work, "preview_dem.tif")
-    ok, error = export(chunk, plan.DEM, plan.spec_for("full", plan.DEM), path, pixel, box, big=False, progress=None, crs=None)
+    ok, error = export(chunk, plan.DEM, plan.spec_for("full", plan.DEM), path, pixel, box, big=False, progress=None, crs=None,
+                     clip_to_boundary=clip)
     if not ok or not os.path.isfile(path):
         raise ValueError(error or "Metashape wrote no file")
     return path

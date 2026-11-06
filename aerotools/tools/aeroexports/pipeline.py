@@ -29,8 +29,10 @@ class Context(object):
 
     def __init__(self, chunk, info, folder, site, date, preset, export, tools=None, crs=None, tile_m=None, cad=None,
                  lang="fr", date_style="short", snap=None, transform=None, tick=None, vertical=None, proj=None, epsg=None,
-                 look=None):
+                 look=None, clip_boundary=True, log=None):
         self.chunk, self.info, self.folder = chunk, info, folder
+        self.clip_boundary = bool(clip_boundary)         # cut every Metashape export to the chunk's boundary shapes (same value everywhere)
+        self.log = log or (lambda text: None)            # one line of journal
         self.site, self.date, self.preset, self.cad = site, date, preset, cad or {}
         self.export = export                              # msapi.export_raster ou un faux
         self.tools = tools or {}                          # {"gm": chemin, "acad": chemin accoreconsole, "gdal": dossier}
@@ -211,7 +213,7 @@ def run_job(ctx, job, work, report, result, images):
         ctx.native = True
         try:
             ok, error = ctx.export(ctx.chunk, job.kind, raw_spec, raw, pixel, tile_box, big=_big(ctx, job), progress=None,
-                                   crs=ctx.crs)
+                                   crs=ctx.crs, clip_to_boundary=ctx.clip_boundary)
         finally:
             ctx.native = False
         sub(100)
@@ -281,7 +283,7 @@ def _clip_ortho(ctx, raw, work, record, result):
         cell = max(max(right - left, top - bottom) / float(footprint.TARGET_PX), info["pixel"][0])   # jamais plus fin que l'image
         mask_path = os.path.join(work, "mask_%s.tif" % os.path.splitext(os.path.basename(raw))[0])
         ok, error = ctx.export(ctx.chunk, plan.ORTHO, MASK_SPEC, mask_path, cell, (left, bottom, right, top), big=False,
-                               progress=None, crs=ctx.crs)
+                               progress=None, crs=ctx.crs, clip_to_boundary=ctx.clip_boundary)
         if not ok or not os.path.isfile(mask_path):
             raise ValueError(error or "pas de masque")
         mask_info = geotiff.read_geotiff(mask_path)
@@ -297,6 +299,7 @@ def _clip_dem(ctx, dem_tif, view_tif, record, result):
         return
     try:
         mask, step = footprint.dem_mask(dem_tif)
+        ctx.log("DEM footprint: {:.1%} of the pixels have data (clip_to_boundary={})".format(float(mask.mean()), ctx.clip_boundary))
         dem = geotiff.read_geotiff(dem_tif)
         left, top = dem["origin"]
         extent = (left, top - mask.shape[0] * step * dem["pixel"][1], left + mask.shape[1] * step * dem["pixel"][0], top)

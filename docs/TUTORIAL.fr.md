@@ -375,6 +375,12 @@ Si le même export existe déjà, tu choisis entre l'écraser et une nouvelle ve
   et **Altitudes** vers un autre système d'altitudes. Les altitudes sont calculées par AeroTools avec la grille de géoïde,
   téléchargée une fois, à ta demande, sur le serveur officiel des grilles PROJ ; un raster en degrés passe automatiquement
   dans un système métrique, car un pixel en cm demande des mètres.
+- **Quel raster.** Un chunk peut contenir plusieurs MNT et orthomosaïques ; Aero-Exports exporte toujours celui **par défaut** (en police
+  normale dans le panneau Workspace ; double-clique sur un autre pour en faire celui par défaut). Chaque carte dit lequel c'est (taille et
+  pixel) et prévient quand le MNT par défaut est bien plus grossier que l'ortho. La fenêtre suit le chunk actif toute seule, et sa
+  première ligne nomme le chunk.
+- **Formes de limite.** Metashape découpe un export aux formes de limite du chunk. Quand le chunk en a, une case **Découper aux formes de
+  limite du chunk** apparaît (cochée par défaut, comme Metashape) ; décoche-la pour exporter toute la surface du raster.
 - **Dalles.** **Découper en dalles** coupe l'export en dalles carrées d'une taille choisie, un fichier chacune ; les dalles vides
   sont ignorées.
 

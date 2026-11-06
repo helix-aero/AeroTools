@@ -1634,6 +1634,56 @@ def _box_of(chk, name):
         return None
 
 
+def default_raster(chk, name):
+    """The raster Metashape exports (and shows in normal font in the Workspace pane): {"key", "label", "width", "height",
+    "resolution"} for `chk.orthomosaic` / `chk.elevation`, or None. A chunk can hold several; this property is the default one."""
+    try:
+        item = getattr(chk, name)
+        if item is None:
+            return None
+        return {"key": int(item.key), "label": str(item.label), "width": int(item.width), "height": int(item.height),
+                "resolution": float(item.resolution)}
+    except Exception:
+        return None
+
+
+def raster_count(chk, name):
+    """How many DEMs (`elevations`) or orthomosaics (`orthomosaics`) the chunk holds; 0 when unknown."""
+    try:
+        return len(getattr(chk, name))
+    except Exception:
+        return 0
+
+
+def boundary_count(chk):
+    """Number of shapes of the chunk that cut the exported rasters (boundary type OuterBoundary or InnerBoundary), or None when
+    it cannot be read. Metashape's `exportRaster` clips to them by default (`clip_to_boundary`)."""
+    try:
+        count = 0
+        for shape in chk.shapes:
+            if not str(shape.boundary_type).endswith("NoBoundary"):
+                count += 1
+        return count
+    except Exception:
+        return None
+
+
+def raster_signature(chk):
+    """Cheap fingerprint of what the export window shows: the chunk, its default DEM and orthomosaic (key, size, resolution) and the
+    number of shapes. Read by a timer, so no iteration over the shapes and no export. None for a missing chunk."""
+    if chk is None:
+        return None
+    parts = [chunk_key(chk)]
+    for name in ("elevation", "orthomosaic"):
+        item = default_raster(chk, name)
+        parts.append(None if item is None else (item["key"], item["width"], item["height"], round(item["resolution"], 9)))
+    try:
+        parts.append(len(chk.shapes))
+    except Exception:
+        parts.append(None)
+    return tuple(parts)
+
+
 def raster_info(chk=None):
     """Ce qu'on peut exporter dans ce chunk : {"ortho": (res, w, h) ou None, "dem": ..., "box_ortho": (g, b, d, h) ou
     None, "box_dem": ..., "crs": texte, "dates": [...]}.
@@ -1641,9 +1691,15 @@ def raster_info(chk=None):
     `dates` : dates EXIF d'un echantillon de photos (le nom de fichier en tire la date du vol)."""
     chk = chk if chk is not None else chunk()
     info = {"ortho": None, "dem": None, "box_ortho": None, "box_dem": None, "crs": "", "dates": [], "crs_object": None,
-            "crs_ortho": None, "crs_dem": None, "center": None}
+            "crs_ortho": None, "crs_dem": None, "center": None,
+            "dem_default": None, "ortho_default": None, "n_dems": 0, "n_orthos": 0, "boundaries": None}
     if chk is None:
         return info
+    info["dem_default"] = default_raster(chk, "elevation")
+    info["ortho_default"] = default_raster(chk, "orthomosaic")
+    info["n_dems"] = raster_count(chk, "elevations")
+    info["n_orthos"] = raster_count(chk, "orthomosaics")
+    info["boundaries"] = boundary_count(chk)
     info["ortho"] = _raster_of(chk, "orthomosaic")
     info["dem"] = _raster_of(chk, "elevation")
     info["box_ortho"] = _box_of(chk, "orthomosaic")
@@ -1794,7 +1850,7 @@ def snapped_box(box, pixel):
             math.ceil(right / pixel - 1e-9) * pixel, math.ceil(top / pixel - 1e-9) * pixel)
 
 
-def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None):
+def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None, clip_to_boundary=True):
     """Ecrit l'ortho (kind "ortho") ou le MNT (kind "dem") dans `path`. Renvoie (ok, message d'erreur).
 
     `spec` : un reglage de tools/aeroexports/plan.py. Sans `pixel` (ou sans `box`), Metashape garde sa propre grille.
@@ -1802,6 +1858,8 @@ def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progre
     exactement `pixel` et la grille est alignee sur des multiples de `pixel` : releve fait sur Metashape 2.2.1,
     ou `resolution=0.5` donnait 0.49996 (metres au sol) alors que `resolution_x/y=0.5` donne 0.5 exactement.
     `crs` : SCR de sortie (voir target_crs) ; `box` est alors exprimee dans ce SCR (voir transform_box).
+    `clip_to_boundary` : decouper l'export aux formes « boundary » du chunk (OuterBoundary / InnerBoundary). Toujours passe a
+    Metashape (jamais son defaut sous-entendu) : sans cela un MNT peut perdre plus de la moitie de ses pixels sans que personne le voie.
     `progress(pourcent)` est appele pendant le calcul."""
     try:
         compression = Metashape.ImageCompression()
@@ -1822,6 +1880,7 @@ def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progre
             "save_alpha": bool(spec.get("alpha", False)),
             "white_background": bool(spec.get("white", False)),
             "split_in_blocks": False,
+            "clip_to_boundary": bool(clip_to_boundary),
         }
         if pixel and box:
             left, bottom, right, top = snapped_box(box, float(pixel))

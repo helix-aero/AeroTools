@@ -284,7 +284,7 @@ registry and the usual folders, or pointed at by the user):
   what to pick. Unticking the raster in degrees gives back "Same as the project". Exporting a drawing, tiles or a pixel in cm from a raster in
   degrees without a projected system is refused in words before any file is written (`_degrees_blocks`).
 - The error line names the file that really failed: `pipeline.Context.failed` is set before each file (and for TOPO.dxf / .dwg).
-- Tests: `python -B tests_qt\run_qt_aeroexports.py` (35 cases) includes the layout at x1, x1.25, x1.5 and x2 font scale for both windows
+- Tests: `python -B tests_qt\run_qt_aeroexports.py` (41 cases) includes the layout at x1, x1.25, x1.5 and x2 font scale for both windows
   (`rescale` grows every font, `cut_off` lists any widget past its panel's right edge or the window's) and a small 1024 px screen.
   Offscreen Qt has no real DPI scaling, so this is an approximation of 125-200 %; the real check is Metashape on a scaled display.
 
@@ -311,6 +311,45 @@ full name is the tooltip).
   (two fake chunks with different boxes, dates and systems: switch between refresh and export, switch during an export, preview, the
   header at x1 to x2 font scales). Not covered offscreen: the real activation event (an offscreen window is never active; the harness calls
   `_follow_chunk()` as `changeEvent` does) and Metashape's real `Chunk.key`.
+
+### Which raster, and the boundary clip
+
+Measured live on Metashape 2.2.1 (three real chunks of one project), with read-only console probes:
+- A chunk can hold several DEMs and orthomosaics. `chunk.elevation` / `chunk.orthomosaic` are the default ones (the non-italic entries of the
+  Workspace pane; a double-click makes another one the default), `chunk.elevations` / `chunk.orthomosaics` list all, and `exportRaster`
+  exports the default one. The window therefore targets the default raster only (no choice list) and says which it is under each card:
+  "Default DEM: 9014 x 10688 px, 1.12 cm/px." plus "(1 of 4 DEMs: double-click another one in the Workspace pane to make it the default)".
+  A default DEM more than 10 times coarser than the default ortho (`COARSE_RATIO`; a chunk whose default DEM was 50 cm/px next to a 0.8 cm ortho)
+  gets an orange line "The default DEM is coarse (50 cm/px)".
+- `Chunk.exportRaster(clip_to_boundary=True)` is Metashape's default: the export is cut to the chunk's shapes of boundary type OuterBoundary or
+  InnerBoundary. One outer boundary left 19.9 % valid pixels in a DEM instead of 51.9 % without the clip; shapes of type NoBoundary cut nothing;
+  no shape, no difference. Nothing in the file says it happened, so `msapi.export_raster(..., clip_to_boundary=)` now passes the value on every
+  call, never the implicit default.
+- The setting: a tick box "Clip to the chunk's boundary shapes", shown only when `msapi.boundary_count(chunk)` finds boundary shapes (a guarded loop,
+  done at `refresh()` and when a click needs the exact count). On by default, as in Metashape, saved as `clip_boundary` in the settings. The same value
+  (`ExportDialog._boundary_clip()`) goes to the small DEM of the preview (`preview.fetch_small(clip=)`), to every raster export and to the mask
+  export that draws the "Hide the empty border" polygon (`pipeline.Context.clip_boundary`). The look window says when its picture is clipped.
+  A DEM already exported next to the project is reused for the preview only when the chunk has no boundary shape (`boundaries == 0`): with shapes,
+  or when the count could not be read, the file may have been written with the other setting, so a small export is made.
+
+### The window follows Metashape by itself
+
+A `QTimer` (`WATCH_MS` = 400 ms) calls `_watch_tick`: only while the window is visible, no export runs and none of our windows (look window,
+"already exists" question) is open on top. It compares `msapi.raster_signature(active chunk)` (chunk key, default DEM and ortho as key / size / resolution,
+number of shapes: nothing heavy, no loop over the shapes, no export) with the one taken at `refresh()`. A change calls `refresh()` and writes one line:
+"The active chunk changed: now working on <name>", "The default DEM changed", "The default orthomosaic changed" or "The boundary shapes of the chunk
+changed". An error while reading Metashape is journalled, never raised. A click on Export or on the look button also checks (with the exact boundary
+count) and stops after the refresh, as before. The activation event is still handled but nothing relies on it.
+
+### Journal lines for diagnosis
+
+`ExportDialog._describe()`: chunk label and key, default DEM and ortho used (key, label, size, pixel), how many of each the chunk holds, number of boundary
+shapes, `clip_to_boundary`. It is written when the window follows a change, before a preview ("preview of ...; DEM footprint: 51.9 % of the pixels have data",
+the valid fraction of the small DEM) and before an export ("export of ..."); the pipeline adds "DEM footprint: x % of the pixels have data
+(clip_to_boundary=...)" when it draws the clip of the DEM image. So a wrong crop can be diagnosed from `aerotools.log` alone.
+Tests: `tests/test_aeroexports_plan.py` (flag, default rasters, signature), `test_aeroexports_clip_pipeline.py` (flag on every export, including the
+mask), `test_aeroexports_preview.py`, and the Qt harness (tick box, flags on preview / export / journal, raster lines, real timer, no refresh during an
+export, layout at x1 to x2). Only a real Metashape shows whether `boundary_type` strings, `Chunk.key` and the timer behave as in the fakes.
 
 ### AutoCAD speed: what was measured
 

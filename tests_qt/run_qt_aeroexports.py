@@ -8,6 +8,7 @@ code on the first failure. numpy is required for the preview window; without it 
 """
 
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -735,21 +736,47 @@ def _():
 # Always the right chunk: the window pins the chunk it shows; a chunk changed in Metashape is noticed, never exported by surprise
 # --------------------------------------------------------------------------------------------------
 
+def fake_raster(key, width, height, resolution):
+    return types.SimpleNamespace(key=key, label=str(key), width=width, height=height, resolution=resolution)
+
+
+def fake_shape(kind):
+    return types.SimpleNamespace(boundary_type="Metashape.Shape.BoundaryType." + kind)
+
+
 class FakeChunk(object):
-    def __init__(self, key, label):
-        self.key, self.label = key, label
+    """A chunk as the window reads it: key, label, default DEM and ortho, the others, shapes."""
+
+    def __init__(self, key, label, dem, ortho, others=0, shapes=()):
+        self.key, self.label, self.elevation, self.orthomosaic = key, label, dem, ortho
+        self.elevations = [dem] + [fake_raster(90 + i, 10, 10, 1.0) for i in range(others)]
+        self.orthomosaics = [ortho]
+        self.shapes = list(shapes)
 
 
-JULY, MAY = FakeChunk(1, "July"), FakeChunk(2, "May")
+JULY = FakeChunk(1, "July", fake_raster(3, 9014, 10688, 0.0112), fake_raster(0, 2019, 2395, 0.05), others=3,
+                 shapes=[fake_shape("OuterBoundary")])
+MAY = FakeChunk(2, "May", fake_raster(4, 172, 165, 0.5), fake_raster(7, 6000, 5000, 0.0079), others=2,
+                shapes=[fake_shape("NoBoundary")] * 5)
 CHUNK_INFO = {
-    "July": {"ortho": (0.03, 6000, 5000), "dem": (0.12, 1500, 1250), "box_ortho": (100.0, 200.0, 280.0, 350.0),
+    "July": {"ortho": (0.05, 2019, 2395), "dem": (0.0112, 9014, 10688), "box_ortho": (100.0, 200.0, 280.0, 350.0),
              "box_dem": (100.0, 200.0, 280.0, 350.0), "crs": "RGF93 v1 / Lambert-93", "dates": ["2026:07:10 09:00:00"],
              "crs_object": None, "center": None},
-    "May": {"ortho": (0.05, 3000, 2500), "dem": (0.2, 700, 600), "box_ortho": (900.0, 800.0, 1050.0, 925.0),
+    "May": {"ortho": (0.0079, 6000, 5000), "dem": (0.5, 172, 165), "box_ortho": (900.0, 800.0, 1050.0, 925.0),
             "box_dem": (900.0, 800.0, 1040.0, 920.0), "crs": "WGS 84 / UTM zone 32N", "dates": ["2026:05:12 09:00:00"],
             "crs_object": None, "center": None},
 }
 ACTIVE = {"chunk": JULY}
+
+
+def fake_info(chk=None):
+    """msapi.raster_info on the fake chunks: boxes and systems from CHUNK_INFO, default rasters and shapes read for real."""
+    from aerotools import msapi
+    info = dict(CHUNK_INFO["May" if chk is MAY else "July"])
+    info.update(dem_default=msapi.default_raster(chk, "elevation"), ortho_default=msapi.default_raster(chk, "orthomosaic"),
+                n_dems=msapi.raster_count(chk, "elevations"), n_orthos=msapi.raster_count(chk, "orthomosaics"),
+                boundaries=msapi.boundary_count(chk))
+    return info
 
 
 def open_chunk_dialog(label=None, scale=1.0, size=(1080, 740)):
@@ -762,9 +789,11 @@ def open_chunk_dialog(label=None, scale=1.0, size=(1080, 740)):
     config.put("aeroexports", "preset", "full")
     ACTIVE["chunk"] = JULY
     JULY.label = label or "July"
+    MAY.elevation = MAY.elevations[0]
+    config.put("aeroexports", "clip_boundary", None)
     msapi.document_path = lambda: path
     msapi.chunk = lambda: ACTIVE["chunk"]
-    msapi.raster_info = lambda chk=None: dict(CHUNK_INFO["July" if chk is JULY else "May"])
+    msapi.raster_info = fake_info
     dialog.crs.check_geoid_presence = lambda choice: {"status": "ok", "spec": {}}
     dialog.crs.zone_grids = lambda *args: []
     box = dialog.ExportDialog(None)
@@ -779,8 +808,8 @@ def open_chunk_dialog(label=None, scale=1.0, size=(1080, 740)):
 
 
 def fake_export(calls, during=None):
-    def export(chk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None):
-        calls.append({"chunk": chk, "kind": kind, "path": path, "pixel": pixel, "box": box})
+    def export(chk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None, clip_to_boundary=True):
+        calls.append({"chunk": chk, "kind": kind, "path": path, "pixel": pixel, "box": box, "clip": clip_to_boundary})
         if during is not None and len(calls) == 1:
             during()
         with open(path, "wb") as handle:
@@ -869,6 +898,146 @@ def _():
         unscale()
         controls.screen_area = lambda: QtCore.QRect(0, 0, 1086, 800)
     bad = {f: r for f, r in results.items() if r[0] or not all(r[1:])}
+    return not bad, "problems: {}".format(bad)
+
+
+@case("boundary: the tick box shows only for a chunk with boundary shapes, is on by default, and is saved")
+def _():
+    box = open_chunk_dialog()
+    shown_july = not box.boundary_row.isHidden()
+    default_on = box.boundary_check.isChecked()
+    note_on = box.boundary_note.text()
+    box.boundary_check.setChecked(False)
+    saved_off = config.get("aeroexports", "clip_boundary")
+    note_off = box.boundary_note.text()
+    ACTIVE["chunk"] = MAY                                   # 5 shapes, none of them a boundary: nothing to clip
+    box._follow_chunk()
+    hidden_may = box.boundary_row.isHidden()
+    clip_may = box._boundary_clip()
+    ACTIVE["chunk"] = JULY
+    box._follow_chunk()
+    still_off = not box.boundary_check.isChecked()
+    box.close()
+    return (shown_july and default_on and "1 boundary shape" in note_on and saved_off is False and "whole area" in note_off
+            and hidden_may and clip_may is True and still_off), \
+        "july={} on={} note={!r} saved={} off_note={!r} may_hidden={} may_clip={} remembered={}".format(
+            shown_july, default_on, note_on, saved_off, note_off, hidden_may, clip_may, still_off)
+
+
+@case("boundary: the setting reaches the preview export, every raster export and the journal lines")
+def _():
+    from aerotools import journal, msapi
+    box = open_chunk_dialog()
+    calls, lines = [], []
+    msapi.export_raster = fake_export(calls)
+    real_write = journal.write
+    journal.write = lines.append
+    try:
+        box.boundary_check.setChecked(False)
+        box._preview_model()                                # a small export (the fake writes no real TIFF, so the preview fails: the call is what counts)
+        preview_flags = [c["clip"] for c in calls]
+        del calls[:]
+        box._on_export()
+        export_flags = [c["clip"] for c in calls]
+        del calls[:]
+        shutil.rmtree(box._folder(), ignore_errors=True)          # else the window asks overwrite / new version
+        box.boundary_check.setChecked(True)
+        box._on_export()
+        on_flags = [c["clip"] for c in calls]
+    finally:
+        journal.write = real_write
+    text = " | ".join(lines)
+    box.close()
+    return (preview_flags == [False] and export_flags == [False, False] and on_flags == [True, True]
+            and "chunk 'July'" in text and "DEM key 3" in text and "9014x10688" in text and "clip_to_boundary=False" in text
+            and "clip_to_boundary=True" in text and "ortho key 0" in text), \
+        "preview={} export={} on={} lines={}".format(preview_flags, export_flags, on_flags, text[:600])
+
+
+@case("raster: each card says exactly which raster is exported, how many there are, and warns about a coarse DEM")
+def _():
+    box = open_chunk_dialog()
+    july_dem = box.raster_details["dem"].text()
+    july_ortho = box.raster_details["ortho"].text()
+    july_warn = box.raster_warnings["dem"].isHidden()
+    ACTIVE["chunk"] = MAY
+    box._follow_chunk()
+    may_dem = box.raster_details["dem"].text()
+    may_warn = box.raster_warnings["dem"].text()
+    may_visible = not box.raster_warnings["dem"].isHidden()
+    box.close()
+    return ("Default DEM: 9014 x 10688 px, 1.12 cm/px." in july_dem and "1 of 4 DEMs" in july_dem and "Workspace" in july_dem
+            and "Default orthomosaic: 2019 x 2395 px, 5 cm/px." in july_ortho and "double-click" not in july_ortho and july_warn
+            and "Default DEM: 172 x 165 px, 50 cm/px." in may_dem and "1 of 3 DEMs" in may_dem
+            and may_visible and "coarse (50 cm/px)" in may_warn), \
+        "{!r} / {!r} / {} / {!r} / {!r}".format(july_dem, july_ortho, july_warn, may_dem, may_warn)
+
+
+@case("auto refresh: the real timer follows a chunk switched in Metashape, and a default DEM changed in the Workspace, by itself")
+def _():
+    box = open_chunk_dialog()
+    running = box._watch.isActive() and box._watch.interval() <= 500
+    ACTIVE["chunk"] = MAY                                   # no click in the window, no activation event
+    pump(1000)
+    title = box.chunk_title.text()
+    notice = box.status.text()
+    MAY.elevation = fake_raster(9, 4000, 3000, 0.015)       # double-click on another DEM in the Workspace pane
+    pump(1000)
+    dem_notice = box.status.text()
+    dem_text = box.raster_details["dem"].text()
+    MAY.elevation = MAY.elevations[0]                       # back to the coarse one for the other cases
+    box.close()
+    return (running and title == "Chunk: May" and "active chunk changed" in notice and "May" in notice
+            and dem_notice == "The default DEM changed" and "4000 x 3000 px" in dem_text), \
+        "running={} title={!r} notice={!r} dem_notice={!r} dem={!r}".format(running, title, notice, dem_notice, dem_text)
+
+
+@case("auto refresh: nothing happens during an export or while a window of ours is open on top, and the timer never raises")
+def _():
+    from aerotools import msapi
+    box = open_chunk_dialog()
+    ACTIVE["chunk"] = MAY
+    box._busy = True
+    box._watch_tick()
+    kept_busy = box._chunk is JULY
+    box._busy = False
+    box._dialog_open = 1
+    box._watch_tick()
+    kept_open = box._chunk is JULY
+    box._dialog_open = 0
+    real = msapi.raster_signature
+    msapi.raster_signature = lambda chk: 1 / 0
+    try:
+        box._watch_tick()                                   # a failing read of Metashape is logged, not raised
+    finally:
+        msapi.raster_signature = real
+    box._watch_tick()
+    followed = box._chunk is MAY
+    box.close()
+    return kept_busy and kept_open and followed, "busy={} open={} followed={}".format(kept_busy, kept_open, followed)
+
+
+@case("large fonts: the raster lines, the coarse-DEM warning and the boundary tick box stay inside their panel at x1 to x2")
+def _():
+    from aerotools.tools.aeroexports import controls
+    controls.screen_area = lambda: SCREEN
+    results = {}
+    try:
+        for factor in SCALES:
+            box = open_chunk_dialog(scale=factor)
+            pump(150)
+            july = (cut_off(box), not box.boundary_row.isHidden(), bool(box.raster_details["dem"].text()))
+            ACTIVE["chunk"] = MAY
+            box._follow_chunk()
+            pump(150)
+            may = (cut_off(box), not box.raster_warnings["dem"].isHidden())
+            results[factor] = (july, may)
+            box.close()
+            unscale()
+    finally:
+        unscale()
+        controls.screen_area = lambda: QtCore.QRect(0, 0, 1086, 800)
+    bad = {f: r for f, r in results.items() if r[0][0] or r[1][0] or not (r[0][1] and r[0][2] and r[1][1])}
     return not bad, "problems: {}".format(bad)
 
 

@@ -145,14 +145,18 @@ def test_an_exported_dem_is_reused_only_when_it_is_not_older_than_the_project(tm
 
 
 def test_the_small_dem_is_asked_from_metashape_without_a_progress_callback(tmp_path):
-    seen = []
+    seen, flags = [], []
 
-    def export(chunk, kind, spec, path, pixel, box, big=False, progress=None, crs=None):
+    def export(chunk, kind, spec, path, pixel, box, big=False, progress=None, crs=None, clip_to_boundary=True):
+        flags.append(clip_to_boundary)
         seen.append((kind, spec, pixel, box, progress, crs, big))
         make_dem(path, np.full((10, 10), 3.0, dtype="<f4"), box[0], box[3], pixel)
         return True, ""
 
     path = preview.fetch_small(export, object(), (1000.0, 2000.0, 1500.0, 2200.0), str(tmp_path))
+    assert flags == [True]                                  # the boundary clip is always passed, Metashape's default when not asked
+    preview.fetch_small(export, object(), (1000.0, 2000.0, 1500.0, 2200.0), str(tmp_path), clip=False)
+    assert flags == [True, False]
     kind, spec, pixel, box, progress, crs, big = seen[0]
     assert kind == "dem" and progress is None and crs is None and not big             # a Qt callback inside Metashape's export crashed it
     assert pixel == pytest.approx(500.0 / preview.TARGET) and box == (1000.0, 2000.0, 1500.0, 2200.0)

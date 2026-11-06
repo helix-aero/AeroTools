@@ -146,6 +146,14 @@ def test_export_raster_without_a_pixel_keeps_the_metashape_grid(meta):
     assert "progress" not in call
 
 
+def test_export_raster_always_says_whether_to_clip_to_the_boundary_shapes(meta):
+    chunk = FakeChunk()
+    msapi.export_raster(chunk, "dem", plan.spec_for("full", "dem"), "C:/x/a.tif")
+    msapi.export_raster(chunk, "dem", plan.spec_for("full", "dem"), "C:/x/b.tif", clip_to_boundary=False)
+    msapi.export_raster(chunk, "ortho", plan.spec_for("full", "ortho"), "C:/x/c.tif", 0.5, (1.0, 2.0, 9.0, 7.0), clip_to_boundary=True)
+    assert [call["clip_to_boundary"] for call in chunk.calls] == [True, False, True]
+
+
 def test_export_raster_jpeg_asks_for_a_world_file(meta):
     chunk = FakeChunk()
     msapi.export_raster(chunk, "ortho", plan.spec_for("jpeg", "ortho"), "C:/x/a.jpg")
@@ -175,7 +183,43 @@ def test_raster_info_reads_what_exists(meta):
 def test_raster_info_without_a_chunk_is_empty(meta, monkeypatch):
     monkeypatch.setattr(msapi, "chunk", lambda: None)
     assert msapi.raster_info() == {"ortho": None, "dem": None, "box_ortho": None, "box_dem": None, "crs": "",
-                                   "dates": [], "crs_object": None, "crs_ortho": None, "crs_dem": None, "center": None}
+                                   "dates": [], "crs_object": None, "crs_ortho": None, "crs_dem": None, "center": None,
+                                   "dem_default": None, "ortho_default": None, "n_dems": 0, "n_orthos": 0, "boundaries": None}
+
+
+def _raster(key, width, height, resolution):
+    return types.SimpleNamespace(key=key, label="r%d" % key, width=width, height=height, resolution=resolution,
+                                 left=0.0, bottom=0.0, right=1.0, top=1.0, projection=types.SimpleNamespace(crs=None))
+
+
+def _shape(kind):
+    return types.SimpleNamespace(boundary_type="Metashape.Shape.BoundaryType." + kind)
+
+
+def test_raster_info_names_the_default_rasters_and_counts_the_others_and_the_boundary_shapes(meta):
+    default = _raster(3, 9014, 10688, 0.0112)
+    chunk = types.SimpleNamespace(elevation=default, elevations=[_raster(1, 10, 10, 1.0), default, _raster(5, 10, 10, 1.0)],
+                                  orthomosaic=_raster(0, 2019, 2395, 0.05), orthomosaics=[_raster(0, 2019, 2395, 0.05), _raster(1, 9, 9, 0.01)],
+                                  shapes=[_shape("NoBoundary"), _shape("OuterBoundary"), _shape("InnerBoundary")], crs=None, cameras=[])
+    info = msapi.raster_info(chunk)
+    assert info["dem_default"] == {"key": 3, "label": "r3", "width": 9014, "height": 10688, "resolution": 0.0112}
+    assert info["ortho_default"]["key"] == 0 and info["n_dems"] == 3 and info["n_orthos"] == 2
+    assert info["boundaries"] == 2                                                  # NoBoundary shapes do not cut anything
+    chunk.shapes = []
+    assert msapi.raster_info(chunk)["boundaries"] == 0
+    del chunk.shapes
+    assert msapi.raster_info(chunk)["boundaries"] is None                           # unreadable: unknown, not zero
+
+
+def test_raster_signature_changes_with_the_chunk_the_default_rasters_and_the_shapes(meta):
+    def make(key, dem_key=3, shapes=1):
+        return types.SimpleNamespace(key=key, elevation=_raster(dem_key, 100, 100, 0.1), orthomosaic=_raster(0, 50, 50, 0.2),
+                                     shapes=[_shape("OuterBoundary")] * shapes)
+    base = msapi.raster_signature(make(1))
+    assert base == msapi.raster_signature(make(1)) and msapi.raster_signature(None) is None
+    assert msapi.raster_signature(make(2)) != base                                  # another chunk
+    assert msapi.raster_signature(make(1, dem_key=4)) != base                       # another default DEM (double-click in the Workspace)
+    assert msapi.raster_signature(make(1, shapes=2)) != base                        # a shape was added
 
 
 # -- changement de SCR : emprise ---------------------------------------------------------------------
