@@ -1,3 +1,4 @@
+import os
 """Fast Export : presets, liste des fichiers, appel d'export (sans Metashape ni Qt)."""
 import datetime
 import types
@@ -223,3 +224,15 @@ def test_transform_box_gives_up_with_a_reason(meta):
     meta.CoordinateSystem.transform = staticmethod(refuse)
     assert msapi.transform_box((0.0, 0.0, 1.0, 1.0), FakeCrs('PROJCS["a"]'), FakeCrs('PROJCS["b"]')) is None
     assert msapi.transform_box.last_error == "no path"
+
+
+def test_every_shared_widget_the_export_window_asks_ui_for_exists():
+    """Le 05/11, un revert avait retire ui.OptionCard : la fenetre ne demarrait plus (AttributeError). On relit les noms."""
+    import re
+    root = os.path.join(os.path.dirname(__file__), "..", "aerotools")
+    dialog = open(os.path.join(root, "tools", "fastexport", "dialog.py"), encoding="utf-8").read()
+    shared = open(os.path.join(root, "ui.py"), encoding="utf-8").read()
+    wanted = set(re.findall(r"(?<![\w.])ui\.([A-Za-z_]\w*)", dialog))
+    defined = set(re.findall(r"^(?:def|class) (\w+)", shared, re.M)) | set(re.findall(r"^(\w+) *=", shared, re.M))
+    missing = [name for name in sorted(wanted) if name not in defined]
+    assert missing == []
