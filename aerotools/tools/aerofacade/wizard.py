@@ -1,4 +1,4 @@
-"""Aero-Facade: the wizard window. One wide window, six screens, a step bar on top, Back / Next / Cancel at the bottom.
+"""Aero-Facade: the wizard window. One wide window, seven screens, a step bar on top, Back / Next / Cancel at the bottom.
 
 The window talks only to a `Backend` (see `backend.py`): the `FakeBackend` in tests and screenshots, `msfacade.MetashapeBackend` inside
 Metashape. Long backend calls run on a worker thread (`tasks.Task`); the window watches them with a timer and never lets the backend touch
@@ -13,7 +13,8 @@ from ..aeroexports import controls
 from . import state as S
 from . import theme_facade
 from .common import tr
-from .screens_build import BuildScreen, ExportScreen
+from .screens_build import BuildScreen
+from .screens_export import ExportScreen, PicturesScreen
 from .screens_margins import MarginsScreen, MethodScreen
 from .screens_search import FacadesScreen, SearchScreen
 from .tasks import Task, plain_error
@@ -26,7 +27,7 @@ PICTURE_PX = 1600
 
 
 class StepBar(QtWidgets.QWidget):
-    """The six numbered steps, the current one filled green, the finished ones ticked."""
+    """The numbered steps (seven), the current one filled green, the finished ones ticked."""
 
     def __init__(self, keys):
         super(StepBar, self).__init__()
@@ -134,7 +135,8 @@ class FacadeWizard(QtWidgets.QDialog):
         self.chunk_label = controls.ElidedLabel("aeroMeta")
         head.addWidget(self.chunk_label, 1)
         layout.addLayout(head)
-        self.steps = StepBar([cls.name_key for cls in (SearchScreen, FacadesScreen, MarginsScreen, MethodScreen, BuildScreen, ExportScreen)])
+        self.steps = StepBar([cls.name_key for cls in (SearchScreen, FacadesScreen, MarginsScreen, MethodScreen, BuildScreen, PicturesScreen,
+                                                       ExportScreen)])
         layout.addWidget(self.steps)
         rule = QtWidgets.QFrame()
         rule.setFixedHeight(1)
@@ -145,7 +147,7 @@ class FacadeWizard(QtWidgets.QDialog):
         self.stack = QtWidgets.QStackedWidget()
         layout.addWidget(self.stack, 1)
         self.screens = [SearchScreen(self), FacadesScreen(self), MarginsScreen(self), MethodScreen(self), BuildScreen(self),
-                        ExportScreen(self)]
+                        PicturesScreen(self), ExportScreen(self)]
         for screen in self.screens:
             self.stack.addWidget(screen)
 

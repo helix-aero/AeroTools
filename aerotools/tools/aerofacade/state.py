@@ -9,8 +9,8 @@ from ... import config
 from .model import Availability, Margins, Method, active
 
 SECTION = "aerofacade"
-SEARCH, FACADES, MARGINS, METHOD, BUILD, EXPORT = range(6)
-STEP_KEYS = ("search", "facades", "margins", "method", "build", "export")
+SEARCH, FACADES, MARGINS, METHOD, BUILD, PICTURES, EXPORT = range(7)
+STEP_KEYS = ("search", "facades", "margins", "method", "build", "pictures", "export")
 FORMATS = ("png", "jpg", "tif", "jp2", "ecw")
 DEFAULT_PIXEL_CM = 3.0
 
@@ -32,6 +32,7 @@ class WizardState(object):
         self.ortho_state = {}                     # letter -> (ok, message)
         self.ortho_key = None                     # signature the orthophotos were built for
         self.skipped_build = False                # screen 5 was skipped because every DEM existed
+        self.picture_choice = None                # letters ticked on screen 6 (the ones screen 7 exports); None = every picture that is built
 
     # -- the outline ------------------------------------------------------------------------------
 
@@ -117,12 +118,17 @@ class WizardState(object):
         self.ortho_state = {}
         self.ortho_key = None
         self.skipped_build = False
+        self.picture_choice = None                # other walls or margins: new pictures, everything is ticked again
 
     def dem_ok_letters(self):
         return [f.letter for f in self.active() if self.dem_state.get(f.letter, (False, ""))[0]]
 
     def ortho_ok_letters(self):
         return [f.letter for f in self.active() if self.ortho_state.get(f.letter, (False, ""))[0]]
+
+    def chosen_letters(self):
+        """The pictures to export: the built ones that are ticked on screen 6 (all of them until the operator ticks)."""
+        return [letter for letter in self.ortho_ok_letters() if self.picture_choice is None or letter in self.picture_choice]
 
     # -- rules ------------------------------------------------------------------------------------
 
@@ -137,6 +143,8 @@ class WizardState(object):
             return bool(self.method) and self.availability.ok(self.method) and bool(self.active())
         if step == BUILD:
             return bool(self.dem_ok_letters())
+        if step == PICTURES:
+            return bool(self.chosen_letters())
         return False
 
 

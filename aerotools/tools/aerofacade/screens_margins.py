@@ -224,4 +224,4 @@ class MethodScreen(Screen):
         letters = self.state.letters()
         self.state.dem_state = dict((letter, (True, "")) for letter in letters if existing.get(letter))
         self.state.skipped_build = bool(letters) and all(existing.get(letter) for letter in letters)
-        return S.EXPORT if self.state.skipped_build else S.BUILD
+        return S.PICTURES if self.state.skipped_build else S.BUILD

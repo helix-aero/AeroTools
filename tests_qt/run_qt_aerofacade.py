@@ -166,6 +166,15 @@ def _parents(widget):
         parent = parent.parentWidget()
 
 
+def scroll_bars(window):
+    """Vertical scroll bars that are showing on the visible screen (the export settings must not need one at the usual window size)."""
+    from aerotools.tools.aeroexports import controls
+    return ["a vertical scroll bar shows (page {} > view {})".format(a.widget().height(), a.viewport().height())
+            for a in window.findChildren(controls.FitScroll) if a.isVisibleTo(window) and a.verticalScrollBar().isVisible()
+            and a.verticalScrollBar().maximum() > 0 and a.parent() is not None and a.parent().isVisibleTo(window)
+            and a.widget().findChildren(QtWidgets.QLineEdit)]
+
+
 def cut_off(window):
     """What is cut off in a window: a scroll page that needs a horizontal bar, a widget past its page's or the window's right edge,
     text in a label that does not fit its box. Empty when all is visible."""
@@ -266,10 +275,15 @@ def prepare_to(window, step):
         window.next()
     if step >= S.BUILD:
         window.next()
-    if step >= S.EXPORT:
+    if step >= S.PICTURES:
         window.ask = lambda title, text, buttons: "continue"
         window.screens[S.BUILD].start_build()
-        assert until(lambda: window.current_step() == S.EXPORT, 30)
+        assert until(lambda: window.current_step() == S.PICTURES, 30)
+    if step >= S.EXPORT:
+        pics = window.screens[S.PICTURES]
+        assert until(lambda: pics.stack.currentIndex() == 1, 30)
+        window.next()
+        assert window.current_step() == S.EXPORT
 
 
 # --------------------------------------------------------------------------------------------------
@@ -278,6 +292,13 @@ def prepare_to(window, step):
 
 def facade_letters(window):
     return [f.letter for f in window.state.active()]
+
+
+def tick(window, letters):
+    """Tick exactly these pictures (the shared choice screen 7 exports), whichever screen is showing."""
+    window.screens[S.PICTURES].thumbs.set_checked(letters)
+    window.state.picture_choice = set(letters)
+    window.screens[S.EXPORT]._refresh()
 
 
 @case("wizard: opens, loads the picture of the building, Run is disabled until an outline is drawn")
@@ -669,7 +690,7 @@ def _():
     texts = " ".join(label.text() for label in screen.picker._cards["depth_maps"].findChildren(QtWidgets.QLabel))
     nothing = "Nothing to build" in texts
     quiet = screen.long_note.isHidden()
-    skipped = screen.next_step() == S.EXPORT
+    skipped = screen.next_step() == S.PICTURES
     window.close()
     return nothing and quiet and skipped, "nothing={} quiet={} skipped={} texts={}".format(nothing, quiet, skipped, texts[:120])
 
@@ -690,16 +711,19 @@ def _():
     return dense and none, "dense={} none={}".format(dense, none)
 
 
-@case("wizard: full run from the outline to the files (all six screens), files written next to their georeferencing text")
+@case("wizard: full run from the outline to the files (all seven screens), files written next to their georeferencing text")
 def _():
     out = tempfile.mkdtemp(prefix="aerofacade_full_")
     window, backend = new_wizard()
     show(window)
-    prepare_to(window, S.EXPORT)
-    ex = window.screens[S.EXPORT]
-    arrived = until(lambda: ex.stack.currentIndex() == 1, 30)
+    prepare_to(window, S.PICTURES)
+    pics = window.screens[S.PICTURES]
+    arrived = until(lambda: pics.stack.currentIndex() == 1, 30)
     letters = facade_letters(window)
-    thumbs = ex.thumbs.letters() == letters and all(not ex.thumbs.list.item(r).icon().isNull() for r in range(ex.thumbs.count()))
+    thumbs = pics.thumbs.letters() == letters and all(not pics.thumbs.list.item(r).icon().isNull() for r in range(pics.thumbs.count()))
+    next_on = window.next_button.isVisible() and window.next_button.isEnabled()
+    window.next()
+    ex = window.screens[S.EXPORT]
     ex.folder.setText(out)
     ex.start_export()
     window.wait_idle(30000)
@@ -707,19 +731,19 @@ def _():
     written = sorted(n for n in os.listdir(out) if n.endswith(".png"))
     georef = sorted(n for n in os.listdir(out) if n.endswith(".txt"))
     expect = ["CARRO_261106_facade_%s.png" % l for l in letters]
-    done = ex.stack.currentIndex() == 2 and not ex.open_button.isHidden()
-    steps = [window.steps.state_of(i) for i in range(6)]
+    done = ex.stack.currentIndex() == 1 and not ex.open_button.isHidden()
+    steps = [window.steps.state_of(i) for i in range(7)]
     window.close()
-    return (arrived and thumbs and written == expect and len(georef) == len(letters) and done and steps[5] == "current",
-            "arrived={} thumbs={} written={} done={} steps={}".format(arrived, thumbs, written, done, steps))
+    return (arrived and thumbs and next_on and written == expect and len(georef) == len(letters) and done and steps[6] == "current"
+            and steps[5] == "done", "arrived={} thumbs={} next={} written={} done={} steps={}".format(arrived, thumbs, next_on, written, done, steps))
 
 
-@case("export: rebuilding the pictures of the same walls redraws their small pictures and keeps the ticks")
+@case("pictures: rebuilding the pictures of the same walls redraws their small pictures and keeps the ticks")
 def _():
     window, backend = new_wizard()
     show(window)
-    prepare_to(window, S.EXPORT)
-    ex = window.screens[S.EXPORT]
+    prepare_to(window, S.PICTURES)
+    ex = window.screens[S.PICTURES]
     until(lambda: ex.stack.currentIndex() == 1, 30)
     ex.thumbs.set_checked(["A"])
     first = ex.thumbs.list.item(0).icon().pixmap(240, 240).toImage()
@@ -731,7 +755,7 @@ def _():
     pump(100)
     second = ex.thumbs.list.item(0).icon().pixmap(240, 240).toImage()
     redrawn = first != second
-    kept = ex.thumbs.checked_letters() == ["A"]
+    kept = ex.thumbs.checked_letters() == ["A"] and window.state.chosen_letters() == ["A"]
     window.close()
     return redrawn and kept, "redrawn={} kept={} checked={}".format(redrawn, kept, ex.thumbs.checked_letters())
 
@@ -741,11 +765,12 @@ def _():
     folder = tempfile.mkdtemp(prefix="aerofacade_sel_")
     window, backend = new_wizard()
     show(window)
-    prepare_to(window, S.EXPORT)
-    ex = window.screens[S.EXPORT]
-    until(lambda: ex.stack.currentIndex() == 1, 30)
+    prepare_to(window, S.PICTURES)
+    until(lambda: window.screens[S.PICTURES].stack.currentIndex() == 1, 30)
     letters = facade_letters(window)
-    ex.thumbs.set_checked(letters[:2])
+    window.screens[S.PICTURES].thumbs.set_checked(letters[:2])
+    window.next()
+    ex = window.screens[S.EXPORT]
     ex.folder.setText(folder)
     for radio in ex.formats.buttons():
         if radio.property("value") == "jpg":
@@ -769,7 +794,6 @@ def export_screen(tools=None, keep_settings=False, **backend_args):
     show(window)
     prepare_to(window, S.EXPORT)
     ex = window.screens[S.EXPORT]
-    until(lambda: ex.stack.currentIndex() == 1, 30)
     return window, backend, ex
 
 
@@ -786,7 +810,7 @@ def _():
     folder = tempfile.mkdtemp(prefix="aerofacade_sheet_")
     window, backend, ex = export_screen()
     hidden = not ex.sheet_box.isVisibleTo(ex)
-    ex.thumbs.set_checked(facade_letters(window)[:3])
+    tick(window, facade_letters(window)[:3])
     ex.folder.setText(folder)
     ex.sheet_on.setChecked(True)
     shown = ex.sheet_box.isVisibleTo(ex)
@@ -801,7 +825,7 @@ def _():
     assets = os.listdir(os.path.join(folder, "00_Assets", "ortho")) if os.path.isdir(os.path.join(folder, "00_Assets")) else []
     ok = (hidden and shown and names_line and opts["sheet"] == {"dxf": True, "dwg": False, "z": False, "vertical": None, "titles": "fr"}
           and len(dxf) == 1 and len(pics) == 3 and len(assets) == 3 and "FACADE SUD" in text and "Hauteurs relatives" in text
-          and not [n for n in names if n.endswith(".dwg")] and ex.stack.currentIndex() == 2)
+          and not [n for n in names if n.endswith(".dwg")] and ex.stack.currentIndex() == 1)
     window.close()
     return ok, "names={} assets={} hidden={} shown={} names_line={} opts={}".format(names, assets, hidden, shown, names_line, opts["sheet"])
 
@@ -810,7 +834,7 @@ def _():
 def _():
     folder = tempfile.mkdtemp(prefix="aerofacade_sheet2_")
     window, backend, ex = export_screen()
-    ex.thumbs.set_checked(facade_letters(window)[:2])
+    tick(window, facade_letters(window)[:2])
     ex.folder.setText(folder)
     ex.sheet_on.setChecked(True)
     ex.sheet_pictures.setChecked(False)
@@ -890,7 +914,7 @@ def _():
     os.makedirs(geoid, exist_ok=True)
     shutil.copy(os.path.join(ROOT, "tests", "data", "fr_ign_RAC23.tif"), os.path.join(geoid, "fr_ign_RAC23.tif"))
     window, backend, ex = export_screen(epsg=9794, lonlat=(9.0, 42.0), origin_xy=(1197656.7, 6118854.9))
-    ex.thumbs.set_checked(facade_letters(window)[:2])
+    tick(window, facade_letters(window)[:2])
     ex.folder.setText(folder)
     ex.sheet_on.setChecked(True)
     ex.sheet_z.setChecked(True)
@@ -925,7 +949,7 @@ def _():
 def _():
     config.save_settings({})
     window, backend, ex = export_screen(tools=ALL_TOOLS)
-    ex.thumbs.set_checked(facade_letters(window)[:1])
+    tick(window, facade_letters(window)[:1])
     ex.folder.setText(tempfile.mkdtemp(prefix="aerofacade_sheet5_"))
     ex.sheet_on.setChecked(True)
     pick(ex.sheet_fmt, "dwg")
@@ -945,22 +969,28 @@ def _():
     return loaded, "saved={}".format({k: v for k, v in saved.items() if k.startswith(("sheet", "fmt"))})
 
 
-@case("export: Export is off while nothing is ticked or the folder is empty")
+@case("pictures: Next is off while nothing is ticked; export: Export is off while the folder is empty, and Back keeps the ticks")
 def _():
     window, _backend = new_wizard()
     show(window)
-    prepare_to(window, S.EXPORT)
+    prepare_to(window, S.PICTURES)
+    pics = window.screens[S.PICTURES]
+    until(lambda: pics.stack.currentIndex() == 1, 30)
+    next_on = window.next_button.isEnabled()
+    pics.thumbs.set_all(False)
+    next_off = not window.next_button.isEnabled() and window.state.chosen_letters() == []
+    pics.thumbs.set_all(True)
+    pics.thumbs.set_checked(["A", "C"])
+    window.next()
     ex = window.screens[S.EXPORT]
-    until(lambda: ex.stack.currentIndex() == 1, 30)
     ex.folder.setText(OUTPUTS)
-    on = ex.export_button.isEnabled()
-    ex.thumbs.set_all(False)
-    off1 = not ex.export_button.isEnabled()
-    ex.thumbs.set_all(True)
+    on = ex.export_button.isEnabled() and "A, C" in ex.names.toPlainText()
     ex.folder.setText("")
-    off2 = not ex.export_button.isEnabled()
+    off = not ex.export_button.isEnabled()
+    window.back()
+    kept = window.current_step() == S.PICTURES and pics.thumbs.checked_letters() == ["A", "C"]
     window.close()
-    return on and off1 and off2, "on={} off1={} off2={}".format(on, off1, off2)
+    return next_on and next_off and on and off and kept, "next_on={} next_off={} on={} off={} kept={}".format(next_on, next_off, on, off, kept)
 
 
 @case("build: when every surface already exists screen 5 is skipped and Back from the end goes to the method")
@@ -970,9 +1000,9 @@ def _():
     prepare_to(window, S.METHOD)
     window.next()
     pump(100)
-    skipped = window.current_step() == S.EXPORT and window.state.skipped_build
+    skipped = window.current_step() == S.PICTURES and window.state.skipped_build
     built = "build_dems" not in [c[0] for c in backend.calls]
-    ex = window.screens[S.EXPORT]
+    ex = window.screens[S.PICTURES]
     until(lambda: ex.stack.currentIndex() == 1, 30)
     window.back()
     back = window.current_step() == S.METHOD
@@ -1064,7 +1094,7 @@ def _():
     window.screens[S.BUILD].start_build()
     window.wait_idle(60000)
     pump(100)
-    go_on = window.current_step() == S.EXPORT and seen == [["exit", "continue"]]
+    go_on = window.current_step() == S.PICTURES and seen == [["exit", "continue"]]
     window.close()
     window2, _b = new_wizard()
     show(window2)
@@ -1087,7 +1117,7 @@ def _():
     window.wait_idle(60000)
     until(lambda: not window.busy(), 60)
     pump(200)
-    ex = window.screens[S.EXPORT]
+    ex = window.screens[S.PICTURES]
     states = ex.batch.states()
     failed = states.get("D") == "failed" and ex.stack.currentIndex() == 0
     keep = not ex.keep_button.isHidden()
@@ -1105,8 +1135,8 @@ def _():
     prepare_to(window, S.BUILD)
     window.ask = lambda *a: (setattr(backend, "delay", 0.5), "continue")[1]      # slow only the pictures, not the surfaces
     window.screens[S.BUILD].start_build()
-    until(lambda: window.current_step() == S.EXPORT, 120)
-    ex = window.screens[S.EXPORT]
+    until(lambda: window.current_step() == S.PICTURES, 120)
+    ex = window.screens[S.PICTURES]
     pump(500)
     running = ex.busy() and ex.stack.currentIndex() == 0 and not ex.batch.banner.isHidden()
     ex.batch.cancel_button.click()
@@ -1124,7 +1154,6 @@ def _():
     show(window)
     prepare_to(window, S.EXPORT)
     ex = window.screens[S.EXPORT]
-    until(lambda: ex.stack.currentIndex() == 1, 120)
     backend.delay = 0.6
     ex.folder.setText(tempfile.mkdtemp(prefix="aerofacade_c_"))
     ex.start_export()
@@ -1133,7 +1162,7 @@ def _():
     ex.cancel_job()
     window.wait_idle(30000)
     pump(100)
-    ok = running and ex.stack.currentIndex() == 2 and "cancelled" in ex.done_bad.text().lower()
+    ok = running and ex.stack.currentIndex() == 1 and "cancelled" in ex.done_bad.text().lower()
     window.close()
     return ok, "running={} page={} bad={}".format(running, ex.stack.currentIndex(), ex.done_bad.text())
 
@@ -1145,7 +1174,6 @@ def _():
     show(window)
     prepare_to(window, S.EXPORT)
     ex = window.screens[S.EXPORT]
-    until(lambda: ex.stack.currentIndex() == 1, 60)
     ex.folder.setText(out)
     ex.start_export()
     window.wait_idle(30000)
@@ -1267,7 +1295,7 @@ def _():
     window.ask = lambda *a: "continue"
     window.screens[S.BUILD].start_build()
     pump(100)
-    ok = window.current_step() == S.EXPORT and window.screens[S.EXPORT].stack.currentIndex() == 1
+    ok = window.current_step() == S.PICTURES and window.screens[S.PICTURES].stack.currentIndex() == 1
     many = len(set(updates)) >= 3                                          # the timer ran while the backend held the main thread
     window.close()
     return arrived and many and ok, "arrived={} updates={} export_page={}".format(arrived, sorted(set(updates))[:6], ok)
@@ -1280,9 +1308,8 @@ def _():
     window, _backend = new_wizard()
     show(window)
     prepare_to(window, S.EXPORT)
-    until(lambda: window.screens[S.EXPORT].stack.currentIndex() == 1, 30)
     leaks, words = [], 0
-    for index in range(6):
+    for index in range(7):
         for label in window.screens[index].findChildren(QtWidgets.QLabel):
             text = label.text().strip()
             if "facade." in text or raw_key.match(text):
@@ -1357,38 +1384,68 @@ def render_all(scale):
     window.next()
     pump(400)
     shot(window, "UI13_orthos_building_" + tag)
-    until(lambda: window.screens[S.EXPORT].stack.currentIndex() != 0 or not window.busy(), 60)
+    until(lambda: window.screens[S.PICTURES].stack.currentIndex() != 0 or not window.busy(), 60)
     pump(300)
-    if window.screens[S.EXPORT].stack.currentIndex() == 0:
+    if window.screens[S.PICTURES].stack.currentIndex() == 0:
         shot(window, "UI14_orthos_some_failed_" + tag)
-        window.screens[S.EXPORT]._show_choose()
+        window.screens[S.PICTURES]._show_choose()
         pump(200)
-    shot(window, "UI15_export_choose_" + tag)
-    problems["export_choose"] = cut_off(window)
+    shot(window, "UI15_pictures_choose_" + tag)
+    problems["pictures_choose"] = cut_off(window)
+    window.next()
+    pump(200)
+    shot(window, "UI16_export_settings_" + tag)
+    problems["export_settings"] = cut_off(window)
     sheet_screen = window.screens[S.EXPORT]
     sheet_screen.sheet_on.setChecked(True)
     sheet_screen.sheet_z.setChecked(True)
     sheet_screen.heights.select("fr_ign_RAC09")
     pump(150)
-    parent = sheet_screen.sheet_box.parent()                             # the options panel scrolls: show its lower part, where the sheet is
-    while parent is not None and not isinstance(parent, QtWidgets.QScrollArea):
-        parent = parent.parent()
-    if parent is not None:
-        parent.verticalScrollBar().setValue(parent.verticalScrollBar().maximum())
-    pump(100)
-    shot(window, "UI15b_export_sheet_" + tag)
+    shot(window, "UI16b_export_sheet_missing_grid_" + tag)
     problems["export_sheet"] = cut_off(window)
+    if scale <= 1.5:
+        problems["export_scroll"] = scroll_bars(window)               # at 200 % the page may scroll: the window is the screen's size
     sheet_screen.sheet_z.setChecked(False)
     sheet_screen.sheet_on.setChecked(False)
     pump(60)
     window.screens[S.EXPORT].start_export()
-    until(lambda: window.screens[S.EXPORT].stack.currentIndex() == 2, 60)
+    until(lambda: window.screens[S.EXPORT].stack.currentIndex() == 1, 60)
     pump(200)
-    shot(window, "UI16_export_done_" + tag)
+    shot(window, "UI17_export_done_" + tag)
     problems["export_done"] = cut_off(window)
     window.close()
     unscale()
     return dict((k, v) for k, v in problems.items() if v)
+
+
+@case("export settings: no scroll bar at the usual window (1280 x 800) at 100 %, 125 % and 150 % text size, and on a 1366 x 768 screen")
+def _():
+    original = controls.screen_area
+    results, bad = {}, []
+    try:
+        for label, area, factor in (("1280x800 x1.0", QtCore.QRect(0, 0, 1920, 1040), 1.0), ("1280x800 x1.25", QtCore.QRect(0, 0, 1920, 1040), 1.25),
+                                    ("1920x1040 x1.5", QtCore.QRect(0, 0, 1920, 1040), 1.5), ("1366x768 x1.0", QtCore.QRect(0, 0, 1366, 768), 1.0)):
+            controls.screen_area = lambda area=area: area
+            window, _backend = new_wizard()
+            rescale(window, factor)
+            show(window)
+            prepare_to(window, S.EXPORT)
+            pump(200)
+            ex = window.screens[S.EXPORT]
+            ex.sheet_on.setChecked(True)                                   # the tallest case without a missing grid
+            ex.sheet_z.setChecked(True)
+            ex.heights.select("ellipsoid")
+            pump(150)
+            found = scroll_bars(window)
+            results[label] = (window.width(), window.height(), found)
+            if found:
+                bad.append(label)
+            window.close()
+            unscale()
+    finally:
+        controls.screen_area = original
+        unscale()
+    return not bad, "scroll bar at: {} | {}".format(bad, results)
 
 
 @case("small screen (1366 x 768) and a very large preview picture: the window fits the screen, the whole picture shows, nothing is cut off")

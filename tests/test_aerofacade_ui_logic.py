@@ -151,6 +151,38 @@ def test_next_from_the_build_screen_needs_one_surface():
     assert st.can_next(S.BUILD) and st.dem_ok_letters() == ["B"]
 
 
+def test_the_wizard_has_seven_steps_and_the_pictures_step_comes_before_the_export_settings():
+    assert S.STEP_KEYS == ("search", "facades", "margins", "method", "build", "pictures", "export")
+    assert (S.BUILD, S.PICTURES, S.EXPORT) == (4, 5, 6) and S.STEP_KEYS[S.PICTURES] == "pictures" and S.STEP_KEYS[S.EXPORT] == "export"
+
+
+def test_next_from_the_pictures_screen_needs_one_ticked_picture_and_the_export_screen_is_last():
+    st = S.WizardState()
+    st.set_facades(make_facades(3))
+    assert not st.can_next(S.PICTURES) and st.chosen_letters() == []
+    st.ortho_state = {"A": (True, ""), "B": (False, "no"), "C": (True, "")}
+    assert st.chosen_letters() == ["A", "C"] and st.can_next(S.PICTURES)       # nothing ticked yet: every built picture counts
+    st.picture_choice = {"C", "B"}
+    assert st.chosen_letters() == ["C"]                                         # B was ticked but failed: it is not exported
+    st.picture_choice = set()
+    assert st.chosen_letters() == [] and not st.can_next(S.PICTURES)
+    assert not st.can_next(S.EXPORT)
+
+
+def test_a_new_build_ticks_everything_again():
+    st = S.WizardState()
+    st.set_facades(make_facades(2))
+    st.ortho_state = {"A": (True, ""), "B": (True, "")}
+    st.picture_choice = {"A"}
+    st.apply_margin(["A", "B"], "left", 2.0)                                    # other margins: new pictures
+    assert st.picture_choice is None and st.ortho_state == {}
+    st.ortho_state = {"A": (True, ""), "B": (True, "")}
+    assert st.chosen_letters() == ["A", "B"]
+    st.picture_choice = {"B"}
+    st.set_facades(make_facades(2))                                              # a new detection
+    assert st.picture_choice is None
+
+
 def test_preferences_round_trip(tmp_path, monkeypatch):
     from aerotools import config
     monkeypatch.setattr(config, "settings_dir", lambda: str(tmp_path))

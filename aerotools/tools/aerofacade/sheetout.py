@@ -11,7 +11,6 @@ is here so that it is written once and tested without Metashape:
 * `write_sheet`: `<Site>_<date>_facades.dxf` (+ `.dwg` through AutoCAD), the pictures referenced by relative paths in `00_Assets\\ortho`.
 """
 
-import math
 import os
 import shutil
 import struct

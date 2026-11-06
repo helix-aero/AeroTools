@@ -8,7 +8,7 @@ from tie points, verified in pieces), `aerotools/tools/aeroexports/` (window, th
 ## What the tool does
 
 Produces one ortho-facade picture per detected wall of a building, from a Metashape chunk (photogrammetry of a building). The user
-never touches the Metashape GUI: one window, a wizard in 6 screens.
+never touches the Metashape GUI: one window, a wizard in 7 screens (since 2026-11-07; it had 6, the last one was split).
 
 ### Screen 1 — Search area
 - Left/centre: a picture of the chunk's orthomosaic (our own Qt widget, from a small low-resolution export of the orthomosaic;
@@ -50,7 +50,7 @@ selected method will take a long time, a gentle notice says so.
 (The detection of screen 2 always uses the tie points. This screen only chooses how the surface is built for the ortho.)
 
 ### Screen 5 — Batch build of the DEMs
-- If DEMs for the chosen facades/method **already exist in the chunk** (we tag the assets we create), skip straight to screen 6.
+- If DEMs for the chosen facades/method **already exist in the chunk** (we tag the assets we create), skip straight to screen 6 (orthophotos).
 - Otherwise: a list of what will be computed, per facade; one button **Build**; then the batch runs **sequentially**, with a clear
   "Please do not touch Metashape, please wait" banner and a progress list (waiting / running / done / failed per facade) and a Cancel.
   It is fine that Metashape's own progress dialog appears. To keep it fast, every computation is restricted to a **generated bounding
@@ -58,11 +58,20 @@ selected method will take a long time, a gentle notice says so.
 - End: a success message with two buttons: **Exit** and **Continue to build the orthophotos**. Failures are listed per facade with
   a plain-English reason and a Retry.
 
-### Screen 6 — Orthophotos and export
-- Preview of each facade's orthophoto (small thumbnail) in a list; checkboxes to pick which to export; output folder (default:
-  `Outputs` next to the project, like Aero-Exports; the folder is created); format choices (PNG / JPEG / TIFF / JPEG 2000 / ECW + a georeferencing
-  text file: origin, pixel size, plane frame, so the picture can be placed and measured; optional DXF with the picture inserted, optional drawing sheet: see "Drawing sheet" below).
-- **Export** writes one file per facade named `<site>_<date>_facade_<A>.<ext>`; a final success screen with **Open folder**.
+### Screen 6 — Orthophotos
+- The orthophotos are built one wall after the other (a row per wall, as on screen 5), then a small picture of each is listed with a checkbox: tick the pictures to
+  export. The ticks are kept in the shared `WizardState` (`picture_choice`, a set of letters; `None` = every built picture; `chosen_letters()`): screen 7 exports exactly
+  these, and Back from screen 7 shows the same ticks. Rebuilding the same walls keeps the ticks; other walls or other margins (`invalidate_builds`) tick everything again.
+- A normal **Next** button, enabled when at least one picture is ticked. Nothing about the export is on this screen, so it has no scroll bar.
+
+### Screen 7 — Export settings (last step)
+- Folder (default: `Outputs` next to the project; created), picture format (PNG / JPEG / TIFF / JPEG 2000 / ECW; a format whose program is missing is greyed with its reason),
+  extra files (georeferencing text with origin, pixel size and plane frame; optional 3D DXF of each picture), the **Drawing sheet** group (see below), the example file names, the
+  **Export** button with its progress box (Cancel), and the final success card (**Open folder**, **Change the settings**, **Close**).
+- Two columns (folder, format, extra files | drawing sheet) and a bottom bar (names, Export), so it fits the usual 1280 x 800 window without a scroll bar, also at 125 % and 150 %
+  text size and on a 1366 x 768 screen (checked by the Qt harness; the page is inside a scroll area that only shows a bar when the window is smaller than the content, e.g. at 200 %
+  or with the missing-grid banner on the smallest screens). Back goes to screen 6.
+- **Export** writes one file per facade named `<site>_<date>_facade_<A>.<ext>`.
 
 ## Architecture (three layers, so three people can work in parallel)
 
@@ -123,7 +132,7 @@ crashed Metashape before).
 ## UI notes (UI agent)
 
 Files: `wizard.py` (window, step bar, Back / Next / Cancel, job runner), `screens_search.py` (screens 1 and 2), `screens_margins.py` (3 and 4),
-`screens_build.py` (5 and 6), `widgets.py` (OrthoCanvas, FacadeList, BatchProgress, OrthoThumbnails), `widgets_margins.py` (NumberField, LinkBadge,
+`screens_build.py` (5), `screens_export.py` (6 and 7), `widgets.py` (OrthoCanvas, FacadeList, BatchProgress, OrthoThumbnails), `widgets_margins.py` (NumberField, LinkBadge,
 MarginSchematic, MarginEditor, MethodPicker), `state.py` (what the wizard knows and the rules that enable the buttons, pure), `tasks.py` (worker
 thread, pure), `common.py`, `theme_facade.py`, `tool.py` (`install()` / `uninstall()` as called by `bootstrap`, `start` / `stop` are aliases).
 Tests: `tests/test_aerofacade_ui_logic.py` (no display) and `python -B tests_qt/run_qt_aerofacade.py [--shots FOLDER]` (offscreen, FakeBackend, isolated settings).
@@ -298,7 +307,7 @@ A dense cloud of tens of millions of points in `chunk.copy`; a chunk without geo
 
 ## Drawing sheet (DXF / DWG with every picture), JPEG 2000 and ECW
 
-Added on top of the export of screen 6. Pure logic: `sheet.py` (naming, order, layout, levels, entities; no Metashape, no Qt, no files), `sheet_labels.py`
+Added on top of the export (screen 7). Pure logic: `sheet.py` (naming, order, layout, levels, entities; no Metashape, no Qt, no files), `sheet_labels.py`
 (the few words written INTO the drawing, French and English, plain ASCII), `sheetout.py` (options, heights, pictures, files, and `run_export`, the whole
 export sequence shared by both backends), `widgets_heights.py` (the height system picker). Tests: `tests/test_aerofacade_sheet.py`, the sheet cases of
 `tests/test_aerofacade_msfacade.py`, and the `export sheet:` cases of `tests_qt/run_qt_aerofacade.py`.
