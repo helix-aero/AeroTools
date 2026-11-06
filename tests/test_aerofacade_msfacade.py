@@ -92,6 +92,9 @@ class CoordinateSystem(object):
     def localframe(self, p):
         return Matrix(np.eye(4))
 
+    def project(self, p):
+        return Vector(p)
+
 
 class Sensor(object):
     width, height = 4000, 3000
@@ -527,3 +530,31 @@ def test_a_backend_opened_on_a_work_chunk_goes_back_to_its_source(world):
     work = [c for c in world.doc.chunks if c is not world.chunk][0]
     again = msfacade.MetashapeBackend(work)
     assert again._src() is world.chunk
+
+
+def test_dxf_places_the_picture_in_its_vertical_plane(world, tmp_path):
+    be = msfacade.MetashapeBackend(world.chunk)
+    f, m = facade_a(), Margins()
+    be.build_orthos([f], m, Method.TIE_POINTS, 0.03, None, lambda: False)
+    out = be.export([f], str(tmp_path / "dxf"), "png", {"georef_txt": False, "dxf": True, "dxf_epsg": 3942}, None, lambda: False)
+    dxf = os.path.splitext(out[0][0])[0] + ".dxf"
+    lines = open(dxf, encoding="ascii").read().splitlines()
+    i = lines.index("AcDbRasterImage", lines.index("ENTITIES"))
+    code = {}
+    j = i + 1
+    while lines[j] != "340":
+        code[lines[j]] = float(lines[j + 1]) if lines[j] in ("10", "20", "30", "11", "21", "31", "12", "22", "32", "13", "23") else lines[j + 1]
+        j += 2
+    assert (code["10"], code["20"], code["30"]) == pytest.approx((-1.0, 0.0, -1.0))         # bottom-left corner of the picture, in the plane y = 0
+    assert (code["11"], code["21"], code["31"]) == pytest.approx((0.03, 0.0, 0.0))          # one pixel to the right = 3 cm along the wall
+    assert (code["12"], code["22"], code["32"]) == pytest.approx((0.0, 0.0, 0.03))          # one pixel up = 3 cm up (vertical)
+    assert (code["13"], code["23"]) == (733.0, 333.0)
+    assert os.path.basename(out[0][0]) in lines
+
+
+def test_the_flat_dxf_writer_is_unchanged_without_3d_keys():
+    from aerotools.tools.aeroexports import dxfout
+    text = dxfout.build_dxf([{"layer": "L", "file": "a.tif", "size_px": (10, 20), "insert": (5.0, 6.0), "pixel": (0.5, 0.25)}])
+    lines = text.splitlines()
+    i = lines.index("AcDbRasterImage", lines.index("ENTITIES"))
+    assert lines[i + 3:i + 15] == ["10", "5.0", "20", "6.0", "30", "0.0", "11", "0.5", "21", "0.0", "31", "0.0"]

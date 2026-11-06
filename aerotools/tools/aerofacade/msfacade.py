@@ -934,7 +934,52 @@ class MetashapeBackend(Backend):
         pixel = float(_meta_get(work, META_PIXEL) or ortho.resolution)
         if options.get("georef_txt", True):
             self._write_georef(f, work, path, pixel)
+        if options.get("dxf"):
+            self._write_dxf(f, work, path, pixel, options)
         finished(prog, "Façade %s: done" % f.letter)
+
+    # ---- DXF with the picture standing in its vertical plane -------------------------------------------------
+    def _dxf_crs(self, options):
+        """Coordinate system of the DXF: `options["dxf_epsg"]`, else the chunk's own when it is projected, else WGS 84 / UTM of the site."""
+        src = self._src()
+        epsg = options.get("dxf_epsg")
+        if epsg:
+            return Metashape.CoordinateSystem("EPSG::%d" % int(epsg)), "EPSG:%d" % int(epsg)
+        crs = src.crs
+        if crs is not None and not getattr(crs, "geographic", True) and not getattr(crs, "geocentric", False):
+            return crs, str(getattr(crs, "name", "chunk coordinate system"))
+        T = src.transform.matrix
+        mid = np.linalg.inv(self.enu) @ np.append(np.median(self._points, axis=0) if self._points is not None else np.zeros(3), 1.0)
+        lon, lat = crs.project(T.mulp(_vec(mid[:3])))[:2]
+        zone = int((lon + 180.0) // 6.0) + 1
+        code = (32600 if lat >= 0 else 32700) + zone
+        return Metashape.CoordinateSystem("EPSG::%d" % code), "EPSG:%d (WGS 84 / UTM %d%s)" % (code, zone, "N" if lat >= 0 else "S")
+
+    def _write_dxf(self, f, work, path, pixel, options):
+        """`<picture>.dxf`: one IMAGE entity placed in 3D (E, N, height of the output system) so that the picture stands on the façade, at scale.
+        The image path in the DXF is relative (same folder). Written with `aeroexports.dxfout`, extended with a 3D placement."""
+        from ..aeroexports import dxfout
+        ortho = work.orthomosaic
+        tcrs, label = self._dxf_crs(options)
+        src = self._src()
+        T = src.transform.matrix
+        Ei = np.linalg.inv(self.enu)
+
+        def to_out(s, t):
+            enu = geometry.plane_to_enu(f, [[s, t, 0.0]])[0]
+            pc = Ei @ np.append(enu, 1.0)
+            return np.array(list(tcrs.project(T.mulp(_vec(pc[:3])))), dtype=np.float64)
+
+        left, bottom = float(ortho.left), float(ortho.bottom)
+        step = 50.0
+        p0, pu, pv = to_out(left, bottom), to_out(left + step, bottom), to_out(left, bottom + step)
+        item = {"layer": "FACADE_%s" % f.letter, "file": os.path.basename(path), "size_px": (ortho.width, ortho.height),
+                "insert": (p0[0], p0[1]), "insert_z": p0[2], "pixel": (pixel, pixel),
+                "u_vec": tuple((pu - p0) * (pixel / step)), "v_vec": tuple((pv - p0) * (pixel / step))}
+        dxf = os.path.splitext(path)[0] + ".dxf"
+        dxfout.write_dxf(dxf, [item])
+        log("DXF of façade %s written in %s: %s" % (f.letter, label, os.path.basename(dxf)))
+        return dxf
 
     def _write_georef(self, f, work, path, pixel):
         """<picture>.txt: the frame, the pixel size and the exact extent, enough to place and measure the picture."""

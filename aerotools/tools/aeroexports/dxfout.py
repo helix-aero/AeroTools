@@ -171,11 +171,16 @@ def build_dxf(images, units_m=True):
         width, height = item["size_px"]
         px, py = item["pixel"]
         x, y = item["insert"]
+        # Optional 3D placement (Aero-Facade: a picture standing in a vertical plane): "insert_z", and the vectors of one pixel
+        # along the image's columns ("u_vec") and up the image ("v_vec"). Without them the image lies flat, north up.
+        z = item.get("insert_z", 0.0)
+        ux, uy, uz = item.get("u_vec", (px, 0.0, 0.0))
+        vx, vy, vz = item.get("v_vec", (0.0, py, 0.0))
         w.add(0, "IMAGE"); w.add(5, entity); w.add(330, H_MODEL_RECORD); w.add(100, "AcDbEntity")
         w.add(8, _clean_layer(item["layer"])); w.add(100, "AcDbRasterImage"); w.add(90, 0)
-        w.add(10, _number(x)); w.add(20, _number(y)); w.add(30, 0.0)
-        w.add(11, _number(px)); w.add(21, 0.0); w.add(31, 0.0)
-        w.add(12, 0.0); w.add(22, _number(py)); w.add(32, 0.0)
+        w.add(10, _number(x)); w.add(20, _number(y)); w.add(30, _number(z) if z else 0.0)
+        w.add(11, _number(ux)); w.add(21, _number(uy)); w.add(31, _number(uz) if uz else 0.0)
+        w.add(12, _number(vx)); w.add(22, _number(vy)); w.add(32, _number(vz) if vz else 0.0)
         w.add(13, _number(width)); w.add(23, _number(height))
         clip = closed_polygon(item.get("clip"))
         w.add(340, definition); w.add(70, 7 if clip else 3); w.add(280, 1 if clip else 0)
