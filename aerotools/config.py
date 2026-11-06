@@ -56,6 +56,15 @@ TOOLS = [
         "pret": True,
         "rouvrir": False,
     },
+    {
+        "id": "aerofacade",
+        "menu": "Aero-Facade",
+        "titre": "Aero-Facade",
+        "sous_titre": "tool.aerofacade.subtitle",
+        "raccourci": None,
+        "pret": True,
+        "rouvrir": False,
+    },
     # La detection IA (ex-AIGCP) est dans Aero-GCP : plus d'entree de menu a part.
 ]
 
