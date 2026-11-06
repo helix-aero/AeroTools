@@ -186,7 +186,7 @@ class ConfirmDialog(QtWidgets.QDialog):
         self._group = QtWidgets.QButtonGroup(self)          # les deux ronds sont dans des cartes separees
         self._group.addButton(self.recycle)
         self._group.addButton(self.permanent)
-        self._options = [ui.OptionCard(self.recycle), ui.OptionCard(self.permanent, danger=True)]
+        self._options = [_Option(self.recycle), _Option(self.permanent, danger=True)]
         for option in self._options:
             layout.addWidget(option)
         self.word = QtWidgets.QLineEdit()

@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T08:31:50",
+ "built": "2026-11-06T08:34:53",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -274,8 +274,8 @@
    "size": 16587
   },
   "aerotools/tools/fastspace/dialog.py": {
-   "sha256": "6c5c4eea1f9f42eaeaac1e2942a19911befb449f898a55b9b01fbef60937ba1e",
-   "size": 41252
+   "sha256": "76b9664d506bcdb64e854447050b592a1a77d73be0ab48f7f1a9440d282a6aa8",
+   "size": 41240
   },
   "aerotools/tools/fastspace/scanner.py": {
    "sha256": "94eb332208e6c8814ded82107d88e8af885dc536d621be721ea10158014342e9",
@@ -286,12 +286,12 @@
    "size": 834
   },
   "aerotools/ui.py": {
-   "sha256": "e87fb1807cf17cb3d00c99cb5645b8a95f812636aca84212e5b9ead9bb24cf4a",
-   "size": 5896
+   "sha256": "9515e8c057df5d709158396f1965ba3f64cd64a79abb5525a8d2009af183980c",
+   "size": 3883
   },
   "aerotools/update_dialog.py": {
-   "sha256": "e267569ac659d5b87b6c031d059b9531e82a5ccecc41678a065f035cf86d8fc5",
-   "size": 13712
+   "sha256": "2da5fd02c3f939ffbd968b454d370dc3c51c442e87a5fe78ee1d8e9c53234591",
+   "size": 14422
   },
   "aerotools/updater.py": {
    "sha256": "989c3ac3e93478007151e31dd5cacd92bcd109656ac99da41169e16ae87b73f2",
@@ -366,8 +366,8 @@
    "size": 659968
   },
   "aerotools/vendor/proj/data/files.geojson": {
-   "sha256": "46f26c830faa164af9ef9ef51a7325a9d3800eb12ad4b1661c1d3143af7becc3",
-   "size": 331044
+   "sha256": "34870c4e786a1225641452adf5313e850f0554a0b1647b0289bdd3ca3675fc7c",
+   "size": 331508
   },
   "aerotools/vendor/proj/data/grid_ops.json": {
    "sha256": "129569c565905a86a29998b76925fcf80753b809c336e8e97d49b4fca4d741c5",
@@ -378,8 +378,8 @@
    "size": 10280960
   },
   "aerotools/vendor/proj/share/proj/proj.ini": {
-   "sha256": "b95ebf0d007339244483d65d571cd887a51806e2bd2c1ab7f47b897d25320d65",
-   "size": 2435
+   "sha256": "821e0bdea2266b7ef4c3d63ed56078afd76eff09f9176f0e56e0ba6b785d25d6",
+   "size": 2494
   },
   "assets/fonts/Manrope-VariableFont_wght.ttf": {
    "sha256": "2b7a1ebc80c79246faa1b6e7093c7b91de2a4ceedb9b9a2b2fa05cf9bf8c77cd",
