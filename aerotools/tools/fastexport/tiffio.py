@@ -23,7 +23,8 @@ CLASSIC_LIMIT = 3900 * 1024 * 1024               # au-dela : BigTIFF
 class Tiff(object):
     """Premiere image d'un TIFF : ses balises (octets bruts) et ses blocs (tuiles ou bandes)."""
 
-    def __init__(self, path):
+    def __init__(self, path, strict=True):
+        """`strict=False` : ne verifie pas que c'est un float32 a une bande (les balises et les positions des blocs seules)."""
         self.path = path
         with open(path, "rb") as handle:
             head = handle.read(16)
@@ -61,12 +62,13 @@ class Tiff(object):
                 self.tags[tag] = (kind, number, data)
         self.width = self.ints(T_WIDTH)[0]
         self.height = self.ints(T_HEIGHT)[0]
-        if self.ints(T_BITS, [0])[0] != 32 or self.ints(T_FORMAT, [1])[0] != 3 or self.ints(T_SAMPLES, [1])[0] != 1:
-            raise ValueError("seul le float32 a une bande est lu")
         self.compression = self.ints(T_COMPRESSION, [1])[0]
         self.predictor = self.ints(T_PREDICTOR, [1])[0]
-        if self.compression not in (1, 8, 32946) or self.predictor not in (1, 3):
-            raise ValueError("compression %d / predicteur %d non pris en charge" % (self.compression, self.predictor))
+        if strict:
+            if self.ints(T_BITS, [0])[0] != 32 or self.ints(T_FORMAT, [1])[0] != 3 or self.ints(T_SAMPLES, [1])[0] != 1:
+                raise ValueError("seul le float32 a une bande est lu")
+            if self.compression not in (1, 8, 32946) or self.predictor not in (1, 3):
+                raise ValueError("compression %d / predicteur %d non pris en charge" % (self.compression, self.predictor))
         self.tiled = T_TILE_W in self.tags
         if self.tiled:
             self.block_w, self.block_h = self.ints(T_TILE_W)[0], self.ints(T_TILE_H)[0]

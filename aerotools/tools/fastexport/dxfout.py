@@ -73,7 +73,8 @@ def build_dxf(images, units_m=True):
     """Texte d'un DXF R2000.
 
     `images` : liste de dicts {"layer", "file" (chemin tel qu'ecrit dans le DXF), "size_px": (largeur, hauteur),
-    "insert": (x, y) coin bas-gauche en unites du dessin, "pixel": (largeur d'un pixel, hauteur d'un pixel)}.
+    "insert": (x, y) coin bas-gauche en unites du dessin, "pixel": (largeur d'un pixel, hauteur d'un pixel),
+    "clip" (facultatif) : polygone ferme [(x, y), ...] en pixels de l'image, depuis son coin bas-gauche (voir footprint.py)}.
     """
     w = _Writer()
     layers = []
@@ -167,9 +168,16 @@ def build_dxf(images, units_m=True):
         w.add(11, _number(px)); w.add(21, 0.0); w.add(31, 0.0)
         w.add(12, 0.0); w.add(22, _number(py)); w.add(32, 0.0)
         w.add(13, _number(width)); w.add(23, _number(height))
-        w.add(340, definition); w.add(70, 3); w.add(280, 0); w.add(281, 50); w.add(282, 50); w.add(283, 0)
-        w.add(360, reactor); w.add(71, 1); w.add(91, 2)
-        w.add(14, -0.5); w.add(24, -0.5); w.add(14, _number(width - 0.5)); w.add(24, _number(height - 0.5))
+        clip = item.get("clip")
+        w.add(340, definition); w.add(70, 7 if clip else 3); w.add(280, 1 if clip else 0)
+        w.add(281, 50); w.add(282, 50); w.add(283, 0)
+        if clip:                                        # decoupe polygonale (sommets en pixels, polygone ferme)
+            w.add(360, reactor); w.add(71, 2); w.add(91, len(clip))
+            for x_clip, y_clip in clip:
+                w.add(14, _number(x_clip)); w.add(24, _number(y_clip))
+        else:                                           # decoupe rectangulaire : l'image entiere
+            w.add(360, reactor); w.add(71, 1); w.add(91, 2)
+            w.add(14, -0.5); w.add(24, -0.5); w.add(14, _number(width - 0.5)); w.add(24, _number(height - 0.5))
     w.add(0, "ENDSEC")
 
     w.add(0, "SECTION"); w.add(2, "OBJECTS")

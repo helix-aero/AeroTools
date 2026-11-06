@@ -204,8 +204,15 @@ registry and the usual folders, or pointed at by the user):
   tables. Checked with `accoreconsole.exe /i TOPO.dxf /s script` (`-IMAGE R *` then `-IMAGE ?`): 0 audit errors, JPEG 2000 and ECW both
   "loaded and relinked" through relative paths; ezdxf `recover` reads it with no error. Not checked: the AutoCAD window itself.
 - DWG: `_SAVEAS 2018` in accoreconsole from the DXF.
-- DEM in a drawing: GeoTIFF float kept in `00_Assets\DTM` plus a colour-relief image (`gdaldem color-relief`, no hillshade) for the layer; no GDAL
-  means no DEM layer (a warning says so).
+- DEM in a drawing: GeoTIFF float kept in `00_Assets/DTM` plus a colour image for the layer, made in-house by `relief.py` (numpy, no GDAL):
+  Metashape's default DEM palette (read from the legend of the Ortho tab: blue low, red high, linear between the DEM min and max) times a
+  hillshade (Horn, light from the north-west at 45 degrees, strength 0.8; checked against `gdaldem hillshade`: mean difference 1.4/255), white
+  where there is no data. The nodata value is read from the file.
+- Clip (option "Hide the empty border", on by default): each IMAGE entity gets a polygonal clip boundary (group 71 = 2, vertices in pixels, closed,
+  display flags 7, clipping on) computed by `footprint.py` from a coarse mask (alpha of a small uncompressed RGBA export of the ortho by Metashape,
+  about 800 px; valid pixels of the DEM), outline = first to last data pixel of each row, simplified, grown by one mask pixel so no data is cut.
+  The image files are not changed. AutoCAD 2023 (accoreconsole) loads the DXF with the clip without error; not checked: the clip drawn in the window.
+  A failed mask export only adds a warning.
 - The native ortho export is cropped to the data (8148 x 8772 px on CITADELLE) and not to the orthomosaic box: the placement in the DXF is read from
   the GeoTIFF itself (`geotiff.py`). When the grid is imposed (other CRS, tiles) the native pixel is rounded to 0.1 mm.
 - Coordinate systems and heights, worldwide (`projdb.py`, `projtool.py`, `vertical.py`, `tiffio.py`, `crs.py`; engine in `aerotools/vendor/proj`):

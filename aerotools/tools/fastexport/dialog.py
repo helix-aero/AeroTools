@@ -203,6 +203,12 @@ class ExportDialog(QtWidgets.QDialog):
                                        config.get(SECTION, "cad_format") or "dxf")
         self.cad_images = self._radios(cad, 1, "export.cad_images", (("jp2", "export.img_jp2"), ("ecw", "export.img_ecw")),
                                        config.get(SECTION, "cad_images") or "jp2")
+        self.cad_clip = QtWidgets.QCheckBox(i18n.t("export.cad_clip"))
+        self.cad_clip.setToolTip(i18n.t("export.cad_clip_tip"))
+        self.cad_clip.setCursor(QtCore.Qt.PointingHandCursor)
+        self.cad_clip.setChecked(config.get(SECTION, "cad_clip") is not False)
+        self.cad_clip.toggled.connect(self._on_cad_choice)
+        cad.addWidget(self.cad_clip, 2, 1)
         layout.addWidget(self.cad_box)
 
         self.tool_card = QtWidgets.QFrame()
@@ -688,11 +694,13 @@ class ExportDialog(QtWidgets.QDialog):
             config.put(SECTION, "cad_format", self._value(self.cad_format))
         if self._value(self.cad_images):
             config.put(SECTION, "cad_images", self._value(self.cad_images))
+        config.put(SECTION, "cad_clip", bool(self.cad_clip.isChecked()))
         self._check_tools()
         self._refresh_names()
 
     def _cad(self):
-        return {"format": self._value(self.cad_format) or "dxf", "images": self._value(self.cad_images) or "jp2"}
+        return {"format": self._value(self.cad_format) or "dxf", "images": self._value(self.cad_images) or "jp2",
+                "clip": bool(self.cad_clip.isChecked())}
 
     def _wanted(self):
         return {kind: self._pixel(kind) for kind in plan.KINDS
@@ -850,6 +858,8 @@ class ExportDialog(QtWidgets.QDialog):
                 lines.append(i18n.t("export.check_bad", names=", ".join(result.check["failed"])))
             elif result.check["images"]:
                 lines.append(i18n.t("export.check_ok", n=result.check["images"]))
+        if "clip" in result.warnings:
+            lines.append(i18n.t("export.warn_clip"))
         return ("\n" + "\n".join(lines)) if lines else ""
 
     def _finish(self, text, kind):
