@@ -10,6 +10,7 @@ Rien n'est suppose de la machine : les outils viennent de `ctx.tools` (voir exte
 n'ecrit aucun fichier : elle est simplement sautee.
 """
 
+import math
 import os
 import shutil
 import tempfile
@@ -107,11 +108,20 @@ def _grid(ctx, job):
     box = ctx.info.get("box_" + kind)
     if native or not box:
         return None, None
+    if ctx.crs is None and ctx.info.get("geographic_" + kind):
+        # Une ortho / un MNT en degres : un pixel en centimetres n'a pas de sens, Metashape rend « Empty raster ».
+        raise Failure("The {} is in a geographic system (degrees). Pick a projected system in \"Export in\", "
+                      "for example RGF93 v1 / CC42.".format("orthomosaic" if kind == "ortho" else "DEM"))
     if ctx.crs is not None:
-        moved = ctx.transform(box, ctx.info.get("crs_object"), ctx.crs)
+        # L'emprise est dans le SCR de CE raster (l'ortho peut etre en degres et le MNT en metres).
+        source = ctx.info.get("crs_" + kind) or ctx.info.get("crs_object")
+        moved = ctx.transform(box, source, ctx.crs)
         if moved is None:
             reason = getattr(ctx.transform, "last_error", "")
             raise Failure("Impossible de convertir l'emprise vers le SCR choisi" + (" (%s)" % reason if reason else ""))
+        if not all(math.isfinite(value) for value in moved):
+            raise Failure("The area of the {} could not be converted to the chosen system.".format(
+                "orthomosaic" if kind == "ortho" else "DEM"))
         box = moved
     pixel = pixel_of(ctx, job)
     return pixel, ctx.snap(box, pixel)

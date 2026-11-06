@@ -1641,7 +1641,7 @@ def raster_info(chk=None):
     `dates` : dates EXIF d'un echantillon de photos (le nom de fichier en tire la date du vol)."""
     chk = chk if chk is not None else chunk()
     info = {"ortho": None, "dem": None, "box_ortho": None, "box_dem": None, "crs": "", "dates": [], "crs_object": None,
-            "center": None}
+            "crs_ortho": None, "crs_dem": None, "center": None}
     if chk is None:
         return info
     info["ortho"] = _raster_of(chk, "orthomosaic")
@@ -1657,7 +1657,19 @@ def raster_info(chk=None):
                 break
         except Exception:
             continue
-    info["center"] = _center_lonlat(info["crs_object"], info["box_ortho"] or info["box_dem"])
+    # Chaque raster a son propre SCR : une ortho en degres (WGS 84) peut cohabiter avec un MNT en metres (CC42), et son
+    # emprise n'est lisible que dans son SCR.
+    for kind, name in (("ortho", "orthomosaic"), ("dem", "elevation")):
+        info["crs_" + kind] = None
+        try:
+            crs = getattr(chk, name).projection.crs
+            if crs is not None and str(crs.name):
+                info["crs_" + kind] = crs
+        except Exception:
+            pass
+    info["geographic_ortho"] = info["crs_ortho"] is not None and is_geographic(info["crs_ortho"])
+    info["geographic_dem"] = info["crs_dem"] is not None and is_geographic(info["crs_dem"])
+    info["center"] = _center_lonlat(info["crs_ortho"] or info["crs_dem"] or info["crs_object"], info["box_ortho"] or info["box_dem"])
     try:
         cameras = list(chk.cameras)
         for camera in cameras[::max(1, len(cameras) // EXIF_DATE_SAMPLE)]:
@@ -1714,6 +1726,15 @@ def project_epsg(crs):
         return int(number) if text.startswith("EPSG") and number.isdigit() else None
     except Exception:
         return None
+
+
+def is_geographic(crs):
+    """Vrai si l'horizontal de ce SCR est en degres (longitude / latitude) : un pixel en centimetres n'y a pas de sens."""
+    try:
+        part = horizontal_part(crs)
+        return part is not None and str(part.wkt).lstrip().upper().startswith("GEOGCS")
+    except Exception:
+        return False
 
 
 def horizontal_part(crs):
