@@ -498,6 +498,67 @@ def detect(P, method="combined", params=None, origin=True, max_points=600000):
     return walls
 
 
+def outside_normal(P, w, cameras=None):
+    """Unit plan-view normal (nx, ny) of wall `w` pointing to the side the viewer (the cameras) stands on.
+
+    The data decide first: the inside of a building is never seen, so the side that holds points near the foot of the wall (ground,
+    cars, trunks; roofs and the corner walls are excluded) is the outside. When that is not decisive the cameras vote (mean side of the cameras: weak
+    when they surround the building, so it only breaks ties), and last the direction away from the middle of the cloud."""
+    n = np.array([w.nx, w.ny])
+    p0 = np.array([w.x0, w.y0])
+    u = np.array([-n[1], n[0]])
+    rel = P[:, :2] - p0
+    s = rel @ u
+    t = rel @ n
+    s_len = float(np.array([w.x1 - w.x0, w.y1 - w.y0]) @ u)
+    lo, hi = min(0.0, s_len), max(0.0, s_len)
+    pad = min(1.5, 0.2 * (hi - lo))                       # keep away from the corners: the neighbouring walls start there
+    m = (s >= lo + pad) & (s <= hi - pad) & (np.abs(t) > 0.6) & (np.abs(t) < 8.0) & (P[:, 2] < w.z0 + 2.5)
+    pos, neg = int((m & (t > 0)).sum()), int((m & (t < 0)).sum())
+    if max(pos, neg) >= 20 and max(pos, neg) >= 1.5 * min(pos, neg):
+        return tuple(n if pos > neg else -n)
+    if cameras is not None and len(cameras):
+        C = np.asarray(cameras, dtype=np.float64)
+        side = float(((C[:, :2] - p0) @ n).mean())
+        if abs(side) > 1e-6:
+            return tuple(n if side > 0 else -n)
+    c = P[:, :2].mean(axis=0)
+    return tuple(n if (p0 - c) @ n > 0 else -n)
+
+
+def walls_to_facades(walls, P, cameras=None):
+    """Convert detector walls to `model.Facade` (named A, B, C ... by decreasing area, bottom-left origin, normal to the cameras)."""
+    from .model import Facade, colour_for, letter_name
+    walls = sorted(walls, key=lambda w: -(w.length * w.height))
+    out = []
+    for i, w in enumerate(walls):
+        nx, ny = outside_normal(P, w, cameras)
+        ux, uy = -ny, nx                               # n = (u_y, -u_x): u is n turned by +90 degrees
+        a = np.array([w.x0, w.y0])
+        b = np.array([w.x1, w.y1])
+        start = a if (a @ np.array([ux, uy])) <= (b @ np.array([ux, uy])) else b
+        score = float(min(1.0, w.contrast / 10.0) * 0.5 + min(1.0, w.n / max(1.0, 0.5 * w.length * w.height)) * 0.5)
+        out.append(Facade.from_frame(letter_name(i), i, (start[0], start[1], w.z0), (ux, uy), w.length, w.height, points=w.n,
+                                     score=score, n=(nx, ny), tilt=w.tilt, rms=w.rms))
+    return out
+
+
+def detect_in_polygon(points, polygon, progress=None, cancelled=None, cameras=None, params=None, method="grid_hough"):
+    """Façades inside a search polygon: the entry the backends call. `points` (N, 3) ENU metres, `polygon` [(x, y)] in the same frame.
+    Returns list[Facade]. Raises backend.Cancelled when `cancelled()` becomes true between stages."""
+    from .backend import Progress
+    from .geometry import filter_points
+    prog = Progress.of(progress, cancelled)
+    prog(0.02, "Selecting the points inside the search area")
+    Q, _keep = filter_points(points, polygon)
+    prog(0.15, "%d points in the search area" % len(Q))
+    walls = detect(Q, method, params)
+    prog(0.9, "Naming the façades")
+    facades = walls_to_facades(walls, Q, cameras)
+    prog(1.0, "Done: %d façade(s)" % len(facades))
+    return facades
+
+
 def main(argv=None):
     """Command line: `python -m aerotools.tools.aerofacade.detect tie_enu.npy [--method grid_hough|combined] [--out walls.json]`.
 
