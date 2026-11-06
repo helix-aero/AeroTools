@@ -734,6 +734,7 @@ TEXTS = {
     "facade.ui.batch_name": "Wall {letter}",
     "facade.ui.ortho_intro": "Aero-Facade now builds the orthophoto of each wall. This takes a moment. Please do not touch Metashape.",
     "facade.ui.ortho_nothing": "No wall has a built surface yet. Go back and build the surfaces.",
+    "facade.ui.build_cancelled": "Cancelled. Press the green button to build the missing surfaces again, or go back to change your choices.",
     "facade.ui.ortho_cancelled": "Cancelled. You can try again, or continue with the pictures that are ready.",
     "facade.ui.ortho_some_failed": "{n} picture(s) could not be built. You can try again, or continue with the others.",
     "facade.ui.keep_going": "Continue with the pictures that are ready",

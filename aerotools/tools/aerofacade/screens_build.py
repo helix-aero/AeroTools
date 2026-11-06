@@ -195,8 +195,12 @@ class BuildScreen(Screen):
         else:
             for letter, entry in (task.result or {}).items():
                 st.dem_state[letter] = entry
-        self.batch.set_progress(1.0 if not task.was_cancelled and task.error is None else task.fraction, "")
+        self.batch.set_progress(1.0 if not task.was_cancelled and task.error is None else task.fraction,
+                                tr("facade.ui.state_cancelled") if task.was_cancelled else "")
         self._refresh()
+        if task.was_cancelled and task.error is None:
+            self.note.setText(tr("facade.ui.build_cancelled"))
+            self.note.setVisible(True)
         everything = bool(st.active()) and len(st.dem_ok_letters()) == len(st.active())
         if everything and not task.was_cancelled and task.error is None:
             choice = self.wizard.ask(tr("facade.ui.build_done_title"), tr("facade.ui.build_done_text", n=len(st.active())),

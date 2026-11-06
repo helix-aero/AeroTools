@@ -275,7 +275,21 @@ About **4.5 minutes of computing** for two facades. Pictures: `facade_shots/31_*
 Thumbnails: `exportRaster(width=, height=)` does NOT scale, it cuts a window of that many native pixels (the first wizard thumbnails showed only the top-left corner): the adapter uses `resolution=` instead.
 Reloading code in the console daemon: `from package import module` returns the stale module object after `del sys.modules[...]` unless the package itself is purged too (this wasted one test).
 
+### Live check of the merged code (CARRO, 2026-11-06, real mouse in Metashape 2.2.1, pictures `facade_shots/50_live_en_*`)
+Whole wizard again on the current code: polygon (wheel zoom, four clicks, double click), detection 11 s (A to D), right-click menu Remove / Undo, margins with the link badges (a comma is accepted as the decimal mark),
+depth maps (A 113 s, B 98 s, C 56 s in the first run), then tie points (about 10 s per wall) in a second run with other margins and a 5 cm pixel, orthophotos (31 s / 27 s / 8 s at 3 cm), export PNG and JPEG with
+their georeferencing text and DXF. The exported A and B match the references `facade_sud.jpg` and `Face_nord.jpg` (`50_live_en_20_*`, `21_*`). Re-running the wizard for the same walls, margins and method skips screen 5 and
+reuses the orthophotos; other margins or another method build new surfaces.
+Found and fixed during this run:
+* the wheel zoom of the picture anchored on the corner of the picture when the mouse had not moved inside the window first (Qt's "under the mouse" anchor); the anchor is now computed by hand;
+* after a long Metashape call (detection, build) Metashape's main window could end up above the wizard, which then looked gone: the wizard raises itself when a job ends (only when Metashape is the active application);
+* Cancel in Metashape's own progress window ended the wall as "failed, no reason was given" and the batch went on with the next wall: it now cancels the batch, like the wizard's own Cancel button
+  (which is out of reach while Metashape's modal progress window is open);
+* the small pictures of the export screen kept the previous build when the same walls were rebuilt;
+* the export format hints showed raw keys (`format_png_text`): the keys are now taken from the `FORMAT_KEYS` table, and a test checks every key the package asks for;
+* the walls screen now frames the building (not the whole picture) and counts "3 of 4 walls kept" after a removal; the method screen counts only the surfaces still to build (no long-wait notice when they all exist).
+
 ### Not verified
 `_preview_from_ortho` was checked on a chunk whose orthomosaic is in EPSG:3942 (aligned with the built preview), not on a chunk with a projected CRS that is a compound one or on a very large ortho.
-A dense cloud of tens of millions of points in `chunk.copy`; a chunk without georeference (`enu_matrix` falls back to the chunk axes, untested live); Cancel through the wizard's button during a Metashape job
-(the KeyboardInterrupt path is measured with a callback, not through the Qt button); a project saved with work chunks inside (`keep_work_chunks`).
+A dense cloud of tens of millions of points in `chunk.copy`; a chunk without georeference (`enu_matrix` falls back to the chunk axes, untested live); Cancel through the wizard's own button during a Metashape job
+(Metashape's modal progress window blocks it; the path was checked through the Cancel button of that window); a project saved with work chunks inside (`keep_work_chunks`).

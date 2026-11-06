@@ -47,7 +47,8 @@ class Task(object):
     def _run(self):
         try:
             self.result = self.func(self.progress, self.cancelled)
-            if self._cancel:
+            stopped_inside = any(isinstance(v, tuple) and v and v[0] == "cancelled" for v in list(self.items.values()))
+            if self._cancel or stopped_inside:                  # also when the job was stopped from outside (Metashape's Cancel button)
                 self.was_cancelled = True
         except Cancelled:
             self.was_cancelled = True

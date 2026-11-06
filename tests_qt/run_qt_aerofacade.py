@@ -835,8 +835,10 @@ def _():
     ok = states.get("A") == "done" and states.get("B") == "cancelled" and states.get("C") == "cancelled"
     again = not screen.build_button.isHidden() and not asked
     calls = [c[1] for c in backend.calls if c[0] == "build_dems"]
+    told = "Cancelled" in screen.note.text() and not screen.note.isHidden() and screen.batch.bar.value() < 1000
     window.close()
-    return ok and again and calls == [["A"], ["B"]], "states={} again={} asked={} calls={}".format(states, again, asked, calls)
+    return ok and again and told and calls == [["A"], ["B"]], "states={} again={} told={} asked={} calls={}".format(
+        states, again, told, asked, calls)
 
 
 @case("build: the banner shows while it runs, Cancel stops after the current wall, the rest says cancelled, Build resumes")
