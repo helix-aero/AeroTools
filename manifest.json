@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T17:36:52",
+ "built": "2026-11-06T17:51:53",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -172,6 +172,14 @@
   "aerotools/tools/aeroexports/vertical.py": {
    "sha256": "e7dd1887c89e8c1b1d365fdf2c8cff886f410d544ce7354d377dfe9d0bd4acc3",
    "size": 10993
+  },
+  "aerotools/tools/aerofacade/__init__.py": {
+   "sha256": "09b457ede902794bb9e899c370eaf1be77b04890f39ad1b396009328501793e0",
+   "size": 91
+  },
+  "aerotools/tools/aerofacade/detect.py": {
+   "sha256": "710843c1abdc9b431a433791f02ed8cdb982e562143f46f978b2c8a0d879003b",
+   "size": 22445
   },
   "aerotools/tools/fastgcp/__init__.py": {
    "sha256": "3ec48fb90b08f38fc8369981be74f45024d55a3089b42e7ed4891ebc7c3c8f06",
@@ -394,8 +402,8 @@
    "size": 659968
   },
   "aerotools/vendor/proj/data/files.geojson": {
-   "sha256": "34870c4e786a1225641452adf5313e850f0554a0b1647b0289bdd3ca3675fc7c",
-   "size": 331508
+   "sha256": "46f26c830faa164af9ef9ef51a7325a9d3800eb12ad4b1661c1d3143af7becc3",
+   "size": 331044
   },
   "aerotools/vendor/proj/data/grid_ops.json": {
    "sha256": "129569c565905a86a29998b76925fcf80753b809c336e8e97d49b4fca4d741c5",
@@ -406,8 +414,8 @@
    "size": 10280960
   },
   "aerotools/vendor/proj/share/proj/proj.ini": {
-   "sha256": "821e0bdea2266b7ef4c3d63ed56078afd76eff09f9176f0e56e0ba6b785d25d6",
-   "size": 2494
+   "sha256": "b95ebf0d007339244483d65d571cd887a51806e2bd2c1ab7f47b897d25320d65",
+   "size": 2435
   },
   "assets/fonts/Manrope-VariableFont_wght.ttf": {
    "sha256": "2b7a1ebc80c79246faa1b6e7093c7b91de2a4ceedb9b9a2b2fa05cf9bf8c77cd",
@@ -425,6 +433,10 @@
    "sha256": "e99e6cea7540801d67dcd7f3e533c0d54f0880761d39561f037e972aa0b3779b",
    "size": 15373
   },
+  "docs/AERO_FACADE_STUDY.md": {
+   "sha256": "b4b888bc56fa60a4178f6d2ea68056bc50e7d711365f6b3a0b769db1dd723020",
+   "size": 30634
+  },
   "docs/DEVELOPMENT.md": {
    "sha256": "9c4bc645a240bb60dbb39e74485ead4692ae2df04fc8fc24815140a279e7aad9",
    "size": 47369
@@ -440,6 +452,10 @@
   "docs/debug_adjust.py": {
    "sha256": "941c77e544a3b881a272334d76ab795c5e97d4610c90eeb25862dcc77844984a",
    "size": 3640
+  },
+  "docs/facade_console_build.py": {
+   "sha256": "045333aea1e6747bf6149f956c8135a07cd5f778d76454c41b6e755c195fc971",
+   "size": 5008
   },
   "install/aerotools_launcher.py.tpl": {
    "sha256": "1f0fdb6f02d9eca7f6d254f00342f6dc8426048432e42f56a57489a25d3a8006",

@@ -34,7 +34,7 @@ on a **copy** of the May chunk (`ZZ_FACADE_TEST_COPY`, still in the session, nev
 
 ## 3. A. Detection
 
-Prototype: `aerotools/tools/facade/detect.py` (numpy only, ~490 lines) + `tests/facade_synth.py` + `tests/test_facade_detect.py` (5 tests,
+Prototype: `aerotools/tools/aerofacade/detect.py` (numpy only, ~490 lines) + `tests/facade_synth.py` + `tests/test_facade_detect.py` (5 tests,
 4 s). Python 3.9 syntax checked with Metashape's own Python; numpy 2.0.2 imports in the live Metashape console (checked), scipy is not needed.
 
 Principle: a wall is a thin vertical slab of points. A point is *elevated* if it stands > 0.4 m above the lowest point of its 3 m cell
@@ -298,7 +298,7 @@ np.save(r"C:\temp\tie_enu.npy", np.array([list(LF.mulp(M.mulp(V((p.coord[0], p.c
 ```
 
 2. Detect the walls (any Python with numpy, no Metashape needed), from the repository folder:
-   `python -m aerotools.tools.facade.detect C:\temp\tie_enu.npy --out C:\temp\walls.json`
+   `python -m aerotools.tools.aerofacade.detect C:\temp\tie_enu.npy --out C:\temp\walls.json`
    (prints one line per wall, best first: length, height, azimuth, tilt, points, contrast).
 3. Build the DEM and the ortho of one wall on a work copy, in the Metashape console (edit the settings at the top, `WALL` = the `id` in `walls.json`):
    `exec(open(r"C:\path\to\AeroTools\docs\facade_console_build.py").read())`. It prints the DEM size and height range (expect a range of about
@@ -322,9 +322,9 @@ Never call `exportRaster` on a vertical plane without a region (it blocks Metash
 
 ## 10. Where things are
 
-* Console build script: `docs/facade_console_build.py`; detector command line: `python -m aerotools.tools.facade.detect`.
+* Console build script: `docs/facade_console_build.py`; detector command line: `python -m aerotools.tools.aerofacade.detect`.
 
 * Worktree `C:\Users\LTB1\AeroTools_facade`, branch `aerofacade` (from `origin/dev` 87313dd), local commits only.
-* Prototype: `aerotools/tools/facade/detect.py`; synthetic scene `tests/facade_synth.py`; tests `tests/test_facade_detect.py`.
+* Prototype: `aerotools/tools/aerofacade/detect.py`; synthetic scene `tests/facade_synth.py`; tests `tests/test_facade_detect.py`.
 * Scratch, evaluation scripts and results: `C:\Users\LTB1\AppData\Local\Temp\claude\C--Users-LTB1-Desktop\0e8331c3-9b57-48b0-82bc-f4616d429b51\scratchpad\facade_study\`
   (`eval_all.py`, `eval_results*.json`, `real_*`, `tie_*`, `ms_probe*.py`, `ms_probe*.json`, overlays `tie_*.png`).

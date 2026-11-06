@@ -1,7 +1,7 @@
 # Aero-Facade study: build the planar DEM and the orthomosaic of ONE detected wall, in the Metashape 2.2.1 console. Never saves the project.
 #
 #   1. export the tie points (3 lines, see docs/AERO_FACADE_STUDY.md, "Check 1") and detect the walls offline:
-#        python -m aerotools.tools.facade.detect tie_enu.npy --out walls.json
+#        python -m aerotools.tools.aerofacade.detect tie_enu.npy --out walls.json
 #   2. edit the five settings below, then in the console:   exec(open(r"C:\path\facade_console_build.py").read())
 #
 # Built from steps that were verified in the Citadelle session (planar OrthoProjection matrix, 2D region, DEM from tie points, chunk.region depth crop,

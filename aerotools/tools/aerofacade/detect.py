@@ -499,7 +499,7 @@ def detect(P, method="combined", params=None, origin=True, max_points=600000):
 
 
 def main(argv=None):
-    """Command line: `python -m aerotools.tools.facade.detect tie_enu.npy [--method grid_hough|combined] [--out walls.json]`.
+    """Command line: `python -m aerotools.tools.aerofacade.detect tie_enu.npy [--method grid_hough|combined] [--out walls.json]`.
 
     Reads an (N, 3) array (.npy, or an .npz with an `enu` or `xyz` array), prints the walls and writes them as JSON (plan-view end points,
     heights, direction, tilt, confidence) in the same frame as the input."""

@@ -9,8 +9,8 @@ import pytest
 np = pytest.importorskip("numpy")
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import facade_synth as S  # noqa: E402
-from aerotools.tools.facade import detect as D  # noqa: E402
+import aerofacade_synth as S  # noqa: E402
+from aerotools.tools.aerofacade import detect as D  # noqa: E402
 
 
 def _covered(walls, g, atol=6.0, dtol=0.3):
