@@ -189,7 +189,6 @@ class ExportDialog(QtWidgets.QDialog):
             self.cards[kind], self.fields[kind], self.native_labels[kind] = card, field, native
             self.raster_details[kind], self.raster_warnings[kind] = detail, warn
         self._build_look_row()
-        self._build_boundary_row(layout)
 
         # -- coordonnees ----------------------------------------------------------------------
         layout.addWidget(ui.label(i18n.t("export.crs_section"), "aeroSection"))
@@ -216,6 +215,14 @@ class ExportDialog(QtWidgets.QDialog):
         self.vert_box.activated.connect(self._on_vertical)
         grid.addWidget(self.vert_box, 2, 1)
         layout.addLayout(grid)
+        # the two "what gets cut" options, right under the coordinate systems: the empty border (drawings) and the boundary shapes
+        self.cad_clip = QtWidgets.QCheckBox(i18n.t("export.cad_clip"))
+        self.cad_clip.setToolTip(i18n.t("export.cad_clip_tip"))
+        self.cad_clip.setCursor(QtCore.Qt.PointingHandCursor)
+        self.cad_clip.setChecked(config.get(SECTION, "cad_clip") is not False)
+        self.cad_clip.toggled.connect(self._on_cad_choice)
+        layout.addWidget(self.cad_clip)
+        self._build_boundary_row(layout)
         self.geoid_card = QtWidgets.QFrame()
         self.geoid_card.setObjectName("aeroOption")
         geoid_box = QtWidgets.QVBoxLayout(self.geoid_card)
@@ -262,12 +269,6 @@ class ExportDialog(QtWidgets.QDialog):
         tips = {"jp2": "export.img_jp2_tip", "ecw": "export.img_ecw_tip"}
         for button in self.cad_images.buttons():
             button.setToolTip(i18n.t(tips[button.property("value")]))
-        self.cad_clip = QtWidgets.QCheckBox(i18n.t("export.cad_clip"))
-        self.cad_clip.setToolTip(i18n.t("export.cad_clip_tip"))
-        self.cad_clip.setCursor(QtCore.Qt.PointingHandCursor)
-        self.cad_clip.setChecked(config.get(SECTION, "cad_clip") is not False)
-        self.cad_clip.toggled.connect(self._on_cad_choice)
-        cad.addWidget(self.cad_clip, 2, 1)
         layout.addWidget(self.cad_box)
 
         self.tool_card = QtWidgets.QFrame()
@@ -531,7 +532,7 @@ class ExportDialog(QtWidgets.QDialog):
         return i18n.t("export.look_summary", palette=palette, shading=shading)
 
     def _void(self):
-        """What the preview paints where the DEM has no data: nothing when the drawing hides the empty border, else white."""
+        """What the preview paints where the DEM has no data: nothing when the drawing crops the white borders, else white."""
         return "transparent" if self.preset.currentData() == plan.CAD and self.cad_clip.isChecked() else "white"
 
     def _on_picture(self, *_args):
@@ -1176,6 +1177,7 @@ class ExportDialog(QtWidgets.QDialog):
             self._previous_preset = config.get(SECTION, "preset")
             config.put(SECTION, "preset", key)
         self.cad_box.setVisible(key == plan.CAD)
+        self.cad_clip.setVisible(key == plan.CAD)               # "Crop the white borders" only concerns the drawings
         self._check_tools()
         self._refresh_names()
 

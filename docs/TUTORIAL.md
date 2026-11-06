@@ -353,7 +353,7 @@ choose between overwriting it and a new version (`_v2`).
   DEM stays lossless); JPEG + world file; JPEG 2000 (written with QGIS or Global Mapper); ECW (written by Global Mapper, which
   must be installed); and an **AutoCAD drawing**, DXF or DWG (DWG needs AutoCAD, which converts the DXF in the background).
 - **AutoCAD drawing.** `TOPO.dxf` (or `.dwg`) holds the ortho and the DEM in two layers. The image files sit in `00_Assets` and
-  are linked with relative paths, so the folder can be moved or sent as it is. **Hide the empty border** (on by default) makes
+  are linked with relative paths, so the folder can be moved or sent as it is. **Crop the white borders** (on by default) makes
   AutoCAD show only the real data area of each image; the image files themselves are not changed.
 - **DEM colours and shading.** **Colours and shading...** opens a window with a live preview of the DEM picture: palette, light
   (sun, four lights, slope), light direction and height, strength and colour range. The drawing uses the look you keep, and the
