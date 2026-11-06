@@ -1,28 +1,28 @@
-"""Historique des pointages de FastGCP, pour pouvoir les annuler.
+"""History of the FastGCP markings, so that they can be undone.
 
-Une pile de profondeur limitee (MAX_DEPTH). Chaque entree garde ce qu'il faut
-pour defaire une pose : le marqueur, la photo, et la projection que le marqueur
-avait sur cette photo AVANT (x, y, pinned) ou None s'il n'en avait pas.
+A stack of limited depth (MAX_DEPTH). Each entry keeps what is needed to
+undo a placement: the marker, the photo, and the projection that the marker
+had on this photo BEFORE (x, y, pinned) or None if it had none.
 
-`marking.place_at` enregistre l'entree avant d'ecrire dans Metashape ;
-`marking.undo_last` depile et restaure. Ce module ne touche pas a Metashape : il
-ne fait que garder des references et prevenir ceux qui s'abonnent (bouton
-Annuler du panneau, raccourci Ctrl+Z) quand la pile change.
+`marking.place_at` records the entry before writing to Metashape;
+`marking.undo_last` pops it and restores. This module does not touch Metashape: it
+only keeps references and notifies its subscribers (the panel's Undo
+button, the Ctrl+Z shortcut) when the stack changes.
 
-Une reference de marqueur ou de photo devient invalide (RuntimeError) quand on
-change de chunk : la pile est alors videe (Session.forget_chunk) et toute entree
-devenue illisible est ignoree, jamais une exception.
+A marker or photo reference becomes invalid (RuntimeError) when the chunk
+changes: the stack is then emptied (Session.forget_chunk) and any entry that
+became unreadable is ignored, never an exception.
 """
 
 MAX_DEPTH = 100
 
 _STACK = []
-_REDO = []            # pointages defaits par Annuler, que Retablir peut reposer
+_REDO = []            # markings undone by Undo, which Redo can place again
 _LISTENERS = []
 
 
 class Entry(object):
-    """Un pointage pose : de quoi le defaire."""
+    """A placed marking: what is needed to undo it."""
 
     __slots__ = ("marker", "camera", "previous", "chunk_key", "label", "camera_name")
 
@@ -35,7 +35,7 @@ class Entry(object):
         self.camera_name = camera_name
 
     def is_valid(self):
-        """False si le marqueur ou la photo n'existent plus. Ne leve jamais."""
+        """False if the marker or the photo no longer exists. Never raises."""
         try:
             self.marker.label
             self.camera.key
@@ -45,7 +45,7 @@ class Entry(object):
 
 
 def _clean_previous(previous):
-    """(x, y, pinned) en flottants, ou None. Une valeur illisible vaut None."""
+    """(x, y, pinned) as floats, or None. An unreadable value is None."""
     if previous is None:
         return None
     try:
@@ -56,9 +56,9 @@ def _clean_previous(previous):
 
 
 def push(marker, camera, previous, chunk_key=None, label="", camera_name="", keep_redo=False):
-    """Empile un pointage. Renvoie l'entree, ou None si elle est inutilisable.
+    """Push a marking. Returns the entry, or None if it is unusable.
 
-    Un nouveau pointage vide la pile de Retablir, sauf quand c'est Retablir lui-meme (`keep_redo`).
+    A new marking empties the Redo stack, except when it is Redo itself (`keep_redo`).
     """
     if marker is None or camera is None:
         return None
@@ -73,7 +73,7 @@ def push(marker, camera, previous, chunk_key=None, label="", camera_name="", kee
 
 
 def pop():
-    """Depile et renvoie la derniere entree, ou None si la pile est vide."""
+    """Pop and return the last entry, or None if the stack is empty."""
     if not _STACK:
         return None
     entry = _STACK.pop()
@@ -82,14 +82,14 @@ def pop():
 
 
 def discard(entry):
-    """Retire `entry` si c'est la derniere (ecriture refusee apres l'empilage)."""
+    """Remove `entry` if it is the last one (write refused after the push)."""
     if entry is not None and _STACK and _STACK[-1] is entry:
         _STACK.pop()
         notify()
 
 
 def push_redo(marker, camera, after, chunk_key=None, label="", camera_name=""):
-    """Garde ce que Annuler vient d'effacer : `after` est la projection a reposer (ou None : aucune)."""
+    """Keep what Undo has just erased: `after` is the projection to place again (or None: none)."""
     if marker is None or camera is None:
         return None
     entry = Entry(marker, camera, _clean_previous(after), chunk_key, label, camera_name)
@@ -101,7 +101,7 @@ def push_redo(marker, camera, after, chunk_key=None, label="", camera_name=""):
 
 
 def pop_redo():
-    """Depile le dernier pointage defait, ou None."""
+    """Pop the last undone marking, or None."""
     if not _REDO:
         return None
     entry = _REDO.pop()
@@ -133,7 +133,7 @@ def clear():
 
 
 # --------------------------------------------------------------------------
-# Abonnes
+# Subscribers
 # --------------------------------------------------------------------------
 
 def subscribe(callback):
@@ -147,7 +147,7 @@ def unsubscribe(callback):
 
 
 def notify():
-    """Previent les abonnes. Une erreur chez l'un d'eux ne gene pas les autres."""
+    """Notify the subscribers. An error in one of them does not affect the others."""
     for callback in list(_LISTENERS):
         try:
             callback()

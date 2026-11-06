@@ -1,8 +1,8 @@
-"""Rapport PDF et CSV de FastGCP : la partie qui ne demande pas Qt.
+"""FastGCP PDF and CSV report: the part that does not need Qt.
 
-Le rendu lui-meme est verifie par tests_qt/run_qt_report.py (vrai Qt).
-Ici : lecture des marqueurs, statistiques, formats, CSV, noms de fichier,
-repartition des pages et orchestration des exports.
+The rendering itself is checked by tests_qt/run_qt_report.py (real Qt).
+Here: marker reading, statistics, formats, CSV, file names,
+page distribution and export orchestration.
 """
 
 import datetime
@@ -16,11 +16,11 @@ from aerotools.tools.fastgcp import report
 
 
 # --------------------------------------------------------------------------
-# Doubles
+# Test doubles
 # --------------------------------------------------------------------------
 
 def make_world(ms, rows):
-    """Chunk avec un marqueur par ligne (label, nb_projections, erreurs ou None)."""
+    """Chunk with one marker per row (label, projection count, errors or None)."""
     cameras = [ms.Camera(key, ms.Vector(0, 0, 0)) for key in range(1, 12)]
     markers, errors = [], {}
     for label, count, err in rows:
@@ -30,7 +30,7 @@ def make_world(ms, rows):
         markers.append(marker)
         errors[label] = err
     chunk = ms.Chunk(cameras, markers)
-    chunk.label = "Levé éolien n°2"
+    chunk.label = "Survey Z\u00fcrich n°2"
     ms.app.document.chunk = chunk
 
     def fake_errors(_chk, marker):
@@ -61,15 +61,15 @@ def world(ms, monkeypatch):
 # Formats
 # --------------------------------------------------------------------------
 
-def test_fmt_num_uses_decimal_comma_and_three_decimals():
-    assert report.fmt_num(0.12345) == "0,123"
-    assert report.fmt_num(12) == "12,000"
-    assert report.fmt_num(-0.0456) == "-0,046"
-    assert report.fmt_num(4.56, 1) == "4,6"
+def test_fmt_num_uses_decimal_point_and_three_decimals():
+    assert report.fmt_num(0.12345) == "0.123"
+    assert report.fmt_num(12) == "12.000"
+    assert report.fmt_num(-0.0456) == "-0.046"
+    assert report.fmt_num(4.56, 1) == "4.6"
 
 
 def test_fmt_num_never_prints_negative_zero():
-    assert report.fmt_num(-0.0004) == "0,000"
+    assert report.fmt_num(-0.0004) == "0.000"
 
 
 def test_fmt_num_gives_a_dash_when_unknown():
@@ -78,20 +78,20 @@ def test_fmt_num_gives_a_dash_when_unknown():
 
 
 def test_fmt_m_adds_the_unit():
-    assert report.fmt_m(0.0346) == "0,035 m"
+    assert report.fmt_m(0.0346) == "0.035 m"
     assert report.fmt_m(None) == report.EM_DASH
 
 
 
 # --------------------------------------------------------------------------
-# Nom de fichier
+# File name
 # --------------------------------------------------------------------------
 
 def test_safe_name_strips_accents_spaces_and_symbols():
-    assert report.safe_name("Levé éolien n°2") == "Leve_eolien_n2"
+    assert report.safe_name("Survey Z\u00fcrich n°2") == "Survey_Zurich_n2"
     assert report.safe_name("  Chunk 1 / Nord  ") == "Chunk_1_Nord"
     assert report.safe_name("") == "Chunk"
-    assert report.safe_name("é?*") == "e"
+    assert report.safe_name("\u00fc?*") == "u"
     assert report.safe_name("日本") == "Chunk"
 
 
@@ -101,15 +101,15 @@ def test_safe_name_is_bounded():
 
 def test_suggested_filename_follows_the_house_pattern():
     day = datetime.date(2026, 11, 3)
-    assert report.suggested_filename("Chunk 1", today=day) == "2026-11-03_Rapport_GCP_Chunk_1.pdf"
-    assert report.suggested_filename("Chunk 1", ".csv", today=day, kind="Tableau_GCP") == \
-        "2026-11-03_Tableau_GCP_Chunk_1.csv"
-    name = report.suggested_filename("Levé éolien")
+    assert report.suggested_filename("Chunk 1", today=day) == "2026-11-03_GCP_report_Chunk_1.pdf"
+    assert report.suggested_filename("Chunk 1", ".csv", today=day, kind="GCP_table") == \
+        "2026-11-03_GCP_table_Chunk_1.csv"
+    name = report.suggested_filename("Survey Z\u00fcrich")
     assert " " not in name and name.isascii() and name.endswith(".pdf")
 
 
 def test_default_directory_prefers_the_project_folder(ms, tmp_path):
-    project = tmp_path / "chantier.psx"
+    project = tmp_path / "site.psx"
     ms.app.document.path = str(project)
     assert report.project_directory() == str(tmp_path)
     assert report.default_directory() == str(tmp_path)
@@ -118,7 +118,7 @@ def test_default_directory_prefers_the_project_folder(ms, tmp_path):
 def test_default_directory_without_project_falls_back(ms):
     ms.app.document.path = ""
     assert report.project_directory() is None
-    ms.app.document.path = "Z:/dossier/qui/nexiste/pas/p.psx"
+    ms.app.document.path = "Z:/folder/that/does/not/exist/p.psx"
     assert report.project_directory() is None
     assert report.default_directory()
 
@@ -129,7 +129,7 @@ def test_default_directory_without_project_falls_back(ms):
 
 def test_collect_data_lists_every_marker_with_its_numbers(world):
     data = report.collect_data(world, today=datetime.date(2026, 11, 3))
-    assert data["chunk"] == "Levé éolien n°2"
+    assert data["chunk"] == "Survey Z\u00fcrich n°2"
     assert data["date"] == datetime.date(2026, 11, 3)
     labels = [m["label"] for m in data["markers"]]
     assert labels == ["GCP01", "GCP02", "GCP03", "GCP04", "GCP05"]
@@ -151,7 +151,7 @@ def test_collect_data_statistics(world):
     assert stats["mean_projections"] == pytest.approx(2.8)
     assert stats["median_projections"] == 3
     assert stats["min_projections"] == 0 and stats["max_projections"] == 5
-    assert stats["n_low_projections"] == 1            # GCP05 : 2 projections
+    assert stats["n_low_projections"] == 1            # GCP05: 2 projections
     xs = [0.010, -0.020, 0.030, 0.200]
     assert stats["rms_x"] == pytest.approx(math.sqrt(sum(v * v for v in xs) / 4))
     assert stats["rms_xy"] == pytest.approx(math.hypot(stats["rms_x"], stats["rms_y"]))
@@ -164,16 +164,16 @@ def test_collect_data_statistics(world):
 
 
 def test_collect_data_reads_the_meta(world, ms):
-    ms.app.document.path = "D:/projets/eolien.psx"
+    ms.app.document.path = "D:/projects/wind.psx"
     ms.app.version = "2.2.1"
     meta = report.collect_data(world)["meta"]
-    assert meta["project"] == "eolien.psx"
+    assert meta["project"] == "wind.psx"
     assert meta["metashape"] == "2.2.1"
 
 
 def test_collect_data_unsaved_project(world, ms):
     ms.app.document.path = ""
-    assert "non enregistr" in report.collect_data(world)["meta"]["project"]
+    assert "Unsaved" in report.collect_data(world)["meta"]["project"]
 
 
 def test_no_error_at_all_gives_none_statistics(ms, monkeypatch):
@@ -214,7 +214,7 @@ def test_error_reader_that_raises_is_tolerated(ms, monkeypatch):
     chunk, _fake = make_world(ms, [("A", 2, None)])
 
     def boom(_chk, _marker):
-        raise RuntimeError("marqueur invalide")
+        raise RuntimeError("invalid marker")
 
     monkeypatch.setattr(msapi, "marker_errors", boom, raising=False)
     marker = report.collect_data(chunk)["markers"][0]
@@ -294,7 +294,7 @@ def test_fallback_is_used_when_msapi_has_no_marker_errors(ms, monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Mise en evidence et histogramme
+# Highlighting and histogram
 # --------------------------------------------------------------------------
 
 def test_over_threshold():
@@ -371,7 +371,7 @@ def test_page_count_matches_the_plan(world):
 # --------------------------------------------------------------------------
 
 def _ai_items(n, prefix="IMG"):
-    return [{"image": object(), "camera": "{}_{:04d}".format(prefix, k), "caption": "0,90",
+    return [{"image": object(), "camera": "{}_{:04d}".format(prefix, k), "caption": "0.90",
              "color": "#000", "ring": "#000"} for k in range(n)]
 
 
@@ -440,12 +440,12 @@ def test_ai_sections_keep_only_live_picks_with_their_confidence(ms, monkeypatch)
     sections = report.ai_sections(types.SimpleNamespace(aigcp_log=log))
     assert [s["label"] for s in sections] == ["PS_2"]
     items = sections[0]["items"]
-    # la photo exclue figure avec sa croix rouge ; une gardee sans projection est absente
+    # the excluded photo appears with its red cross; a kept one without a projection is absent
     assert [i["camera"] for i in items] == [cams[0].label, cams[1].label, cams[2].label]
-    assert items[0]["caption"] == report.fmt_num(0.91, 2) and items[1]["caption"] == "manuel"
-    assert items[2]["caption"] == "exclue" and items[2]["ring"] == report.AI_RED
+    assert items[0]["caption"] == report.fmt_num(0.91, 2) and items[1]["caption"] == "manual"
+    assert items[2]["caption"] == "excluded" and items[2]["ring"] == report.AI_RED
     assert sections[0]["info"]["excluded"] == 1
-    assert "1 photo(s) exclue(s)" in report.ai_info_parts(sections[0]["info"])
+    assert "1 photo(s) excluded" in report.ai_info_parts(sections[0]["info"])
 
 
 def test_ai_info_parts_describe_the_marker():
@@ -453,15 +453,15 @@ def test_ai_info_parts_describe_the_marker():
             "conf_mean": 0.9234, "conf_min": 0.9, "projections": 40, "gcp": True, "accuracy": 0.005}
     parts = report.ai_info_parts(info)
     text = " | ".join(parts)
-    assert "0,012" in text and "0,8" in text and "2,1" in text      # erreur 3D, ecart median, maximum
-    assert "0,92" in text and "0,90" in text                        # confiance moyenne et minimum
-    assert "40" in text and "GCP" in text and "0,005" in text
+    assert "0.012" in text and "0.8" in text and "2.1" in text      # 3D error, median offset, maximum
+    assert "0.92" in text and "0.90" in text                        # mean and minimum confidence
+    assert "40" in text and "GCP" in text and "0.005" in text
     assert len(parts) == 5
 
 
 def test_ai_info_parts_say_when_it_is_a_check_point_and_skip_the_unknown():
     parts = report.ai_info_parts({"gcp": False})
-    assert len(parts) == 1 and "contrôle" in parts[0]
+    assert len(parts) == 1 and "Check point" in parts[0]
     assert report.ai_info_parts({}) == []
     assert report.ai_info_parts({"gcp": None, "accuracy": 0.01}) == []
 
@@ -504,7 +504,7 @@ def test_ai_sections_carry_the_marker_information(ms, monkeypatch):
     monkeypatch.setattr(report, "_ai_thumb", lambda e, excluded=False: object())
     info = report.ai_sections(types.SimpleNamespace(aigcp_log=log), data)[0]["info"]
     assert info["total"] == 0.02 and info["projections"] == 12
-    assert info["median_px"] == pytest.approx(2.0) and info["max_px"] == pytest.approx(3.0)   # 1 px et 3 px d'ecart
+    assert info["median_px"] == pytest.approx(2.0) and info["max_px"] == pytest.approx(3.0)   # offsets of 1 px and 3 px
     assert info["conf_mean"] == pytest.approx(0.92) and info["conf_min"] == pytest.approx(0.90)
     assert info["gcp"] is True and info["accuracy"] == pytest.approx(0.005)
 
@@ -523,9 +523,9 @@ def test_ai_sections_skip_unreadable_photos(ms, monkeypatch):
 
 def test_csv_rows_without_reference(world):
     rows = report.csv_rows(report.collect_data(world))
-    assert rows[0] == ["ID", "Erreur X (m)", "Erreur Y (m)", "Erreur Z (m)",
-                       "Erreur totale (m)", "Projections"]
-    assert rows[1][:5] == ["GCP01", "0,010", "0,020", "0,030", "0,037"]
+    assert rows[0] == ["ID", "Error X (m)", "Error Y (m)", "Error Z (m)",
+                       "Total error (m)", "Projections"]
+    assert rows[1][:5] == ["GCP01", "0.010", "0.020", "0.030", "0.037"]
     assert rows[1][5] == "4"
     assert rows[4] == ["GCP04", "", "", "", "", "0"]
     assert len(rows) == 6
@@ -536,8 +536,8 @@ def test_csv_rows_with_reference_columns(ms, monkeypatch):
     monkeypatch.setattr(msapi, "marker_errors", fake, raising=False)
     chunk.markers[0].reference.location = ms.Vector(500000.1234, 4700000.5, 12.3456)
     rows = report.csv_rows(report.collect_data(chunk))
-    assert rows[0][-3:] == ["X référence", "Y référence", "Z référence"]
-    assert rows[1][-3:] == ["500000,123", "4700000,500", "12,346"]
+    assert rows[0][-3:] == ["Reference X", "Reference Y", "Reference Z"]
+    assert rows[1][-3:] == ["500000.123", "4700000.500", "12.346"]
     assert rows[2][-3:] == ["", "", ""]
 
 
@@ -546,12 +546,12 @@ def test_csv_geographic_reference_keeps_eight_decimals(ms, monkeypatch):
     monkeypatch.setattr(msapi, "marker_errors", fake, raising=False)
     chunk.markers[0].reference.location = ms.Vector(9.123456789, 42.5, 120.0)
     rows = report.csv_rows(report.collect_data(chunk))
-    assert rows[1][-3:] == ["9,12345679", "42,50000000", "120,000"]
+    assert rows[1][-3:] == ["9.12345679", "42.50000000", "120.000"]
 
 
-def test_write_csv_is_excel_french(world, tmp_path, monkeypatch):
+def test_write_csv_is_excel_friendly(world, tmp_path, monkeypatch):
     chunk = world
-    chunk.markers[0].label = "GCP;01 \"nord\""
+    chunk.markers[0].label = "GCP,01 \"north\""
     monkeypatch.setattr(msapi, "marker_errors", lambda c, m: {
         "x": 0.010, "y": 0.020, "z": 0.030, "total": 0.0374}, raising=False)
     path = tmp_path / "t.csv"
@@ -561,13 +561,13 @@ def test_write_csv_is_excel_french(world, tmp_path, monkeypatch):
     assert b"\r\n" in raw and b"\n" not in raw.replace(b"\r\n", b"")
     text = raw.decode("utf-8-sig")
     lines = text.split("\r\n")
-    assert lines[0] == "ID;Erreur X (m);Erreur Y (m);Erreur Z (m);Erreur totale (m);Projections"
-    assert lines[1].startswith('"GCP;01 ""nord""";0,010;0,020;0,030;0,037;4')
-    assert "." not in lines[2].split(";", 1)[1]
+    assert lines[0] == "ID,Error X (m),Error Y (m),Error Z (m),Total error (m),Projections"
+    assert lines[1].startswith('"GCP,01 ""north""",0.010,0.020,0.030,0.037,4')
+    assert lines[2] == "GCP02,0.010,0.020,0.030,0.037,3"
 
 
 # --------------------------------------------------------------------------
-# Orchestration des exports (aucun Qt reel)
+# Export orchestration (no real Qt)
 # --------------------------------------------------------------------------
 
 @pytest.fixture
@@ -576,7 +576,7 @@ def ui(monkeypatch, tmp_path):
     monkeypatch.setattr(report, "show_message",
                         lambda parent, title, text, warning=False: shown.append((title, text)))
     monkeypatch.setattr(report, "offer_open",
-                        lambda parent, title, path: shown.append(("ouvrir", path)) or False)
+                        lambda parent, title, path: shown.append(("open", path)) or False)
     monkeypatch.setattr(report, "collect_images", lambda state, data: {})
     state = types.SimpleNamespace(panel=types.SimpleNamespace(status=[]))
     state.panel.set_status = state.panel.status.append
@@ -592,7 +592,7 @@ def test_export_pdf_without_chunk_says_so(ms, ui):
 def test_export_pdf_without_markers_says_so(ms, ui):
     ms.app.document.chunk = ms.Chunk([], [])
     assert report.export_pdf(ui.state) is None
-    assert "aucun marqueur" in ui.shown[0][1].lower()
+    assert "no markers" in ui.shown[0][1].lower()
 
 
 def test_export_pdf_cancel_is_silent(world, ui, monkeypatch):
@@ -602,12 +602,12 @@ def test_export_pdf_cancel_is_silent(world, ui, monkeypatch):
 
 
 def test_export_pdf_proposes_a_good_default_name_and_adds_the_extension(world, ui, monkeypatch, ms):
-    ms.app.document.path = str(ui.tmp / "chantier.psx")
+    ms.app.document.path = str(ui.tmp / "site.psx")
     seen = {}
 
     def ask(parent, caption, default, flt):
         seen["default"] = default
-        return str(ui.tmp / "sans_extension")
+        return str(ui.tmp / "no_extension")
 
     monkeypatch.setattr(report, "ask_save_path", ask)
     calls = []
@@ -618,12 +618,12 @@ def test_export_pdf_proposes_a_good_default_name_and_adds_the_extension(world, u
 
     monkeypatch.setattr(report, "build_pdf", fake_build)
     result = report.export_pdf(ui.state)
-    assert result == str(ui.tmp / "sans_extension.pdf") == calls[0]
+    assert result == str(ui.tmp / "no_extension.pdf") == calls[0]
     default = seen["default"]
     assert default.startswith(str(ui.tmp))
-    assert default.endswith("_Rapport_GCP_Leve_eolien_n2.pdf")
-    assert ("ouvrir", result) in ui.shown
-    assert ui.state.panel.status == ["Rapport PDF exporté"]
+    assert default.endswith("_GCP_report_Survey_Zurich_n2.pdf")
+    assert ("open", result) in ui.shown
+    assert ui.state.panel.status == ["PDF report exported"]
 
 
 def test_export_pdf_logs_the_result(world, ui, monkeypatch):
@@ -632,7 +632,7 @@ def test_export_pdf_logs_the_result(world, ui, monkeypatch):
     monkeypatch.setattr(report, "ask_save_path", lambda *a: str(ui.tmp / "r.pdf"))
     monkeypatch.setattr(report, "build_pdf", lambda data, path, images: 3)
     report.export_pdf(ui.state)
-    assert any("Rapport PDF écrit" in line and "3 pages" in line for line in journal.lines())
+    assert any("PDF report written" in line and "3 pages" in line for line in journal.lines())
 
 
 def test_export_pdf_failure_never_raises(world, ui, monkeypatch):
@@ -641,19 +641,19 @@ def test_export_pdf_failure_never_raises(world, ui, monkeypatch):
     monkeypatch.setattr(report, "ask_save_path", lambda *a: str(ui.tmp / "r.pdf"))
 
     def boom(*args):
-        raise PermissionError("verrouillé")
+        raise PermissionError("locked")
 
     monkeypatch.setattr(report, "build_pdf", boom)
     assert report.export_pdf(ui.state) is None
-    assert any("Export PDF impossible" in title for title, _t in ui.shown)
-    assert any("Écriture refusée" in text for _t, text in ui.shown)
-    assert any("Export PDF impossible" in line for line in journal.lines())
-    assert ui.state.panel.status[-1] == "Export PDF impossible"
+    assert any("PDF export failed" in title for title, _t in ui.shown)
+    assert any("Write denied" in text for _t, text in ui.shown)
+    assert any("PDF export failed" in line for line in journal.lines())
+    assert ui.state.panel.status[-1] == "PDF export failed"
 
 
 def test_export_pdf_survives_a_broken_dialog(world, ui, monkeypatch):
     def boom(*args):
-        raise RuntimeError("fenêtre morte")
+        raise RuntimeError("dead window")
 
     monkeypatch.setattr(report, "ask_save_path", boom)
     assert report.export_pdf(ui.state) is None
@@ -666,23 +666,23 @@ def test_export_pdf_survives_a_state_without_panel(world, ui, monkeypatch):
 
 
 def test_export_csv_writes_the_file(world, ui, monkeypatch):
-    target = ui.tmp / "tableau"
+    target = ui.tmp / "table"
     monkeypatch.setattr(report, "ask_save_path", lambda *a: str(target))
     result = report.export_csv(ui.state)
     assert result == str(target) + ".csv"
-    text = (ui.tmp / "tableau.csv").read_bytes().decode("utf-8-sig")
-    assert text.startswith("ID;Erreur X (m)")
+    text = (ui.tmp / "table.csv").read_bytes().decode("utf-8-sig")
+    assert text.startswith("ID,Error X (m)")
     assert text.count("\r\n") == 6
-    assert ui.state.panel.status == ["Tableau CSV exporté"]
+    assert ui.state.panel.status == ["CSV table exported"]
 
 
 def test_export_csv_failure_never_raises(world, ui, monkeypatch):
     monkeypatch.setattr(report, "ask_save_path", lambda *a: str(ui.tmp / "absent" / "t.csv"))
     assert report.export_csv(ui.state) is None
-    assert any("Export CSV impossible" in title for title, _t in ui.shown)
+    assert any("CSV export failed" in title for title, _t in ui.shown)
 
 
 def test_explain_gives_readable_text():
-    assert "Écriture refusée" in report._explain(PermissionError())
-    assert report._explain(RuntimeError("boum")) == "boum"
+    assert "Write denied" in report._explain(PermissionError())
+    assert report._explain(RuntimeError("boom")) == "boom"
     assert report._explain(RuntimeError()) == "RuntimeError"

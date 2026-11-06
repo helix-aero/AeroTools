@@ -1,16 +1,16 @@
-"""Moteurs de detection installes dans le Python d'AIGCP (sans Qt, sans Metashape).
+"""Detection engines installed in the AIGCP Python (no Qt, no Metashape).
 
-Deux moteurs, au choix de l'operateur (reglage `engine` de la section `aigcp`) :
-  light    ONNX Runtime sur processeur : environ 100 Mo, rapide, marche sur tout PC ;
-  precise  torch + ultralytics : le moteur d'origine (environ 3 Go), carte graphique si presente.
-  auto     (defaut) le precis s'il est installe, sinon le leger.
-Les deux donnent les memes positions a quelques centiemes de pixel pres (mesure sur 569 cibles).
+Two engines, chosen by the operator (`engine` setting of the `aigcp` section):
+  light    ONNX Runtime on the CPU: about 100 MB, fast, works on any PC;
+  precise  torch + ultralytics: the original engine (about 3 GB), graphics card if present.
+  auto     (default) the precise one if installed, otherwise the light one.
+Both give the same positions to within a few hundredths of a pixel (measured on 569 targets).
 
-Les outils de reentrainement (torch, ultralytics, onnx) sont ceux du moteur precis plus le
-paquet onnx : l'installeur les pose a la place de l'utilisateur (`InstallJob`), dans une
-fenetre de console qui affiche la progression.
+The retraining tools (torch, ultralytics, onnx) are those of the precise engine plus the
+onnx package: the installer sets them up for the user (`InstallJob`), in a console
+window that shows the progress.
 
-Rien n'est importe ici : on interroge le Python externe par un court sous-processus.
+Nothing is imported here: the external Python is queried through a short subprocess.
 """
 
 import os
@@ -29,7 +29,7 @@ PROBE = ("import importlib.util as u; names = %r; "
          "print(','.join(n for n in names if u.find_spec(n) is not None))" % (sorted(set(LIGHT + TRAINING)),))
 CACHE_SECONDS = 20.0
 
-# Cles de texte (aerotools/lang) : ecrites en clair ici pour que les catalogues restent verifiables.
+# Text keys (aerotools/lang): written out in full here so that the catalog stays checkable.
 CHOICE_TEXT = {"auto": "settings.engine_auto", "light": "settings.engine_light", "precise": "settings.engine_precise"}
 NAME_TEXT = {"light": "settings.engine_name_light", "precise": "settings.engine_name_precise",
              "training": "settings.engine_name_training"}
@@ -60,7 +60,7 @@ def default_python():
 
 
 def can_install():
-    """L'installeur ne sait remplir que l'environnement par defaut (pas un Python choisi a la main)."""
+    """The installer can only fill the default environment (not a hand-picked Python)."""
     return (os.name == "nt" and os.path.isfile(script_path())
             and os.path.normcase(os.path.normpath(python_path())) == os.path.normcase(os.path.normpath(default_python())))
 
@@ -70,9 +70,9 @@ def script_path():
 
 
 def status(python=None, refresh=False):
-    """{"python", "light", "precise", "training"} : booleens. Mis en cache quelques secondes.
+    """{"python", "light", "precise", "training"}: booleans. Cached for a few seconds.
 
-    Un Python introuvable ou qui ne repond pas donne tout a False. Ne leve jamais."""
+    A Python that is missing or does not answer gives all False. Never raises."""
     python = python or python_path()
     now = time.time()
     if (not refresh and _cache["key"] == python and _cache["value"] is not None
@@ -95,12 +95,12 @@ def status(python=None, refresh=False):
 
 
 def forget():
-    """Oublie le cache : a appeler apres une installation."""
+    """Forgets the cache: to be called after an installation."""
     _cache.update(key=None, when=0.0, value=None)
 
 
 def resolve(choice=None, state=None):
-    """Moteur reellement utilise : "light" ou "precise", ou None si rien de ce qu'il faut n'est installe."""
+    """Engine actually used: "light" or "precise", or None if nothing needed is installed."""
     choice = choice or selected()
     state = state or status()
     if choice == "light":
@@ -113,7 +113,7 @@ def resolve(choice=None, state=None):
 
 
 def missing(choice=None, state=None):
-    """Ce qu'il faut installer pour que le choix marche : "light", "precise" ou None (rien a faire)."""
+    """What must be installed for the choice to work: "light", "precise" or None (nothing to do)."""
     choice = choice or selected()
     state = state or status()
     if resolve(choice, state) is not None:
@@ -122,13 +122,13 @@ def missing(choice=None, state=None):
 
 
 def runner_engine(choice=None, state=None):
-    """Valeur du champ `engine` de work.json : "onnx" ou "torch" (le runner choisit seul si inconnu)."""
+    """Value of the `engine` field of work.json: "onnx" or "torch" (the runner chooses by itself if unknown)."""
     which = resolve(choice, state)
     return {"light": "onnx", "precise": "torch"}.get(which, "auto")
 
 
 class InstallJob(object):
-    """Lance l'installeur dans une console visible ; `poll()` rend None tant qu'il tourne."""
+    """Launches the installer in a visible console; `poll()` returns None while it runs."""
 
     def __init__(self, engine=None, training=False):
         self.engine = engine or "none"
@@ -148,7 +148,7 @@ class InstallJob(object):
         return self
 
     def poll(self):
-        """None si l'installation tourne encore ; sinon {"ok": bool, "code": code de sortie}."""
+        """None while the installation is still running; otherwise {"ok": bool, "code": exit code}."""
         if self.process is None:
             return {"ok": False, "code": -1}
         code = self.process.poll()
@@ -167,7 +167,7 @@ class InstallJob(object):
 
 
 def describe(state=None):
-    """Lignes d'etat pour l'interface : [(cle, installe)] dans l'ordre leger, precis, reentrainement."""
+    """Status lines for the interface: [(key, installed)] in the order light, precise, retraining."""
     state = state or status()
     return [("light", state["light"]), ("precise", state["precise"]), ("training", state["training"])]
 

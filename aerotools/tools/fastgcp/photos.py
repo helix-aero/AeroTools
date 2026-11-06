@@ -1,40 +1,40 @@
-"""Filtre du panneau Photos et passage a la photo suivante.
+"""Photos pane filter and move to the next photo.
 
-Quand un marqueur devient courant, le panneau Photos est filtre sur les photos
-qui le voient : celles ou il a deja une projection, puis celles d'ou son point
-tombe dans l'image (voir msapi.cameras_seeing_marker). Apres chaque pointage
-reussi, on ouvre tout seul la photo suivante de cette liste qui n'a pas encore
-de projection du marqueur.
+When a marker becomes current, the Photos pane is filtered to the photos
+that see it: those where it already has a projection, then those from which its point
+falls inside the image (see msapi.cameras_seeing_marker). After each successful
+marking, the next photo of this list that does not yet have a projection of the
+marker is opened automatically.
 
-Zoom (msapi.zoom_to_point) : quand FastGCP ouvre une photo pour un marqueur
-(passage a la photo suivante, annulation d'un pointage), ou quand le marqueur
-courant change alors qu'une photo est deja ouverte, la vue est centree sur le
-marqueur (projection posee, sinon projection estimee) avec environ 400 px
-d'image visibles (reglage cache fastgcp.zoom_fenetre_px). Si la vue est deja
-zoomee (par l'operateur, ou par Metashape qui recentre lui-meme sur le marqueur
-en gardant l'echelle), seul le centre est repose : l'echelle de l'operateur est
-conservee, ni double zoom ni dezoom ; l'echelle automatique ne s'applique que
-sur une photo encore ajustee a la fenetre (premiere photo). Un couple (photo,
-marqueur) n'est recentre qu'une fois hors demande explicite.
-Rien n'est fait quand l'outil est en pause.
+Zoom (msapi.zoom_to_point): when FastGCP opens a photo for a marker
+(move to the next photo, undo of a marking), or when the current marker
+changes while a photo is already open, the view is centred on the
+marker (placed projection, otherwise estimated projection) with about 400 px
+of image visible (hidden setting fastgcp.zoom_window_px). If the view is already
+zoomed (by the operator, or by Metashape which recentres on the marker by itself
+while keeping the scale), only the centre is set again: the operator's scale is
+kept, no double zoom and no zoom out; the automatic scale only applies
+to a photo still fitted to the window (first photo). A (photo,
+marker) pair is only recentred once unless explicitly requested.
+Nothing is done when the tool is paused.
 """
 
 from ... import journal, msapi
 from ...qt import QtCore
 
-# Delai avant la photo suivante : laisse Metashape finir de redessiner.
+# Delay before the next photo: lets Metashape finish redrawing.
 ADVANCE_DELAY_MS = 300
 
-# Numero du dernier passage programme. Annuler un pointage incremente ce numero :
-# le passage encore en attente se reconnait perime et ne fait rien.
+# Number of the last scheduled move. Undoing a marking increments this number:
+# the move still pending recognises itself as stale and does nothing.
 _ADVANCE_TOKEN = [0]
 
-# Nombre de couples (photo, marqueur) deja zoomes que l'on garde en memoire.
+# Number of already zoomed (photo, marker) pairs kept in memory.
 ZOOM_MEMORY = 80
 
 
 def panel_call(state, method, *args):
-    """Appelle `state.panel.<method>(*args)` s'il y a un panneau. Avale tout."""
+    """Call `state.panel.<method>(*args)` if there is a panel. Swallows everything."""
     try:
         panel = getattr(state, "panel", None)
         if panel is None:
@@ -42,34 +42,34 @@ def panel_call(state, method, *args):
         getattr(panel, method)(*args)
     except Exception as exc:
         try:
-            journal.write("panneau.{} : {!r}".format(method, exc))
+            journal.write("panel.{}: {!r}".format(method, exc))
         except Exception:
             pass
 
 
 def explain_diagnostic(diag):
-    """Phrase lisible pour un diagnostic de msapi.cameras_seeing_marker."""
+    """Readable sentence for a diagnostic from msapi.cameras_seeing_marker."""
     if not diag.get("point"):
-        return "marqueur sans coordonnees ni projection, rien a calculer"
-    if not diag.get("alignees"):
-        return "aucune photo alignee dans ce chunk"
-    if not diag.get("proches"):
-        return "aucune photo alignee a moins de {:.0f} m du point".format(
+        return "marker without coordinates or projection, nothing to compute"
+    if not diag.get("aligned"):
+        return "no aligned photo in this chunk"
+    if not diag.get("near"):
+        return "no aligned photo within {:.0f} m of the point".format(
             msapi.MAX_FILTER_DIST_M
         )
-    if not diag.get("devant"):
-        return "{} photo(s) proche(s) mais aucune ne regarde vers le point".format(
-            diag.get("proches", 0)
+    if not diag.get("in_front"):
+        return "{} nearby photo(s) but none looks toward the point".format(
+            diag.get("near", 0)
         )
-    if not diag.get("dans_image"):
-        return "{} photo(s) devant le point mais il tombe hors image".format(
-            diag.get("devant", 0)
+    if not diag.get("in_image"):
+        return "{} photo(s) facing the point but it falls outside the image".format(
+            diag.get("in_front", 0)
         )
-    return "aucune photo retenue"
+    return "no photo kept"
 
 
 def _zoom_memory(state):
-    """Liste des couples (cle de photo, etiquette) deja zoomes dans la session."""
+    """List of the (photo key, label) pairs already zoomed in the session."""
     memory = getattr(state, "zoomed", None)
     if memory is None:
         memory = []
@@ -81,13 +81,13 @@ def _zoom_memory(state):
 
 
 def zoom_on_marker(state, marker, camera=None, force=False):
-    """Zoome la vue photo autour du marqueur sur `camera` (photo ouverte par defaut).
+    """Zoom the photo view around the marker on `camera` (open photo by default).
 
-    Ne fait rien si l'outil est en pause, si la photo n'est pas ouverte dans la
-    vue, ou si ce couple (photo, marqueur) a deja ete zoome (l'operateur a pu
-    ajuster le zoom depuis) sauf `force`. Aucune photo ouverte ou point hors
-    image : la vue reste intacte et une ligne du journal le dit. Renvoie True
-    si un zoom a ete programme. Ne leve jamais.
+    Does nothing if the tool is paused, if the photo is not open in the
+    view, or if this (photo, marker) pair has already been zoomed (the operator may have
+    adjusted the zoom since) unless `force`. No open photo or point outside the
+    image: the view stays untouched and a journal line says so. Returns True
+    if a zoom was scheduled. Never raises.
     """
     try:
         if not getattr(state, "enabled", False) or marker is None:
@@ -106,7 +106,7 @@ def zoom_on_marker(state, marker, camera=None, force=False):
             return False
         anchor, how = msapi.marker_anchor(msapi.chunk(), marker, camera)
         if anchor is None:
-            journal.write("{} : pas de zoom sur {} ({})".format(
+            journal.write("{}: no zoom on {} ({})".format(
                 label, msapi.camera_label(camera), how))
             return False
         window = getattr(state, "zoom_px", None)
@@ -129,14 +129,14 @@ def zoom_on_marker(state, marker, camera=None, force=False):
         return True
     except Exception as exc:
         try:
-            journal.write("zoom sur le marqueur : {!r}".format(exc))
+            journal.write("zoom on the marker: {!r}".format(exc))
         except Exception:
             pass
         return False
 
 
 def filter_for_marker(state, marker, force=False):
-    """Filtre le panneau Photos sur les photos qui voient `marker`."""
+    """Filter the Photos pane to the photos that see `marker`."""
     try:
         chunk = msapi.chunk()
         if chunk is None or marker is None:
@@ -157,36 +157,36 @@ def filter_for_marker(state, marker, force=False):
         if cameras:
             ok, message = msapi.set_photo_filter(cameras)
             if ok:
-                journal.write("{} : {} photo(s)".format(label, len(cameras)))
+                journal.write("{}: {} photo(s)".format(label, len(cameras)))
             else:
                 journal.write(
-                    "{} : filtre Photos refuse ({})".format(label, message)
+                    "{}: Photos filter refused ({})".format(label, message)
                 )
         else:
             msapi.reset_photo_filter()
             journal.write(
-                "{} : aucune photo, {}".format(label, explain_diagnostic(diagnostic))
+                "{}: no photo, {}".format(label, explain_diagnostic(diagnostic))
             )
-            if diagnostic.get("erreur"):
-                journal.write("{} : erreur de calcul ({})".format(
-                    label, diagnostic["erreur"]
+            if diagnostic.get("error"):
+                journal.write("{}: computation error ({})".format(
+                    label, diagnostic["error"]
                 ))
         panel_call(state, "update_active_card")
         _show_marker(state, chunk, marker, cameras)
     except Exception as exc:
         try:
-            journal.write("filtre photos : {!r}".format(exc))
+            journal.write("photos filter: {!r}".format(exc))
         except Exception:
             pass
 
 
 def _show_marker(state, chunk, marker, cameras):
-    """Montre le marqueur choisi : zoom sur la photo ouverte, sinon ouvre la meilleure.
+    """Show the chosen marker: zoom on the open photo, otherwise open the best one.
 
-    Un clic sur un marqueur est toujours une demande de zoom, meme si ce couple
-    (photo, marqueur) a deja ete zoome : c'est l'operateur qui le redemande.
-    Si le point ne tombe pas dans la photo ouverte, on ouvre la premiere photo
-    de la liste sans projection du marqueur (a defaut la premiere de la liste).
+    A click on a marker is always a zoom request, even if this (photo, marker)
+    pair has already been zoomed: the operator is asking for it again.
+    If the point does not fall inside the open photo, the first photo of the
+    list without a projection of the marker is opened (failing that, the first of the list).
     """
     if not getattr(state, "enabled", False):
         return
@@ -203,24 +203,24 @@ def _show_marker(state, chunk, marker, cameras):
     target = next((cam for cam in cameras if msapi.camera_key(cam) not in pinned), cameras[0])
     ok, message = msapi.open_photo(target)
     if ok:
-        journal.write("{} : photo ouverte {}".format(msapi.marker_label(marker), message))
+        journal.write("{}: photo opened {}".format(msapi.marker_label(marker), message))
         zoom_on_marker(state, marker, target, force=True)
     else:
-        journal.write("{} : ouverture de la photo refusee ({})".format(
+        journal.write("{}: opening of the photo refused ({})".format(
             msapi.marker_label(marker), message))
 
 
 def reset_filter(state):
-    """Retire le filtre du panneau Photos."""
+    """Remove the Photos pane filter."""
     try:
         msapi.reset_photo_filter()
         state.last_filter_key = None
         state.last_photo_count = 0
         state.last_cameras = []
-        journal.write("filtre Photos retire")
+        journal.write("Photos filter removed")
     except Exception as exc:
         try:
-            journal.write("retrait du filtre : {!r}".format(exc))
+            journal.write("filter removal: {!r}".format(exc))
         except Exception:
             pass
 
@@ -230,11 +230,11 @@ def _keys(cameras):
 
 
 def _recompute_candidates(state, chunk, marker):
-    """Recalcule la liste ordonnee des photos du marqueur et la memorise.
+    """Recompute the ordered list of the marker's photos and store it.
 
-    Le filtre du panneau Photos n'est touche que si la liste a change : apres
-    une pose le marqueur peut avoir une position triangulee, donc d'autres
-    photos le voient.
+    The Photos pane filter is only touched if the list changed: after
+    a placement the marker may have a triangulated position, so other
+    photos see it.
     """
     cameras, diagnostic = msapi.cameras_seeing_marker(chunk, marker)
     previous = _keys(state.last_cameras)
@@ -244,15 +244,15 @@ def _recompute_candidates(state, chunk, marker):
     if cameras and _keys(cameras) != previous:
         ok, message = msapi.set_photo_filter(cameras)
         if not ok:
-            journal.write("filtre Photos refuse ({})".format(message))
+            journal.write("Photos filter refused ({})".format(message))
     return cameras
 
 
 def next_unpinned(cameras, current_key, pinned_keys):
-    """Premiere photo de `cameras` apres la photo courante sans projection.
+    """First photo of `cameras` after the current photo without a projection.
 
-    Renvoie (camera ou None, il_reste_des_photos_sans_projection).
-    Si la photo courante n'est pas dans la liste, on part du debut.
+    Returns (camera or None, photos_without_projection_remain).
+    If the current photo is not in the list, start from the beginning.
     """
     keys = _keys(cameras)
     start = keys.index(current_key) + 1 if current_key in keys else 0
@@ -264,16 +264,16 @@ def next_unpinned(cameras, current_key, pinned_keys):
 
 
 def cancel_advance():
-    """Annule le passage a la photo suivante encore en attente, s'il y en a un."""
+    """Cancel the move to the next photo still pending, if there is one."""
     _ADVANCE_TOKEN[0] += 1
 
 
 def _same_marker(state, marker):
-    """Le marqueur courant est-il toujours `marker` ?
+    """Is the current marker still `marker`?
 
-    On compare les etiquettes : la synchronisation avec le panneau Reference
-    relit le marqueur et en cree un nouvel objet Python, donc `is` echouerait
-    une fois sur deux et le passage a la photo suivante s'arreterait sans bruit.
+    The labels are compared: the synchronisation with the Reference pane
+    rereads the marker and creates a new Python object for it, so `is` would fail
+    every other time and the move to the next photo would stop silently.
     """
     try:
         active = state.active_marker
@@ -286,7 +286,7 @@ def _same_marker(state, marker):
         return False
 
 
-# Nouveaux essais quand la vue photo ne dit pas encore quelle photo elle montre.
+# New attempts when the photo view does not yet say which photo it shows.
 ADVANCE_RETRIES = 3
 ADVANCE_RETRY_MS = 200
 
@@ -294,12 +294,12 @@ ADVANCE_RETRY_MS = 200
 def _advance(state, marker, origin_key, token=None, attempt=0):
     try:
         if token is not None and token != _ADVANCE_TOKEN[0]:
-            # Remplace par un pointage plus recent ou annule : cas normal, pas de bruit.
+            # Replaced by a more recent marking or cancelled: normal case, no noise.
             return
         if not state.enabled:
             return
         if not _same_marker(state, marker):
-            journal.write("photo suivante abandonnee : le marqueur courant a change")
+            journal.write("next photo abandoned: the current marker changed")
             return
         current = msapi.current_camera()
         if current is None:
@@ -309,11 +309,11 @@ def _advance(state, marker, origin_key, token=None, attempt=0):
                     lambda: _advance(state, marker, origin_key, token, attempt + 1),
                 )
             else:
-                journal.write("photo suivante abandonnee : la vue photo ne repond pas")
+                journal.write("next photo abandoned: the photo view does not respond")
             return
         if msapi.camera_key(current) != origin_key:
-            # L'operateur a deja change de photo : on ne lui force pas la main.
-            journal.write("photo suivante abandonnee : vous avez change de photo")
+            # The operator already changed photo: we do not force their hand.
+            journal.write("next photo abandoned: you changed photo")
             return
         chunk = msapi.chunk()
         if chunk is None:
@@ -324,31 +324,31 @@ def _advance(state, marker, origin_key, token=None, attempt=0):
         target, remaining = next_unpinned(cameras, origin_key, pinned)
         if target is None:
             if remaining:
-                journal.write("{} : plus de photo suivante sans projection".format(label))
+                journal.write("{}: no more next photo without a projection".format(label))
             else:
-                journal.write("{} : marqueur pointe sur toutes les photos".format(label))
+                journal.write("{}: marker marked on all photos".format(label))
         else:
             ok, message = msapi.open_photo(target)
             if ok:
-                journal.write("{} : photo suivante {}".format(label, message))
-                # Photo qu'on vient d'ouvrir : l'operateur n'a pas pu la zoomer.
+                journal.write("{}: next photo {}".format(label, message))
+                # Photo just opened: the operator cannot have zoomed it.
                 zoom_on_marker(state, marker, target, force=True)
             else:
-                journal.write("{} : photo suivante refusee ({})".format(label, message))
+                journal.write("{}: next photo refused ({})".format(label, message))
         state.last_photo_count = len(state.last_cameras)
         panel_call(state, "update_active_card")
     except Exception as exc:
         try:
-            journal.write("photo suivante : {!r}".format(exc))
+            journal.write("next photo: {!r}".format(exc))
         except Exception:
             pass
 
 
 def advance_after_place(state):
-    """Apres une pose reussie, ouvre la photo suivante sans projection du marqueur.
+    """After a successful placement, open the next photo without a projection of the marker.
 
-    Pas d'option : c'est toujours actif. L'ouverture passe par l'API de la vue
-    photo (msapi.open_photo), pas par un envoi de touche.
+    No option: it is always active. The opening goes through the photo view
+    API (msapi.open_photo), not through a key press.
     """
     try:
         marker = state.active_marker
@@ -363,6 +363,6 @@ def advance_after_place(state):
         )
     except Exception as exc:
         try:
-            journal.write("avance apres pointage : {!r}".format(exc))
+            journal.write("advance after marking: {!r}".format(exc))
         except Exception:
             pass

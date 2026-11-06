@@ -64,7 +64,7 @@ def world(ms):
 
 
 def _place(world, x, y, camera=None):
-    """Pose via marking.place_at avec une vue photo factice."""
+    """Place via marking.place_at with a fake photo view."""
     world.view.camera = camera or world.a
     msapi.cursor_over_photo_view = lambda pos: True
     msapi.image_coords_at = lambda pos: ((x, y), None)
@@ -72,7 +72,7 @@ def _place(world, x, y, camera=None):
 
 
 # --------------------------------------------------------------------------
-# La pile
+# The stack
 # --------------------------------------------------------------------------
 
 def test_lifo_and_empty_pop():
@@ -97,7 +97,7 @@ def test_unusable_entries_are_ignored_without_raising():
     assert history.push(None, "cam", None) is None
     assert history.push("marker", None, None) is None
     assert history.size() == 0
-    entry = history.push("marker", "cam", "pas un tuple")
+    entry = history.push("marker", "cam", "not a tuple")
     assert entry.previous is None
     entry = history.push("marker", "cam", ("1.5", 2, 0))
     assert entry.previous == (1.5, 2.0, False)
@@ -121,7 +121,7 @@ def test_listeners_are_told_and_a_broken_one_is_dropped():
         seen.append(history.size())
 
     def bad():
-        raise RuntimeError("widget detruit")
+        raise RuntimeError("widget destroyed")
 
     history.subscribe(good)
     history.subscribe(good)
@@ -140,7 +140,7 @@ def test_entry_validity_detects_dead_references():
     class Dead(object):
         @property
         def label(self):
-            raise RuntimeError("objet detruit")
+            raise RuntimeError("object destroyed")
 
     alive = types.SimpleNamespace(label="x", key=1)
     assert history.Entry(alive, alive, None).is_valid()
@@ -173,7 +173,7 @@ def test_remove_projection(world):
 
 
 # --------------------------------------------------------------------------
-# Pose puis annulation
+# Placement then undo
 # --------------------------------------------------------------------------
 
 def test_place_records_history_before_writing(world):
@@ -219,7 +219,7 @@ def test_successive_undos_walk_back_in_order(world):
 
 
 def test_a_refused_write_leaves_no_history(world, monkeypatch):
-    monkeypatch.setattr(msapi, "set_projection", lambda *a, **k: (False, "refus"))
+    monkeypatch.setattr(msapi, "set_projection", lambda *a, **k: (False, "refused"))
     assert _place(world, 1.0, 2.0) is False
     assert not history.can_undo()
 
@@ -235,7 +235,7 @@ def test_undo_does_nothing_while_the_tool_is_paused(world):
 def test_undo_with_an_empty_history_says_so(world):
     assert marking.undo_last(world.state) is False
     assert ("status", "Nothing to undo") in world.state.panel.calls
-    assert any("rien a annuler" in line for line in journal.lines())
+    assert any("nothing to undo" in line for line in journal.lines())
 
 
 def test_history_from_another_chunk_is_dropped(world):
@@ -252,7 +252,7 @@ def test_dead_entries_are_skipped_without_raising(world):
     class Dead(object):
         @property
         def label(self):
-            raise RuntimeError("objet detruit")
+            raise RuntimeError("object destroyed")
 
     history.push(Dead(), world.a, None, chunk_key=world.chunk.key)
     outsider = types.SimpleNamespace(key=99, label="IMG_0099")
@@ -265,7 +265,7 @@ def test_undo_never_raises_when_metashape_does(world, monkeypatch):
     _place(world, 1.0, 2.0)
 
     def boom(*args, **kwargs):
-        raise ValueError("api cassee")
+        raise ValueError("broken api")
 
     monkeypatch.setattr(msapi, "camera_in_chunk", boom)
     assert marking.undo_last(world.state) is False
@@ -286,7 +286,7 @@ def test_cancel_advance_makes_a_pending_advance_stale(world, monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# Retablir
+# Redo
 # --------------------------------------------------------------------------
 
 def test_redo_puts_back_what_undo_took_away(world):
@@ -296,7 +296,7 @@ def test_redo_puts_back_what_undo_took_away(world):
     assert marking.redo_last(world.state) is True
     assert msapi.get_projection(world.marker, world.a) == (100.0, 200.0, True)
     assert history.can_undo() and not history.can_redo()
-    marking.undo_last(world.state)                      # on peut defaire ce qu'on vient de retablir
+    marking.undo_last(world.state)                      # what was just redone can be undone
     assert world.a not in world.marker.projections
 
 

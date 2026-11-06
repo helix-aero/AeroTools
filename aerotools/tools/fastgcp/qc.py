@@ -1,15 +1,15 @@
-"""Progression du pointage et marqueurs a surveiller (sans Qt, sans Metashape).
+"""Pinning progress and markers to watch (no Qt, no Metashape).
 
-Travaille sur les lignes du tableau du panneau : des dicts avec `label`, `proj`
-(nombre de projections) et `x`, `y`, `z` (erreurs en metres, ou None).
+Works on the rows of the panel table: dicts with `label`, `proj` (number of
+projections) and `x`, `y`, `z` (errors in metres, or None).
 
-Un marqueur est « pointe » quand il a au moins MIN_PHOTOS projections : c'est le
-minimum pour une triangulation solide. A surveiller :
-  - `few`      : moins de MIN_PHOTOS projections ;
-  - `residual` : erreur totale au-dessus du seuil. Le seuil est le plus grand de
-                 RESIDUAL_FLOOR_M et RESIDUAL_FACTOR fois la mediane basse des
-                 erreurs du chunk, pour qu'un chunk globalement bruite ne signale
-                 pas tout.
+A marker is "pinned" when it has at least MIN_PHOTOS projections: this is the
+minimum for a solid triangulation. To watch:
+  - `few`      : fewer than MIN_PHOTOS projections;
+  - `residual` : total error above the threshold. The threshold is the larger of
+                 RESIDUAL_FLOOR_M and RESIDUAL_FACTOR times the low median of the
+                 chunk's errors, so that a globally noisy chunk does not flag
+                 everything.
 """
 
 import math
@@ -20,7 +20,7 @@ RESIDUAL_FACTOR = 3.0
 
 
 def total_error(row):
-    """Erreur totale en metres, ou None si une composante manque."""
+    """Total error in metres, or None if a component is missing."""
     try:
         values = [row.get(key) for key in ("x", "y", "z")]
         if any(v is None for v in values):
@@ -32,20 +32,20 @@ def total_error(row):
 
 
 def _low_median(values):
-    """Mediane basse : avec peu de marqueurs, un gros ecart ne doit pas relever
-    le seuil qui le signale (la mediane moyenne de 2 valeurs, elle, le ferait)."""
+    """Low median: with few markers, a large error must not raise the threshold
+    that flags it (the usual median of 2 values would)."""
     values = sorted(values)
     return values[(len(values) - 1) // 2] if values else 0.0
 
 
 def residual_limit(rows):
-    """Seuil d'erreur totale (m) au-dela duquel un marqueur est signale."""
+    """Total-error threshold (m) above which a marker is flagged."""
     totals = [t for t in (total_error(row) for row in rows) if t is not None]
     return max(RESIDUAL_FLOOR_M, RESIDUAL_FACTOR * _low_median(totals))
 
 
 def progress(rows, min_photos=MIN_PHOTOS):
-    """(marqueurs pointes, marqueurs au total)."""
+    """(pinned markers, total markers)."""
     rows = list(rows)
     done = sum(1 for row in rows if int(row.get("proj") or 0) >= min_photos)
     return done, len(rows)
@@ -56,11 +56,11 @@ def is_few(row, min_photos=MIN_PHOTOS):
 
 
 def watchlist(rows, min_photos=MIN_PHOTOS):
-    """Marqueurs a surveiller.
+    """Markers to watch.
 
-    Renvoie {"limit": seuil, "residual": [...], "few": [...]}. Chaque element
-    est {"label", "proj", "total"} ; `residual` va du plus grand ecart au plus
-    petit, `few` du moins pointe au plus pointe (a egalite, ordre du projet).
+    Returns {"limit": threshold, "residual": [...], "few": [...]}. Each item
+    is {"label", "proj", "total"}; `residual` goes from the largest error to the
+    smallest, `few` from the least pinned to the most pinned (ties keep project order).
     """
     rows = list(rows)
     limit = residual_limit(rows)
@@ -79,13 +79,13 @@ def watchlist(rows, min_photos=MIN_PHOTOS):
     return {"limit": limit, "residual": residual, "few": few}
 
 
-# Etat d'un marqueur dans la fenetre « Residual check », du plus urgent au moins urgent.
+# State of a marker in the "Residual check" window, from most to least urgent.
 RESIDUAL, FEW, NONE, OK = "residual", "few", "none", "ok"
 _ORDER = {RESIDUAL: 0, FEW: 1, NONE: 2, OK: 3}
 
 
 def status(row, limit, min_photos=MIN_PHOTOS):
-    """FEW (pas assez de photos, y compris aucune), NONE (pas de calcul possible), RESIDUAL ou OK."""
+    """FEW (not enough photos, including none), NONE (cannot be computed), RESIDUAL or OK."""
     if is_few(row, min_photos):
         return FEW
     total = total_error(row)
@@ -95,10 +95,10 @@ def status(row, limit, min_photos=MIN_PHOTOS):
 
 
 def table(rows, enabled=None, min_photos=MIN_PHOTOS):
-    """Tous les marqueurs, les plus urgents d'abord (la fenetre montre aussi ceux qui vont bien).
+    """All markers, most urgent first (the window also shows the ones that are fine).
 
-    Chaque element : label, proj, x, y, z, total (metres ou None), role (True = controle, False =
-    verification, None = inconnu), status."""
+    Each item: label, proj, x, y, z, total (metres or None), role (True = control, False =
+    check, None = unknown), status."""
     rows = list(rows)
     enabled = enabled or {}
     limit = residual_limit(rows)
@@ -120,13 +120,13 @@ def table(rows, enabled=None, min_photos=MIN_PHOTOS):
 
 
 def group_rms(items):
-    """(controle, verification) : chacun (racine de la moyenne des carres 3D en metres, nombre) ou None.
+    """(control, check): each (3D root mean square in metres, count) or None.
 
-    `items` vient de `table`. Seuls comptent les marqueurs dont l'erreur est calculable."""
+    `items` comes from `table`. Only markers whose error can be computed count."""
     sums = {True: [0.0, 0], False: [0.0, 0]}
     for item in items:
         if item["total"] is None or item["role"] not in (True, False) or item["status"] == FEW:
-            continue                # un marqueur peu pointe a une position sans valeur : on ne le compte pas
+            continue                # a barely pinned marker has a meaningless position: not counted
         sums[item["role"]][0] += item["total"] ** 2
         sums[item["role"]][1] += 1
 

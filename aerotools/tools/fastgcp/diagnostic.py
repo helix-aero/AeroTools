@@ -1,27 +1,27 @@
-"""Diagnostic du pointage : quels pointages, quelles photos, quels marqueurs posent probleme.
+"""Pinning diagnostic: which pins, which photos and which markers are problematic.
 
-Methode, pour chaque marqueur qui a au moins 3 pointages manuels (pastille verte) :
-  1. on prend le rayon de chaque pointage (centre de la camera -> pixel pointe) ;
-  2. pour un pointage donne, on triangule la position 3D du marqueur avec TOUS LES AUTRES
-     rayons (« validation croisee » : le pointage juge n'influence pas son propre verdict) ;
-  3. on projette ce point sur la photo jugee et on mesure l'ecart, en pixels, avec le pointage.
-Un ecart de quelques pixels au plus est normal ; un grand ecart veut dire un pointage decale ou
-une photo mal alignee. Avec seulement 2 pointages il n'y a rien pour recouper : le marqueur est
-signale « a completer », pas juge.
+Method, for each marker that has at least 3 manual pins (green dot):
+  1. take the ray of each pin (camera centre -> pinned pixel);
+  2. for a given pin, triangulate the marker's 3D position with ALL THE OTHER
+     rays ("cross-validation": the pin being judged does not influence its own verdict);
+  3. project that point onto the judged photo and measure the gap, in pixels, with the pin.
+A gap of a few pixels at most is normal; a large gap means an offset pin or a
+misaligned photo. With only 2 pins there is nothing to cross-check against: the marker is
+flagged "to complete", not judged.
 
-On calcule aussi l'ecart classique « pointage - reprojection de la position de Metashape » (fit_px),
-pour pouvoir le comparer au chiffre « Error (pix) » du panneau References de Metashape.
+The classic gap "pin - reprojection of Metashape's position" (fit_px) is also computed,
+so it can be compared with the "Error (pix)" figure of Metashape's References pane.
 
-Un pointage tres decale tire la position calculee sans lui, et fait paraitre ses voisins fautifs. On
-« pele » donc : on juge tout le monde, on met de cote le pire s'il depasse PEEL_PX, puis on recommence
-sans lui, jusqu'a ce que plus rien ne depasse (ou qu'il ne reste que 3 pointages, qu'on ne peut plus
-departager). Seul le vrai fautif est alors signale.
+A very offset pin pulls the position computed without it, and makes its neighbours look faulty. So we
+"peel": judge everyone, set aside the worst one if it exceeds PEEL_PX, then start again
+without it, until nothing exceeds the limit any more (or only 3 pins remain, which cannot be told
+apart any further). Only the real culprit is then flagged.
 
-Seuil de signalement d'un pointage : max(FLOOR_PX, FACTOR x mediane des ecarts du projet) : un projet
-globalement bruyant ne signale pas tout. Une photo est suspecte quand sa mediane (sur >= 3 marqueurs)
-est nettement au-dessus de celle du projet.
+Flagging threshold for a pin: max(FLOOR_PX, FACTOR x median of the project's gaps): a globally
+noisy project does not flag everything. A photo is suspect when its median (over >= 3 markers)
+is clearly above the project's.
 
-`analyze` ne touche ni Metashape ni Qt ; `collect` lit le projet.
+`analyze` touches neither Metashape nor Qt; `collect` reads the project.
 """
 
 import math
@@ -52,10 +52,10 @@ def rms(values):
 
 
 def leave_one_out_points(rays):
-    """Pour chaque rayon, le point triangule avec tous les autres (None si impossible).
+    """For each ray, the point triangulated with all the others (None if impossible).
 
-    `rays` : liste de (origine, direction) ou None. Il faut au moins 2 autres rayons utilisables et
-    pas tous paralleles."""
+    `rays`: list of (origin, direction) or None. At least 2 other usable rays are needed, not
+    all parallel."""
     out = []
     for index in range(len(rays)):
         others = [ray for i, ray in enumerate(rays) if i != index and ray is not None]
@@ -65,10 +65,10 @@ def leave_one_out_points(rays):
 
 
 def cross_check(rays, gap_of, peel_px=PEEL_PX):
-    """Ecart (px) de chaque pointage avec la position triangulee SANS lui, en pelant le pire a chaque tour.
+    """Gap (px) of each pin from the position triangulated WITHOUT it, peeling the worst one at each round.
 
-    `rays` : (origine, direction) par pointage ; `gap_of(i, point)` : ecart en pixels entre le pointage i
-    et la projection de `point` sur sa photo (ou None). Renvoie une liste (None si impossible a juger)."""
+    `rays`: (origin, direction) per pin; `gap_of(i, point)`: gap in pixels between pin i
+    and the projection of `point` on its photo (or None). Returns a list (None if it cannot be judged)."""
     result = [None] * len(rays)
     active = [i for i, ray in enumerate(rays) if ray is not None]
     while len(active) >= MIN_PINNED:
@@ -88,14 +88,14 @@ def cross_check(rays, gap_of, peel_px=PEEL_PX):
 
 
 # --------------------------------------------------------------------------
-# Lecture du projet
+# Reading the project
 # --------------------------------------------------------------------------
 
 def collect(chk):
-    """Les pointages manuels de chaque marqueur du chunk, avec leurs ecarts en pixels.
+    """The manual pins of each marker of the chunk, with their gaps in pixels.
 
-    Renvoie une liste de {"label", "marker", "total_m"?, "pinned": n, "proposals": n,
-    "observations": [{"camera", "camera_label", "x", "y", "fit_px", "loo_px"}]}. Ne leve jamais."""
+    Returns a list of {"label", "marker", "total_m"?, "pinned": n, "proposals": n,
+    "observations": [{"camera", "camera_label", "x", "y", "fit_px", "loo_px"}]}. Never raises."""
     out = []
     for marker in msapi.markers(chk):
         label = msapi.marker_label(marker)
@@ -146,14 +146,14 @@ def _gap(a, b):
 
 
 # --------------------------------------------------------------------------
-# Analyse
+# Analysis
 # --------------------------------------------------------------------------
 
 def analyze(markers, rows=None):
-    """Resultat du diagnostic (dict) a partir de `collect` ; `rows` : lignes du tableau du panneau
-    (pour l'erreur 3D totale par marqueur, voir qc.watchlist).
+    """Diagnostic result (dict) from `collect`; `rows`: rows of the panel table
+    (for the total 3D error per marker, see qc.watchlist).
 
-    Cles : summary, limit_px, projections (triees du pire au meilleur), photos, markers."""
+    Keys: summary, limit_px, projections (sorted worst to best), photos, markers."""
     loo = [o["loo_px"] for m in markers for o in m["observations"] if o["loo_px"] is not None]
     fit = [o["fit_px"] for m in markers for o in m["observations"] if o["fit_px"] is not None]
     typical = median(loo)

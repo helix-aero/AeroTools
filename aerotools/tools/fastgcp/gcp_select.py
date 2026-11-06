@@ -1,23 +1,23 @@
-"""Quels marqueurs prendre comme points de controle ? (sans Qt, sans Metashape)
+"""Which markers to use as control points? (no Qt, no Metashape)
 
-Idee : la position estimee d'un marqueur (triangulee dans les photos) ne depend que des cameras et de
-ses pointages. Choisir quels marqueurs servent de controle ne change que la transformation vers les
-coordonnees terrain. On peut donc, sans relancer aucun calcul de Metashape, essayer des milliers de
-jeux de marqueurs : pour chacun on ajuste la transformation sur le jeu, puis on mesure l'ecart sur
-les marqueurs laisses de cote (les points de verification).
+Idea: the estimated position of a marker (triangulated in the photos) depends only on the cameras and
+on its pins. Choosing which markers act as control only changes the transformation to the ground
+coordinates. So, without rerunning any Metashape computation, thousands of marker sets can be tried:
+for each one the transformation is fitted on the set, then the gap is measured on the markers left
+aside (the check points).
 
-Deux modeles de transformation :
-  similarity  7 parametres (echelle, rotation, translation) : le projet est georeference par les
-              marqueurs seuls. Il faut au moins 3 marqueurs qui ne sont pas alignes ;
-  shift       3 parametres (translation) : les cameras ont deja une bonne position (PPK / RTK), les
-              marqueurs ne corrigent qu'un decalage constant. Un seul marqueur suffit.
+Two transformation models:
+  similarity  7 parameters (scale, rotation, translation): the project is georeferenced by the
+              markers alone. At least 3 markers that are not collinear are needed;
+  shift       3 parameters (translation): the cameras already have a good position (PPK / RTK), the
+              markers only correct a constant offset. A single marker is enough.
 
-Ce que ce calcul ne voit pas : « Optimize cameras » corrige aussi les deformations souples (focale,
-distorsion). L'erreur reelle apres optimisation peut donc etre meilleure ; ce calcul dit quels
-marqueurs portent l'information et lesquels sont suspects, pas le chiffre final.
+What this computation does not see: "Optimize cameras" also corrects soft deformations (focal length,
+distortion). The real error after optimisation can therefore be better; this computation says which
+markers carry the information and which are suspect, not the final figure.
 
-Un point est un dict : `label`, `est` et `ref` (x, y, z en metres, meme repere local est/nord/haut :
-position estimee et position de reference), `n` (nombre de photos pointees).
+A point is a dict: `label`, `est` and `ref` (x, y, z in metres, same local east/north/up frame:
+estimated position and reference position), `n` (number of pinned photos).
 """
 
 import itertools
@@ -29,19 +29,19 @@ MODELS = (SIMILARITY, SHIFT)
 
 MIN_PHOTOS = 3
 MIN_CONTROL = {SIMILARITY: 3, SHIFT: 1}
-MAX_CONTROL = {SIMILARITY: 6, SHIFT: 4}          # tailles essayees
-REDUNDANT = {SIMILARITY: 4, SHIFT: 2}            # taille conseillee au minimum : un point de trop pour voir un mauvais pointage
-BUDGET = 40000                                   # ajustements au plus par recherche
-TOLERANCE_REL = 0.15                             # « presque aussi bon que le meilleur » : +15 %...
-TOLERANCE_ABS = 0.005                            # ... ou +5 mm (precision d'un marqueur)
-SUSPECT_FLOOR = 0.03                             # un marqueur est suspect au-dela de 3 cm (et 4 x la mediane)
+MAX_CONTROL = {SIMILARITY: 6, SHIFT: 4}          # sizes tried
+REDUNDANT = {SIMILARITY: 4, SHIFT: 2}            # minimum recommended size: one point more than needed to spot a bad pin
+BUDGET = 40000                                   # fits at most per search
+TOLERANCE_REL = 0.15                             # "almost as good as the best": +15 %...
+TOLERANCE_ABS = 0.005                            # ... or +5 mm (accuracy of a marker)
+SUSPECT_FLOOR = 0.03                             # a marker is suspect beyond 3 cm (and 4 x the median)
 SUSPECT_FACTOR = 4.0
 COLLINEAR = 0.05
 SPREAD_GOOD, SPREAD_MID = 0.6, 0.3
 
 
 # --------------------------------------------------------------------------
-# Algebre minimale (pas de numpy dans le Python de Metashape)
+# Minimal algebra (no numpy in Metashape's Python)
 # --------------------------------------------------------------------------
 
 def _sub(a, b):
@@ -62,7 +62,7 @@ def _mean(points):
 
 
 def _eigen_top(matrix):
-    """Vecteur propre de la plus grande valeur propre d'une matrice 4 x 4 symetrique (Jacobi)."""
+    """Eigenvector of the largest eigenvalue of a symmetric 4 x 4 matrix (Jacobi)."""
     n = 4
     a = [list(row) for row in matrix]
     v = [[1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
@@ -109,7 +109,7 @@ def _apply_rotation(r, p):
 
 
 def _is_collinear(centered):
-    """Vrai si les points (centres) sont (quasi) alignes : une similitude n'y est pas definie."""
+    """True if the (centred) points are (nearly) collinear: a similarity is not defined for them."""
     far = max(centered, key=_norm)
     length = _norm(far)
     if length < 1e-9:
@@ -128,7 +128,7 @@ def _is_collinear(centered):
 # --------------------------------------------------------------------------
 
 def fit_shift(points):
-    """Translation moyenne qui amene `est` sur `ref`. Renvoie une fonction, ou None sans point."""
+    """Mean translation that brings `est` onto `ref`. Returns a function, or None without points."""
     if not points:
         return None
     n = float(len(points))
@@ -139,9 +139,9 @@ def fit_shift(points):
 
 
 def fit_similarity(points):
-    """Similitude (echelle, rotation, translation) de `est` vers `ref` (methode de Horn).
+    """Similarity (scale, rotation, translation) from `est` to `ref` (Horn's method).
 
-    Renvoie une fonction, ou None si moins de 3 points ou points alignes."""
+    Returns a function, or None if fewer than 3 points or collinear points."""
     if len(points) < 3:
         return None
     pc = _mean([p["est"] for p in points])
@@ -193,7 +193,7 @@ def fit(model, points):
 
 
 def errors(transform, points):
-    """Ecarts (dx, dy, dz) = position transformee - reference, pour chaque point."""
+    """Gaps (dx, dy, dz) = transformed position - reference, for each point."""
     out = []
     for p in points:
         moved = transform(p["est"])
@@ -202,7 +202,7 @@ def errors(transform, points):
 
 
 def stats(errs):
-    """Racine de la moyenne des carres (RMSE) par axe, en plan, en 3D, et ecart maximal. None si vide."""
+    """Root mean square error (RMSE) per axis, in plan, in 3D, and the maximum gap. None if empty."""
     n = len(errs)
     if not n:
         return None
@@ -214,7 +214,7 @@ def stats(errs):
 
 
 def spread(chosen, pool):
-    """0 a 1 : etalement du jeu choisi par rapport a l'ensemble (petit axe de l'ellipse en plan)."""
+    """0 to 1: spread of the chosen set relative to the whole pool (minor axis of the plan ellipse)."""
     def minor(points):
         xs = [p["est"][0] for p in points]
         ys = [p["est"][1] for p in points]
@@ -237,11 +237,11 @@ def spread_label(value):
 
 
 # --------------------------------------------------------------------------
-# Recherche
+# Search
 # --------------------------------------------------------------------------
 
 def _score(model, pool, chosen):
-    """RMSE 3D sur les points laisses de cote quand le jeu `chosen` (indices) sert au calage ; inf si impossible."""
+    """3D RMSE on the points left aside when the set `chosen` (indices) is used for the fit; inf if impossible."""
     control = [pool[i] for i in chosen]
     transform = fit(model, control)
     if transform is None:
@@ -268,7 +268,7 @@ def _exhaustive(model, pool, k):
 
 
 def _wide_triangle(pool):
-    """Trois indices bien ecartes (le plus eloigne du centre, puis du premier, puis le plus loin de leur droite)."""
+    """Three well-spread indices (the farthest from the centre, then from the first, then the farthest from their line)."""
     center = _mean([p["est"] for p in pool])
     first = max(range(len(pool)), key=lambda i: _norm(_sub(pool[i]["est"], center)))
     second = max((i for i in range(len(pool)) if i != first),
@@ -280,7 +280,7 @@ def _wide_triangle(pool):
 
 
 def _greedy(model, pool, k, seed):
-    """Jeu de taille k : on part de `seed`, on ajoute le meilleur point, puis un passage d'echanges."""
+    """Set of size k: start from `seed`, add the best point, then one swap pass."""
     chosen = list(seed)
     if model == SIMILARITY and len(chosen) < MIN_CONTROL[SIMILARITY]:
         chosen = _wide_triangle(pool)
@@ -311,7 +311,7 @@ def _greedy(model, pool, k, seed):
 
 
 def _loo(model, control):
-    """RMSE 3D, sur chaque point du jeu, quand on le retire du calage : mesure la redondance du jeu."""
+    """3D RMSE, on each point of the set, when it is removed from the fit: measures the set's redundancy."""
     if len(control) <= MIN_CONTROL[model]:
         return None
     errs = []
@@ -324,10 +324,10 @@ def _loo(model, control):
 
 
 def suspects(model, pool):
-    """Marqueurs dont le pointage ou les coordonnees sont suspects, du pire au moins pire.
+    """Markers whose pin or coordinates are suspect, from worst to least bad.
 
-    On retire le pire (ecart quand on l'enleve du calage) tant qu'il depasse
-    max(3 cm, 4 x la mediane) et qu'il reste de quoi caler. Renvoie ([(label, ecart)], points restants)."""
+    The worst one (gap when it is left out of the fit) is removed as long as it exceeds
+    max(3 cm, 4 x the median) and enough points remain to fit. Returns ([(label, gap)], remaining points)."""
     remaining = list(pool)
     found = []
     floor = MIN_CONTROL[model] + 2
@@ -351,7 +351,7 @@ def suspects(model, pool):
 
 
 def current_stats(points, enabled):
-    """Ecarts tels que Metashape les affiche : (controle, verification), chacun un stats() ou None."""
+    """Gaps as Metashape displays them: (control, check), each a stats() or None."""
     control = [p for p in points if enabled.get(p["label"])]
     check = [p for p in points if not enabled.get(p["label"], False)]
     zero = lambda p: (p["est"][0] - p["ref"][0], p["est"][1] - p["ref"][1], p["est"][2] - p["ref"][2])
@@ -359,11 +359,11 @@ def current_stats(points, enabled):
 
 
 def analyze(points, enabled=None, model=SIMILARITY, min_photos=MIN_PHOTOS, budget=BUDGET):
-    """Courbe « nombre de marqueurs de controle -> erreur sur les autres », avec le jeu conseille.
+    """Curve "number of control markers -> error on the others", with the recommended set.
 
-    Renvoie {"model", "count", "usable", "few": [labels], "suspects": [{"label", "error"}],
+    Returns {"model", "count", "usable", "few": [labels], "suspects": [{"label", "error"}],
     "curve": [{"k", "labels", "rmse", "x", "y", "z", "xy", "max", "checks", "loo", "spread"}],
-    "recommended": indice dans curve ou None, "current": (controle, verification), "reason": ""}.
+    "recommended": index in curve or None, "current": (control, check), "reason": ""}.
     """
     enabled = enabled or {}
     result = {"model": model, "count": len(points), "usable": 0, "few": [], "suspects": [], "curve": [],
@@ -374,7 +374,7 @@ def analyze(points, enabled=None, model=SIMILARITY, min_photos=MIN_PHOTOS, budge
             result["few"].append(p["label"])
         else:
             pool.append(p)
-    result["current"] = current_stats(pool, enabled)       # comme Reference : sans les marqueurs peu pointes
+    result["current"] = current_stats(pool, enabled)       # like Reference: without the barely pinned markers
     result["usable"] = len(pool)
     need = MIN_CONTROL[model] + 1
     if len(pool) < need:

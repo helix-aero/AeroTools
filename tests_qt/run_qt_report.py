@@ -1,18 +1,18 @@
-"""Autotest Qt du rapport PDF de FastGCP : genere un vrai PDF, hors Metashape.
+"""Qt self-test of the FastGCP PDF report: generates a real PDF, outside Metashape.
 
-Lancement (aucun pytest requis) :
+Run (no pytest required):
     python -B tests_qt\\run_qt_report.py
 
-Fonctionne avec le Python embarque de Metashape (PySide2) comme avec un Python
-equipe de PySide6. Un faux module `Metashape` est injecte avant l'import
-d'AeroTools : 30 marqueurs fictifs (dont quelques-uns sans erreur et quelques-uns
-tres ecartes), 9 cameras dont 3 ont une vraie image JPEG, une fausse vue photo.
+Works with the Python embedded in Metashape (PySide2) as well as with a Python
+equipped with PySide6. A fake `Metashape` module is injected before AeroTools is
+imported: 30 fake markers (a few without error and a few with large errors),
+9 cameras of which 3 have a real JPEG image, a fake photo view.
 
-Variables d'environnement :
-  AEROTOOLS_REPORT_OUT   dossier de sortie des PDF (sinon un dossier temporaire)
-  AEROTOOLS_SELFTEST_VERBOSE=1   garde le journal
+Environment variables:
+  AEROTOOLS_REPORT_OUT   output folder of the PDFs (otherwise a temporary folder)
+  AEROTOOLS_SELFTEST_VERBOSE=1   keeps the journal
 
-Sortie : une ligne PASS / FAIL par cas, code de sortie non nul au moindre FAIL.
+Output: one PASS / FAIL line per case, non-zero exit code on any FAIL.
 """
 
 import datetime
@@ -39,7 +39,7 @@ os.makedirs(OUT, exist_ok=True)
 
 
 def _prepare_qt_environment():
-    """DLL de Metashape si on tourne dans son Python, plateforme hors ecran si possible."""
+    """Metashape DLLs if running in its Python, offscreen platform if possible."""
     metashape_dir = os.path.dirname(os.path.dirname(os.path.abspath(sys.executable)))
     has_qt = os.path.exists(os.path.join(metashape_dir, "Qt5Core.dll"))
     offscreen = True
@@ -58,7 +58,7 @@ PLATFORM = _prepare_qt_environment()
 
 
 # --------------------------------------------------------------------------
-# Faux Metashape
+# Fake Metashape
 # --------------------------------------------------------------------------
 
 class Vector(object):
@@ -129,7 +129,7 @@ class Chunk(object):
         self.transform = _ChunkTransform()
         self.crs = None
         self.key = 1
-        self.label = "Chunk 1 - Levé éolien"
+        self.label = "Chunk 1 - Survey Z\u00fcrich"
 
 
 class PhotoView(object):
@@ -180,24 +180,24 @@ FAILURES = []
 
 def check(name, condition, detail=""):
     print("{} {}{}".format("PASS" if condition else "FAIL", name,
-                           "" if condition else " : " + str(detail)))
+                           "" if condition else ": " + str(detail)))
     if not condition:
         FAILURES.append(name)
 
 
 # --------------------------------------------------------------------------
-# Donnees fictives
+# Fake data
 # --------------------------------------------------------------------------
 
 N_CAMERAS = 9
 N_MARKERS = 30
 REAL_IMAGES = 3
 BIG = {6: (0.162, -0.118, 0.205), 18: (-0.121, 0.094, -0.088), 11: (0.074, 0.081, 0.052)}
-NO_ERROR = {24, 25, 26}      # marqueurs jamais triangules : pas d'erreur, pas de projection
+NO_ERROR = {24, 25, 26}      # markers never triangulated: no error, no projection
 
 
 def make_photo(path, seed):
-    """Photo fictive 4000 x 3000 : champ, chemin, cible quadrillee a (2000, 1500)."""
+    """Fake 4000 x 3000 photo: field, path, checkered target at (2000, 1500)."""
     rnd = random.Random(seed)
     image = QtGui.QImage(4000, 3000, QtGui.QImage.Format_RGB32)
     painter = QtGui.QPainter(image)
@@ -230,13 +230,13 @@ def build_world(folder):
         if key <= REAL_IMAGES:
             make_photo(path, key)
         else:
-            path = os.path.join(folder, "absente_{}.jpg".format(key))
+            path = os.path.join(folder, "missing_{}.jpg".format(key))
         cameras.append(Camera(key, path))
     markers = []
     for index in range(N_MARKERS):
         label = "GCP{:02d}".format(index + 1)
         if index == 8:
-            label += "_PILE_PONT_RD117_AMONT_RIVE_GAUCHE"
+            label += "_BRIDGE_PIER_RD117_UPSTREAM_LEFT_BANK"
         marker = Marker(label)
         position = Vector(100.0 + index, 200.0, 5.0)
         marker.position = position
@@ -294,7 +294,7 @@ class PhotoWidget(QtWidgets.QWidget):
 
 
 def make_stand_in_panel(markers):
-    """Faux panneau (titre, liste, bouton) quand le vrai panneau ne se construit pas."""
+    """Fake panel (title, list, button) when the real panel cannot be built."""
     widget = QtWidgets.QWidget()
     widget.setStyleSheet("background: #f6f6f4; color: #111214;")
     layout = QtWidgets.QVBoxLayout(widget)
@@ -303,7 +303,7 @@ def make_stand_in_panel(markers):
     for marker in markers[:20]:
         listing.addItem("{}    {} projections".format(marker.label, len(marker.projections)))
     layout.addWidget(listing)
-    layout.addWidget(QtWidgets.QPushButton("Exporter"))
+    layout.addWidget(QtWidgets.QPushButton("Export"))
     widget.resize(330, 780)
     widget.show()
     QtWidgets.QApplication.processEvents()
@@ -311,7 +311,7 @@ def make_stand_in_panel(markers):
 
 
 # --------------------------------------------------------------------------
-# Verifications d'un PDF
+# PDF checks
 # --------------------------------------------------------------------------
 
 def read_pdf(path):
@@ -325,21 +325,21 @@ def pdf_pages(raw):
 
 def check_pdf(name, path, pages=None):
     ok = os.path.isfile(path) and os.path.getsize(path) > 0
-    check("{} : fichier non vide".format(name), ok, path)
+    check("{}: non-empty file".format(name), ok, path)
     if not ok:
         return None
     raw = read_pdf(path)
-    check("{} : en-tete %PDF".format(name), raw[:5] == b"%PDF-", raw[:8])
+    check("{}: %PDF header".format(name), raw[:5] == b"%PDF-", raw[:8])
     count = pdf_pages(raw)
     if pages is not None:
-        check("{} : {} pages".format(name, pages), count == pages, "trouve {}".format(count))
-    check("{} : polices TrueType embarquees".format(name), b"/FontFile2" in raw)
-    check("{} : pas de reste .part".format(name), not os.path.exists(path + ".part"))
+        check("{}: {} pages".format(name, pages), count == pages, "found {}".format(count))
+    check("{}: TrueType fonts embedded".format(name), b"/FontFile2" in raw)
+    check("{}: no .part file left".format(name), not os.path.exists(path + ".part"))
     return raw
 
 
 def pdf_title(raw):
-    """Titre du document (champ /Title), en UTF-16 avec BOM ou en hexadecimal."""
+    """Document title (/Title field), as UTF-16 with BOM or as hexadecimal."""
     match = re.search(rb"/Title\s*\((.*?)(?<!\\)\)", raw, re.S)
     if match:
         data = match.group(1)
@@ -369,11 +369,11 @@ _EXTRACT_SCRIPT = (
 
 
 def pdf_text(path):
-    """Texte des pages d'un PDF, ou None si aucun extracteur n'est disponible.
+    """Text of the pages of a PDF, or None if no extractor is available.
 
-    Essaie PyMuPDF puis pypdf dans ce Python, puis dans le `python` du PATH
-    (le Python embarque de Metashape n'a ni l'un ni l'autre). Les titres du
-    rapport sont peints en contours : seul le texte courant est extrait.
+    Tries PyMuPDF then pypdf in this Python, then in the `python` of the PATH
+    (the Python embedded in Metashape has neither). The titles of the
+    report are painted as outlines: only the running text is extracted.
     """
     try:
         import fitz
@@ -397,7 +397,7 @@ def pdf_text(path):
 
 
 def ensure_fonts():
-    """Charge Segoe UI depuis le dossier Windows si la plateforme (offscreen) n'a aucune police."""
+    """Loads Segoe UI from the Windows folder if the (offscreen) platform has no font."""
     try:
         families = set(QtGui.QFontDatabase.families())
     except Exception:
@@ -412,21 +412,20 @@ def ensure_fonts():
 
 
 def squash(text):
-    """Texte sur une ligne, espaces normalises."""
+    """Text on one line, whitespace normalised."""
     return re.sub(r"\s+", " ", text or "")
 
 
 # --------------------------------------------------------------------------
-# Cas
+# Cases
 # --------------------------------------------------------------------------
 
 def main():
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    print("liaison Qt : {} ; plateforme : {} ; Python {}".format(
+    print("Qt binding: {}; platform: {}; Python {}".format(
         BINDING, PLATFORM, sys.version.split()[0]))
-    print("sortie : {}".format(OUT))
+    print("output: {}".format(OUT))
 
-    i18n.set_lang("fr")
     ensure_fonts()
     work = tempfile.mkdtemp(prefix="aerotools_photos_")
     chunk, markers = build_world(work)
@@ -453,47 +452,47 @@ def main():
         state = real
     except Exception:
         traceback.print_exc()
-        print("panneau reel indisponible : un widget simple le remplace")
+        print("real panel unavailable: a simple widget replaces it")
         state.panel = make_stand_in_panel(markers)
     app.processEvents()
 
     data = report.collect_data(chunk)
     stats = data["stats"]
-    check("collect_data : 30 marqueurs", stats["n_markers"] == N_MARKERS, stats["n_markers"])
-    check("collect_data : pointes = 27", stats["n_pointed"] == N_MARKERS - len(NO_ERROR),
+    check("collect_data: 30 markers", stats["n_markers"] == N_MARKERS, stats["n_markers"])
+    check("collect_data: pointed = 27", stats["n_pointed"] == N_MARKERS - len(NO_ERROR),
           stats["n_pointed"])
-    check("collect_data : pire marqueur GCP07", stats["worst_label"] == "GCP07",
+    check("collect_data: worst marker GCP07", stats["worst_label"] == "GCP07",
           stats["worst_label"])
 
     black = QtGui.QImage(300, 200, QtGui.QImage.Format_RGB32)
     black.fill(QtGui.QColor("black"))
-    check("looks_blank : image noire", report.looks_blank(black))
-    check("looks_blank : image nulle", report.looks_blank(QtGui.QImage()))
-    check("looks_blank : photo", not report.looks_blank(QtGui.QImage(chunk.cameras[0].photo.path)))
+    check("looks_blank: black image", report.looks_blank(black))
+    check("looks_blank: null image", report.looks_blank(QtGui.QImage()))
+    check("looks_blank: photo", not report.looks_blank(QtGui.QImage(chunk.cameras[0].photo.path)))
 
-    # 1. PDF complet avec captures
+    # 1. Full PDF with screenshots
     images = report.collect_images(state, data)
-    check("captures : vue photo", images.get("photo") is not None)
-    check("captures : 2 vignettes", len(images.get("crops") or []) == 2,
+    check("screenshots: photo view", images.get("photo") is not None)
+    check("screenshots: 2 thumbnails", len(images.get("crops") or []) == 2,
           len(images.get("crops") or []))
-    check("captures : panneau", images.get("panel") is not None)
-    full = os.path.join(OUT, "rapport_complet_{}.pdf".format(BINDING))
+    check("screenshots: panel", images.get("panel") is not None)
+    full = os.path.join(OUT, "report_full_{}.pdf".format(BINDING))
     pages = report.build_pdf(data, full, images)
-    check("build_pdf renvoie 3 pages", pages == 3, pages)
-    check_pdf("PDF complet", full, 3)
+    check("build_pdf returns 3 pages", pages == 3, pages)
+    check_pdf("Full PDF", full, 3)
 
-    # 2. Sans captures : la page 3 disparait, sans trou
-    bare = os.path.join(OUT, "rapport_sans_captures_{}.pdf".format(BINDING))
-    check("build_pdf sans captures : 2 pages", report.build_pdf(data, bare, {}) == 2)
-    check_pdf("PDF sans captures", bare, 2)
+    # 2. Without screenshots: page 3 disappears, without a gap
+    bare = os.path.join(OUT, "report_no_screenshots_{}.pdf".format(BINDING))
+    check("build_pdf without screenshots: 2 pages", report.build_pdf(data, bare, {}) == 2)
+    check_pdf("PDF without screenshots", bare, 2)
 
-    # 3. Captures partielles : seulement le panneau
-    partial = os.path.join(OUT, "rapport_panneau_seul_{}.pdf".format(BINDING))
-    only_panel = {"panel": images["panel"], "panel_caption": "Panneau FastGCP"}
-    check("build_pdf panneau seul : 3 pages", report.build_pdf(data, partial, only_panel) == 3)
-    check_pdf("PDF panneau seul", partial, 3)
+    # 3. Partial screenshots: only the panel
+    partial = os.path.join(OUT, "report_panel_only_{}.pdf".format(BINDING))
+    only_panel = {"panel": images["panel"], "panel_caption": "FastGCP panel"}
+    check("build_pdf panel only: 3 pages", report.build_pdf(data, partial, only_panel) == 3)
+    check_pdf("PDF panel only", partial, 3)
 
-    # 4. Beaucoup de marqueurs : le tableau passe sur plusieurs pages
+    # 4. Many markers: the table runs over several pages
     many_chunk, many_markers = build_world(work)
     extra = []
     for index in range(100):
@@ -512,205 +511,163 @@ def main():
     msapi.marker_errors = errors_many
     FAKE.app.document.chunk = many_chunk
     many_data = report.collect_data(many_chunk)
-    many_pdf = os.path.join(OUT, "rapport_130_marqueurs_{}.pdf".format(BINDING))
+    many_pdf = os.path.join(OUT, "report_130_markers_{}.pdf".format(BINDING))
     expected = report.page_count(many_data, images)
     got = report.build_pdf(many_data, many_pdf, images)
-    check("130 marqueurs : pages annoncees = pages ecrites", got == expected, (got, expected))
-    check_pdf("PDF 130 marqueurs", many_pdf, expected)
-    check("130 marqueurs : plus de 3 pages", expected > 3, expected)
+    check("130 markers: announced pages = written pages", got == expected, (got, expected))
+    check_pdf("PDF 130 markers", many_pdf, expected)
+    check("130 markers: more than 3 pages", expected > 3, expected)
     FAKE.app.document.chunk = chunk
     msapi.marker_errors = fake_errors_factory(markers)
 
-    # 5. Cas degeneres : aucun marqueur, aucune erreur
-    empty = os.path.join(OUT, "rapport_vide_{}.pdf".format(BINDING))
+    # 5. Degenerate cases: no marker, no error
+    empty = os.path.join(OUT, "report_empty_{}.pdf".format(BINDING))
     empty_data = report.collect_data(Chunk([], []))
     report.build_pdf(empty_data, empty, {})
-    check_pdf("PDF sans marqueur", empty, 2)
+    check_pdf("PDF without markers", empty, 2)
     msapi.marker_errors = lambda _c, _m: {"x": None, "y": None, "z": None, "total": None}
-    noerr = os.path.join(OUT, "rapport_sans_erreur_{}.pdf".format(BINDING))
+    noerr = os.path.join(OUT, "report_no_error_{}.pdf".format(BINDING))
     noerr_data = report.collect_data(chunk)
     report.build_pdf(noerr_data, noerr, {})
-    check_pdf("PDF sans aucune erreur", noerr, 2)
+    check_pdf("PDF without any error", noerr, 2)
     msapi.marker_errors = fake_errors_factory(markers)
 
-    # 6. export_pdf de bout en bout (dialogues remplaces)
-    target = os.path.join(OUT, "export_bout_en_bout_{}.pdf".format(BINDING))
+    # 6. export_pdf end to end (dialogs replaced)
+    target = os.path.join(OUT, "export_end_to_end_{}.pdf".format(BINDING))
     messages = []
     report.ask_save_path = lambda parent, caption, default, flt: target
     report.show_message = lambda parent, title, text, warning=False: messages.append((title, text))
-    report.offer_open = lambda parent, title, path: messages.append(("ouvrir", path)) or False
+    report.offer_open = lambda parent, title, path: messages.append(("open", path)) or False
     journal.clear()
     result = report.export_pdf(state)
-    check("export_pdf renvoie le chemin", result == target, result)
+    check("export_pdf returns the path", result == target, result)
     check_pdf("export_pdf", target, 3)
-    check("export_pdf : une ligne de journal", any("Rapport PDF écrit" in line
-                                                   for line in journal.lines()))
-    check("export_pdf : propose d'ouvrir", ("ouvrir", target) in messages, messages)
+    check("export_pdf: a journal line", any("PDF report written" in line
+                                            for line in journal.lines()))
+    check("export_pdf: offers to open the file", ("open", target) in messages, messages)
 
-    # 7. Annulation : None, rien d'ecrit, pas de message
+    # 7. Cancellation: None, nothing written, no message
     messages[:] = []
     report.ask_save_path = lambda *args: ""
-    check("export_pdf annule : None", report.export_pdf(state) is None)
-    check("export_pdf annule : silencieux", not messages, messages)
+    check("export_pdf cancelled: None", report.export_pdf(state) is None)
+    check("export_pdf cancelled: silent", not messages, messages)
 
-    # 8. Echec d'ecriture : None, message lisible, pas d'exception
-    bad = os.path.join(OUT, "dossier_absent", "x.pdf")
+    # 8. Write failure: None, readable message, no exception
+    bad = os.path.join(OUT, "missing_folder", "x.pdf")
     report.ask_save_path = lambda *args: bad
     messages[:] = []
     journal.clear()
-    check("export_pdf echec : None", report.export_pdf(state) is None)
-    check("export_pdf echec : message", any("Export PDF impossible" in m[0] for m in messages),
+    check("export_pdf failure: None", report.export_pdf(state) is None)
+    check("export_pdf failure: message", any("PDF export failed" in m[0] for m in messages),
           messages)
-    check("export_pdf echec : journal", any("Rapport" in line for line in journal.lines()))
+    check("export_pdf failure: journal", any("Report" in line for line in journal.lines()))
 
-    # 9. CSV de bout en bout
-    csv_path = os.path.join(OUT, "tableau_{}.csv".format(BINDING))
+    # 9. CSV end to end
+    csv_path = os.path.join(OUT, "table_{}.csv".format(BINDING))
     report.ask_save_path = lambda *args: csv_path
     messages[:] = []
-    check("export_csv renvoie le chemin", report.export_csv(state) == csv_path)
+    check("export_csv returns the path", report.export_csv(state) == csv_path)
     with open(csv_path, "rb") as handle:
         raw = handle.read()
-    check("export_csv : BOM UTF-8", raw[:3] == b"\xef\xbb\xbf")
+    check("export_csv: UTF-8 BOM", raw[:3] == b"\xef\xbb\xbf")
     lines = raw.decode("utf-8-sig").split("\r\n")
-    check("export_csv : 30 lignes + en-tete", len([l for l in lines if l]) == N_MARKERS + 1,
+    check("export_csv: 30 rows + header", len([l for l in lines if l]) == N_MARKERS + 1,
           len(lines))
-    check("export_csv : separateur point-virgule", lines[0].startswith("ID;Erreur X (m);"),
+    check("export_csv: comma delimiter", lines[0].startswith("ID,Error X (m),"),
           lines[0])
-    check("export_csv : virgule decimale", re.search(r"GCP07;0,162;-0,118;0,205;", lines[7])
+    check("export_csv: decimal point", re.search(r"GCP07,0\.162,-0\.118,0\.205,", lines[7])
           is not None, lines[7])
 
-    # 10. Aucun marqueur : message, None
+    # 10. No marker: message, None
     FAKE.app.document.chunk = Chunk([], [])
     messages[:] = []
     report.ask_save_path = lambda *args: target
-    check("export_pdf sans marqueur : None", report.export_pdf(state) is None)
-    check("export_pdf sans marqueur : message", bool(messages))
+    check("export_pdf without markers: None", report.export_pdf(state) is None)
+    check("export_pdf without markers: message", bool(messages))
     FAKE.app.document.chunk = chunk
 
-    # 11. Langue : le rapport lit la langue au moment de l'export
+    # 11. Report formats: texts, dates, numbers, CSV delimiter, proposed file names
     FAKE.app.document.chunk = chunk
     msapi.marker_errors = fake_errors_factory(markers)
-    today = datetime.date.today()
-    stamp = today.strftime("%Y-%m-%d")
-    cases = {
-        "en": {
-            "title": "Report", "absent_title": "Rapport",
-            "present": ["Page 1 of 3", "Total error", "Error X (m)", "Mean", "Median",
-                        "in meters", "current marker", "0.287", stamp],
-            "absent": ["Erreur totale", "Moyenne", "Page 1 / 3", "0,287", "Rapport"],
-            "pdf_name": "{}_GCP_report_Chunk_1_-_Leve_eolien.pdf".format(stamp),
-            "csv_name": "{}_GCP_table_Chunk_1_-_Leve_eolien.csv".format(stamp),
-            "csv_head": "ID,Error X (m),Error Y (m),Error Z (m),Total error (m),Projections,"
-                        "Reference X,Reference Y,Reference Z",
-            "csv_row": re.compile(r"^GCP07,0\.162,-0\.118,0\.205,"),
-            "dialog_title": "PDF export failed",
-            "filter": "PDF files",
-        },
-        "fr": {
-            "title": "Rapport", "absent_title": "Report",
-            "present": ["Page 1 / 3", "Erreur totale", "Erreur X (m)", "Moyenne",
-                        "Médiane", "en mètres", "marqueur courant", "0,287",
-                        today.strftime("%d/%m/%Y")],
-            "absent": ["Total error", "Mean", "Page 1 of 3", "0.287"],
-            "pdf_name": "{}_Rapport_GCP_Chunk_1_-_Leve_eolien.pdf".format(stamp),
-            "csv_name": "{}_Tableau_GCP_Chunk_1_-_Leve_eolien.csv".format(stamp),
-            "csv_head": "ID;Erreur X (m);Erreur Y (m);Erreur Z (m);Erreur totale (m);Projections;"
-                        "X référence;Y référence;Z référence",
-            "csv_row": re.compile(r"^GCP07;0,162;-0,118;0,205;"),
-            "dialog_title": "Export PDF impossible",
-            "filter": "Fichiers PDF",
-        },
-    }
-    for code in ("en", "fr"):
-        expect = cases[code]
-        i18n.set_lang(code)
-        tag = code.upper()
+    stamp = datetime.date.today().strftime("%Y-%m-%d")
+    present = ["Page 1 of 3", "Total error", "Error X (m)", "Mean", "Median",
+               "in meters", "current marker", "0.287", stamp]
+    absent = ["0,287"]
+    pdf_name = "{}_GCP_report_Chunk_1_-_Survey_Zurich.pdf".format(stamp)
+    csv_name = "{}_GCP_table_Chunk_1_-_Survey_Zurich.csv".format(stamp)
+    csv_head = ("ID,Error X (m),Error Y (m),Error Z (m),Total error (m),Projections,"
+                "Reference X,Reference Y,Reference Z")
 
-        # PDF construit directement : contenu dans la langue
-        lang_data = report.collect_data(chunk)
-        lang_images = report.collect_images(state, lang_data)
-        lang_pdf = os.path.join(OUT, "rapport_langue_{}_{}.pdf".format(code, BINDING))
-        count = report.build_pdf(lang_data, lang_pdf, lang_images)
-        check("langue {} : build_pdf renvoie 3 pages".format(tag), count == 3, count)
-        raw = check_pdf("PDF {}".format(tag), lang_pdf, 3)
-        title = pdf_title(raw) if raw else ""
-        check("langue {} : titre du document contient {!r}".format(tag, expect["title"]),
-              expect["title"] in title and expect["absent_title"] not in title, title)
-        text = pdf_text(lang_pdf)
-        if text is None:
-            print("SKIP langue {} : texte du PDF non verifie (ni PyMuPDF ni pypdf)".format(tag))
-        else:
-            flat = squash(text)
-            for needle in expect["present"]:
-                check("langue {} : le PDF contient {!r}".format(tag, needle), needle in flat)
-            for needle in expect["absent"]:
-                check("langue {} : le PDF ne contient pas {!r}".format(tag, needle),
-                      needle not in flat)
+    # PDF built directly: content
+    fmt_data = report.collect_data(chunk)
+    fmt_images = report.collect_images(state, fmt_data)
+    fmt_pdf = os.path.join(OUT, "report_formats_{}.pdf".format(BINDING))
+    count = report.build_pdf(fmt_data, fmt_pdf, fmt_images)
+    check("formats: build_pdf returns 3 pages", count == 3, count)
+    raw = check_pdf("PDF formats", fmt_pdf, 3)
+    title = pdf_title(raw) if raw else ""
+    check("formats: document title contains 'Report'", "Report" in title, title)
+    text = pdf_text(fmt_pdf)
+    if text is None:
+        print("SKIP formats: PDF text not checked (neither PyMuPDF nor pypdf)")
+    else:
+        flat = squash(text)
+        for needle in present:
+            check("formats: the PDF contains {!r}".format(needle), needle in flat)
+        for needle in absent:
+            check("formats: the PDF does not contain {!r}".format(needle), needle not in flat)
 
-        # CSV par le vrai point d'entree
-        seen = {}
-        messages[:] = []
-        csv_lang = os.path.join(OUT, "tableau_langue_{}_{}.csv".format(code, BINDING))
+    # CSV through the real entry point
+    seen = {}
+    messages[:] = []
+    csv_fmt = os.path.join(OUT, "table_formats_{}.csv".format(BINDING))
 
-        def ask_csv(parent, caption, default, flt, _seen=seen, _path=csv_lang):
-            _seen.update(default=default, caption=caption, filter=flt)
-            return _path
-        report.ask_save_path = ask_csv
-        check("langue {} : export_csv renvoie le chemin".format(tag),
-              report.export_csv(state) == csv_lang)
-        check("langue {} : nom du CSV propose".format(tag),
-              os.path.basename(seen["default"]) == expect["csv_name"], seen["default"])
-        with open(csv_lang, "rb") as handle:
-            raw_csv = handle.read()
-        check("langue {} : CSV en UTF-8 avec BOM".format(tag), raw_csv[:3] == b"\xef\xbb\xbf")
-        rows = raw_csv.decode("utf-8-sig").split("\r\n")
-        check("langue {} : en-tete du CSV".format(tag), rows[0] == expect["csv_head"], rows[0])
-        check("langue {} : ligne GCP07 du CSV".format(tag),
-              expect["csv_row"].search(rows[7]) is not None, rows[7])
-        body = "".join(rows[1:])
-        if code == "en":
-            check("langue EN : aucun point-virgule ni virgule decimale dans le CSV",
-                  ";" not in body and re.search(r"\d,\d{3}(,|$)", body) is None, rows[7])
-        else:
-            check("langue FR : aucun point decimal dans le CSV",
-                  re.search(r"\d\.\d", body) is None, rows[7])
+    def ask_csv(parent, caption, default, flt, _seen=seen, _path=csv_fmt):
+        _seen.update(default=default, caption=caption, filter=flt)
+        return _path
+    report.ask_save_path = ask_csv
+    check("formats: export_csv returns the path", report.export_csv(state) == csv_fmt)
+    check("formats: proposed CSV name", os.path.basename(seen["default"]) == csv_name, seen["default"])
+    with open(csv_fmt, "rb") as handle:
+        raw_csv = handle.read()
+    check("formats: CSV in UTF-8 with BOM", raw_csv[:3] == b"\xef\xbb\xbf")
+    rows = raw_csv.decode("utf-8-sig").split("\r\n")
+    check("formats: CSV header", rows[0] == csv_head, rows[0])
+    check("formats: CSV row GCP07", re.search(r"^GCP07,0\.162,-0\.118,0\.205,", rows[7]) is not None, rows[7])
+    body = "".join(rows[1:])
+    check("formats: no semicolon or decimal comma in the CSV",
+          ";" not in body and re.search(r"\d,\d{3}(,|$)", body) is None, rows[7])
 
-        # PDF par le vrai point d'entree : nom propose, boite d'enregistrement, journal
-        pdf_target = os.path.join(OUT, "export_langue_{}_{}.pdf".format(code, BINDING))
+    # PDF through the real entry point: proposed name, save dialog, journal
+    pdf_target = os.path.join(OUT, "export_formats_{}.pdf".format(BINDING))
 
-        def ask_pdf(parent, caption, default, flt, _seen=seen, _path=pdf_target):
-            _seen.update(default=default, caption=caption, filter=flt)
-            return _path
-        report.ask_save_path = ask_pdf
-        journal.clear()
-        check("langue {} : export_pdf renvoie le chemin".format(tag),
-              report.export_pdf(state) == pdf_target)
-        check("langue {} : nom du PDF propose".format(tag),
-              os.path.basename(seen["default"]) == expect["pdf_name"], seen["default"])
-        check("langue {} : boite d'enregistrement dans la langue".format(tag),
-              seen["caption"] == i18n.t("dlg.save_pdf")
-              and seen["filter"].startswith(expect["filter"]), (seen["caption"], seen["filter"]))
-        check("langue {} : proposition d'ouvrir le fichier".format(tag),
-              ("ouvrir", pdf_target) in messages, messages)
-        check("langue {} : le journal reste en francais".format(tag),
-              any("Rapport PDF écrit" in line for line in journal.lines()))
-        messages[:] = []
-        report.ask_save_path = lambda *args: os.path.join(OUT, "dossier_absent", "x.pdf")
-        report.export_pdf(state)
-        check("langue {} : message d'echec dans la langue".format(tag),
-              any(m[0] == expect["dialog_title"] for m in messages), messages)
-    i18n.set_lang("fr")
+    def ask_pdf(parent, caption, default, flt, _seen=seen, _path=pdf_target):
+        _seen.update(default=default, caption=caption, filter=flt)
+        return _path
+    report.ask_save_path = ask_pdf
+    journal.clear()
+    check("formats: export_pdf returns the path", report.export_pdf(state) == pdf_target)
+    check("formats: proposed PDF name", os.path.basename(seen["default"]) == pdf_name, seen["default"])
+    check("formats: save dialog texts",
+          seen["caption"] == i18n.t("dlg.save_pdf") and seen["filter"].startswith("PDF files"),
+          (seen["caption"], seen["filter"]))
+    check("formats: offer to open the file", ("open", pdf_target) in messages, messages)
+    check("formats: journal line", any("PDF report written" in line for line in journal.lines()))
+    messages[:] = []
+    report.ask_save_path = lambda *args: os.path.join(OUT, "missing_folder", "x.pdf")
+    report.export_pdf(state)
+    check("formats: failure message", any(m[0] == "PDF export failed" for m in messages), messages)
 
     print("-" * 60)
-    print("liaison Qt : {} ; fichiers dans {}".format(BINDING, OUT))
+    print("Qt binding: {}; files in {}".format(BINDING, OUT))
     problem = GUARD.check()
     if problem:
-        FAILURES.append("reglages reels : " + problem)
+        FAILURES.append("real settings: " + problem)
         print(problem)
     if FAILURES:
-        print("{} cas en echec".format(len(FAILURES)))
+        print("{} failing cases".format(len(FAILURES)))
         return 1
-    print("tous les cas passent")
+    print("all cases pass")
     return 0
 
 

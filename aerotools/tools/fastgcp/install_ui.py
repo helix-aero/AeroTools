@@ -1,9 +1,9 @@
-"""« Installer pour moi » : lance l'installeur depuis l'interface et attend la fin (Qt).
+"""Install for me: runs the installer from the interface and waits for the end (Qt).
 
-Pour des utilisateurs qui ne sont pas des developpeurs : quand un moteur ou les outils de
-reentrainement manquent, un bouton propose de les installer. L'installeur (install_all.ps1)
-tourne dans une console visible qui affiche « Please wait... » ; cette fenetre reste devant
-Metashape, indique de ne pas fermer, et dit a la fin si tout s'est bien passe.
+For users who are not developers: when an engine or the retraining tools are missing, a
+button offers to install them. The installer (install_all.ps1) runs in a visible console
+that displays "Please wait..."; this window stays in front of Metashape, says not to
+close it, and says at the end whether everything went well.
 """
 
 from ... import i18n, journal, ui
@@ -14,7 +14,7 @@ POLL_MS = 1000
 
 
 def what_text(engine, training):
-    """Ce qu'on installe, en une phrase : « le moteur leger (...) »."""
+    """What is being installed, in one phrase: "the light engine (...)"."""
     parts = []
     if engine in ("light", "both"):
         parts.append(i18n.t(engines.WHAT_TEXT["light"]))
@@ -29,7 +29,7 @@ def what_text(engine, training):
 
 
 class _Progress(QtWidgets.QDialog):
-    """Fenetre modale pendant l'installation : texte, barre sans fin, annulation."""
+    """Modal window during the installation: text, endless bar, cancel."""
 
     def __init__(self, parent, what, job):
         super(_Progress, self).__init__(parent)
@@ -75,7 +75,7 @@ class _Progress(QtWidgets.QDialog):
             self.accept()
 
     def reject(self):
-        """Echap ne ferme pas la fenetre : seule la fin ou le bouton Annuler le font."""
+        """Escape does not close the window: only the end or the Cancel button do."""
         return None
 
     def closeEvent(self, event):
@@ -86,9 +86,9 @@ class _Progress(QtWidgets.QDialog):
 
 
 def run(parent, engine=None, training=False, confirm=True):
-    """Installe `engine` ("light", "precise", "both" ou None) et, si `training`, les outils de reentrainement.
+    """Install `engine` ("light", "precise", "both" or None) and, if `training`, the retraining tools.
 
-    Renvoie True si l'installation s'est terminee correctement. Ne leve jamais."""
+    Returns True if the installation finished correctly. Never raises."""
     try:
         what = what_text(engine, training)
         if confirm and not dialogs.ask(parent, i18n.t("install.title"), i18n.t("install.confirm", what=what)):
@@ -99,30 +99,30 @@ def run(parent, engine=None, training=False, confirm=True):
         try:
             job = engines.InstallJob(engine, training).start()
         except Exception as exc:
-            journal.write("Installation : lancement impossible : {!r}".format(exc))
+            journal.write("Installation: could not start: {!r}".format(exc))
             dialogs.inform(parent, i18n.t("install.title"), i18n.t("install.not_started", error=str(exc)))
             return False
-        journal.write("Installation : {} lancee".format(what))
+        journal.write("Installation: {} started".format(what))
         window = _Progress(parent, what, job)
         ui.run(window)
         result = window.result or {"ok": False, "code": "?"}
         engines.forget()
         if result.get("ok"):
-            journal.write("Installation : terminee")
+            journal.write("Installation: finished")
             dialogs.inform(parent, i18n.t("install.title"), i18n.t("install.done", what=what))
             return True
-        journal.write("Installation : echec ({})".format(result.get("code")))
+        journal.write("Installation: failed ({})".format(result.get("code")))
         if result.get("code") == "cancelled":
             dialogs.inform(parent, i18n.t("install.title"), i18n.t("install.cancelled"))
         else:
             dialogs.inform(parent, i18n.t("install.title"), i18n.t("install.failed", code=result.get("code")))
         return False
     except Exception as exc:
-        journal.write("Installation : {!r}".format(exc))
+        journal.write("Installation: {!r}".format(exc))
         return False
 
 
-# Pour l'ecran de reglages : qu'a-t-on installe, dans quelle langue.
+# For the settings screen: is the engine installed or missing.
 def state_text(installed):
     return i18n.t("engine.installed" if installed else "engine.missing")
 

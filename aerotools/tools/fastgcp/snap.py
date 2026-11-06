@@ -1,21 +1,21 @@
-"""Recalage du clic sur le centre de la cible.
+"""Snapping of the click onto the centre of the target.
 
-Apres un clic, on regarde une petite zone de la photo (une trentaine de pixels
-autour du clic) et on cherche le croisement d'un damier 2x2 : quatre carres
-dont les diagonales opposees ont la meme couleur. Si ce croisement est a moins
-de `max_shift` pixels du clic, le point est pose dessus. Sinon, ou si rien de
-net ne ressort (croix, marque a la craie, photo floue), le clic reste tel quel.
+After a click, a small area of the photo is examined (about thirty pixels
+around the click) and the crossing of a 2x2 checkerboard is searched for: four squares
+whose opposite diagonals have the same colour. If this crossing is within
+`max_shift` pixels of the click, the point is placed on it. Otherwise, or if nothing
+sharp comes out (cross, chalk mark, blurred photo), the click stays as it is.
 
-Meme methode que la chaine PhotoPN : on projette les deux couleurs de la cible
-sur l'axe qui les separe (jaune/noir, blanc/noir...), puis on prend le meilleur
-croisement, pondere par une gaussienne centree sur le clic pour ne jamais sauter
-sur un autre damier voisin. Python pur, sans numpy : la zone est minuscule.
+Same method as the PhotoPN chain: the two colours of the target are projected
+onto the axis that separates them (yellow/black, white/black...), then the best
+crossing is taken, weighted by a Gaussian centred on the click so as never to jump
+to another neighbouring checkerboard. Pure Python, no numpy: the area is tiny.
 
-Desactive par defaut (reglage fastgcp.recalage_max_px, voir session.py) : sur
-CITADELLE_Pompeani, les pointages manuels etaient plus justes que le recalage.
+Off by default (setting fastgcp.snap_max_px, see session.py): on
+CITADELLE_Pompeani, the manual markings were more accurate than the snapping.
 
-Convention de Metashape : l'origine est le coin haut-gauche du premier pixel,
-donc un croisement entre deux pixels a des coordonnees entieres.
+Metashape convention: the origin is the top-left corner of the first pixel,
+so a crossing between two pixels has integer coordinates.
 """
 
 import math
@@ -27,13 +27,13 @@ SEARCH_RADIUS = 4
 HALVES = (6, 8, 10)
 MIN_SCORE = 10.0
 SIGMA = 3.5
-# Marge de lecture autour du clic : rayon de recherche + plus grand carre + 1
-# pixel pour l'interpolation sous-pixel.
+# Reading margin around the click: search radius + largest square + 1
+# pixel for the sub-pixel interpolation.
 MARGIN = SEARCH_RADIUS + max(HALVES) + 2
 
 
 def _principal_axis(rows):
-    """Axe de couleur le plus contraste de la zone (vecteur unitaire de 3)."""
+    """Most contrasted colour axis of the area (unit vector of 3)."""
     count = 0
     sums = [0.0, 0.0, 0.0]
     for row in rows:
@@ -65,7 +65,7 @@ def _principal_axis(rows):
 
 
 def signal(rows):
-    """Zone convertie en une seule valeur par pixel (axe des deux couleurs)."""
+    """Area converted to a single value per pixel (axis of the two colours)."""
     axis = _principal_axis(rows)
     if axis is None:
         axis = (0.299, 0.587, 0.114)
@@ -93,7 +93,7 @@ def _box(ii, x0, y0, x1, y1):
 
 
 def _saddle(ii, width, height, x, y, half):
-    """Contraste damier 2x2 autour du croisement (x, y), ou None si hors zone."""
+    """2x2 checkerboard contrast around the crossing (x, y), or None if outside the area."""
     if x < half or y < half or x + half > width or y + half > height:
         return None
     area = float(half * half)
@@ -115,9 +115,9 @@ def _quad(minus, centre, plus):
 
 def find_crossing(rows, cx, cy, radius=SEARCH_RADIUS, halves=HALVES,
                   min_score=MIN_SCORE, sigma=SIGMA):
-    """Meilleur croisement de damier pres de (cx, cy), dans le repere de `rows`.
+    """Best checkerboard crossing near (cx, cy), in the frame of `rows`.
 
-    `rows` : liste de lignes de pixels (r, g, b). Renvoie (x, y, score) ou None.
+    `rows`: list of pixel rows (r, g, b). Returns (x, y, score) or None.
     """
     if not rows or not rows[0]:
         return None
@@ -150,10 +150,10 @@ def find_crossing(rows, cx, cy, radius=SEARCH_RADIUS, halves=HALVES,
 
 
 def refine_in_rows(rows, origin_x, origin_y, x, y, max_shift=MAX_SHIFT_PX):
-    """Recale (x, y) sur le croisement trouve dans `rows` (zone dont le pixel
-    haut-gauche est (origin_x, origin_y) dans l'image).
+    """Snap (x, y) onto the crossing found in `rows` (an area whose top-left
+    pixel is (origin_x, origin_y) in the image).
 
-    Renvoie (x, y, decalage_en_px) si le croisement est assez pres, sinon None.
+    Returns (x, y, shift_in_px) if the crossing is close enough, otherwise None.
     """
     hit = find_crossing(rows, x - origin_x, y - origin_y)
     if hit is None:
@@ -166,10 +166,10 @@ def refine_in_rows(rows, origin_x, origin_y, x, y, max_shift=MAX_SHIFT_PX):
 
 
 def read_rows(image_path, x, y, expected_size):
-    """Lit la zone autour de (x, y) dans le fichier image, via Qt.
+    """Read the area around (x, y) in the image file, via Qt.
 
-    Renvoie (rows, origin_x, origin_y) ou (None, raison). On ne lit que la zone
-    quand le format le permet (JPEG), pas la photo entiere.
+    Returns (rows, origin_x, origin_y) or (None, reason). Only the area is read
+    when the format allows it (JPEG), not the whole photo.
     """
     from ...qt import QtCore, QtGui
 
@@ -181,20 +181,20 @@ def read_rows(image_path, x, y, expected_size):
     size = reader.size()
     width, height = size.width(), size.height()
     if width <= 0 or height <= 0:
-        return None, "fichier image illisible"
+        return None, "unreadable image file"
     if (width, height) != tuple(expected_size):
-        return None, "taille du fichier {}x{} differente du capteur {}x{}".format(
+        return None, "file size {}x{} differs from the sensor {}x{}".format(
             width, height, expected_size[0], expected_size[1])
     x0 = max(0, int(round(x)) - MARGIN)
     y0 = max(0, int(round(y)) - MARGIN)
     x1 = min(width, int(round(x)) + MARGIN + 1)
     y1 = min(height, int(round(y)) + MARGIN + 1)
     if x1 - x0 < 2 * max(HALVES) or y1 - y0 < 2 * max(HALVES):
-        return None, "trop pres du bord de l'image"
+        return None, "too close to the image edge"
     reader.setClipRect(QtCore.QRect(x0, y0, x1 - x0, y1 - y0))
     image = reader.read()
     if image.isNull():
-        return None, "lecture de la zone impossible"
+        return None, "cannot read the area"
     image = image.convertToFormat(QtGui.QImage.Format_RGB32)
     rows = []
     for j in range(image.height()):
@@ -207,16 +207,16 @@ def read_rows(image_path, x, y, expected_size):
 
 
 def snap_click(camera, x, y, max_shift=MAX_SHIFT_PX):
-    """Recale le clic (x, y) fait sur `camera`. Ne leve jamais.
+    """Snap the click (x, y) made on `camera`. Never raises.
 
-    Renvoie (x, y, decalage) si le point a ete deplace, ou (None, raison).
+    Returns (x, y, shift) if the point was moved, or (None, reason).
     """
     try:
         if max_shift <= 0:
-            return None, "recalage coupe"
+            return None, "snapping off"
         path = msapi.camera_image_path(camera)
         if not path:
-            return None, "chemin de l'image inconnu"
+            return None, "image path unknown"
         size = msapi.camera_size(camera)
         rows = read_rows(path, x, y, size)
         if rows[0] is None:
@@ -224,11 +224,11 @@ def snap_click(camera, x, y, max_shift=MAX_SHIFT_PX):
         zone, origin_x, origin_y = rows
         result = refine_in_rows(zone, origin_x, origin_y, x, y, max_shift)
         if result is None:
-            return None, "pas de croisement net a moins de {:g} px".format(max_shift)
+            return None, "no sharp crossing within {:g} px".format(max_shift)
         return result
     except Exception as exc:
         try:
-            journal.write("recalage : {!r}".format(exc))
+            journal.write("snapping: {!r}".format(exc))
         except Exception:
             pass
-        return None, "erreur ({!r})".format(exc)
+        return None, "error ({!r})".format(exc)

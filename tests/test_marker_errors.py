@@ -13,7 +13,7 @@ def _bind(ms):
 
 
 class Shift(object):
-    """Matrice du chunk factice : decalage (et mise a l'echelle) d'un point."""
+    """Fake chunk matrix: offset (and scaling) of a point."""
 
     def __init__(self, ms, dx=0.0, dy=0.0, dz=0.0, scale=1.0):
         self.ms, self.d, self.scale = ms, (dx, dy, dz), scale
@@ -25,7 +25,7 @@ class Shift(object):
 
 
 class Rot90(object):
-    """Repere local factice : tourne les vecteurs de 90 degres autour de Z."""
+    """Fake local frame: rotates the vectors by 90 degrees around Z."""
 
     def __init__(self, ms):
         self.ms = ms
@@ -35,7 +35,7 @@ class Rot90(object):
 
 
 class Crs(object):
-    name = "crs factice"
+    name = "fake crs"
 
     def __init__(self, ms, projected=True, local=True):
         self.ms, self.projected = ms, projected
@@ -84,8 +84,8 @@ def test_chunk_without_crs_but_with_matrix_uses_world_coordinates(ms):
 
 
 def test_with_crs_the_difference_goes_through_the_local_frame(ms):
-    # estime (100.5, 200, 50.25), reference (100, 200, 50) : ecart (0.5, 0, 0.25)
-    # puis rotation de 90 degres du repere local factice : (0, 0.5, 0.25).
+    # estimated (100.5, 200, 50.25), reference (100, 200, 50): difference (0.5, 0, 0.25)
+    # then 90 degree rotation of the fake local frame: (0, 0.5, 0.25).
     chunk = _chunk(ms, crs=Crs(ms), matrix=Shift(ms))
     marker = _marker(ms, ms.Vector(100.5, 200, 50.25), ms.Vector(100, 200, 50))
     errors = msapi.marker_errors(chunk, marker)
@@ -106,7 +106,7 @@ def test_without_local_frame_falls_back_to_the_plain_difference(ms):
 
 
 def test_degrees_are_converted_to_local_metres(ms):
-    # Chemin C : 0.0001 degre de longitude a 42 degres nord = environ 8.27 m.
+    # Path C: 0.0001 degree of longitude at 42 degrees north = about 8.27 m.
     chunk = _chunk(ms, crs=Crs(ms, local=False), matrix=Shift(ms))
     marker = _marker(ms, ms.Vector(9.0001, 42.0, 10.0), ms.Vector(9.0, 42.0, 10.0))
     errors = msapi.marker_errors(chunk, marker)
@@ -131,7 +131,7 @@ def test_crs_kind_is_read_from_the_wkt_then_proj4(ms):
 
 
 def test_projected_crs_wins_over_degrees_heuristic(ms):
-    # Un repere local projete a petites coordonnees : le WKT tranche (chemin B).
+    # A projected local frame with small coordinates: the WKT decides (path B).
     class Local(Crs):
         wkt = 'PROJCS["site"]'
 
@@ -141,7 +141,7 @@ def test_projected_crs_wins_over_degrees_heuristic(ms):
 
 
 def test_local_frame_matrix_variants(ms):
-    # mulv refuse le vecteur : le produit matrice * vecteur prend le relais.
+    # mulv rejects the vector: the matrix * vector product takes over.
     class OnlyProduct(object):
         def __init__(self, ms):
             self.ms = ms
@@ -161,7 +161,7 @@ def test_local_frame_matrix_variants(ms):
     errors = msapi.marker_errors(chunk, marker)
     assert errors["y"] == pytest.approx(0.5) and errors["z"] == pytest.approx(0.25)
 
-    # Ni mulv ni produit ni rotation : on applique les lignes une a une.
+    # Neither mulv nor product nor rotation: the rows are applied one by one.
     class Rows(object):
         data = [[0, -1, 0, 0], [1, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
 
@@ -185,7 +185,7 @@ def test_a_failing_computation_is_explained_once_per_chunk(ms):
             raise RuntimeError("Vertical datum out of range")
 
         def project(self, point):
-            raise RuntimeError("project aussi")
+            raise RuntimeError("project too")
 
     msapi._DIAG_LOGGED.clear()
     chunk = _chunk(ms, crs=Boom(ms), matrix=Shift(ms))
@@ -194,17 +194,17 @@ def test_a_failing_computation_is_explained_once_per_chunk(ms):
     before = len(journal.lines())
     for _ in range(3):
         assert msapi.marker_errors(chunk, marker) == EMPTY
-    added = [line for line in journal.lines()[before:] if "Erreurs du tableau" in line]
+    added = [line for line in journal.lines()[before:] if "Table errors" in line]
     assert len(added) == 1
     line = added[0]
-    assert "Vertical datum out of range" in line and "crs.project echoue" in line
+    assert "Vertical datum out of range" in line and "crs.project failed" in line
     assert "GCP1" in line and "enabled" in line and "reference.location" in line
     assert "mulp->Vector" in line and "localframe->Rot90" in line
-    # Un autre chunk a droit a sa propre ligne.
+    # Another chunk gets its own line.
     other = _chunk(ms, crs=Boom(ms), matrix=Shift(ms))
     other.key = 2
     msapi.marker_errors(other, marker)
-    assert len([l for l in journal.lines()[before:] if "Erreurs du tableau" in l]) == 2
+    assert len([l for l in journal.lines()[before:] if "Table errors" in l]) == 2
 
 
 def test_geocentric_or_unknown_crs_is_reported_not_guessed(ms):
@@ -231,7 +231,7 @@ def test_missing_reference_is_silent_and_unestimated_is_explained_once(ms):
     assert len(journal.lines()) == before
     for _ in range(2):
         msapi.marker_errors(chunk, _marker(ms, None, ms.Vector(1, 1, 1)))
-    assert len([l for l in journal.lines()[before:] if "pas de position estimee" in l]) == 1
+    assert len([l for l in journal.lines()[before:] if "no estimated position" in l]) == 1
 
 
 def test_no_reference_or_not_estimated_gives_none(ms):
@@ -246,7 +246,7 @@ def test_never_raises(ms):
 
     class Boom(object):
         def mulp(self, point):
-            raise RuntimeError("matrice cassee")
+            raise RuntimeError("broken matrix")
 
     chunk = _chunk(ms, crs=Crs(ms), matrix=Boom())
     marker = _marker(ms, ms.Vector(1, 1, 1), ms.Vector(0, 0, 0))
@@ -255,7 +255,7 @@ def test_never_raises(ms):
     class DeadMarker(object):
         @property
         def position(self):
-            raise RuntimeError("objet detruit")
+            raise RuntimeError("object destroyed")
 
     assert msapi.marker_errors(_chunk(ms), DeadMarker()) == EMPTY
 

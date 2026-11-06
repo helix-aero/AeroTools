@@ -1,4 +1,4 @@
-"""Fenetre Residual check : tous les marqueurs, tries du plus urgent au moins urgent."""
+"""Residual check window: all markers, sorted from most to least urgent."""
 import pytest
 
 from aerotools.tools.fastgcp import qc

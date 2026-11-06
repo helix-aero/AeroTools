@@ -1,4 +1,4 @@
-"""Boites Oui / Non maison : ordre des boutons (norme Windows : Oui a gauche, Non a droite)."""
+"""Custom Yes / No boxes: button order (Windows convention: Yes on the left, No on the right)."""
 
 from aerotools import i18n
 from aerotools.tools.fastgcp import dialogs

@@ -1,36 +1,36 @@
-"""Affinage (fine-tuning) des modeles AIGCP sur les retours de l'operateur.
+"""Fine-tuning of the AIGCP models on the operator feedback.
 
-Lance par training.py dans un Python a part (celui qui a torch et ultralytics),
-jamais dans celui de Metashape :
+Launched by training.py in a separate Python (the one with torch and ultralytics),
+never in the Metashape one:
 
     python -I aigcp_train.py --work train.json --out result.json
 
-`train.json` (ecrit par training.py) :
-    {"version": 1, "types": ["bombe"], "events": "events.jsonl",
-     "base_weights": {"bombe": "...\\bombe.pt"}, "out_dir": "...", "work_dir": "...",
+`train.json` (written by training.py):
+    {"version": 1, "types": ["spray"], "events": "events.jsonl",
+     "base_weights": {"spray": "...\\spray.pt"}, "out_dir": "...", "work_dir": "...",
      "epochs": 30, "device": "auto", "min_positives": 30, "replay_dir": null}
-`events.jsonl` : les derniers evenements de la revue (voir review.py), un par ligne :
-refined / accepted = point juste (x, y), rejected = fausse detection a (ai_x, ai_y).
+`events.jsonl`: the latest review events (see review.py), one per line:
+refined / accepted = correct point (x, y), rejected = false detection at (ai_x, ai_y).
 
-Methode (celle du jeu d'origine, DATASET_GCP_IA\\LISEZMOI.md) : recadrage carre de
-crop_px (96-640 px) autour du point, ramene a 160 x 160, une classe, boite 0,25 x 0,25
-(la cible fait ~40 px). Chaque positif donne un recadrage centre et deux decales de
-+-28 px avec un jitter d'echelle x0,85 a x1,2 ; chaque rejete, un recadrage sans
-etiquette (negatif difficile) ; quelques fonds au hasard dans les memes photos.
-Au plus 25 exemples par cible (les affinages d'abord) pour qu'un marqueur tres
-pointe ne domine pas. Decoupage train / val PAR CIBLE PHYSIQUE (chunk + marqueur) :
-une cible n'est jamais des deux cotes. On part des poids de base, backbone gele,
-learning rate faible, peu d'epoques. Les deux types ne se melangent jamais.
+Method (that of the original training set): square crop of
+crop_px (96-640 px) around the point, resized to 160 x 160, one class, 0.25 x 0.25 box
+(the target is ~40 px). Each positive gives one centred crop and two crops shifted by
++-28 px with a scale jitter of x0.85 to x1.2; each rejected one gives an unlabelled
+crop (hard negative); a few random backgrounds from the same photos.
+At most 25 examples per target (refinements first) so that a heavily
+pinned marker does not dominate. Train / val split PER PHYSICAL TARGET (chunk + marker):
+a target is never on both sides. Training starts from the base weights, frozen backbone,
+low learning rate, few epochs. The two types are never mixed.
 
-`result.json` (ecrit en fin de travail, `progress.json` a cote pendant le travail) :
+`result.json` (written at the end of the work, `progress.json` next to it during the work):
     {"ok": true, "message": "", "seconds": 123.0, "device": "cuda:0 (...)",
-     "types": {"bombe": {"ok": true, "samples": {...}, "epochs": 30,
+     "types": {"spray": {"ok": true, "samples": {...}, "epochs": 30,
                          "metrics": {"base": {map50, precision, recall},
                                      "new": {map50, precision, recall}},
                          "warning": null}}}
-Un type sans assez de positifs lisibles : {"ok": false, "skipped": "texte"}.
-Les poids partent dans <out_dir>/<type>.pt (dernier etat, pas le « meilleur » : la
-validation est trop petite pour choisir une epoque).
+A type without enough readable positives: {"ok": false, "skipped": "text"}.
+The weights go to <out_dir>/<type>.pt (last state, not the "best" one: the
+validation is too small to choose an epoch).
 """
 
 import argparse
@@ -58,7 +58,7 @@ SEED = 0
 
 
 def load_runner():
-    """aigcp_runner.py (meme dossier) : sous `python -I` le dossier du script n'est pas sur sys.path."""
+    """aigcp_runner.py (same folder): under `python -I` the script folder is not on sys.path."""
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aigcp_runner.py")
     spec = importlib.util.spec_from_file_location("aigcp_runner", path)
     module = importlib.util.module_from_spec(spec)
@@ -84,15 +84,15 @@ class Progress(object):
         try:
             write_json(self.path, self.state)
         except OSError:
-            pass            # lecture en cours cote FastGCP : la prochaine ecriture passera
+            pass            # being read on the FastGCP side: the next write will go through
 
 
 # --------------------------------------------------------------------------
-# Evenements -> exemples
+# Events -> examples
 # --------------------------------------------------------------------------
 
 def read_events(path, kind):
-    """(positifs, negatifs) du type : listes de dicts d'evenements utilisables."""
+    """(positives, negatives) of the type: lists of usable event dicts."""
     positives, negatives = [], []
     with open(path, "r", encoding="utf-8") as handle:
         for line in handle:
@@ -119,7 +119,7 @@ def side_of(row):
 
 
 def cap_per_target(rows, rng):
-    """Au plus MAX_PER_TARGET lignes par cible ; les affinages passent en premier."""
+    """At most MAX_PER_TARGET rows per target; refinements come first."""
     groups = {}
     for row in rows:
         groups.setdefault(target_of(row), []).append(row)
@@ -133,7 +133,7 @@ def cap_per_target(rows, rng):
 
 
 def split_targets(targets, rng_seed=SEED):
-    """Ensemble des cibles de validation : ~15 %, au moins une si on en a 5 ou plus."""
+    """Set of validation targets: ~15 %, at least one if there are 5 or more."""
     ordered = sorted(targets, key=lambda t: hashlib.sha1("{}{}".format(rng_seed, t).encode("utf-8")).hexdigest())
     if len(ordered) < 5:
         return set()
@@ -141,7 +141,7 @@ def split_targets(targets, rng_seed=SEED):
 
 
 def tile(runner, image, cx, cy, size, target=None, box_size=None):
-    """(vignette 160 x 160, ligne d'etiquette YOLO ou None) ; None si la cible sort du cadre."""
+    """(160 x 160 tile, YOLO label line or None); None if the target falls outside the frame."""
     made = runner.crop(image, cx, cy, int(size))
     if made is None:
         return None
@@ -167,7 +167,7 @@ def save_sample(cv2, np, folder, name, image_array, label):
 
 
 def build_dataset(runner, kind, events_path, work_dir, replay_dir=None):
-    """Ecrit le jeu YOLO du type dans work_dir/<kind>. Renvoie (yaml, statistiques)."""
+    """Writes the YOLO set of the type into work_dir/<kind>. Returns (yaml, statistics)."""
     import cv2
     import numpy as np
     rng = random.Random(SEED)
@@ -231,7 +231,7 @@ def build_dataset(runner, kind, events_path, work_dir, replay_dir=None):
                 counter += 1
                 if save_sample(cv2, np, folder, "{}_{:05d}".format(kind, counter), tile_img, label):
                     stats[split] += 1
-        # fonds au hasard : loin de tout point connu de cette photo
+        # random backgrounds: far from any known point of this photo
         sizes = sorted(side_of(r) for r in photo_rows)
         median = sizes[len(sizes) // 2]
         known = [(float(r.get("x", r.get("ai_x"))), float(r.get("y", r.get("ai_y")))) for r in photo_rows]
@@ -256,7 +256,7 @@ def build_dataset(runner, kind, events_path, work_dir, replay_dir=None):
         stats["replay"] = add_replay(replay_dir, os.path.join(root, "train"),
                                      int(round(stats["train"] * REPLAY_SHARE / (1.0 - REPLAY_SHARE))), rng)
     if stats["val"] == 0:
-        # trop peu de cibles pour reserver une validation : on mesure sur le train (non independant)
+        # too few targets to reserve a validation set: measure on the train set (not independent)
         for sub in ("images", "labels"):
             for name in os.listdir(os.path.join(root, "train", sub)):
                 shutil.copy2(os.path.join(root, "train", sub, name), os.path.join(root, "val", sub, name))
@@ -270,7 +270,7 @@ def build_dataset(runner, kind, events_path, work_dir, replay_dir=None):
 
 
 def add_replay(source, train_folder, count, rng):
-    """Copie `count` exemples du jeu d'origine (source/train/{images,labels}) dans le train."""
+    """Copies `count` examples of the original set (source/train/{images,labels}) into the train set."""
     images = os.path.join(source, "train", "images")
     labels = os.path.join(source, "train", "labels")
     try:
@@ -293,11 +293,11 @@ def add_replay(source, train_folder, count, rng):
 
 
 # --------------------------------------------------------------------------
-# Mesure et entrainement
+# Measurement and training
 # --------------------------------------------------------------------------
 
 def evaluate(YOLO, weights, yaml, device):
-    """mAP50, precision, rappel du modele sur le val du jeu."""
+    """mAP50, precision, recall of the model on the val split of the set."""
     model = YOLO(weights)
     result = model.val(data=yaml, imgsz=OUT, batch=32, device=device, plots=False, verbose=False,
                        workers=0, split="val")
@@ -341,7 +341,7 @@ def train_kind(runner, YOLO, kind, work, device, progress, index):
     shutil.copy2(last, os.path.join(work["out_dir"], kind + ".pt"))
     progress.update(stage="eval")
     after = evaluate(YOLO, os.path.join(work["out_dir"], kind + ".pt"), yaml, device)
-    # Le moteur de detection (ONNX Runtime, sans torch) lit ce fichier : on l'exporte a cote des poids.
+    # The detection engine (ONNX Runtime, no torch) reads this file: it is exported next to the weights.
     onnx_error = None
     try:
         YOLO(os.path.join(work["out_dir"], kind + ".pt")).export(
@@ -398,14 +398,14 @@ def run(work_path, out_path):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Affinage des modeles AIGCP pour FastGCP")
+    parser = argparse.ArgumentParser(description="Fine-tuning of the AIGCP models for FastGCP")
     parser.add_argument("--work", required=True)
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
     try:
         run(args.work, args.out)
     except Exception as exc:
-        sys.stderr.write("aigcp_train : {!r}\n".format(exc))
+        sys.stderr.write("aigcp_train: {!r}\n".format(exc))
         return 1
     return 0
 

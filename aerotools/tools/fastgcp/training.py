@@ -1,28 +1,28 @@
-"""Reentrainement du modele IA sur les retours de l'operateur (sans Qt, sans Metashape).
+"""Retraining of the AI model on the operator's feedback (no Qt, no Metashape).
 
-Trois choses vivent ici :
+Three things live here:
 
-1. Les reglages de stockage : dossier des donnees (`storage_dir`), case « utiliser
-   mes affinages manuels » (`collect_enabled`), fichier de retours
-   `<storage>/dataset/aigcp_feedback.jsonl` (ecrit par review.py, relu ici).
-2. Le registre des modeles. Le modele de base « Aero V1.0 » est livre avec l'outil
-   (`models/damier.pt`, `models/bombe.pt`), on ne le modifie ni ne le supprime jamais.
-   Les modeles de l'operateur sont ranges dans `<storage>/models/<id>/` (meta.json +
-   un fichier .pt par type) et s'appellent « Local 1.1 », « Local 1.2 »... : le
-   numero ne se reutilise pas, le nom ne se change pas. Un modele local peut ne
-   porter qu'un seul type : l'autre type retombe sur les poids de base.
-3. Le lancement de l'entrainement (classe Training). Comme la detection, il tourne
-   dans le Python externe (celui qui a torch et ultralytics), jamais dans Metashape :
-   `aigcp_train.py` lit `train.json`, ecrit `progress.json` puis `result.json`.
+1. The storage settings: data folder (`storage_dir`), the "use my manual
+   refinements" check box (`collect_enabled`), feedback file
+   `<storage>/dataset/aigcp_feedback.jsonl` (written by review.py, read back here).
+2. The model registry. The base model "Aero V1.0" is shipped with the tool
+   (`models/checker.pt`, `models/spray.pt`); it is never modified nor deleted.
+   The operator's models are stored in `<storage>/models/<id>/` (meta.json +
+   one .pt file per type) and are called "Local 1.1", "Local 1.2"...: the
+   number is not reused, the name is not changed. A local model may carry
+   only one type: the other type falls back to the base weights.
+3. The launch of the training (Training class). Like the detection, it runs
+   in the external Python (the one that has torch and ultralytics), never in Metashape:
+   `aigcp_train.py` reads `train.json`, writes `progress.json` then `result.json`.
 
-Reglages caches (settings.json, section `aigcp`) :
-  storage_dir       dossier des donnees (defaut : le dossier des reglages du poste)
-  collect_feedback  true/false : enregistrer les retours de la revue (defaut true)
-  model             identifiant du modele actif (defaut : celui de base)
+Hidden settings (settings.json, section `aigcp`):
+  storage_dir       data folder (default: the machine's settings folder)
+  collect_feedback  true/false: record the review feedback (default true)
+  model             identifier of the active model (default: the base one)
 
-Le reentrainement part TOUJOURS des poids de base et de TOUS les retours enregistres
-(pas du dernier modele local) : deux entrainements sur les memes donnees donnent le
-meme genre de modele, et les erreurs d'un essai ne se cumulent pas.
+The retraining ALWAYS starts from the base weights and from ALL the recorded feedback
+(not from the last local model): two trainings on the same data give the
+same kind of model, and the errors of one trial do not accumulate.
 """
 
 import datetime
@@ -35,12 +35,14 @@ import time
 from ... import config, journal
 
 SECTION = "aigcp"
-TYPES = ("damier", "bombe")
+TYPES = ("checker", "spray")
+# Names written by earlier versions (settings, feedback log, file names of the local models): still read.
+LEGACY_TYPES = {"damier": "checker", "bombe": "spray"}
 BASE_ID = "aero-1.0"
 BASE_NAME = "Aero V1.0"
 LOCAL_PREFIX = "local-1."
 LOCAL_NAME = "Local 1.{}"
-# Positifs (points affines ou valides) a avoir, par type, pour entrainer ce type.
+# Positives (refined or validated points) required, per type, to train that type.
 MIN_POSITIVES = 30
 DEFAULT_EPOCHS = 30
 TRAIN_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aigcp_train.py")
@@ -52,7 +54,34 @@ POSITIVE_ACTIONS = ("refined", "accepted")
 
 
 # --------------------------------------------------------------------------
-# Reglages
+# Type names
+# --------------------------------------------------------------------------
+
+def canonical_type(value):
+    """Current name of a type; a name written by an earlier version is translated."""
+    return LEGACY_TYPES.get(value, value)
+
+
+def legacy_name(kind):
+    """Name an earlier version used for this type (the type itself if it never had another)."""
+    for old, new in LEGACY_TYPES.items():
+        if new == kind:
+            return old
+    return kind
+
+
+def weights_file(folder, kind, ext=".pt"):
+    """Path of the `kind` file in `folder`; a file saved under the earlier name is used when the current one is missing."""
+    path = os.path.join(folder, kind + ext)
+    if not os.path.isfile(path):
+        old = os.path.join(folder, legacy_name(kind) + ext)
+        if os.path.isfile(old):
+            return old
+    return path
+
+
+# --------------------------------------------------------------------------
+# Settings
 # --------------------------------------------------------------------------
 
 def storage_dir():
@@ -63,7 +92,7 @@ def storage_dir():
 
 
 def set_storage_dir(path):
-    """Memorise le dossier des donnees (chaine vide : retour au dossier par defaut)."""
+    """Store the data folder (empty string: back to the default folder)."""
     return config.put(SECTION, "storage_dir", str(path or "").strip())
 
 
@@ -97,10 +126,10 @@ def _subdirs(root, name):
 
 
 def storage_summary(root=None):
-    """Ce que contient un dossier de stockage : annotations, modeles locaux, essais.
+    """What a storage folder contains: annotations, local models, trials.
 
-    {"annotations": lignes du fichier de retours, "models": modeles locaux,
-     "detections": passes de detection gardees, "trainings": essais d'entrainement}.
+    {"annotations": lines of the feedback file, "models": local models,
+     "detections": detection passes kept, "trainings": training trials}.
     """
     root = root or storage_dir()
     lines = 0
@@ -116,10 +145,10 @@ def storage_summary(root=None):
 
 
 def copy_storage(old, new):
-    """Copie les annotations et les modeles locaux de `old` vers `new` (rien n'est efface).
+    """Copy the annotations and the local models from `old` to `new` (nothing is deleted).
 
-    Renvoie la liste des sous-dossiers copies. Un sous-dossier deja present dans `new`
-    n'est jamais ecrase. Leve OSError si la copie echoue.
+    Returns the list of the subfolders copied. A subfolder already present in `new`
+    is never overwritten. Raises OSError if the copy fails.
     """
     copied = []
     if not old or not new or os.path.abspath(old) == os.path.abspath(new):
@@ -133,15 +162,15 @@ def copy_storage(old, new):
 
 
 # --------------------------------------------------------------------------
-# Retours enregistres
+# Recorded feedback
 # --------------------------------------------------------------------------
 
 def latest_events(path=None):
-    """Dernier evenement de chaque (run, marqueur, photo), « restored » ecarte.
+    """Last event of each (run, marker, photo), "restored" left out.
 
-    Renvoie une liste de dicts (ordre du fichier). Une ligne illisible ou d'un autre
-    schema est ignoree. « restored » annule le « rejected » d'avant : on n'en tire
-    aucun exemple.
+    Returns a list of dicts (file order). An unreadable line or one from another
+    schema is ignored. "restored" cancels the earlier "rejected": no example is
+    drawn from it.
     """
     last = {}
     order = []
@@ -157,6 +186,8 @@ def latest_events(path=None):
                     continue
                 if not isinstance(row, dict) or row.get("schema") != 1:
                     continue
+                if row.get("type") in LEGACY_TYPES:
+                    row["type"] = LEGACY_TYPES[row["type"]]
                 key = (row.get("run"), row.get("marker"), row.get("camera"))
                 if key not in last:
                     order.append(key)
@@ -171,7 +202,7 @@ def _empty_counts():
 
 
 def feedback_counts(path=None):
-    """{"damier": {...}, "bombe": {...}} : exemples utilisables par type d'apres les retours."""
+    """{"checker": {...}, "spray": {...}}: usable examples per type according to the feedback."""
     out = {kind: _empty_counts() for kind in TYPES}
     for row in latest_events(path):
         counts = out.get(row.get("type"))
@@ -185,7 +216,7 @@ def feedback_counts(path=None):
 
 
 # --------------------------------------------------------------------------
-# Registre des modeles
+# Model registry
 # --------------------------------------------------------------------------
 
 def _base_dir():
@@ -194,11 +225,11 @@ def _base_dir():
 
 
 def base_weights(kind):
-    return os.path.join(_base_dir(), kind + ".pt")
+    return weights_file(_base_dir(), kind)
 
 
 def _number(model_id):
-    """Numero d'un identifiant local (« local-1.4 » -> 4), ou None."""
+    """Number of a local identifier ("local-1.4" -> 4), or None."""
     if not isinstance(model_id, str) or not model_id.startswith(LOCAL_PREFIX):
         return None
     tail = model_id[len(LOCAL_PREFIX):]
@@ -215,10 +246,10 @@ def _read_meta(folder):
 
 
 def list_models():
-    """Modeles disponibles : celui de base d'abord, puis les locaux par numero croissant.
+    """Available models: the base one first, then the local ones by increasing number.
 
-    Chaque modele : {id, name, created (ISO ou None), base (bool), types (liste des
-    types qu'il porte), path (dossier), metrics (dict, peut etre vide)}.
+    Each model: {id, name, created (ISO or None), base (bool), types (list of the
+    types it carries), path (folder), metrics (dict, may be empty)}.
     """
     base_types = [kind for kind in TYPES if os.path.isfile(base_weights(kind))]
     out = [{"id": BASE_ID, "name": BASE_NAME, "created": None, "base": True,
@@ -234,13 +265,13 @@ def list_models():
         if number is None or not os.path.isdir(folder):
             continue
         meta = _read_meta(folder) or {}
-        types = [kind for kind in TYPES if os.path.isfile(os.path.join(folder, kind + ".pt"))]
+        types = [kind for kind in TYPES if os.path.isfile(weights_file(folder, kind))]
         if not types:
             continue
         found.append((number, {
             "id": name, "name": meta.get("name") or LOCAL_NAME.format(number),
             "created": meta.get("created"), "base": False, "types": types,
-            "path": folder, "metrics": meta.get("types") or {}}))
+            "path": folder, "metrics": {canonical_type(k): v for k, v in (meta.get("types") or {}).items()}}))
     out.extend(model for _number_, model in sorted(found, key=lambda pair: pair[0]))
     return out
 
@@ -253,7 +284,7 @@ def get_model(model_id):
 
 
 def active_model():
-    """Identifiant du modele actif ; celui de base si le choix memorise a disparu."""
+    """Identifier of the active model; the base one if the stored choice has disappeared."""
     wanted = config.get(SECTION, "model")
     if isinstance(wanted, str) and get_model(wanted) is not None:
         return wanted
@@ -261,7 +292,7 @@ def active_model():
 
 
 def set_active_model(model_id):
-    """Choisit le modele utilise par la detection. Renvoie False s'il n'existe pas."""
+    """Choose the model used by the detection. Returns False if it does not exist."""
     if get_model(model_id) is None:
         return False
     return config.put(SECTION, "model", model_id)
@@ -272,24 +303,24 @@ def revert_to_base():
 
 
 def weights_for(kind):
-    """Poids a utiliser pour ce type : ceux du modele actif, sinon ceux de base."""
+    """Weights to use for this type: those of the active model, otherwise the base ones."""
     model_id = active_model()
     if model_id != BASE_ID:
-        path = os.path.join(models_root(), model_id, kind + ".pt")
+        path = weights_file(os.path.join(models_root(), model_id), kind)
         if os.path.isfile(path):
             return path
     return base_weights(kind)
 
 
 def installer_path():
-    """Fichier a double-cliquer pour installer les outils d'entrainement (torch, ultralytics, onnx)."""
-    return os.path.join(config.ROOT, "install", "installer_entrainement.bat")
+    """File to double-click to install the training tools (torch, ultralytics, onnx)."""
+    return os.path.join(config.ROOT, "install", "install_training.bat")
 
 
 def missing_tools(python=None):
-    """Modules d'entrainement absents du Python externe : [] si tout y est (lecture rapide, sans les importer).
+    """Training modules missing from the external Python: [] if everything is there (quick read, without importing them).
 
-    Liste ["python"] si ce Python n'existe pas ; ["?"] si la verification elle-meme echoue.
+    Lists ["python"] if this Python does not exist; ["?"] if the check itself fails.
     """
     if python is None:
         from . import aigcp
@@ -310,7 +341,7 @@ def missing_tools(python=None):
 
 
 def delete_model(model_id):
-    """Supprime un modele local. Refuse celui de base (renvoie False). Le numero n'est pas rendu."""
+    """Delete a local model. Refuses the base one (returns False). The number is not given back."""
     if model_id == BASE_ID or _number(model_id) is None:
         return False
     folder = os.path.join(models_root(), model_id)
@@ -329,7 +360,7 @@ def _counter_path():
 
 
 def _next_number():
-    """Numero du prochain modele local : jamais reutilise, meme apres suppression."""
+    """Number of the next local model: never reused, even after a deletion."""
     highest = 0
     try:
         with open(_counter_path(), "r", encoding="utf-8") as handle:
@@ -352,10 +383,10 @@ def _store_counter(number):
 
 
 def register_model(weights, metrics=None, base_id=BASE_ID):
-    """Range des poids dans un nouveau modele local. `weights` : {type: chemin .pt}.
+    """Store weights in a new local model. `weights`: {type: .pt path}.
 
-    Renvoie la fiche du modele (comme list_models). Les fichiers sont copies : la
-    source (dossier de travail) peut ensuite etre supprimee.
+    Returns the model record (as list_models). The files are copied: the
+    source (working folder) can then be deleted.
     """
     os.makedirs(models_root(), exist_ok=True)
     number = _next_number()
@@ -365,7 +396,7 @@ def register_model(weights, metrics=None, base_id=BASE_ID):
     try:
         for kind, path in weights.items():
             shutil.copy2(path, os.path.join(folder, kind + ".pt"))
-            onnx = os.path.splitext(path)[0] + ".onnx"       # export fait par aigcp_train.py (peut manquer)
+            onnx = os.path.splitext(path)[0] + ".onnx"       # export made by aigcp_train.py (may be missing)
             if os.path.isfile(onnx):
                 shutil.copy2(onnx, os.path.join(folder, kind + ".onnx"))
         meta = {"id": model_id, "name": LOCAL_NAME.format(number), "base": base_id,
@@ -381,7 +412,7 @@ def register_model(weights, metrics=None, base_id=BASE_ID):
 
 
 # --------------------------------------------------------------------------
-# Entrainement
+# Training
 # --------------------------------------------------------------------------
 
 def _lock_path():
@@ -411,7 +442,7 @@ def _pid_alive(pid):
 
 
 def is_training():
-    """Un entrainement tourne-t-il (dans cet outil ou une autre fenetre) ?"""
+    """Is a training running (in this tool or another window)?"""
     try:
         with open(_lock_path(), "r", encoding="utf-8") as handle:
             lock = json.load(handle)
@@ -436,7 +467,7 @@ def _drop_lock():
 
 
 def eligible_kinds(kinds=None, min_positives=None, path=None):
-    """Types qui ont assez de positifs pour etre entraines, d'apres les retours."""
+    """Types that have enough positives to be trained, according to the feedback."""
     need = MIN_POSITIVES if min_positives is None else int(min_positives)
     counts = feedback_counts(path)
     return [kind for kind in (kinds or TYPES)
@@ -445,7 +476,7 @@ def eligible_kinds(kinds=None, min_positives=None, path=None):
 
 
 def _kill_tree(process):
-    """Arrete le sous-processus et ses enfants (les workers d'ultralytics)."""
+    """Stop the subprocess and its children (the ultralytics workers)."""
     if process is None or process.poll() is not None:
         return
     try:
@@ -467,14 +498,14 @@ def _kill_tree(process):
 
 
 class Training(object):
-    """Un entrainement : start(), puis poll() jusqu'a recevoir le resultat.
+    """One training: start(), then poll() until the result is received.
 
-    poll() renvoie None tant que ca tourne, puis un dict, toujours le meme :
-        {"ok": bool, "message": str, "model_id": str ou None, "name": str ou None,
+    poll() returns None while it runs, then a dict, always the same one:
+        {"ok": bool, "message": str, "model_id": str or None, "name": str or None,
          "kinds_trained": [types], "metrics": {type: {...}}, "warnings": [str],
          "seconds": float, "device": str}
-    Un echec ou une annulation ne laisse aucun modele (le dossier de travail est efface).
-    `min_positives`, `python`, `script` ne servent qu'aux tests.
+    A failure or a cancellation leaves no model (the working folder is deleted).
+    `min_positives`, `python`, `script` are only used by the tests.
     """
 
     def __init__(self, kinds=None, epochs=None, min_positives=None, python=None,
@@ -492,14 +523,14 @@ class Training(object):
         self._result = None
         self._types = []
 
-    # -- lancement --------------------------------------------------------
+    # -- launch -----------------------------------------------------------
 
     def start(self):
         from . import aigcp
         try:
             self._start(aigcp)
         except Exception as exc:
-            journal.write("Reentrainement : lancement impossible : {!r}".format(exc))
+            journal.write("Retraining: cannot start: {!r}".format(exc))
             self._finish(False, "failed", str(exc))
         return self
 
@@ -556,13 +587,13 @@ class Training(object):
         os.makedirs(path)
         return path
 
-    # -- suivi ------------------------------------------------------------
+    # -- follow-up --------------------------------------------------------
 
     def running(self):
         return self._result is None and self._process is not None and self._process.poll() is None
 
     def progress(self):
-        """(fraction 0..1 ou None, texte court) d'apres progress.json."""
+        """(fraction 0..1 or None, short text) according to progress.json."""
         if self.run_dir is None:
             return None, ""
         try:
@@ -593,7 +624,7 @@ class Training(object):
         try:
             self._collect(code)
         except Exception as exc:
-            journal.write("Reentrainement : resultat illisible : {!r}".format(exc))
+            journal.write("Retraining: unreadable result: {!r}".format(exc))
             self._finish(False, "failed", self._log_tail())
         return self._result
 
@@ -629,7 +660,7 @@ class Training(object):
             return ""
 
     def cancel(self):
-        """Arrete l'entrainement, efface le dossier de travail. Aucun modele n'est cree."""
+        """Stop the training, delete the working folder. No model is created."""
         if self._result is not None:
             return
         _kill_tree(self._process)
@@ -643,11 +674,11 @@ class Training(object):
 
     def _finish(self, ok, code, detail="", model=None, kinds=None, metrics=None, warnings=None,
                 seconds=None, device=None):
-        """Fixe le resultat, rend le verrou ; hors succes, efface les restes."""
+        """Set the result, release the lock; on failure, delete the leftovers."""
         if self._process is not None:
             _drop_lock()
         if not ok and self.run_dir:
-            keep = code == "failed"          # on garde train.log pour comprendre
+            keep = code == "failed"          # train.log is kept to understand what happened
             if not keep:
                 shutil.rmtree(self.run_dir, ignore_errors=True)
             else:
@@ -663,8 +694,7 @@ class Training(object):
         }
 
 
-# Textes de secours (anglais) : l'interface les remplace par ses propres traductions
-# d'apres `code`.
+# Fallback texts: the interface replaces them with its own texts according to `code`.
 _MESSAGES = {
     "done": "Training finished",
     "busy": "A training is already running",
