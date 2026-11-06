@@ -53,3 +53,13 @@ def test_failing_subscriber_is_dropped_others_still_called():
     journal.write("deux")
     assert len(good) == 2
     assert len(journal.lines()) == 2
+
+
+def test_lines_are_also_written_to_a_log_file_that_rotates(tmp_path, monkeypatch):
+    path = tmp_path / "aerotools.log"
+    monkeypatch.setattr(journal, "log_path", lambda: str(path))
+    journal.write("first line")
+    assert "first line" in path.read_text(encoding="utf-8")
+    monkeypatch.setattr(journal, "LOG_MAX_BYTES", 10)
+    journal.write("second line")
+    assert (tmp_path / "aerotools.log.old").exists() and "second line" in path.read_text(encoding="utf-8")

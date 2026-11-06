@@ -1,4 +1,4 @@
-"""Fast Export : noms de fichiers de sortie (fonctions pures, sans Qt ni Metashape).
+"""Aero-Exports : noms de fichiers de sortie (fonctions pures, sans Qt ni Metashape).
 
 Regle : ``<site>_<date>_<resolution>[_v<N>][_<tuile>]_<type>.<ext>``
 

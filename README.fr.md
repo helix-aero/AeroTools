@@ -85,8 +85,11 @@ Il faut Metashape Pro 2.x sous Windows. Nous l'utilisons tous les jours avec Met
 
 **Aero > Aero-Exports** exporte l'ortho et/ou le MNT dans un dossier `Outputs` à côté du projet, avec des noms courts
 (`SITE_260704_3cm_ortho.tif`, `SITE_260704_3cm_mnt.tif`). Choisis un format (GeoTIFF pleine qualité, aperçu client compressé,
-JPEG + fichier monde) et une taille de pixel en cm. Une taille tapée est exacte (3 cm font 3,000 cm, sur une grille de multiples
-de 3 cm) : l'ortho et le MNT se superposent pixel pour pixel.
+JPEG + fichier monde, JPEG 2000, ECW, ou un dessin AutoCAD, DXF ou DWG) et une taille de pixel en cm. Une taille tapée est exacte
+(3 cm font 3,000 cm, sur une grille de multiples de 3 cm) : l'ortho et le MNT se superposent pixel pour pixel. Le dessin AutoCAD
+relie les images par des chemins relatifs et masque leur bordure vide ; une fenêtre d'aperçu règle les couleurs et l'ombrage de
+l'image du MNT. Tu peux aussi exporter dans un autre système de coordonnées et un autre système d'altitudes (grille de géoïde),
+ou découper l'export en dalles.
 
 **Aero > Aero-Space** scanne un disque à la recherche des anciens projets Metashape et libère de la place : les alléger (tu choisis ce qu'on
 retire : nuages denses, cartes de profondeur, orthophotos, avec la place que chacun libère) ou les supprimer, à la corbeille ou définitivement.

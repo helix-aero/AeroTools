@@ -1,4 +1,4 @@
-"""Fast Export : presets et liste des fichiers a ecrire (fonctions pures : ni Qt, ni Metashape).
+"""Aero-Exports : presets et liste des fichiers a ecrire (fonctions pures : ni Qt, ni Metashape).
 
 Un preset dit, pour l'ortho et pour le MNT, le format du fichier et sa compression. La fenetre en tire la liste
 des fichiers (`build_jobs`) : un nom court par fichier, dans le dossier Outputs, avec un numero de version si le
@@ -23,6 +23,7 @@ CAD = "cad"
 CAD_FORMATS = ("dxf", "dwg")
 CAD_IMAGES = ("jp2", "ecw")
 CAD_BASENAME = "TOPO"
+PICTURE_PRESETS = {"jp2": "jp2", "ecw": "ecw"}      # presets that can add a coloured DEM picture, and its extension
 
 # Un fichier a ecrire.
 # `pixel_m` sert au nom ; `native` : on garde la grille de Metashape (rien n'est rechantillonne) ;
@@ -110,12 +111,14 @@ def listing_of(folder):
 
 
 def build_jobs(site, date, wanted, preset_key, folder, lang="fr", date_style="short", listing=None, native=(),
-               cad=None, version=None):
+               cad=None, version=None, dem_picture=False):
     """Liste des fichiers a ecrire.
 
     `wanted` : {"ortho": taille de pixel en metres, "dem": ...} pour ce qui est coche (les autres sont absents).
     `native` : les types dont on garde la grille native (pixel non modifie par l'utilisateur).
     `cad` : {"format": "dxf" | "dwg", "images": "jp2" | "ecw"} quand le preset est CAD.
+    `dem_picture` : ecrire aussi l'image coloree du MNT (meme nom, extension .jp2 / .ecw) : presets JPEG 2000 et ECW seulement
+    (avec un GeoTIFF, le nom serait celui du MNT lui-meme).
     `version` : numero impose (1 = ecraser) ; sinon le plus petit pour lequel aucun des fichiers prevus n'existe deja
     dans `folder` (l'ortho et le MNT d'un meme export partagent le meme numero).
     """
@@ -131,6 +134,12 @@ def build_jobs(site, date, wanted, preset_key, folder, lang="fr", date_style="sh
         name = naming.build_name(site, date, wanted[kind], kind, spec["ext"], lang=lang, version=version_number,
                                  date_style=date_style)
         if not is_cad:
+            if kind == DEM and dem_picture and preset_key in PICTURE_PRESETS:      # coloured picture next to the DEM
+                ext = PICTURE_PRESETS[preset_key]
+                view = naming.build_name(site, date, wanted[kind], kind, ext, lang=lang, version=version_number,
+                                         date_style=date_style)
+                return name, os.path.join(folder, name), {"layer_kind": "dem", "view_name": view,
+                                                          "view_path": os.path.join(folder, view), "view_ext": ext}
             return name, os.path.join(folder, name), None
         where = os.path.join(folder, dxfout.ASSETS, dxfout.ORTHO_DIR if kind == ORTHO else dxfout.DEM_DIR)
         if kind == ORTHO:

@@ -1,4 +1,4 @@
-"""Fast Export : lecture et reecriture d'un TIFF float32 a une bande (classique ou BigTIFF), sans GDAL.
+"""Aero-Exports : lecture et reecriture d'un TIFF float32 a une bande (classique ou BigTIFF), sans GDAL.
 
 Ne sert qu'a deux choses : lire une grille de geoide (`vertical.py`) et corriger les hauteurs d'un MNT ecrit par Metashape.
 Compressions lues : aucune, Deflate (avec ou sans predicteur flottant). Le reste leve ValueError : on prefere refuser
@@ -20,10 +20,47 @@ TYPE_CODE = {1: "B", 3: "H", 4: "I", 6: "b", 8: "h", 9: "i", 11: "f", 12: "d", 1
 CLASSIC_LIMIT = 3900 * 1024 * 1024               # au-dela : BigTIFF
 
 
+def lzw_decode(data):
+    """Bytes of a TIFF LZW block (codes of 9 to 12 bits, most significant bit first, "early change"). Slow (pure Python): meant for
+    the small pictures Metashape writes for a mask, not for a whole ortho. Raises ValueError on a damaged block."""
+    table = [bytes((i,)) for i in range(256)] + [b"", b""]
+    out = bytearray()
+    bits, buf, count, previous = 9, 0, 0, None
+    for byte in data:
+        buf = (buf << 8) | byte
+        count += 8
+        while count >= bits:
+            code = (buf >> (count - bits)) & ((1 << bits) - 1)
+            count -= bits
+            buf &= (1 << count) - 1
+            if code == 257:
+                return bytes(out)
+            if code == 256:
+                del table[258:]
+                bits, previous = 9, None
+                continue
+            if previous is None:
+                if code >= 256:
+                    raise ValueError("LZW : bloc abime")
+                entry = table[code]
+            else:
+                if code > len(table):
+                    raise ValueError("LZW : bloc abime")
+                entry = table[code] if code < len(table) else previous + previous[:1]
+                if len(table) < 4096:
+                    table.append(previous + entry[:1])
+            out += entry
+            previous = entry
+            size = len(table)
+            bits = 9 if size < 511 else 10 if size < 1023 else 11 if size < 2047 else 12
+    return bytes(out)
+
+
 class Tiff(object):
     """Premiere image d'un TIFF : ses balises (octets bruts) et ses blocs (tuiles ou bandes)."""
 
-    def __init__(self, path):
+    def __init__(self, path, strict=True):
+        """`strict=False` : ne verifie pas que c'est un float32 a une bande (les balises et les positions des blocs seules)."""
         self.path = path
         with open(path, "rb") as handle:
             head = handle.read(16)
@@ -61,12 +98,13 @@ class Tiff(object):
                 self.tags[tag] = (kind, number, data)
         self.width = self.ints(T_WIDTH)[0]
         self.height = self.ints(T_HEIGHT)[0]
-        if self.ints(T_BITS, [0])[0] != 32 or self.ints(T_FORMAT, [1])[0] != 3 or self.ints(T_SAMPLES, [1])[0] != 1:
-            raise ValueError("seul le float32 a une bande est lu")
         self.compression = self.ints(T_COMPRESSION, [1])[0]
         self.predictor = self.ints(T_PREDICTOR, [1])[0]
-        if self.compression not in (1, 8, 32946) or self.predictor not in (1, 3):
-            raise ValueError("compression %d / predicteur %d non pris en charge" % (self.compression, self.predictor))
+        if strict:
+            if self.ints(T_BITS, [0])[0] != 32 or self.ints(T_FORMAT, [1])[0] != 3 or self.ints(T_SAMPLES, [1])[0] != 1:
+                raise ValueError("seul le float32 a une bande est lu")
+            if self.compression not in (1, 8, 32946) or self.predictor not in (1, 3):
+                raise ValueError("compression %d / predicteur %d non pris en charge" % (self.compression, self.predictor))
         self.tiled = T_TILE_W in self.tags
         if self.tiled:
             self.block_w, self.block_h = self.ints(T_TILE_W)[0], self.ints(T_TILE_H)[0]

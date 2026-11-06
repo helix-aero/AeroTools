@@ -1,4 +1,4 @@
-"""Fast Export : systemes d'altitude calcules par AeroTools (grilles de geoide lues et appliquees ici, pas par Metashape).
+"""Aero-Exports : systemes d'altitude calcules par AeroTools (grilles de geoide lues et appliquees ici, pas par Metashape).
 
 Pourquoi : Metashape 2.2.1 choisit sa grille par le nom du datum et non par le fichier (« RAC23 » et « RAC09 » donnent la
 meme valeur, 23 cm d'ecart avec la vraie grille RAC23 en Corse), ignore RAC23 avec un repere RGF93 v2b, et refuse EGM96 avec un
@@ -6,7 +6,7 @@ repere francais. Ici : Metashape exporte le MNT en hauteurs ellipsoidales (ce qu
 du geoide lue dans notre dossier `Geoid` (`H = h - N`).
 
 Grilles : GeoTIFF « GTG » de PROJ-data (Float32, une bande `geoid_undulation`, Deflate + predicteur flottant), noeuds regulierement
-espaces en longitude / latitude, interpolation bilineaire comme PROJ. Valeurs de reference : voir tests/test_fastexport_vertical.py.
+espaces en longitude / latitude, interpolation bilineaire comme PROJ. Valeurs de reference : voir tests/test_aeroexports_vertical.py.
 """
 
 import hashlib

@@ -1,4 +1,4 @@
-"""Fenetre Fast Export (Qt) : on coche l'ortho et / ou le MNT, on choisit les coordonnees et un format, on exporte.
+"""Fenetre Aero-Exports (Qt) : on coche l'ortho et / ou le MNT, on choisit les coordonnees et un format, on exporte.
 
 Les fichiers vont dans un dossier `Outputs` a cote du .psx, avec un nom court
 (`SITE_AAMMJJ_3cm_ortho.tif`, `SITE_AAMMJJ_3cm_mnt.tif`, `_dtm` si l'interface est en anglais). Si l'export existe
@@ -17,17 +17,24 @@ fenetre reste vivante grace a processEvents pendant les rappels de progression.
 
 import datetime
 import os
+import shutil
+import tempfile
 import threading
+import traceback
 
 from ... import config, i18n, journal, msapi, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from . import crs, external, naming, pipeline, plan, projdb, projtool, tiling, vertical
+from . import controls, crs, external, look as looks, naming, pipeline, plan, preview, projdb, projtool, tiling, vertical
 
-SECTION = "fastexport"
-WIDTH, HEIGHT = 840, 920
+SECTION = "aeroexports"
+WIDTH, HEIGHT = 1080, 740
 SCREEN_MARGIN = 70
+WATCH_MS = 400
+COARSE_RATIO = 10.0                                  # a default DEM this many times coarser than the ortho is probably the wrong one
 KIND_TITLE = {plan.ORTHO: "export.ortho", plan.DEM: "export.dem"}
 CM = 100.0
+DEFAULT_TEXT = {plan.ORTHO: "export.default_ortho", plan.DEM: "export.default_dem"}
+SEVERAL_TEXT = {plan.ORTHO: "export.several_ortho", plan.DEM: "export.several_dem"}
 SAME = "same"
 NEW_VERSION, OVERWRITE = "new", "overwrite"
 TILE_CHOICES = 6
@@ -40,14 +47,25 @@ def size_text(nbytes):
     return "{:.0f} KB".format(nbytes / 1024.0)
 
 
-def combo(parent=None):
-    box = QtWidgets.QComboBox(parent)
-    box.setObjectName("aeroCombo")
-    box.setProperty("arrow", True)
-    box.setCursor(QtCore.Qt.PointingHandCursor)
-    box.setFocusPolicy(QtCore.Qt.NoFocus)
-    box.setMinimumHeight(36)
+def combo():
+    """Drop-down that may be narrower than its longest item (the names of systems and grids are long): the text is cut, not the window."""
+    box = ui.combo()
+    box.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+    box.setMinimumContentsLength(12)
     return box
+
+
+class ClickLabel(QtWidgets.QLabel):
+    """A label that calls `handler` when clicked (and keeps the click: it does not tick the card around it)."""
+
+    def __init__(self, handler):
+        super(ClickLabel, self).__init__()
+        self._handler = handler
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        event.accept()
+        self._handler()
 
 
 class ExistsDialog(QtWidgets.QDialog):
@@ -86,6 +104,11 @@ class ExportDialog(QtWidgets.QDialog):
         self._lang = i18n.lang()
         self._busy = False
         self._info = {}
+        self._chunk = None                                  # the chunk the window shows: pinned at refresh(), used by everything after
+        self._pin = (None, None)                            # (project path, chunk key) of that chunk
+        self._chunk_label = ""
+        self._sig = None                                    # msapi.raster_signature of the pinned chunk (the timer compares it)
+        self._dialog_open = 0                               # a window of ours is open on top (look window, "already exists"): no refresh
         self._psx = ""
         self._native = {}
         self._jobs = []
@@ -98,28 +121,47 @@ class ExportDialog(QtWidgets.QDialog):
         self._geoid_ids = []                                # ids proposes au telechargement (la grille choisie, ou celles de la zone)
         self._previous_preset = None
         self._tile_pixels = None
+        self._preview = None                                # preview.Preview of the DEM (made when the user opens the look window)
+        self._preview_key = None
+        self._preview_ok = False
+        self._crs_picked = False                            # the user chose the export system himself: we stop choosing for him
+        self._crs_auto = None                               # EPSG we preselected because a raster is in degrees (None: none)
+        self._trap_key = None
         self.tools = {}
         self.setWindowTitle(i18n.t("export.title"))
         self.setModal(False)
         self.resize(*self._size())
         root = ui.dark_root(self)
-        outer = QtWidgets.QVBoxLayout(root)
-        outer.setContentsMargins(0, 0, 0, 0)
-        scroll = QtWidgets.QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-        outer.addWidget(scroll)
-        content = QtWidgets.QWidget()
-        scroll.setWidget(content)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        scroll.viewport().setAutoFillBackground(False)
-        content.setAutoFillBackground(False)
-        layout = QtWidgets.QVBoxLayout(content)
+        columns = QtWidgets.QHBoxLayout(root)
         pad = theme.PAD_L
-        layout.setContentsMargins(pad, pad, pad, pad)
+        columns.setContentsMargins(pad, pad, pad, pad)
+        columns.setSpacing(pad)
+        # Two panels side by side so that nothing hides below the fold: left = what to export and in which coordinates,
+        # right = in which format, under which names, and the button. Each panel scrolls (with a visible bar) only on a small screen.
+        left = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(left)
+        layout.setContentsMargins(0, 0, theme.PAD, 0)
         layout.setSpacing(theme.PAD + theme.PAD_S)
+        columns.addWidget(controls.scroll_page(left, cap=self._panel_cap()), 1)
+        divider = QtWidgets.QFrame()
+        divider.setFixedWidth(1)
+        divider.setStyleSheet("background: {}; border: none;".format(theme.BORDER_SOFT))
+        columns.addWidget(divider)
+        right_column = QtWidgets.QVBoxLayout()
+        right_column.setSpacing(theme.PAD)
+        columns.addLayout(right_column, 1)
+        right = QtWidgets.QWidget()
+        right_layout = QtWidgets.QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, theme.PAD, 0)
+        right_layout.setSpacing(theme.PAD + theme.PAD_S)
+        right_column.addWidget(controls.scroll_page(right, cap=self._panel_cap()), 1)
 
+        # Which chunk this window works on, always in view: the export is of THIS chunk, whatever is active in Metashape later.
+        self.chunk_title = controls.ElidedLabel("aeroTitle")
+        layout.addWidget(self.chunk_title)
+        layout.addWidget(ui.label(i18n.t("export.what_section"), "aeroSection"))
         self.cards, self.fields, self.native_labels = {}, {}, {}
+        self.raster_details, self.raster_warnings = {}, {}
         for kind in plan.KINDS:
             check = QtWidgets.QCheckBox(i18n.t(KIND_TITLE[kind]))
             check.setCursor(QtCore.Qt.PointingHandCursor)
@@ -137,13 +179,25 @@ class ExportDialog(QtWidgets.QDialog):
             card.grid.addWidget(unit, 0, 4)
             check.toggled.connect(self._refresh_names)
             field.textChanged.connect(self._refresh_names)
+            # exactly which raster is exported (the chunk's default one), and a warning when it is a poor choice
+            detail = controls.WrapText(meta=True)
+            card.grid.addWidget(detail, 1, 0, 1, 5)
+            warn = ui.label("", "aeroWarn")
+            warn.setVisible(False)
+            card.grid.addWidget(warn, 2, 0, 1, 5)
             layout.addWidget(card)
             self.cards[kind], self.fields[kind], self.native_labels[kind] = card, field, native
+            self.raster_details[kind], self.raster_warnings[kind] = detail, warn
+        self._build_look_row()
+        self._build_boundary_row(layout)
 
         # -- coordonnees ----------------------------------------------------------------------
         layout.addWidget(ui.label(i18n.t("export.crs_section"), "aeroSection"))
         self.crs = ui.label("", "aeroMeta")
         layout.addWidget(self.crs)
+        self.crs_notice = ui.label("", "aeroWarn")                # a raster in degrees: why a system is preselected, or what to pick
+        self.crs_notice.setVisible(False)
+        layout.addWidget(self.crs_notice)
         grid = QtWidgets.QGridLayout()
         grid.setHorizontalSpacing(theme.PAD)
         grid.setVerticalSpacing(theme.PAD_S)
@@ -180,8 +234,10 @@ class ExportDialog(QtWidgets.QDialog):
         self.geoid_bar.setVisible(False)
         geoid_box.addWidget(self.geoid_bar)
         layout.addWidget(self.geoid_card)
+        layout.addStretch(1)
 
         # -- format -----------------------------------------------------------------------------
+        layout = right_layout
         layout.addWidget(ui.label(i18n.t("export.preset"), "aeroSection"))
         self.preset = combo()
         self.preset.setMinimumHeight(40)
@@ -203,6 +259,15 @@ class ExportDialog(QtWidgets.QDialog):
                                        config.get(SECTION, "cad_format") or "dxf")
         self.cad_images = self._radios(cad, 1, "export.cad_images", (("jp2", "export.img_jp2"), ("ecw", "export.img_ecw")),
                                        config.get(SECTION, "cad_images") or "jp2")
+        tips = {"jp2": "export.img_jp2_tip", "ecw": "export.img_ecw_tip"}
+        for button in self.cad_images.buttons():
+            button.setToolTip(i18n.t(tips[button.property("value")]))
+        self.cad_clip = QtWidgets.QCheckBox(i18n.t("export.cad_clip"))
+        self.cad_clip.setToolTip(i18n.t("export.cad_clip_tip"))
+        self.cad_clip.setCursor(QtCore.Qt.PointingHandCursor)
+        self.cad_clip.setChecked(config.get(SECTION, "cad_clip") is not False)
+        self.cad_clip.toggled.connect(self._on_cad_choice)
+        cad.addWidget(self.cad_clip, 2, 1)
         layout.addWidget(self.cad_box)
 
         self.tool_card = QtWidgets.QFrame()
@@ -260,16 +325,13 @@ class ExportDialog(QtWidgets.QDialog):
         row.addWidget(self.date)
         row.addStretch(1)
         layout.addLayout(row)
-        self.names = ui.label("")
-        self.names.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.names = controls.WrapText()                    # wraps anywhere: a path has no spaces, and must never widen the window
         layout.addWidget(self.names)
-        self.folder = ui.label("", "aeroMeta")
+        self.folder = controls.WrapText(meta=True)
         layout.addWidget(self.folder)
         layout.addStretch(1)
 
-        bottom = QtWidgets.QWidget()
-        bottom_layout = QtWidgets.QVBoxLayout(bottom)
-        bottom_layout.setContentsMargins(pad, theme.PAD, pad, pad)
+        bottom_layout = right_column                     # the result and the buttons stay in view under the right panel
         self.bar = QtWidgets.QProgressBar()
         self.bar.setObjectName("aeroProgress")
         self.bar.setTextVisible(False)
@@ -280,30 +342,106 @@ class ExportDialog(QtWidgets.QDialog):
         line.setSpacing(theme.PAD_S)
         self.mark = ui.Mark()
         line.addWidget(self.mark, 0, QtCore.Qt.AlignTop)
-        self.status = ui.label("")
+        self.status = controls.WrapText()
         line.addWidget(self.status, 1)
         bottom_layout.addLayout(line)
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(theme.PAD)
-        self.open_button = ui.big_button("export.open_folder", self._open_folder, width=170)
+        self.open_button = ui.big_button("export.open_folder", self._open_folder, width=150)
         buttons.addWidget(self.open_button)
         buttons.addStretch(1)
-        self.go_button = ui.big_button("export.go", self._on_export, "aeroGo", width=210)
+        self.go_button = ui.big_button("export.go", self._on_export, "aeroGo", width=170)
         buttons.addWidget(self.go_button)
-        self.close_button = ui.big_button("export.close", self.close, width=110)
+        self.close_button = ui.big_button("export.close", self.close, width=100)
         buttons.addWidget(self.close_button)
         bottom_layout.addLayout(buttons)
-        outer.addWidget(bottom)
 
         self.refresh()
+        # The window follows Metashape by itself: a cheap look at the active chunk and its default rasters, a few times a second.
+        self._watch = QtCore.QTimer(self)
+        self._watch.setInterval(WATCH_MS)
+        self._watch.timeout.connect(self._watch_tick)
+        self._watch.start()
+
+    @staticmethod
+    def _panel_cap():
+        """Widest minimum asked of one panel: half of what a small screen leaves, so the window can always fit the screen."""
+        return max(300, (controls.screen_width() - SCREEN_MARGIN - 4 * theme.PAD_L - 1) // 2)
+
+    def showEvent(self, event):
+        super(ExportDialog, self).showEvent(event)
+        if not getattr(self, "_fitted", False):
+            self._fitted = True
+            controls.fit_window(self)                       # minimum size from the panels, once the styles (fonts, scaling) are applied
+
+    def changeEvent(self, event):
+        super(ExportDialog, self).changeEvent(event)
+        if event.type() == QtCore.QEvent.ActivationChange and self.isActiveWindow():
+            self._follow_chunk()                            # back in front: is it still what we show?
+
+    def _watch_tick(self):
+        """Timer: while the window is visible and idle, notice a chunk or default raster changed in Metashape. Never raises."""
+        if not self.isVisible() or self._busy or self._dialog_open:
+            return
+        try:
+            self._follow_chunk()
+        except Exception as exc:                            # a read of Metashape that fails must never disturb the window
+            journal.write("Aero-Exports : watch: {!r}".format(exc))
+
+    @staticmethod
+    def _current_pin():
+        return (msapi.document_path(), msapi.chunk_key(msapi.chunk()))
+
+    def _change_reason(self, deep=False):
+        """Why the window is out of date: "chunk", "dem", "ortho", "shapes", or None when it still shows what Metashape has.
+        `deep` also counts the boundary shapes of the chunk (a loop over its shapes: only done on a click, not in the timer)."""
+        if self._current_pin() != self._pin:
+            return "chunk"
+        current = msapi.chunk()
+        signature = msapi.raster_signature(current)
+        if signature is not None and self._sig is not None and signature != self._sig:
+            for index, reason in ((1, "dem"), (2, "ortho"), (3, "shapes")):
+                if signature[index] != self._sig[index]:
+                    return reason
+            return "chunk"
+        if deep and current is not None and msapi.boundary_count(current) != self._info.get("boundaries"):
+            return "shapes"
+        return None
+
+    def _follow_chunk(self, deep=False):
+        """If the active chunk, its default DEM or orthomosaic (a double-click in the Workspace pane) or its boundary shapes are no
+        longer what this window shows, show the new state and say so in one line.
+        Returns True when it changed (the caller stops there: nothing is previewed or exported that the user has not seen).
+        Never during an export: the pinned chunk keeps being exported, whatever is active in Metashape meanwhile."""
+        if self._busy:
+            return False
+        reason = self._change_reason(deep)
+        if reason is None:
+            return False
+        self.refresh()
+        if self._chunk is None:
+            return True
+        key = {"chunk": "export.chunk_changed", "dem": "export.dem_changed", "ortho": "export.ortho_changed",
+               "shapes": "export.shapes_changed"}[reason]
+        self.status.setText(i18n.t(key, name=self._chunk_label))
+        journal.write("Aero-Exports : {} ({}), now {}".format(reason, i18n.t(key, name=self._chunk_label), self._describe()))
+        return True
+
+    def _describe(self):
+        """One journal line on what the window works on: chunk, default rasters used, boundary clipping."""
+        def raster(name):
+            item = self._info.get(name + "_default")
+            if not item:
+                return "none"
+            return "key {} '{}' {}x{} px {:g} m/px".format(item["key"], item["label"], item["width"], item["height"], item["resolution"])
+        return "chunk '{}' (key {}), DEM {} (of {}), ortho {} (of {}), boundary shapes {}, clip_to_boundary={}".format(
+            self._chunk_label, self._pin[1], raster("dem"), self._info.get("n_dems"), raster("ortho"), self._info.get("n_orthos"),
+            self._info.get("boundaries"), self._boundary_clip())
 
     @staticmethod
     def _size():
-        try:
-            area = QtWidgets.QApplication.primaryScreen().availableGeometry()
-            return min(WIDTH, area.width() - SCREEN_MARGIN), min(HEIGHT, area.height() - SCREEN_MARGIN)
-        except Exception:
-            return WIDTH, HEIGHT
+        area = controls.screen_area()
+        return min(WIDTH, area.width() - SCREEN_MARGIN), min(HEIGHT, area.height() - SCREEN_MARGIN)
 
     def _radios(self, grid, row, title_key, choices, saved):
         """Une ligne de ronds (choix unique) : renvoie le groupe, dont chaque bouton porte sa valeur."""
@@ -325,6 +463,160 @@ class ExportDialog(QtWidgets.QDialog):
         grid.addLayout(holder, row, 1)
         return group
 
+    def _build_look_row(self):
+        """Second line of the DEM card: the look of the DEM picture (button, small picture, one-line summary) and the option to
+        write that picture next to a JPEG 2000 / ECW export."""
+        card = self.cards[plan.DEM]
+        self.look_row = QtWidgets.QWidget()
+        row = QtWidgets.QHBoxLayout(self.look_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(theme.PAD)
+        self.look_thumb = ClickLabel(self._open_look)
+        self.look_thumb.setFixedSize(112, 76)
+        self.look_thumb.setVisible(False)
+        row.addWidget(self.look_thumb)
+        column = QtWidgets.QVBoxLayout()
+        column.setSpacing(theme.PAD_S)
+        self.look_text = ui.label("", "aeroMeta")
+        column.addWidget(self.look_text)
+        line = QtWidgets.QHBoxLayout()
+        line.setSpacing(theme.PAD)
+        self.look_button = ui.button("export.look_open", self._open_look, width=210)
+        line.addWidget(self.look_button)
+        self.picture_check = QtWidgets.QCheckBox(i18n.t("export.dem_picture", fmt="JP2"))
+        self.picture_check.setToolTip(i18n.t("export.dem_picture_tip"))
+        self.picture_check.setCursor(QtCore.Qt.PointingHandCursor)
+        self.picture_check.setChecked(bool(config.get(SECTION, "dem_picture")))
+        self.picture_check.toggled.connect(self._on_picture)
+        line.addWidget(self.picture_check)
+        line.addStretch(1)
+        column.addLayout(line)
+        row.addLayout(column, 1)
+        card.grid.addWidget(self.look_row, 3, 0, 1, 5)
+        try:
+            from . import previewwin  # noqa: F401  (needs numpy)
+            self._preview_ok = True
+        except ImportError:
+            self.look_button.setEnabled(False)
+            self.look_button.setToolTip(i18n.t("export.look_no_numpy"))
+
+    def _picture_wanted(self):
+        """True when the coloured DEM picture is asked next to a JPEG 2000 / ECW export."""
+        return self.preset.currentData() in plan.PICTURE_PRESETS and self.picture_check.isChecked()
+
+    def _refresh_look_row(self):
+        """Show the look line when the DEM is ticked and the format has a coloured DEM picture (drawing, JPEG 2000, ECW)."""
+        key = self.preset.currentData()
+        self.look_row.setVisible(self.cards[plan.DEM].button.isChecked() and (key == plan.CAD or key in plan.PICTURE_PRESETS))
+        self.picture_check.setVisible(key in plan.PICTURE_PRESETS)
+        if key in plan.PICTURE_PRESETS:
+            self.picture_check.setText(i18n.t("export.dem_picture", fmt=plan.PICTURE_PRESETS[key].upper()))
+        self._refresh_look_text()
+
+    def _refresh_look_text(self):
+        """One-line summary of the saved look; and the small picture once the preview exists."""
+        look = looks.load()
+        self.look_text.setText(i18n.t("export.look_now", look=self._look_summary(look)))
+        model = self._preview_model_cached() if self._preview_ok else None
+        if model is not None:
+            from . import previewwin
+            self.look_thumb.setPixmap(previewwin.thumbnail(model.render(look, self._void())))
+        self.look_thumb.setVisible(model is not None)
+
+    @staticmethod
+    def _look_summary(look):
+        palette = looks.label(looks.palette(look.palette), i18n.lang())
+        shading = i18n.t({looks.NONE: "export.shade_none", looks.SUN: "export.shade_sun", looks.LIGHTS4: "export.shade_lights4",
+                          looks.SLOPE: "export.shade_slope"}[look.shading])
+        return i18n.t("export.look_summary", palette=palette, shading=shading)
+
+    def _void(self):
+        """What the preview paints where the DEM has no data: nothing when the drawing hides the empty border, else white."""
+        return "transparent" if self.preset.currentData() == plan.CAD and self.cad_clip.isChecked() else "white"
+
+    def _on_picture(self, *_args):
+        config.put(SECTION, "dem_picture", bool(self.picture_check.isChecked()))
+        self._check_tools()
+        self._refresh_names()
+
+    def _preview_signature(self):
+        """What the small DEM was made from: the project file (and when it was saved), the DEM extent and size. A change makes a new one."""
+        try:
+            saved = os.path.getmtime(self._psx) if self._psx else 0
+        except OSError:
+            saved = 0
+        return (self._psx, self._pin[1], saved, tuple(self._info.get("box_dem") or ()), tuple(self._info.get(plan.DEM) or ()))
+
+    def _preview_model_cached(self):
+        return self._preview if self._preview is not None and self._preview_key == self._preview_signature() else None
+
+    def _preview_model(self):
+        """The small DEM of the preview: the DEM already exported next to the project if it is still current, else a small export
+        by Metashape (a few seconds at most; no progress callback into Metashape). None, with the reason shown, if it fails."""
+        if self._follow_chunk(deep=True):                   # another chunk is active now: show it first, the user decides
+            return None
+        cached = self._preview_model_cached()
+        if cached is not None:
+            return cached
+        chunk = self._chunk                                 # the pinned chunk, never a fresh msapi.chunk()
+        if chunk is None or not self._info.get(plan.DEM):
+            self._finish(i18n.t("export.no_chunk"), "error")
+            return None
+        self.mark.show_kind(None)
+        self.status.setText(i18n.t("export.look_loading"))
+        QtWidgets.QApplication.processEvents()              # before the call into Metashape, never inside it
+        work, model, problem = None, None, ""
+        try:
+            box, native = self._info.get("box_dem"), self._info.get(plan.DEM)
+            # an export already on disk is reused only if it is this chunk's DEM (same size, pixel and extent), not another chunk's
+            # An export already on disk can have been made with or without the boundary clip: it is reused only when the chunk has
+            # no boundary shape (then both are the same). With shapes, or when unsure, a small export is made with the setting shown.
+            reusable = box and native and self._info.get("boundaries") == 0
+            path = preview.usable_export([job.path for job in self._jobs if job.kind == plan.DEM] if reusable else [],
+                                         self._psx, box, native)
+            if path is None:
+                work = tempfile.mkdtemp(prefix="aero_preview_")
+                path = preview.fetch_small(msapi.export_raster, chunk, box, work, clip=self._boundary_clip())
+            model = preview.Preview.from_tiff(path, exact=msapi.dem_range(chunk))
+            journal.write("Aero-Exports : preview of {}; DEM footprint: {:.1%} of the pixels have data".format(
+                self._describe(), 1.0 - float(model.void.mean()) if model.valid else 0.0))
+            if not model.valid:
+                problem = i18n.t("export.look_empty")
+        except (ValueError, OSError, MemoryError) as exc:
+            problem = i18n.t("export.look_failed", error=exc)
+            journal.write("Aero-Exports : apercu du MNT : {!r}".format(exc))
+        finally:
+            if work:
+                shutil.rmtree(work, ignore_errors=True)
+        self.status.setText("")
+        if problem:
+            self._finish(problem, "error")
+            return None
+        self._preview, self._preview_key = model, self._preview_signature()
+        return model
+
+    def _open_look(self):
+        """Open the window where the colours and the shading are chosen; keep (and save) the look if the user accepts it."""
+        if self._busy or not self._preview_ok:
+            return
+        from . import previewwin
+        model = self._preview_model()
+        if model is None:
+            return
+        converted = bool(self._vertical_choice())
+        notes = [i18n.t("export.look_height_note")] if converted else []
+        if self._clips_boundary():
+            notes.append(i18n.t("export.look_clipped"))
+        window = previewwin.PreviewWindow(self, model, looks.load(), void=self._void(), note=" ".join(notes), custom_allowed=not converted)
+        self._dialog_open += 1
+        try:
+            ui.run(window)
+        finally:
+            self._dialog_open -= 1
+        if window.result_look is not None:
+            looks.save(window.result_look)
+        self._refresh_look_text()
+
     @staticmethod
     def _value(group):
         button = group.checkedButton()
@@ -336,10 +628,20 @@ class ExportDialog(QtWidgets.QDialog):
         """Relit le projet (ce qui existe, sa resolution, son nom) : a l'ouverture et a chaque retour devant."""
         if self._busy:
             return
-        self._info = msapi.raster_info()
+        # Pin the chunk with what we read from it: everything after (preview, export, clip, names) uses this chunk and this info,
+        # so a chunk changed in Metashape meanwhile can never mix its raster with another chunk's box, system or date.
+        self._psx = msapi.document_path()
+        self._chunk = msapi.chunk()
+        self._pin = (self._psx, msapi.chunk_key(self._chunk))
+        self._chunk_label = msapi.chunk_label(self._chunk)
+        self._info = msapi.raster_info(self._chunk)
+        self._sig = msapi.raster_signature(self._chunk)
+        self._preview, self._preview_key = None, None       # the small DEM of the look window belongs to the previous chunk
+        self._jobs = []
+        self.chunk_title.setFullText(i18n.t("export.chunk", name=self._chunk_label) if self._chunk is not None
+                                     else i18n.t("export.chunk_none"))
         crs_object = self._info.get("crs_object")
         self._project_epsg = msapi.project_epsg(crs_object) if crs_object is not None else None
-        self._psx = msapi.document_path()
         self._detect_tools()
         for kind in plan.KINDS:
             found = self._info.get(kind)
@@ -363,7 +665,12 @@ class ExportDialog(QtWidgets.QDialog):
             card.button.blockSignals(False)
             field.blockSignals(False)
             card.sync()
-        self.crs.setText(i18n.t("export.crs", crs=self._info["crs"]) if self._info.get("crs") else "")
+        self._show_rasters()
+        self._show_boundary_row()
+        self.crs.setText(self._crs_text())
+        key = (self._psx, tuple(k for k in plan.KINDS if self._info.get("geographic_" + k)))
+        if key != self._trap_key:                           # another project, or another raster in degrees: choose afresh
+            self._trap_key, self._crs_picked, self._crs_auto = key, False, None
         self._fill_crs()
         self.site.blockSignals(True)
         self.site.setText(naming.guess_site(self._psx) if self._psx else "")
@@ -400,6 +707,83 @@ class ExportDialog(QtWidgets.QDialog):
             return self._native.get(kind, 0.0)
         return float(self.fields[kind].text().replace(",", ".").strip()) / CM
 
+    # -- which raster, and the boundary clip ----------------------------------------------
+
+    def _show_rasters(self):
+        """Under each card: exactly which raster is exported (the chunk's default one), and a warning when the DEM is coarse."""
+        for kind in plan.KINDS:
+            item = self._info.get(kind + "_default")
+            detail, warn = self.raster_details[kind], self.raster_warnings[kind]
+            text, warning = "", ""
+            if item:
+                text = i18n.t(DEFAULT_TEXT[kind], w=item["width"], h=item["height"], cm=self._cm_text(item["resolution"]))
+                count = self._info.get("n_dems" if kind == plan.DEM else "n_orthos") or 0
+                if count > 1:
+                    text += " " + i18n.t(SEVERAL_TEXT[kind], n=count)
+            ortho = self._info.get("ortho_default")
+            if kind == plan.DEM and item and ortho and ortho["resolution"] > 0 and item["resolution"] / ortho["resolution"] > COARSE_RATIO:
+                warning = i18n.t("export.dem_coarse", cm=self._cm_text(item["resolution"]))
+            detail.setText(text)
+            warn.setText(warning)
+            warn.setVisible(bool(warning))
+
+    def _build_boundary_row(self, layout):
+        """A tick box, shown only when the chunk has boundary shapes: Metashape cuts an export to them unless told not to."""
+        self.boundary_row = QtWidgets.QWidget()
+        column = QtWidgets.QVBoxLayout(self.boundary_row)
+        column.setContentsMargins(0, 0, 0, 0)
+        column.setSpacing(theme.PAD_S)
+        line = QtWidgets.QHBoxLayout()
+        line.setSpacing(theme.PAD_S)
+        self.boundary_check = QtWidgets.QCheckBox()
+        self.boundary_check.setToolTip(i18n.t("export.boundary_tip"))
+        self.boundary_check.setCursor(QtCore.Qt.PointingHandCursor)
+        self.boundary_check.setChecked(config.get(SECTION, "clip_boundary") is not False)      # on by default, as in Metashape
+        self.boundary_check.toggled.connect(self._on_boundary)
+        line.addWidget(self.boundary_check, 0, QtCore.Qt.AlignTop)
+        # the text wraps (a tick box's own text never does, and would widen the panel at large font sizes)
+        self.boundary_label = ClickLabel(self.boundary_check.toggle)
+        self.boundary_label.setText(i18n.t("export.boundary"))
+        self.boundary_label.setToolTip(i18n.t("export.boundary_tip"))
+        self.boundary_label.setWordWrap(True)
+        line.addWidget(self.boundary_label, 1)
+        column.addLayout(line)
+        self.boundary_note = controls.WrapText(meta=True)
+        column.addWidget(self.boundary_note)
+        self.boundary_row.setVisible(False)
+        layout.addWidget(self.boundary_row)
+
+    def _show_boundary_row(self):
+        count = self._info.get("boundaries")
+        self.boundary_row.setVisible(bool(count))
+        self._refresh_boundary_note()
+
+    def _refresh_boundary_note(self):
+        count = self._info.get("boundaries") or 0
+        if not count:
+            self.boundary_note.setText("")
+        elif not self.boundary_check.isChecked():
+            self.boundary_note.setText(i18n.t("export.boundary_off"))
+        else:
+            self.boundary_note.setText(i18n.t("export.boundary_one" if count == 1 else "export.boundary_many", n=count))
+
+    def _clips_boundary(self):
+        """True when the exports are cut to boundary shapes that exist in the chunk."""
+        return bool(self._info.get("boundaries")) and self.boundary_check.isChecked()
+
+    def _boundary_clip(self):
+        """The `clip_to_boundary` value for EVERY Metashape export of this window (preview, rasters, footprint mask). Without boundary
+        shape, or when unsure, it is Metashape's own default (True): the result is the same as no clip."""
+        if not self._info.get("boundaries"):
+            return True
+        return bool(self.boundary_check.isChecked())
+
+    def _on_boundary(self, *_args):
+        config.put(SECTION, "clip_boundary", bool(self.boundary_check.isChecked()))
+        self._preview, self._preview_key = None, None       # the small DEM was made with the other setting
+        self._refresh_boundary_note()
+        self._refresh_look_text()
+
     # -- logiciels externes ---------------------------------------------------------------
 
     def _detect_tools(self):
@@ -412,6 +796,8 @@ class ExportDialog(QtWidgets.QDialog):
         key = self.preset.currentData()
         if key == "ecw" and not self.tools["gm"]:
             return "gm", "export.need_ecw"
+        if key == "jp2" and self._picture_wanted() and not (self.tools["gdal"] or self.tools["gm"]):
+            return "gdal", "export.need_jp2"                # the coloured DEM picture needs an encoder (the ortho can use Metashape's)
         if key == plan.CAD:
             if self._value(self.cad_images) == "ecw" and not self.tools["gm"]:
                 return "gm", "export.need_ecw"
@@ -483,6 +869,7 @@ class ExportDialog(QtWidgets.QDialog):
         index = self.crs_box.findData(previous) if text or previous != SAME else 0
         self.crs_box.setCurrentIndex(max(0, index))
         self.crs_box.blockSignals(False)
+        self._sync_auto_crs(fill=False)
         self._fill_vertical()
 
     def _on_search(self, *_args):
@@ -507,8 +894,117 @@ class ExportDialog(QtWidgets.QDialog):
         self._check_geoid()
 
     def _on_crs(self, *_args):
+        self._crs_picked = True                             # his choice, even "Same as the project": we leave it alone
+        if self.crs_box.currentData() != self._crs_auto:
+            self._crs_auto = None
         self._fill_vertical()
         self._refresh_names()
+
+    # -- a raster in degrees --------------------------------------------------------------
+
+    def _crs_text(self):
+        """The coordinate system(s) of the project: one line, or one per raster when the ortho and the DEM differ (degrees next to metres)."""
+        info = self._info
+        names = {kind: str(info["crs_" + kind].name) for kind in plan.KINDS
+                 if info.get("crs_" + kind) is not None and info.get(kind)}
+        if len(set(names.values())) > 1:
+            return i18n.t("export.crs_each", ortho=names.get(plan.ORTHO, "-"), dem=names.get(plan.DEM, "-"))
+        return i18n.t("export.crs", crs=info["crs"]) if info.get("crs") else ""
+
+    def _degrees_kinds(self):
+        """The ticked rasters whose system is in degrees (a pixel in cm and a CAD drawing cannot use them)."""
+        return [kind for kind in plan.KINDS if self.cards[kind].button.isChecked() and self._info.get(kind)
+                and self._info.get("geographic_" + kind)]
+
+    def _auto_epsg(self):
+        """The projected system to suggest when a raster is in degrees: the DEM's own system when it is in metres (the user already
+        works in it), else the best one for the place from the list. None when nothing can be said."""
+        dem = self._info.get("crs_dem")
+        if dem is not None and self._info.get(plan.DEM) and not self._info.get("geographic_dem"):
+            code = msapi.project_epsg(dem)
+            if code:
+                return code
+        lon, lat = self._info.get("center") or (None, None)
+        return projdb.best_projected(lon, lat)
+
+    def _crs_row(self, epsg):
+        """(EPSG, name) of a system from the catalogue, or None."""
+        lon, lat = self._info.get("center") or (None, None)
+        rows = projdb.candidates(lon, lat, text=str(epsg), limit=1) if epsg and projdb.available() else []
+        return rows[0] if rows else None
+
+    def _select_crs(self, epsg):
+        """Select `epsg` in the "Export in" list, adding it when the list does not hold it (a DEM's own system, a search in progress)."""
+        index = self.crs_box.findData(epsg)
+        if index < 0:
+            row = self._crs_row(epsg)
+            if row is None:
+                return False
+            self.crs_box.insertItem(1, "{}  (EPSG:{})".format(row[1], row[0]), epsg)
+            index = 1
+        self.crs_box.blockSignals(True)
+        self.crs_box.setCurrentIndex(index)
+        self.crs_box.blockSignals(False)
+        return True
+
+    def _sync_auto_crs(self, fill=True):
+        """Keep "Export in" sensible: with a ticked raster in degrees and no choice of the user yet, suggest a projected system
+        instead of "Same as the project"; when no such raster is ticked any more, give back the project's system we had replaced."""
+        if not hasattr(self, "crs_notice"):
+            return
+        if self.crs_search.text().strip():
+            self._refresh_crs_notice()
+            return
+        current = self.crs_box.currentData()
+        changed = False
+        if self._degrees_kinds() and not self._crs_picked and current in (None, SAME):
+            epsg = self._auto_epsg()
+            if epsg is not None and self._select_crs(epsg):
+                self._crs_auto, changed = epsg, True
+        elif not self._degrees_kinds() and self._crs_auto is not None and current == self._crs_auto:
+            self.crs_box.blockSignals(True)
+            self.crs_box.setCurrentIndex(0)
+            self.crs_box.blockSignals(False)
+            self._crs_auto, changed = None, True
+        self._refresh_crs_notice()
+        if changed and fill:
+            self._fill_vertical()
+
+    def _degrees_sentence(self):
+        kinds = self._degrees_kinds()
+        key = "export.crs_deg_both" if len(kinds) > 1 else ("export.crs_deg_ortho" if kinds == [plan.ORTHO] else "export.crs_deg_dem")
+        return i18n.t(key)
+
+    def _degrees_advice(self):
+        """"Pick a projected system", with an example from the list when there is one."""
+        row = self._crs_row(self._auto_epsg())
+        return i18n.t("export.crs_deg_pick_example", name=row[1]) if row else i18n.t("export.crs_deg_pick")
+
+    def _refresh_crs_notice(self):
+        """One short notice under the coordinate system when a ticked raster is in degrees."""
+        if not self._degrees_kinds():
+            self.crs_notice.setVisible(False)
+            return
+        current = self.crs_box.currentData()
+        if current in (None, SAME):
+            text = self._degrees_sentence() + " " + self._degrees_advice()
+        elif current == self._crs_auto:
+            name = self.crs_box.currentText().split("  (EPSG")[0]
+            text = self._degrees_sentence() + " " + i18n.t("export.crs_deg_auto", name=name)
+        else:
+            self.crs_notice.setVisible(False)
+            return
+        self.crs_notice.setText(text)
+        self.crs_notice.setVisible(True)
+
+    def _degrees_blocks(self, jobs):
+        """True when the export would ask for metres from a raster in degrees: a drawing, a pixel in cm or tiles, with no projected system."""
+        if self.crs_box.currentData() not in (None, SAME):
+            return False
+        kinds = [kind for kind in self._degrees_kinds() if any(job.kind == kind for job in jobs)]
+        if not kinds:
+            return False
+        return self.preset.currentData() == plan.CAD or bool(self._tile_m()) or any(not self._is_native(kind) for kind in kinds)
 
     def _on_vertical(self, *_args):
         self._check_geoid()
@@ -594,12 +1090,12 @@ class ExportDialog(QtWidgets.QDialog):
                 try:
                     path = crs.download_geoid(vid, folder, overwrite=states.get(vid) == "stale",
                                               progress=lambda got, _t, base=before: state.update(done=base + got))
-                    journal.write("Fast Export : geoide telecharge : {}".format(path))
+                    journal.write("Aero-Exports : geoide telecharge : {}".format(path))
                 except FileExistsError:
                     pass
                 except Exception as exc:
                     state["errors"].append("{} : {}".format(vid, str(exc) or repr(exc)))
-                    journal.write("Fast Export : geoide {} : {}".format(vid, state["errors"][-1]))
+                    journal.write("Aero-Exports : geoide {} : {}".format(vid, state["errors"][-1]))
                 state["done"] = before + crs.vertical_by_id(vid).get("size", 0)
 
         thread = threading.Thread(target=work, daemon=True)
@@ -688,11 +1184,13 @@ class ExportDialog(QtWidgets.QDialog):
             config.put(SECTION, "cad_format", self._value(self.cad_format))
         if self._value(self.cad_images):
             config.put(SECTION, "cad_images", self._value(self.cad_images))
+        config.put(SECTION, "cad_clip", bool(self.cad_clip.isChecked()))
         self._check_tools()
         self._refresh_names()
 
     def _cad(self):
-        return {"format": self._value(self.cad_format) or "dxf", "images": self._value(self.cad_images) or "jp2"}
+        return {"format": self._value(self.cad_format) or "dxf", "images": self._value(self.cad_images) or "jp2",
+                "clip": bool(self.cad_clip.isChecked())}
 
     def _wanted(self):
         return {kind: self._pixel(kind) for kind in plan.KINDS
@@ -706,7 +1204,7 @@ class ExportDialog(QtWidgets.QDialog):
         wanted = self._wanted()
         return plan.build_jobs(self.site.text().strip(), self._date, wanted, self.preset.currentData(), self._folder(),
                                lang=self._lang, native={k for k in wanted if self._is_native(k)}, cad=self._cad(),
-                               version=version)
+                               version=version, dem_picture=self._picture_wanted())
 
     def _existing(self, jobs):
         return [path for path in plan.planned_files(jobs, self.preset.currentData(), self._cad()) if os.path.exists(path)]
@@ -714,6 +1212,10 @@ class ExportDialog(QtWidgets.QDialog):
     def _refresh_names(self, *_args):
         for kind in plan.KINDS:
             self.fields[kind].setEnabled(self.cards[kind].button.isChecked() and bool(self._info.get(kind)))
+        if hasattr(self, "look_row"):
+            self._refresh_look_row()
+        if hasattr(self, "crs_notice"):
+            self._sync_auto_crs()
         if hasattr(self, "tile_box"):
             self._fill_tiles()
         self._jobs, text = [], ""
@@ -771,9 +1273,13 @@ class ExportDialog(QtWidgets.QDialog):
     # -- export -----------------------------------------------------------------------------
 
     def _on_export(self):
-        if self._busy or not self._jobs:
+        if self._busy:
             return
-        chunk = msapi.chunk()
+        if self._follow_chunk(deep=True):                   # never export silently on a chunk the user has not seen
+            return
+        if not self._jobs:
+            return
+        chunk = self._chunk                                 # the pinned chunk, the one named at the top of the window
         if chunk is None:
             self._finish(i18n.t("export.no_chunk"), "error")
             return
@@ -787,11 +1293,18 @@ class ExportDialog(QtWidgets.QDialog):
             except ValueError:
                 following = 2
             ask = ExistsDialog(self, len(self._existing(jobs)), following)
-            ui.run(ask)
+            self._dialog_open += 1
+            try:
+                ui.run(ask)
+            finally:
+                self._dialog_open -= 1
             if ask.choice is None:
                 return
             if ask.choice == NEW_VERSION:
                 jobs = self._plan(None)
+        if self._degrees_blocks(jobs):                      # told here, in words, before any file is written
+            self._finish(self._degrees_sentence() + " " + self._degrees_advice(), "error")
+            return
         target, error = self._target()
         if error:
             self._finish(error, "error")
@@ -806,7 +1319,9 @@ class ExportDialog(QtWidgets.QDialog):
                                lang=self._lang, snap=msapi.snapped_box, transform=msapi.transform_box,
                                tick=QtWidgets.QApplication.processEvents, vertical=self._vertical_choice(),
                                proj=projtool.Proj(geoid_dir=crs.own_dir()),
-                               epsg=int(self.crs_box.currentData()) if target is not None else None)
+                               epsg=int(self.crs_box.currentData()) if target is not None else None, look=looks.load(),
+                               clip_boundary=self._boundary_clip(), log=lambda text: journal.write("Aero-Exports : " + text))
+        journal.write("Aero-Exports : export of {}".format(self._describe()))
         self._busy = True
         self.bar.setRange(0, 1000)
         self.bar.setValue(0)
@@ -825,17 +1340,18 @@ class ExportDialog(QtWidgets.QDialog):
         try:
             result = pipeline.run(ctx, jobs, progress)
         except pipeline.Failure as exc:
-            problem = i18n.t("export.failed", name=jobs[0].name, error=exc)
-            journal.write("Fast Export : {}".format(exc))
+            problem = i18n.t("export.failed", name=ctx.failed or jobs[0].name, error=exc)
+            journal.write("Aero-Exports : {}: {}".format(ctx.failed, exc))
         except Exception as exc:
-            problem = i18n.t("export.failed", name=jobs[0].name, error=repr(exc))
-            journal.write("Fast Export : {!r}".format(exc))
+            problem = i18n.t("export.failed", name=ctx.failed or jobs[0].name, error=repr(exc))
+            journal.write("Aero-Exports : {!r}".format(exc))
+            journal.write("Aero-Exports : {}".format(traceback.format_exc().strip().replace("\n", " | ")))
         self._busy = False
         if problem:
             self._finish(problem, "error")
             return
         for path, _size in result.files:
-            journal.write("Fast Export : {}".format(path))
+            journal.write("Aero-Exports : {}".format(path))
         written = sum(size for _path, size in result.files)
         text = i18n.t("export.done", n=len(result.files), size=size_text(written))
         text += self._cad_report(result)
@@ -850,8 +1366,10 @@ class ExportDialog(QtWidgets.QDialog):
                 lines.append(i18n.t("export.check_bad", names=", ".join(result.check["failed"])))
             elif result.check["images"]:
                 lines.append(i18n.t("export.check_ok", n=result.check["images"]))
-        if "dem_image" in result.warnings:
-            lines.append(i18n.t("export.warn_dem_image"))
+        if "clip" in result.warnings:
+            lines.append(i18n.t("export.warn_clip"))
+        if "stretch" in result.warnings:
+            lines.append(i18n.t("export.warn_stretch"))
         return ("\n" + "\n".join(lines)) if lines else ""
 
     def _finish(self, text, kind):

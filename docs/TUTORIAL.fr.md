@@ -18,6 +18,8 @@ Ce tutoriel suit l'ordre dans lequel vous allez vous en servir. Les noms de bout
 - [7. Le rapport PDF](#7-le-rapport-pdf)
 - [8. Paramètres et modèles IA](#8-paramètres-et-modèles-ia)
 - [9. Dépannage](#9-dépannage)
+- [10. Aero-Space : libérer de la place](#10-aero-space--libérer-de-la-place)
+- [11. Aero-Exports : exporter l'ortho et le MNT](#11-aero-exports--exporter-lortho-et-le-mnt)
 
 ## 1. Installer et démarrer
 
@@ -349,3 +351,38 @@ ordinateur) n'est jamais touché. Chaque action est écrite dans un journal (bou
 
 **Teste d'abord sur une copie.** Copie un petit projet (le `.psx` et son dossier `.files`) dans un dossier de test, scanne ce
 dossier, et essaie les deux modes sur la copie avant de l'utiliser sur du vrai travail.
+
+
+## 11. Aero-Exports : exporter l'ortho et le MNT
+
+**Aero > Aero-Exports** écrit l'orthomosaïque et/ou le MNT du projet ouvert dans un dossier `Outputs` à côté du `.psx`
+(enregistre d'abord le projet). Coche **Ortho** et/ou **MNT**, choisis un **Format** et, si tu veux, une taille de pixel en cm.
+La fenêtre montre le pixel natif de chaque raster ; une taille tapée est exacte, et l'ortho et le MNT partagent alors la même
+grille. Les fichiers ont des noms courts (site, date, pixel, type : `SITE_260704_3cm_ortho.tif`, `SITE_260704_3cm_mnt.tif`).
+Si le même export existe déjà, tu choisis entre l'écraser et une nouvelle version (`_v2`).
+
+- **Formats.** GeoTIFF pleine qualité ; un *aperçu client* compressé (GeoTIFF en compression JPEG, environ 10 fois plus léger, le
+  MNT reste sans perte) ; JPEG + fichier monde ; JPEG 2000 (écrit avec QGIS ou Global Mapper) ; ECW (écrit par Global Mapper, qui
+  doit être installé) ; et un **dessin AutoCAD**, DXF ou DWG (le DWG demande AutoCAD, qui convertit le DXF en arrière-plan).
+- **Dessin AutoCAD.** `TOPO.dxf` (ou `.dwg`) contient l'ortho et le MNT sur deux calques. Les images sont dans `00_Assets` et
+  reliées par des chemins relatifs : le dossier peut être déplacé ou envoyé tel quel. **Masquer la bordure vide** (activé par
+  défaut) fait que AutoCAD n'affiche que la zone de données réelle de chaque image ; les fichiers image ne sont pas modifiés.
+- **Couleurs et ombrage du MNT.** **Couleurs et ombrage...** ouvre une fenêtre avec un aperçu en direct de l'image du MNT :
+  palette, lumière (soleil, quatre lumières, pente), direction et hauteur de la lumière, force et plage de couleurs. Le dessin
+  utilise l'aspect que tu gardes, et le réglage est enregistré sur ce poste. À côté d'un export JPEG 2000 ou ECW, tu peux aussi
+  enregistrer cette image en couleurs.
+- **Coordonnées et altitudes.** **Exporter en** convertit vers un autre système de coordonnées (recherche par nom ou code EPSG),
+  et **Altitudes** vers un autre système d'altitudes. Les altitudes sont calculées par AeroTools avec la grille de géoïde,
+  téléchargée une fois, à ta demande, sur le serveur officiel des grilles PROJ ; un raster en degrés passe automatiquement
+  dans un système métrique, car un pixel en cm demande des mètres.
+- **Quel raster.** Un chunk peut contenir plusieurs MNT et orthomosaïques ; Aero-Exports exporte toujours celui **par défaut** (en police
+  normale dans le panneau Workspace ; double-clique sur un autre pour en faire celui par défaut). Chaque carte dit lequel c'est (taille et
+  pixel) et prévient quand le MNT par défaut est bien plus grossier que l'ortho. La fenêtre suit le chunk actif toute seule, et sa
+  première ligne nomme le chunk.
+- **Formes de limite.** Metashape découpe un export aux formes de limite du chunk. Quand le chunk en a, une case **Découper aux formes de
+  limite du chunk** apparaît (cochée par défaut, comme Metashape) ; décoche-la pour exporter toute la surface du raster.
+- **Dalles.** **Découper en dalles** coupe l'export en dalles carrées d'une taille choisie, un fichier chacune ; les dalles vides
+  sont ignorées.
+
+Pas encore vérifié à la main : la bordure masquée et la fluidité des très grandes images dans la fenêtre AutoCAD elle-même.
+Seul le moteur console d'AutoCAD a servi aux essais.

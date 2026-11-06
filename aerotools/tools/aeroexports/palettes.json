@@ -1,0 +1,23 @@
+{
+ "schema": 1,
+ "note": "Colour palettes of the DEM image. Each stop is [position 0..1 between the lowest and the highest height, [red, green, blue]]. Add one here, or in palettes.json of the AeroTools settings folder (same format), and it appears in the list.",
+ "palettes": [
+  {"id": "metashape", "label": {"en": "Metashape", "fr": "Metashape"},
+   "stops": [[0, [47, 55, 218]], [0.1, [48, 118, 219]], [0.2, [52, 191, 221]], [0.3, [50, 222, 184]], [0.4, [51, 222, 120]],
+             [0.5, [51, 222, 50]], [0.6, [120, 223, 49]], [0.7, [181, 222, 48]], [0.8, [220, 194, 49]], [0.9, [222, 119, 52]],
+             [1, [225, 53, 56]]]},
+  {"id": "relief", "label": {"en": "Relief", "fr": "Relief"},
+   "stops": [[0, [46, 117, 71]], [0.25, [160, 190, 92]], [0.5, [236, 218, 128]], [0.75, [188, 120, 72]], [1, [246, 246, 246]]]},
+  {"id": "rainbow", "label": {"en": "Rainbow", "fr": "Arc-en-ciel"},
+   "stops": [[0, [0, 0, 160]], [0.2, [0, 120, 255]], [0.4, [0, 220, 160]], [0.6, [250, 230, 0]], [0.8, [255, 120, 0]], [1, [190, 0, 0]]]},
+  {"id": "gray", "label": {"en": "Grey", "fr": "Gris"},
+   "stops": [[0, [20, 20, 20]], [1, [240, 240, 240]]]},
+  {"id": "viridis", "label": {"en": "Viridis", "fr": "Viridis"},
+   "stops": [[0, [68, 1, 84]], [0.25, [59, 82, 139]], [0.5, [33, 145, 140]], [0.75, [94, 201, 98]], [1, [253, 231, 37]]]},
+  {"id": "terrain", "label": {"en": "Sea and summits", "fr": "Mer et sommets"},
+   "stops": [[0, [35, 70, 140]], [0.15, [120, 180, 210]], [0.3, [200, 225, 170]], [0.5, [120, 170, 90]], [0.75, [170, 130, 80]],
+             [1, [250, 250, 250]]]},
+  {"id": "hot", "label": {"en": "Warm", "fr": "Chaud"},
+   "stops": [[0, [255, 255, 204]], [0.35, [254, 217, 118]], [0.65, [253, 141, 60]], [1, [128, 0, 38]]]}
+ ]
+}

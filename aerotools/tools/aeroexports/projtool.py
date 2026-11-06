@@ -1,4 +1,4 @@
-"""Fast Export : PROJ 9 (binaires embarques dans aerotools/vendor/proj) pour les conversions de coordonnees et d'altitude.
+"""Aero-Exports : PROJ 9 (binaires embarques dans aerotools/vendor/proj) pour les conversions de coordonnees et d'altitude.
 
 PROJ est la reference des conversions geodesiques (QGIS, GDAL, IGN) : on lui confie le calcul, sans passer par pyproj (pas de lien
 avec la version de Python de Metashape). On appelle `cs2cs` (changement de SCR) et `cct` (operation donnee, ici le decalage

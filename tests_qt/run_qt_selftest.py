@@ -27,7 +27,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-os.environ["LOCALAPPDATA"] = tempfile.mkdtemp(prefix="aerotools_qt_")
+sys.path.insert(0, HERE)
+import _isolation  # noqa: E402
+GUARD = _isolation.Guard("aerotools_qt_")                      # settings of the machine stay untouched
 
 
 # --------------------------------------------------------------------------
@@ -216,6 +218,7 @@ sys.modules["Metashape"] = FAKE
 # --------------------------------------------------------------------------
 
 from aerotools import config, i18n, journal, msapi, qt  # noqa: E402
+GUARD.pin(config)
 from aerotools.qt import QtCore, QtGui, QtWidgets  # noqa: E402
 from aerotools.tools.fastgcp import (  # noqa: E402
     history, marking, photos, session as session_mod, tool as tool_mod)
@@ -1377,6 +1380,9 @@ def main():
     print("-" * 60)
     print("liaison Qt : {} ; plateforme : {} ; Python {}".format(
         qt.BINDING, PLATFORM, sys.version.split()[0]))
+    problem = GUARD.check()
+    if problem:
+        FAILURES.append("reglages reels : " + problem)
     if FAILURES:
         print("{} echec(s) : {}".format(len(FAILURES), " | ".join(FAILURES)))
         return 1

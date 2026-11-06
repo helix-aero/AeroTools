@@ -1,4 +1,4 @@
-"""Fast Export : etat des grilles d'altitude dans notre dossier `Geoid`, telechargement verifie.
+"""Aero-Exports : etat des grilles d'altitude dans notre dossier `Geoid`, telechargement verifie.
 
 Le catalogue (systemes, grilles, tailles, SHA-256, urls) vient de `projdb.py` (base de PROJ et index PROJ-data) : plus de table ecrite a
 la main, donc le monde entier. Sans dependance (urllib), tourne dans le Python de Metashape (3.9). Les grilles sont rangees dans
@@ -136,7 +136,7 @@ def download_geoid(vertical_id, dest_dir, overwrite=False, progress=None, timeou
     fd, tmp = tempfile.mkstemp(prefix=spec["file"] + ".", suffix=".part", dir=dest_dir)
     os.close(fd)
     try:
-        request = urllib.request.Request(spec["url"], headers={"User-Agent": "HELIX-FastExport/0.1"})
+        request = urllib.request.Request(spec["url"], headers={"User-Agent": "HELIX-AeroExports/0.1"})
         with (opener or urllib.request.urlopen)(request, timeout=timeout) as resp, open(tmp, "wb") as out:
             total = int(resp.headers.get("Content-Length") or spec["size"])
             got = 0

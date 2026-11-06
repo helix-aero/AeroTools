@@ -1,4 +1,4 @@
-"""Fast Export : grilles de geoide (notre dossier, etat, zone), lecture TIFF, application des altitudes a un MNT."""
+"""Aero-Exports : grilles de geoide (notre dossier, etat, zone), lecture TIFF, application des altitudes a un MNT."""
 import hashlib
 import os
 import shutil
@@ -7,7 +7,7 @@ import struct
 import numpy as np
 import pytest
 
-from aerotools.tools.fastexport import crs, projdb, projtool, tiffio, vertical
+from aerotools.tools.aeroexports import crs, projdb, projtool, tiffio, vertical
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAC23 = os.path.join(HERE, "data", "fr_ign_RAC23.tif")

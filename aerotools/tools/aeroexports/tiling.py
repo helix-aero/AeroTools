@@ -1,4 +1,4 @@
-"""Fast Export : decoupage en dalles (fonctions pures, sans Qt, sans Metashape, sans rasterio).
+"""Aero-Exports : decoupage en dalles (fonctions pures, sans Qt, sans Metashape, sans rasterio).
 
 Toute l'arithmetique des coordonnees se fait en fractions exactes (``fractions.Fraction`` construites
 depuis le texte decimal : 0.03 vaut exactement 3/100), jamais en flottants : une dalle de 300 m a 3 cm

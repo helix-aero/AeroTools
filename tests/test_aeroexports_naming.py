@@ -1,10 +1,10 @@
-"""Tests de naming.py : pytest tests/test_fastexport_naming.py"""
+"""Tests de naming.py : pytest tests/test_aeroexports_naming.py"""
 import datetime
 import os
 
 import pytest
 
-from aerotools.tools.fastexport import naming
+from aerotools.tools.aeroexports import naming
 
 
 def test_build_name_ortho_mnt_fr_en():

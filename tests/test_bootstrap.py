@@ -108,7 +108,7 @@ def test_one_off_window_is_not_reopened_by_reload(boot, ms, monkeypatch):
     assert boot.launch("fastgcp") is True
     assert boot.launch("fastspace") is True          # Aero-Space est une fenetre ponctuelle
     assert getattr(builtins, "_AEROTOOLS_LAST_TOOL") == "fastgcp"
-    assert [entry["id"] for entry in config.TOOLS if not entry.get("rouvrir")] == ["fastspace", "fastexport"]
+    assert [entry["id"] for entry in config.TOOLS if not entry.get("rouvrir")] == ["fastspace", "aeroexports"]
 
 
 def test_reopens_only_panels(boot):

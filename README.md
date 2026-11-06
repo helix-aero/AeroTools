@@ -90,8 +90,10 @@ remove: dense clouds, depth maps, orthophotos, with the space each one frees) or
 
 **Aero > Aero-Exports** exports the orthomosaic and/or the DEM to an `Outputs` folder next to the project, with short names
 (`SITE_260704_3cm_ortho.tif`, `SITE_260704_3cm_dtm.tif`). Pick a format (full quality GeoTIFF, compressed client quick view,
-JPEG + world file) and a pixel size in cm. A pixel size you type is exact (3 cm is 3.000 cm, on a grid of multiples of 3 cm),
-so the ortho and the DEM line up pixel for pixel.
+JPEG + world file, JPEG 2000, ECW, or an AutoCAD drawing, DXF or DWG) and a pixel size in cm. A pixel size you type is exact
+(3 cm is 3.000 cm, on a grid of multiples of 3 cm), so the ortho and the DEM line up pixel for pixel. The AutoCAD drawing links
+the images with relative paths and hides their empty border; a preview window sets the colours and the shading of the DEM picture.
+You can also export in another coordinate system and another height system (geoid grid), or split the export into tiles.
 
 Later, **Aero > Check for updates...** brings the latest version from GitHub (with the list of changes and their size).
 The installer asks which detection engine you want (light, precise, or both) and whether to add the retraining tools; the

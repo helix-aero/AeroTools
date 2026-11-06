@@ -1,11 +1,11 @@
-"""Fast Export : DXF, GeoTIFF, presets CAD / JPEG 2000 / ECW, tuiles, chaine d'export et logiciels externes (sans Metashape)."""
+"""Aero-Exports : DXF, GeoTIFF, presets CAD / JPEG 2000 / ECW, tuiles, chaine d'export et logiciels externes (sans Metashape)."""
 import datetime
 import os
 import struct
 
 import pytest
 
-from aerotools.tools.fastexport import dxfout, external, geotiff, pipeline, plan
+from aerotools.tools.aeroexports import dxfout, external, geotiff, pipeline, plan, relief
 
 DAY = datetime.date(2026, 7, 4)
 
@@ -159,8 +159,8 @@ class Env(object):
         self.exports = []
         self.empty_tiles = set()
 
-    def export(self, chunk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None):
-        self.exports.append((kind, os.path.basename(path), pixel, box, crs))
+    def export(self, chunk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None, clip_to_boundary=True):
+        self.exports.append((kind, os.path.basename(path), pixel, box, crs, clip_to_boundary))
         left, bottom, right, top = box if box else (1000.0, 2000.0, 1100.0, 2050.0)
         if box and (round(left), round(bottom)) in self.empty_tiles:
             return True, ""                                   # dalle sans donnee : Metashape n'ecrit rien
@@ -195,12 +195,12 @@ def fake_converters(monkeypatch, record):
     monkeypatch.setattr(external, "to_jp2_gm", make("gm"))
     monkeypatch.setattr(external, "to_ecw", make("ecw"))
 
-    def view(gdal_dir, dem, out, tick=None):
+    def view(dem, out, *args, **kwargs):
         write_geotiff(out, 200, 100, 1000.0, 2050.0, 0.5)
         record.append(("view", os.path.basename(dem), os.path.basename(out)))
         return True, ""
 
-    monkeypatch.setattr(external, "dem_view", view)
+    monkeypatch.setattr(relief, "render", view)
 
 
 def test_jp2_export_writes_a_raw_tiff_then_converts_it_and_removes_the_raw(tmp_path, monkeypatch):
@@ -269,15 +269,15 @@ def test_cad_export_writes_assets_a_dxf_and_checks_it_with_autocad(tmp_path, mon
     assert result.dxf == str(tmp_path / "TOPO.dxf") and result.check["images"] == 2 and not result.warnings
 
 
-def test_cad_without_gdal_still_writes_the_dem_geotiff_and_says_the_drawing_has_no_dem_layer(tmp_path, monkeypatch):
+def test_the_dem_layer_needs_no_gdal(tmp_path, monkeypatch):
     env, record = Env(tmp_path), []
     fake_converters(monkeypatch, record)
     jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5, "dem": 0.5}, "cad", str(tmp_path), lang="en",
                            cad={"format": "dxf", "images": "ecw"}, version=1)
     ctx = fake_context(tmp_path, env, "cad", tools={"gm": "GM"}, cad={"format": "dxf", "images": "ecw"})
     result = pipeline.run(ctx, jobs, lambda f, t: None)
-    assert "dem_image" in result.warnings and os.path.isfile(tmp_path / "00_Assets" / "DTM" / "EDF_260704_50cm_dtm.tif")
-    assert b"_MNT" not in open(tmp_path / "TOPO.dxf", "rb").read()
+    assert not result.warnings and os.path.isfile(tmp_path / "00_Assets" / "DTM" / "EDF_260704_50cm_dtm.tif")
+    assert b"_MNT" in open(tmp_path / "TOPO.dxf", "rb").read()
 
 
 def test_dwg_is_made_by_autocad_and_fails_clearly_without_it(tmp_path, monkeypatch):
@@ -301,10 +301,10 @@ def test_tiles_export_one_file_per_tile_and_skip_empty_ones(tmp_path, monkeypatc
     jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
     ctx = fake_context(tmp_path, env, "full", tile_m=50)
     result = pipeline.run(ctx, jobs, lambda f, t: None)
-    names = sorted(name for _kind, name, _p, _b, _c in env.exports)
+    names = sorted(name for _kind, name, _p, _b, _c, _f in env.exports)
     assert names == ["EDF_260704_50cm_R01C01_ortho.tif", "EDF_260704_50cm_R01C02_ortho.tif"] or len(names) == 2
     assert result.tiles == len(env.exports) - 1               # une dalle vide : rien d'ecrit
-    boxes = [b for _k, _n, _p, b, _c in env.exports]
+    boxes = [b for _k, _n, _p, b, _c, _f in env.exports]
     assert all(box[2] - box[0] <= 50.0 + 1e-6 for box in boxes)
 
 
@@ -323,7 +323,7 @@ def test_a_target_crs_converts_the_box_and_is_passed_to_metashape(tmp_path):
     ctx = fake_context(tmp_path, env, "full", crs="L93")
     ctx.transform = lambda box, source, target: (10.0, 20.0, 60.0, 45.0)
     pipeline.run(ctx, jobs, lambda f, t: None)
-    kind, name, pixel, box, crs = env.exports[0]
+    kind, name, pixel, box, crs, _clip = env.exports[0]
     assert box == (10.0, 20.0, 60.0, 45.0) and crs == "L93" and pixel == 0.5
 
 
@@ -371,3 +371,23 @@ def test_newest_version_wins(tmp_path):
         path.parent.mkdir()
         path.write_bytes(b"x")
     assert external._newest([str(old), str(new)]) == str(new)
+
+
+def test_a_file_left_by_an_earlier_export_never_passes_for_the_new_one(tmp_path):
+    from aerotools.tools.aeroexports import pipeline
+    old = tmp_path / "SITE_260610_5cm_ortho.tif"
+    old.write_bytes(b"old export of another chunk")
+    pipeline._clear_stale(str(old))
+    assert not old.exists()
+    pipeline._clear_stale(str(old))                       # nothing there: no error
+
+
+def test_an_old_file_is_not_taken_for_a_new_export_that_wrote_nothing(tmp_path):
+    env = Env(tmp_path)
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
+    stale = tmp_path / "EDF_260704_50cm_ortho.tif"
+    stale.write_bytes(b"left by an export of another chunk")
+    env.export = lambda *args, **kwargs: (True, "")        # Metashape writes nothing (no data)
+    with pytest.raises(pipeline.Failure):
+        pipeline.run(fake_context(tmp_path, env, "full"), jobs, lambda f, t: None)
+    assert not stale.exists()
