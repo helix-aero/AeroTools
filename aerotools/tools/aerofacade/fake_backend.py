@@ -24,6 +24,7 @@ import numpy as np
 
 from . import detect as D
 from .backend import Backend, Cancelled, Progress
+from .geometry import georef_lines
 from .model import Availability, Method, assign_names, margins_for
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -579,15 +580,8 @@ class FakeBackend(Backend):
     # ---- sidecar files ---------------------------------------------------------------------------------------------
     @staticmethod
     def _write_georef(path, f, o):
-        m = o["margins"]
-        lines = ["Aero-Facade georeferencing (local east/north/up metres)", "facade: %s" % f.letter,
-                 "pixel size m: %.5f" % o["pixel"],
-                 "picture origin (top-left) in the plane: s = %.3f m, t = %.3f m" % (-m.left, f.height + m.top),
-                 "plane origin (bottom-left of the wall) E N U: %.3f %.3f %.3f" % f.origin,
-                 "u (along, to the right) E N U: %.6f %.6f %.6f" % f.u, "v (up) E N U: %.6f %.6f %.6f" % f.v,
-                 "n (toward the cameras) E N U: %.6f %.6f %.6f" % f.n, "wall length m: %.3f" % f.length, "wall height m: %.3f" % f.height]
         with open(path, "w") as fh:
-            fh.write("\n".join(lines) + "\n")
+            fh.write("\n".join(georef_lines(f, o["margins"], o["pixel"])) + "\n")
 
     @staticmethod
     def _write_dxf(path, f, o):
