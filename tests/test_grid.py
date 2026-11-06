@@ -1,4 +1,4 @@
-"""Formats et tris du tableau des marqueurs (fonctions pures de panel.py)."""
+"""Formats and sorts of the marker table (pure functions of panel.py)."""
 
 from aerotools import i18n
 from aerotools.tools.fastgcp import panel
@@ -36,7 +36,7 @@ def test_format_error_without_value_is_a_dash():
 def test_default_order_is_the_project_order():
     rows = [_row("GCP10"), _row("GCP2"), _row("GCP1")]
     assert _labels(panel.sort_rows(rows, None)) == ["GCP10", "GCP2", "GCP1"]
-    assert _labels(panel.sort_rows(rows, "inconnue", True)) == ["GCP10", "GCP2", "GCP1"]
+    assert _labels(panel.sort_rows(rows, "unknown", True)) == ["GCP10", "GCP2", "GCP1"]
 
 
 def test_sort_by_id_is_natural_both_ways():

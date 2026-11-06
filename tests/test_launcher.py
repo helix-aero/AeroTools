@@ -1,4 +1,4 @@
-"""Le modele de lanceur : dossier absent = une ligne, aucune exception."""
+"""The launcher template: missing folder = one line, no exception."""
 
 import ast
 import os

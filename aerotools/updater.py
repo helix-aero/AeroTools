@@ -1,31 +1,31 @@
-"""Mise a jour d'AeroTools depuis GitHub, sans Qt et sans Metashape.
+"""Update AeroTools from GitHub, without Qt and without Metashape.
 
-Principe
---------
-Le depot publie un `manifest.json` : pour chaque fichier utile (code, modeles, installeur, docs),
-son empreinte SHA-256 et sa taille. L'installation locale a le sien (celui de la derniere version
-telechargee). La mise a jour compare les empreintes des fichiers du disque a celles du manifeste
-distant : ce qui differe est a telecharger. Le test de la suite (tests/test_manifest.py) echoue si
-`manifest.json` n'est plus a jour, donc on ne peut pas l'oublier avant de publier.
+Principle
+---------
+The repository publishes a `manifest.json`: for each useful file (code, models, installer, docs),
+its SHA-256 digest and its size. The local installation has its own (the one of the last version
+downloaded). The update compares the digests of the files on disk with those of the remote
+manifest: what differs has to be downloaded. The test suite (tests/test_updater.py) fails if
+`manifest.json` is out of date, so it cannot be forgotten before publishing.
 
-Les fichiers texte sont compares apres normalisation des fins de ligne (CRLF -> LF) : le meme fichier
-a la meme empreinte sous Windows et sur GitHub. Les fichiers binaires (modeles, polices, images) le
-sont tels quels.
+Text files are compared after line-ending normalization (CRLF -> LF): the same file
+has the same digest on Windows and on GitHub. Binary files (models, fonts, images) are compared
+as they are.
 
-Sure par construction
----------------------
-  - tout est telecharge et verifie (empreinte + taille) dans un dossier temporaire AVANT de toucher
-    a l'installation ;
-  - les fichiers remplaces sont d'abord copies dans un dossier de sauvegarde ; si le remplacement
-    echoue en route, tout est remis comme avant ;
-  - `manifest.json` local est ecrit en dernier : tant qu'il n'a pas change, la version « installee »
-    n'a pas change ;
-  - une copie de developpement (dossier .git) n'est jamais mise a jour : on n'ecrase pas le travail.
+Safe by construction
+--------------------
+  - everything is downloaded and verified (digest + size) in a temporary folder BEFORE touching
+    the installation;
+  - replaced files are first copied to a backup folder; if the replacement
+    fails midway, everything is put back as it was;
+  - the local `manifest.json` is written last: as long as it has not changed, the "installed"
+    version has not changed;
+  - a development copy (.git folder) is never updated: work is not overwritten.
 
-Reglages caches (settings.json, section `update`) :
-  channel   branche suivie : "main" (defaut) ou "dev"
-  base_url  racine des fichiers (defaut : https://raw.githubusercontent.com/<depot>/<branche>) ;
-            sert aux tests et aux miroirs. Accepte aussi file:///...
+Hidden settings (settings.json, section `update`):
+  channel   followed branch: "main" (default) or "dev"
+  base_url  root of the files (default: https://raw.githubusercontent.com/<repo>/<branch>);
+            used by tests and mirrors. Also accepts file:///...
 """
 
 import datetime
@@ -50,22 +50,22 @@ TEXT_EXTENSIONS = {".py", ".md", ".ps1", ".bat", ".tpl", ".json", ".txt", ".yml"
 CRLF_EXTENSIONS = {".bat", ".ps1"}
 KEEP_BACKUPS = 3
 
-# Les modules enregistres : un seul pour l'instant, la mise a jour sait en gerer plusieurs.
+# The registered modules: just one for now, the updater can handle several.
 PLUGINS = [
     {"id": "aerotools", "title": "HELIX AERO TOOLS", "repo": "helix-aero/AeroTools", "root": None},
 ]
 
 
 class UpdateError(Exception):
-    """Echec lisible : le message s'affiche tel quel (journal technique, en francais)."""
+    """Readable failure: the message is shown as is (technical journal)."""
 
 
 # --------------------------------------------------------------------------
-# Modules et reglages
+# Modules and settings
 # --------------------------------------------------------------------------
 
 def plugins():
-    """Les modules gerables, avec leur racine locale (celle d'AeroTools par defaut)."""
+    """The manageable modules, with their local root (AeroTools' own by default)."""
     out = []
     for entry in PLUGINS:
         item = dict(entry)
@@ -80,7 +80,7 @@ def channel():
 
 
 def set_channel(value):
-    """Retient la branche suivie (reglage du poste). Renvoie True si l'ecriture a abouti."""
+    """Remember the followed branch (workstation setting). Returns True if the write succeeded."""
     return config.put(SECTION, "channel", value)
 
 
@@ -96,7 +96,7 @@ def file_url(plugin, path):
 
 
 def is_dev_copy(plugin):
-    """Un depot git : on ne l'ecrase pas."""
+    """A git repository: it is not overwritten."""
     return os.path.exists(os.path.join(plugin["root"], ".git"))
 
 
@@ -106,18 +106,18 @@ def is_text(path):
 
 
 # --------------------------------------------------------------------------
-# Empreintes et manifeste
+# Digests and manifest
 # --------------------------------------------------------------------------
 
 def digest_bytes(data, path=""):
-    """SHA-256 d'un contenu ; fins de ligne normalisees pour un fichier texte."""
+    """SHA-256 of a content; line endings normalized for a text file."""
     if is_text(path):
         data = data.replace(b"\r\n", b"\n")
     return hashlib.sha256(data).hexdigest()
 
 
 def digest_file(path, name=None):
-    """(sha256, taille normalisee) d'un fichier du disque."""
+    """(sha256, normalized size) of a file on disk."""
     with open(path, "rb") as handle:
         data = handle.read()
     if is_text(name or path):
@@ -132,26 +132,26 @@ def read_manifest(path):
 
 def _check_manifest(data):
     if not isinstance(data, dict) or not isinstance(data.get("files"), dict):
-        raise UpdateError("manifeste illisible")
+        raise UpdateError("unreadable manifest")
     for name, info in data["files"].items():
         if (not isinstance(info, dict) or not isinstance(info.get("sha256"), str)
                 or not isinstance(info.get("size"), int)):
-            raise UpdateError("manifeste : entree invalide pour {}".format(name))
+            raise UpdateError("manifest: invalid entry for {}".format(name))
         _safe_relative(name)
     return data
 
 
 def _safe_relative(name):
-    """Refuse un chemin qui sortirait du dossier d'installation."""
+    """Refuse a path that would leave the installation folder."""
     clean = name.replace("\\", "/")
     if (not clean or clean.startswith("/") or ".." in clean.split("/") or ":" in clean
             or os.path.isabs(name)):
-        raise UpdateError("chemin refuse dans le manifeste : {!r}".format(name))
+        raise UpdateError("path refused in the manifest: {!r}".format(name))
     return clean
 
 
 def local_manifest(plugin):
-    """Manifeste de l'installation (celui de la derniere version recue), ou None."""
+    """Manifest of the installation (the one of the last version received), or None."""
     path = os.path.join(plugin["root"], MANIFEST)
     try:
         return read_manifest(path)
@@ -169,17 +169,17 @@ def remote_manifest(plugin):
     try:
         raw = fetch(file_url(plugin, MANIFEST))
     except Exception as exc:
-        raise UpdateError("manifeste distant injoignable : {!r}".format(exc))
+        raise UpdateError("remote manifest unreachable: {!r}".format(exc))
     try:
         return _check_manifest(json.loads(raw.decode("utf-8-sig"))), raw
     except UpdateError:
         raise
     except Exception as exc:
-        raise UpdateError("manifeste distant illisible : {!r}".format(exc))
+        raise UpdateError("remote manifest unreadable: {!r}".format(exc))
 
 
 # --------------------------------------------------------------------------
-# Comparaison
+# Comparison
 # --------------------------------------------------------------------------
 
 def _local_path(plugin, name):
@@ -187,10 +187,10 @@ def _local_path(plugin, name):
 
 
 def compare(plugin, remote, local=None):
-    """Liste des changements pour passer de l'etat du disque au manifeste distant.
+    """List of changes to go from the state of the disk to the remote manifest.
 
-    Chaque element : {"path", "action": "add" | "replace" | "delete", "size"}.
-    Les suppressions ne concernent que des fichiers que l'ancien manifeste local listait."""
+    Each element: {"path", "action": "add" | "replace" | "delete", "size"}.
+    Deletions only concern files that the old local manifest listed."""
     changes = []
     for name in sorted(remote["files"]):
         info = remote["files"][name]
@@ -212,15 +212,15 @@ def compare(plugin, remote, local=None):
 
 
 def describe_time(value):
-    """Date locale lisible d'un horodatage ISO, ou "" ."""
+    """Readable local date of an ISO timestamp, or ""."""
     try:
-        return datetime.datetime.fromisoformat(value).strftime("%d/%m/%Y %H:%M")
+        return datetime.datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M")
     except (TypeError, ValueError):
         return ""
 
 
 def installed_info(plugin):
-    """{"version", "built", "updated"} de l'installation locale (vides si inconnus)."""
+    """{"version", "built", "updated"} of the local installation (empty if unknown)."""
     local = local_manifest(plugin) or {}
     state = config.get(SECTION, plugin["id"])
     updated = state.get("updated") if isinstance(state, dict) else None
@@ -229,10 +229,10 @@ def installed_info(plugin):
 
 
 def check(plugin):
-    """Etat d'un module : compare l'installation au depot. Ne leve jamais.
+    """State of a module: compares the installation with the repository. Never raises.
 
-    Renvoie {"id", "title", "state", "changes", "bytes", "remote", "message"} ou state vaut
-    "current", "update", "dev" (copie git : pas de mise a jour) ou "error"."""
+    Returns {"id", "title", "state", "changes", "bytes", "remote", "message"} where state is
+    "current", "update", "dev" (git copy: no update) or "error"."""
     result = {"id": plugin["id"], "title": plugin["title"], "state": "error", "changes": [], "bytes": 0,
               "remote": {}, "message": "", "dev": is_dev_copy(plugin)}
     try:
@@ -252,7 +252,7 @@ def check(plugin):
 
 
 # --------------------------------------------------------------------------
-# Application
+# Applying
 # --------------------------------------------------------------------------
 
 def _stage_dir(plugin):
@@ -283,11 +283,11 @@ def _check_writable(plugin):
             handle.write("x")
         os.remove(probe)
     except OSError as exc:
-        raise UpdateError("dossier d'installation non modifiable ({}) : {!r}".format(plugin["root"], exc))
+        raise UpdateError("installation folder not writable ({}): {!r}".format(plugin["root"], exc))
 
 
 def _download(plugin, name, info, target, progress, cancelled):
-    """Telecharge un fichier dans `target`, verifie taille et empreinte. Leve UpdateError."""
+    """Download a file into `target`, verify size and digest. Raises UpdateError."""
     url = file_url(plugin, name)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
@@ -295,7 +295,7 @@ def _download(plugin, name, info, target, progress, cancelled):
         with urllib.request.urlopen(request, timeout=TIMEOUT) as response, open(target, "wb") as handle:
             while True:
                 if cancelled():
-                    raise UpdateError("annule")
+                    raise UpdateError("cancelled")
                 block = response.read(CHUNK)
                 if not block:
                     break
@@ -304,14 +304,14 @@ def _download(plugin, name, info, target, progress, cancelled):
     except UpdateError:
         raise
     except Exception as exc:
-        raise UpdateError("telechargement de {} impossible : {!r}".format(name, exc))
+        raise UpdateError("download of {} failed: {!r}".format(name, exc))
     digest, size = digest_file(target, name)
     if digest != info["sha256"] or size != info["size"]:
-        raise UpdateError("{} recu abime (empreinte differente) : mise a jour interrompue".format(name))
+        raise UpdateError("{} received damaged (different digest): update interrupted".format(name))
 
 
 def _install_file(source, destination, name):
-    """Ecrit `source` sur `destination` de facon atomique ; .bat et .ps1 repassent en CRLF."""
+    """Write `source` over `destination` atomically; .bat and .ps1 go back to CRLF."""
     os.makedirs(os.path.dirname(destination), exist_ok=True)
     temp = destination + ".aeroupd"
     if os.path.splitext(name)[1].lower() in CRLF_EXTENSIONS:
@@ -325,17 +325,17 @@ def _install_file(source, destination, name):
 
 
 def apply(plugin, changes=None, progress=None, cancelled=None):
-    """Telecharge, verifie puis installe la derniere version. Renvoie {"ok", "updated", "error"}.
+    """Download, verify, then install the latest version. Returns {"ok", "updated", "error"}.
 
-    `progress(fait_octets, total_octets, texte)` est appele pendant le telechargement ;
-    `cancelled()` rend True quand l'utilisateur annule (avant la phase de remplacement). Ne leve jamais."""
+    `progress(done_bytes, total_bytes, text)` is called during the download;
+    `cancelled()` returns True when the user cancels (before the replacement phase). Never raises."""
     progress = progress or (lambda done, total, text: None)
     cancelled = cancelled or (lambda: False)
     backup = None
     done_files = []
     try:
         if is_dev_copy(plugin):
-            raise UpdateError("copie de developpement (git) : mise a jour refusee")
+            raise UpdateError("development copy (git): update refused")
         remote, raw = remote_manifest(plugin)
         local = local_manifest(plugin)
         changes = compare(plugin, remote, local)
@@ -360,10 +360,10 @@ def apply(plugin, changes=None, progress=None, cancelled=None):
             _download(plugin, change["path"], remote["files"][change["path"]],
                       os.path.join(incoming, *change["path"].split("/")), advance, cancelled)
         if cancelled():
-            raise UpdateError("annule")
+            raise UpdateError("cancelled")
         progress(total, total, "")
 
-        # Remplacement : sauvegarde de chaque fichier avant de le toucher.
+        # Replacement: back up each file before touching it.
         for change in changes:
             name = change["path"]
             destination = _local_path(plugin, name)
@@ -377,7 +377,7 @@ def apply(plugin, changes=None, progress=None, cancelled=None):
                 os.remove(destination)
             else:
                 _install_file(os.path.join(incoming, *name.split("/")), destination, name)
-        # Le manifeste local en dernier : il fait foi de la version installee.
+        # The local manifest last: it is the authority on the installed version.
         manifest_path = os.path.join(plugin["root"], MANIFEST)
         saved = None
         if os.path.isfile(manifest_path):
@@ -390,20 +390,20 @@ def apply(plugin, changes=None, progress=None, cancelled=None):
         os.replace(manifest_path + ".aeroupd", manifest_path)
         _write_state(plugin, remote)
         _prune(plugin)
-        journal.write("Mise a jour {} : {} fichier(s)".format(plugin["id"], len(changes)))
+        journal.write("Update {}: {} file(s)".format(plugin["id"], len(changes)))
         return {"ok": True, "updated": len(changes), "error": ""}
     except UpdateError as exc:
         _rollback(done_files)
-        journal.write("Mise a jour {} : {}".format(plugin["id"], exc))
+        journal.write("Update {}: {}".format(plugin["id"], exc))
         return {"ok": False, "updated": 0, "error": str(exc)}
     except Exception as exc:
         _rollback(done_files)
-        journal.write("Mise a jour {} : echec {!r}".format(plugin["id"], exc))
+        journal.write("Update {}: failed {!r}".format(plugin["id"], exc))
         return {"ok": False, "updated": 0, "error": repr(exc)}
 
 
 def _rollback(done_files):
-    """Remet les fichiers deja remplaces dans leur etat d'avant (ou retire ceux qui etaient nouveaux)."""
+    """Put the files already replaced back in their previous state (or remove the ones that were new)."""
     for destination, saved in reversed(done_files):
         try:
             if saved and os.path.isfile(saved):
@@ -422,7 +422,7 @@ def _write_state(plugin, remote):
 
 
 def verify(plugin):
-    """Apres une mise a jour : relit les fichiers du disque. Renvoie (nombre de fichiers, liste des differents)."""
+    """After an update: re-read the files on disk. Returns (number of files, list of the differing ones)."""
     manifest = local_manifest(plugin)
     if manifest is None:
         return 0, ["manifest.json"]
@@ -440,7 +440,7 @@ def verify(plugin):
 
 
 def format_size(count):
-    """12 345 678 -> « 11.8 MB » (en anglais : unites universelles)."""
+    """12345678 -> "11.8 MB"."""
     value = float(count)
     for unit in ("B", "KB", "MB", "GB"):
         if value < 1024 or unit == "GB":

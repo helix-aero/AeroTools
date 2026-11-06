@@ -1,4 +1,4 @@
-"""Mise a jour d'AeroTools : comparaison, telechargement verifie, retour arriere, manifeste a jour."""
+"""AeroTools update: comparison, verified download, rollback, up-to-date manifest."""
 
 import importlib.util
 import json
@@ -30,7 +30,7 @@ def write(root, name, data):
 
 
 def publish(root, files):
-    """Ecrit `files` et son manifeste dans `root` (le « depot »), renvoie le manifeste."""
+    """Write `files` and their manifest into `root` (the "repository"), return the manifest."""
     for name, data in files.items():
         write(root, name, data)
     write(root, "aerotools/__init__.py", '__version__ = "9.9.9"\n')
@@ -40,7 +40,7 @@ def publish(root, files):
 
 @pytest.fixture
 def world(tmp_path, local_appdata, monkeypatch):
-    """Un depot publie (file://) et une installation locale d'une version plus ancienne."""
+    """A published repository (file://) and a local installation of an older version."""
     remote = tmp_path / "remote"
     local = tmp_path / "local"
     remote.mkdir()
@@ -49,7 +49,7 @@ def world(tmp_path, local_appdata, monkeypatch):
         "aerotools/a.py": "print('a2')\n",
         "aerotools/b.py": "print('b')\n",
         "install/run.bat": "@echo off\r\necho hi\r\n",
-        "models/damier.onnx": b"\x00\x01\x02" * 1000,
+        "models/checker.onnx": b"\x00\x01\x02" * 1000,
     })
     config.put(updater.SECTION, "base_url", remote.as_uri())
     plugin = {"id": "aerotools", "title": "T", "repo": "x/y", "root": str(local)}
@@ -57,10 +57,10 @@ def world(tmp_path, local_appdata, monkeypatch):
 
 
 def install_old(world):
-    """Etat local : a.py ancien, b.py a jour, run.bat a jour en CRLF, onnx absent, un fichier obsolete."""
+    """Local state: old a.py, up-to-date b.py, up-to-date run.bat in CRLF, onnx absent, one obsolete file."""
     local = world["local"]
     write(local, "aerotools/a.py", "print('a1')\n")
-    write(local, "aerotools/b.py", "print('b')\r\n")        # CRLF local : meme empreinte que le LF distant
+    write(local, "aerotools/b.py", "print('b')\r\n")        # local CRLF: same digest as the remote LF
     write(local, "install/run.bat", "@echo off\r\necho hi\r\n")
     write(local, "aerotools/old.py", "print('gone')\n")
     write(local, "aerotools/__init__.py", '__version__ = "1.0.0"\n')
@@ -76,7 +76,7 @@ def test_compare_lists_adds_replaces_deletes_and_ignores_line_endings(world):
     remote, _raw = updater.remote_manifest(plugin)
     changes = {c["path"]: c["action"] for c in updater.compare(plugin, remote, updater.local_manifest(plugin))}
     assert changes["aerotools/a.py"] == "replace"
-    assert changes["models/damier.onnx"] == "add"
+    assert changes["models/checker.onnx"] == "add"
     assert changes["aerotools/old.py"] == "delete"
     assert "aerotools/b.py" not in changes and "install/run.bat" not in changes
 
@@ -95,15 +95,15 @@ def test_apply_installs_verifies_and_records_the_date(world):
     result = updater.apply(plugin, progress=lambda done, total, text: seen.append((done, total)))
     assert result == {"ok": True, "updated": 4, "error": ""}
     assert (local / "aerotools" / "a.py").read_text() == "print('a2')\n"
-    assert (local / "models" / "damier.onnx").stat().st_size == 3000
+    assert (local / "models" / "checker.onnx").stat().st_size == 3000
     assert not (local / "aerotools" / "old.py").exists()
-    assert seen and seen[-1][0] == seen[-1][1]                         # la progression va jusqu'au bout
+    assert seen and seen[-1][0] == seen[-1][1]                         # progress goes all the way to the end
     count, bad = updater.verify(plugin)
     assert count == 5 and bad == []
     assert updater.check(plugin)["state"] == "current"
     info = updater.installed_info(plugin)
     assert info["version"] == "9.9.9" and info["updated"]
-    assert (local / "install" / "run.bat").read_bytes() == b"@echo off\r\necho hi\r\n"     # CRLF gardees
+    assert (local / "install" / "run.bat").read_bytes() == b"@echo off\r\necho hi\r\n"     # CRLF kept
 
 
 def test_a_second_apply_does_nothing(world):
@@ -115,12 +115,12 @@ def test_a_second_apply_does_nothing(world):
 def test_a_corrupted_download_touches_nothing(world):
     install_old(world)
     local = world["local"]
-    write(world["remote"], "aerotools/a.py", "print('corrompu')\n")          # le manifeste annonce autre chose
+    write(world["remote"], "aerotools/a.py", "print('corrupted')\n")          # the manifest announces something else
     before = (local / "aerotools" / "a.py").read_text()
     result = updater.apply(world["plugin"])
-    assert result["ok"] is False and "abime" in result["error"]
+    assert result["ok"] is False and "damaged" in result["error"]
     assert (local / "aerotools" / "a.py").read_text() == before
-    assert not (local / "models" / "damier.onnx").exists()
+    assert not (local / "models" / "checker.onnx").exists()
 
 
 def test_a_failure_during_replacement_restores_the_old_files(world, monkeypatch):
@@ -132,16 +132,16 @@ def test_a_failure_during_replacement_restores_the_old_files(world, monkeypatch)
     def flaky(source, destination, name):
         calls["n"] += 1
         if calls["n"] == 2:
-            raise OSError("disque plein")
+            raise OSError("disk full")
         return real(source, destination, name)
 
     monkeypatch.setattr(updater, "_install_file", flaky)
     result = updater.apply(world["plugin"])
-    assert result["ok"] is False and "disque plein" in result["error"]
+    assert result["ok"] is False and "disk full" in result["error"]
     assert (local / "aerotools" / "a.py").read_text() == "print('a1')\n"
     assert (local / "aerotools" / "old.py").exists()
-    assert not (local / "models" / "damier.onnx").exists()
-    assert json.loads((local / "manifest.json").read_text())["files"]["aerotools/old.py"]     # manifeste d'avant
+    assert not (local / "models" / "checker.onnx").exists()
+    assert json.loads((local / "manifest.json").read_text())["files"]["aerotools/old.py"]     # manifest from before
 
 
 def test_cancel_before_replacement_leaves_the_install_alone(world):
@@ -195,10 +195,10 @@ def test_format_size():
 
 
 def test_the_published_manifest_is_up_to_date():
-    """Echoue quand on a modifie un fichier publie sans relancer install/make_manifest.py."""
+    """Fails when a published file was changed without re-running install/make_manifest.py."""
     on_disk = updater.read_manifest(os.path.join(ROOT, "manifest.json"))
     now = maker.build(ROOT)
     assert on_disk["version"] == now["version"]
     stale = sorted(name for name in set(on_disk["files"]) | set(now["files"])
                    if on_disk["files"].get(name) != now["files"].get(name))
-    assert stale == [], "lance : python install/make_manifest.py   (fichiers : {})".format(stale[:8])
+    assert stale == [], "run: python install/make_manifest.py   (files: {})".format(stale[:8])

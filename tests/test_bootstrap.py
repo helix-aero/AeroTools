@@ -9,7 +9,7 @@ from aerotools import bootstrap, config
 
 @pytest.fixture
 def boot(ms, clean_bootstrap_flags):
-    # purge_modules() vide sys.modules : on le restaure pour les autres fichiers.
+    # purge_modules() empties sys.modules: restore it for the other files.
     saved = {k: v for k, v in sys.modules.items() if k.startswith("aerotools")}
     yield bootstrap
     for key in [k for k in sys.modules if k.startswith("aerotools")]:
@@ -64,7 +64,7 @@ def test_flag_survives_module_purge(boot, ms):
 
 def test_launch_not_ready_tool_loads_nothing(boot, ms, monkeypatch):
     def forbidden(name, *args, **kwargs):
-        raise AssertionError("import inattendu : " + name)
+        raise AssertionError("unexpected import: " + name)
 
     cfg = sys.modules["aerotools.config"]
     future = {"id": "future", "menu": "Future", "title": "Future", "subtitle": "tool.fastgcp.subtitle",
@@ -77,7 +77,7 @@ def test_launch_not_ready_tool_loads_nothing(boot, ms, monkeypatch):
 
 
 def test_launch_unknown_tool(boot, ms):
-    assert boot.launch("nexiste-pas") is False
+    assert boot.launch("no-such-tool") is False
     assert "unknown tool" in ms.app.messages[0]
 
 
@@ -106,7 +106,7 @@ def test_one_off_window_is_not_reopened_by_reload(boot, ms, monkeypatch):
 
     monkeypatch.setattr(importlib, "import_module", lambda name, *a, **k: FakeTool)
     assert boot.launch("fastgcp") is True
-    assert boot.launch("fastspace") is True          # Aero-Space est une fenetre ponctuelle
+    assert boot.launch("fastspace") is True          # Aero-Space is a one-off window
     assert getattr(builtins, "_AEROTOOLS_LAST_TOOL") == "fastgcp"
     assert [entry["id"] for entry in config.TOOLS if not entry.get("reopen")] == ["fastspace", "aeroexports"]
 
@@ -114,7 +114,7 @@ def test_one_off_window_is_not_reopened_by_reload(boot, ms, monkeypatch):
 def test_reopens_only_panels(boot):
     assert boot.reopens("fastgcp") is True
     assert boot.reopens("fastspace") is False
-    assert boot.reopens("nexiste-pas") is False
+    assert boot.reopens("no-such-tool") is False
 
 
 def test_reload_ignores_a_stale_flag_left_by_an_old_version(boot, ms, monkeypatch):
@@ -123,7 +123,7 @@ def test_reload_ignores_a_stale_flag_left_by_an_old_version(boot, ms, monkeypatc
     monkeypatch.setattr(boot, "purge_modules", lambda: None)
     monkeypatch.setattr(importlib, "import_module", lambda name, *a, **k: boot)
     monkeypatch.setattr(boot, "launch", lambda tool_id, reload=False: launched.append(tool_id))
-    setattr(builtins, "_AEROTOOLS_LAST_TOOL", "fastspace")           # ce que l'ancien code y laissait
+    setattr(builtins, "_AEROTOOLS_LAST_TOOL", "fastspace")           # what the old code left there
     assert boot.reload_all() is True
     assert launched == []
     setattr(builtins, "_AEROTOOLS_LAST_TOOL", "fastgcp")
@@ -136,7 +136,7 @@ def test_reload_without_a_panel_opens_nothing(boot, ms, monkeypatch):
     monkeypatch.setattr(boot, "purge_modules", lambda: None)
     monkeypatch.setattr(importlib, "import_module",
                         lambda name, *a, **k: type("M", (), {"launch": staticmethod(lambda t: launched.append(t))}))
-    boot.launch  # le drapeau est vide : aucun outil n'a ete ouvert
+    boot.launch  # the flag is empty: no tool has been opened
     assert not hasattr(builtins, "_AEROTOOLS_LAST_TOOL")
     assert boot.reload_all() is True
     assert launched == []

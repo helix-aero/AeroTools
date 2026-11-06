@@ -1,19 +1,19 @@
-"""Acces a Qt et compatibilite PySide2 / PySide6.
+"""Qt access and PySide2 / PySide6 compatibility.
 
-Metashape 2.x embarque PySide2 (Qt5). Les versions plus recentes passent a
-PySide6 (Qt6), ou quelques API de QMouseEvent changent de nom. Tout le code
-d'AeroTools passe par ce module pour ne pas avoir a s'en soucier.
+Metashape 2.x ships PySide2 (Qt5). More recent versions move to
+PySide6 (Qt6), where a few QMouseEvent APIs change name. All AeroTools code
+goes through this module so it does not have to care.
 """
 
 try:
     from PySide2 import QtCore, QtGui, QtWidgets  # noqa: F401
     BINDING = "PySide2"
-except ImportError:  # pragma: no cover - depend de la version de Metashape
+except ImportError:  # pragma: no cover - depends on the Metashape version
     from PySide6 import QtCore, QtGui, QtWidgets  # noqa: F401
     BINDING = "PySide6"
 
 
-# QShortcut est dans QtWidgets en Qt5 (PySide2) et dans QtGui en Qt6 (PySide6).
+# QShortcut is in QtWidgets in Qt5 (PySide2) and in QtGui in Qt6 (PySide6).
 QShortcut = getattr(QtWidgets, "QShortcut", None) or getattr(QtGui, "QShortcut", None)
 
 
@@ -22,7 +22,7 @@ def app():
 
 
 def event_global_pos(event):
-    """Position globale d'un evenement souris, en QPoint, Qt5 comme Qt6."""
+    """Global position of a mouse event, as a QPoint, on Qt5 and Qt6."""
     getter = getattr(event, "globalPos", None)
     if getter is not None:
         try:
@@ -39,11 +39,11 @@ def event_global_pos(event):
 
 
 def _flag_is_set(mods, flag):
-    """True si `flag` est dans le jeu de modificateurs `mods`.
+    """True if `flag` is in the modifier set `mods`.
 
-    PySide2 : `int(mods) & int(flag)` (c'est la forme qui a toujours marche).
-    PySide6 : les modificateurs sont des enum.Flag, `int()` peut lever ; on
-    replie sur `.value`, puis sur l'operateur `&`, puis sur `in`.
+    PySide2: `int(mods) & int(flag)` (the form that has always worked).
+    PySide6: modifiers are enum.Flag, `int()` may raise; fall back
+    to `.value`, then to the `&` operator, then to `in`.
     """
     try:
         return bool(int(mods) & int(flag))
@@ -64,7 +64,7 @@ def _flag_is_set(mods, flag):
 
 
 def modifiers(event):
-    """Jeu de modificateurs de l'evenement sous forme (ctrl, shift, alt)."""
+    """The event's modifier set as (ctrl, shift, alt)."""
     try:
         mods = event.modifiers()
     except Exception:

@@ -1,7 +1,7 @@
-"""Zoom automatique de la vue photo : msapi.zoom_to_point et photos.zoom_on_marker.
+"""Automatic zoom of the photo view: msapi.zoom_to_point and photos.zoom_on_marker.
 
-Doubles propres a ce fichier : une vue photo factice (camera, center, scale,
-width, height, open) et un planificateur qui remplace QTimer.singleShot.
+Test doubles local to this file: a fake photo view (camera, center, scale,
+width, height, open) and a scheduler that replaces QTimer.singleShot.
 """
 
 import types
@@ -13,11 +13,11 @@ from aerotools.tools.fastgcp import marking, photos, session as session_mod
 
 
 # --------------------------------------------------------------------------
-# Doubles
+# Test doubles
 # --------------------------------------------------------------------------
 
 class FakeView(object):
-    """Meme surface que Metashape.app.photo_view, avec des variantes."""
+    """Same surface as Metashape.app.photo_view, with variants."""
 
     def __init__(self, ms, width=1600, height=900, camera=None, defer_open=False,
                  only_three=False, drift_on_scale=False):
@@ -55,7 +55,7 @@ class FakeView(object):
         size = getattr(value, "n", 3)
         self.center_sets.append(size)
         if self.only_three and size != 3:
-            raise TypeError("Vector de 3 composantes attendu")
+            raise TypeError("3-component Vector expected")
         self._center = value
 
     @property
@@ -71,7 +71,7 @@ class FakeView(object):
 
 
 class Sched(object):
-    """Remplace msapi._schedule : les rappels s'executent a la demande."""
+    """Replaces msapi._schedule: callbacks run on demand."""
 
     def __init__(self):
         self.queue = []
@@ -113,7 +113,7 @@ def sched(_bind):
 
 @pytest.fixture
 def world(ms):
-    """Une camera en (0,0,-10) qui regarde +Z, un marqueur en (0,0,0)."""
+    """A camera at (0,0,-10) looking towards +Z, a marker at (0,0,0)."""
     cam = ms.Camera(1, ms.Vector(0, 0, -10))
     other = ms.Camera(2, ms.Vector(0, 0, -20))
     marker = ms.Marker("GCP1", position=ms.Vector(0, 0, 0))
@@ -125,7 +125,7 @@ def world(ms):
 
 
 def _zoom_lines():
-    return [line for line in journal.lines() if "zoom : centre=" in line]
+    return [line for line in journal.lines() if "zoom: center=" in line]
 
 
 def _state(**extra):
@@ -139,15 +139,15 @@ def _state(**extra):
 
 
 # --------------------------------------------------------------------------
-# Echelle
+# Scale
 # --------------------------------------------------------------------------
 
 def test_scale_is_view_width_over_window(world):
     _chunk, _marker, cam, _other, view = world
     assert msapi.zoom_scale(cam, 400) == pytest.approx(4.0)     # 1600 / 400
     assert msapi.zoom_scale(cam, 800) == pytest.approx(2.0)
-    assert msapi.zoom_scale(cam, None) == pytest.approx(4.0)    # defaut 400
-    assert msapi.zoom_scale(cam, "n'importe quoi") == pytest.approx(4.0)
+    assert msapi.zoom_scale(cam, None) == pytest.approx(4.0)    # default 400
+    assert msapi.zoom_scale(cam, "anything") == pytest.approx(4.0)
 
 
 def test_scale_is_bounded_by_fit_and_max(world):
@@ -156,7 +156,7 @@ def test_scale_is_bounded_by_fit_and_max(world):
     assert msapi.zoom_scale(cam, 400) == msapi.ZOOM_MAX_SCALE   # 20 -> 16
     view.width, view.height = 1000, 500
     fit = min(1000 / 4000.0, 500 / 3000.0)
-    assert msapi.zoom_scale(cam, 100000) == pytest.approx(fit)  # pas moins que l'ajuste
+    assert msapi.zoom_scale(cam, 100000) == pytest.approx(fit)  # not less than the fit scale
 
 
 def test_scale_falls_back_when_view_width_unknown(world):
@@ -168,20 +168,20 @@ def test_scale_falls_back_when_view_width_unknown(world):
 
 
 # --------------------------------------------------------------------------
-# Point d'ancrage
+# Anchor point
 # --------------------------------------------------------------------------
 
 def test_anchor_uses_existing_projection(ms, world):
     chunk, marker, cam, _other, _view = world
     marker.projections[cam] = ms.Marker.Projection(ms.Vector(1200.0, 800.0), True)
     anchor, how = msapi.marker_anchor(chunk, marker, cam)
-    assert anchor == (1200.0, 800.0) and how == "pointee"
+    assert anchor == (1200.0, 800.0) and how == "placed"
 
 
 def test_anchor_falls_back_to_estimated_position(world):
     chunk, marker, cam, _other, _view = world
     anchor, how = msapi.marker_anchor(chunk, marker, cam)
-    assert how == "estimee"
+    assert how == "estimated"
     assert anchor == pytest.approx((2000.0, 1500.0))
 
 
@@ -189,15 +189,15 @@ def test_anchor_none_when_outside_image(ms, world):
     chunk, marker, cam, _other, _view = world
     marker.position = ms.Vector(50, 0, 0)       # x = 2000 + 1000 * 50 / 10 = 7000
     anchor, how = msapi.marker_anchor(chunk, marker, cam)
-    assert anchor is None and "hors image" in how
+    assert anchor is None and "outside the image" in how
     marker.projections[cam] = ms.Marker.Projection(ms.Vector(-5.0, 10.0), True)
     anchor, how = msapi.marker_anchor(chunk, marker, cam)
-    assert anchor is None and "hors image" in how
+    assert anchor is None and "outside the image" in how
 
 
 def test_anchor_none_without_data(ms, world):
     chunk, marker, cam, _other, _view = world
-    behind = ms.Camera(3, ms.Vector(0, 0, 10))              # regarde +Z, point derriere
+    behind = ms.Camera(3, ms.Vector(0, 0, 10))              # looks towards +Z, point behind
     assert msapi.marker_anchor(chunk, marker, behind)[0] is None
     unaligned = ms.Camera(4, ms.Vector(0, 0, -5), aligned=False)
     assert msapi.marker_anchor(chunk, marker, unaligned)[0] is None
@@ -213,7 +213,7 @@ def test_zoom_sets_center_then_scale_and_logs_once(world, sched):
     _chunk, _marker, cam, _other, view = world
     done = []
     assert msapi.zoom_to_point(cam, 1200.0, 800.0, window_px=400, on_done=done.append)
-    assert view.center_sets == []                       # differe
+    assert view.center_sets == []                       # deferred
     assert sched.queue[0][0] == 60
     sched.run_all()
     assert (view.center.x, view.center.y) == (1200.0, 800.0)
@@ -221,10 +221,10 @@ def test_zoom_sets_center_then_scale_and_logs_once(world, sched):
     assert view.scale == pytest.approx(4.0)
     assert done == [True]
     assert len(_zoom_lines()) == 1
-    assert "lu=" in _zoom_lines()[0]
+    assert "read=" in _zoom_lines()[0]
     msapi.zoom_to_point(cam, 100.0, 100.0)
     sched.run_all()
-    assert len(_zoom_lines()) == 1                      # une seule ligne detaillee
+    assert len(_zoom_lines()) == 1                      # only one detailed line
 
 
 def test_zoom_explicit_scale_is_used_as_is(world, sched):
@@ -248,20 +248,20 @@ def test_zoom_reapplies_center_when_scale_moves_it(world, sched):
     view.drift_on_scale = True
     msapi.zoom_to_point(cam, 700.0, 600.0)
     sched.run_all()
-    assert view.center_sets == [2, 2]       # une seconde pose apres l'echelle
+    assert view.center_sets == [2, 2]       # a second set after the scale
 
 
 def test_zoom_waits_for_the_photo_then_retries_once(world, sched):
     _chunk, _marker, cam, other, view = world
     view.defer_open = True
-    view.open(other)                        # ouverture pas encore terminee
+    view.open(other)                        # opening not finished yet
     done = []
     msapi.zoom_to_point(other, 900.0, 700.0, on_done=done.append)
-    sched.run_one()                         # 1re tentative : la vue montre encore cam
+    sched.run_one()                         # 1st attempt: the view still shows cam
     assert view.center_sets == [] and done == []
     assert sched.queue[0][0] == 150
     view.finish_open()
-    sched.run_all()                         # 2e tentative : bonne photo
+    sched.run_all()                         # 2nd attempt: right photo
     assert (view.center.x, view.center.y) == (900.0, 700.0)
     assert done == [True]
 
@@ -269,11 +269,11 @@ def test_zoom_waits_for_the_photo_then_retries_once(world, sched):
 def test_zoom_gives_up_when_photo_never_opens(world, sched):
     _chunk, _marker, cam, other, view = world
     done = []
-    msapi.zoom_to_point(other, 900.0, 700.0, on_done=done.append)   # la vue reste sur cam
+    msapi.zoom_to_point(other, 900.0, 700.0, on_done=done.append)   # the view stays on cam
     sched.run_all()
     assert view.center_sets == [] and view.scale_sets == []
     assert done == [False]
-    assert sched.queue == []                # pas de troisieme essai
+    assert sched.queue == []                # no third try
 
 
 def test_zoom_without_view_or_with_bad_input_never_raises(ms, world, sched):
@@ -291,7 +291,7 @@ def test_zoom_guard_cancels_at_apply_time(world, sched):
     flag = [True]
     done = []
     msapi.zoom_to_point(cam, 700.0, 600.0, guard=lambda: flag[0], on_done=done.append)
-    flag[0] = False                          # mise en pause entre-temps
+    flag[0] = False                          # paused in the meantime
     sched.run_all()
     assert view.center_sets == [] and done == [False]
 
@@ -302,7 +302,7 @@ def test_zoom_survives_unreadable_view(ms, world, sched):
     class Broken(FakeView):
         @property
         def scale(self):
-            raise RuntimeError("illisible")
+            raise RuntimeError("unreadable")
 
         @scale.setter
         def scale(self, value):
@@ -312,7 +312,7 @@ def test_zoom_survives_unreadable_view(ms, world, sched):
     ms.app.photo_view = broken
     done = []
     assert msapi.zoom_to_point(cam, 700.0, 600.0, on_done=done.append)
-    sched.run_all()                          # ne leve pas
+    sched.run_all()                          # does not raise
     assert done and done[0] in (True, False)
 
 
@@ -350,14 +350,14 @@ def test_zoom_on_marker_does_not_override_manual_zoom(world, sched):
     state = _state()
     photos.zoom_on_marker(state, marker)
     sched.run_all()
-    view.scale = 9.0                                   # l'operateur zoome a la main
+    view.scale = 9.0                                   # the operator zooms by hand
     sets = len(view.scale_sets)
     assert photos.zoom_on_marker(state, marker) is False
     sched.run_all()
     assert view.scale == 9.0 and len(view.scale_sets) == sets
     assert photos.zoom_on_marker(state, marker, force=True) is True
     sched.run_all()
-    assert view.scale == 9.0 and len(view.scale_sets) == sets   # recentre, echelle gardee
+    assert view.scale == 9.0 and len(view.scale_sets) == sets   # recentered, scale kept
 
 
 def test_zoom_on_marker_new_marker_on_same_photo_zooms(ms, world, sched):
@@ -386,7 +386,7 @@ def test_zoom_on_marker_paused_between_schedule_and_apply(world, sched):
     state.enabled = False
     sched.run_all()
     assert view.center_sets == []
-    assert state.zoomed == []                # pas memorise : rien n'a ete fait
+    assert state.zoomed == []                # not remembered: nothing was done
 
 
 def test_zoom_on_marker_out_of_image_leaves_view_untouched(ms, world, sched):
@@ -396,7 +396,7 @@ def test_zoom_on_marker_out_of_image_leaves_view_untouched(ms, world, sched):
     assert photos.zoom_on_marker(_state(), marker) is False
     sched.run_all()
     assert (view.center.x, view.center.y, view.scale) == before
-    assert any("pas de zoom" in line for line in journal.lines()[-3:])
+    assert any("no zoom on" in line for line in journal.lines()[-3:])
 
 
 def test_zoom_on_marker_without_open_photo_or_view(ms, world, sched):
@@ -411,9 +411,9 @@ def test_zoom_on_marker_without_open_photo_or_view(ms, world, sched):
 def test_zoom_on_marker_forgets_pair_when_zoom_fails(world, sched):
     _chunk, marker, cam, other, view = world
     state = _state()
-    assert photos.zoom_on_marker(state, marker, other) is True   # la vue reste sur cam
+    assert photos.zoom_on_marker(state, marker, other) is True   # the view stays on cam
     sched.run_all()
-    assert state.zoomed == []                # abandon : pas de zoom memorise
+    assert state.zoomed == []                # abandoned: no zoom remembered
 
 
 def test_zoom_memory_is_bounded(ms, world, sched):
@@ -428,7 +428,7 @@ def test_zoom_memory_is_bounded(ms, world, sched):
 
 
 # --------------------------------------------------------------------------
-# Integration : photo suivante, choix d'un marqueur, annulation
+# Integration: next photo, marker choice, undo
 # --------------------------------------------------------------------------
 
 def test_advance_opens_next_photo_then_zooms(ms, world, sched):
@@ -438,7 +438,7 @@ def test_advance_opens_next_photo_then_zooms(ms, world, sched):
     photos._advance(state, marker, cam.key)
     assert view.opened == [other]
     sched.run_all()
-    # photo `other` en (0,0,-20) : le point (0,0,0) se projette au centre aussi
+    # photo `other` at (0,0,-20): the point (0,0,0) also projects to the center
     assert (view.center.x, view.center.y) == pytest.approx((2000.0, 1500.0))
     assert view.scale == pytest.approx(4.0)
     assert (2, "GCP1") in state.zoomed
@@ -450,7 +450,7 @@ def test_advance_zoom_waits_for_async_open(ms, world, sched):
     state = _state(active_marker=marker)
     marker.projections[cam] = ms.Marker.Projection(ms.Vector(2000.0, 1500.0), True)
     photos._advance(state, marker, cam.key)
-    sched.run_one()                          # la photo n'est pas encore la
+    sched.run_one()                          # the photo is not there yet
     assert view.scale_sets == []
     view.finish_open()
     sched.run_all()
@@ -471,18 +471,18 @@ def test_filter_for_marker_zooms_the_open_photo(ms, world, sched):
     sched.run_all()
     assert view.scale == pytest.approx(4.0)
     assert (1, "GCP1") in state.zoomed
-    view.scale = 9.0                                       # l'operateur a zoome a la main
+    view.scale = 9.0                                       # the operator zoomed by hand
     sets = len(view.scale_sets)
-    photos.filter_for_marker(state, marker, force=True)   # re-clic sur le meme marqueur
+    photos.filter_for_marker(state, marker, force=True)   # click again on the same marker
     sched.run_all()
-    assert len(view.scale_sets) == sets                    # le zoom de l'operateur est garde
+    assert len(view.scale_sets) == sets                    # the operator's zoom is kept
     assert view.scale == 9.0
 
 
 def test_undo_reopens_photo_and_zooms(ms, world, sched):
     chunk, marker, cam, other, view = world
     state = _state(active_marker=marker)
-    view.camera = other                      # on est sur la photo suivante
+    view.camera = other                      # we are on the next photo
     marker.projections[cam] = ms.Marker.Projection(ms.Vector(1500.0, 1000.0), True)
     marking.history.clear()
     marking.history.push(marker, cam, (1500.0, 1000.0, True),
@@ -497,19 +497,19 @@ def test_undo_reopens_photo_and_zooms(ms, world, sched):
 def test_undo_keeps_zoom_when_photo_already_on_screen(ms, world, sched):
     chunk, marker, cam, other, view = world
     state = _state(active_marker=marker)
-    state.zoomed.append((cam.key, "GCP1"))   # deja zoomee pour ce marqueur
+    state.zoomed.append((cam.key, "GCP1"))   # already zoomed for this marker
     marker.projections[cam] = ms.Marker.Projection(ms.Vector(1500.0, 1000.0), True)
     marking.history.clear()
     marking.history.push(marker, cam, (1500.0, 1000.0, True),
                          chunk_key=chunk.key, label="GCP1", camera_name=cam.label)
-    view.scale = 7.0                         # zoom manuel sur la photo ouverte
+    view.scale = 7.0                         # manual zoom on the open photo
     assert marking.undo_last(state) is True
     sched.run_all()
     assert view.scale == 7.0
 
 
 # --------------------------------------------------------------------------
-# image_coords_at reste juste apres un zoom
+# image_coords_at stays correct after a zoom
 # --------------------------------------------------------------------------
 
 class _Point(object):
@@ -524,7 +524,7 @@ class _Point(object):
 
 
 class _Widget(object):
-    """Widget de la taille de la vue : mapFromGlobal(pos) = pos (tuple)."""
+    """Widget the size of the view: mapFromGlobal(pos) = pos (tuple)."""
 
     def __init__(self, width, height):
         self._w, self._h = width, height
@@ -543,18 +543,18 @@ def test_image_coords_follow_center_and_scale_after_zoom(world, sched, monkeypat
     _chunk, marker, cam, _other, view = world
     monkeypatch.setattr(msapi, "photo_view_widgets",
                         lambda: [_Widget(view.width, view.height)])
-    # Avant zoom : echelle 0.4, centre (2000, 1500). Le milieu de la vue = le centre.
+    # Before zoom: scale 0.4, center (2000, 1500). The middle of the view = the center.
     coords, _ = msapi.image_coords_at((800, 450))
     assert coords == pytest.approx((2000.0, 1500.0))
 
-    msapi.zoom_to_point(cam, 1200.0, 800.0)          # echelle 4.0
+    msapi.zoom_to_point(cam, 1200.0, 800.0)          # scale 4.0
     sched.run_all()
     middle, _ = msapi.image_coords_at((800, 450))
-    assert middle == pytest.approx((1200.0, 800.0))   # clic au milieu = ancre
-    # 100 px ecran a droite et 40 en bas = 25 px et 10 px image.
+    assert middle == pytest.approx((1200.0, 800.0))   # click in the middle = anchor
+    # 100 screen px to the right and 40 down = 25 px and 10 px of image.
     shifted, _ = msapi.image_coords_at((900, 490))
     assert shifted == pytest.approx((1225.0, 810.0))
-    # Le bord gauche de la vue montre 800 / 4 = 200 px image a gauche du centre.
+    # The left edge of the view shows 800 / 4 = 200 image px to the left of the center.
     edge, _ = msapi.image_coords_at((0, 450))
     assert edge == pytest.approx((1000.0, 800.0))
 
@@ -565,11 +565,11 @@ def test_image_coords_reject_unreadable_scale(world, monkeypatch):
                         lambda: [_Widget(view.width, view.height)])
     view._scale = 0.0
     coords, reason = msapi.image_coords_at((800, 450))
-    assert coords is None and "echelle" in reason
+    assert coords is None and "scale" in reason
 
 
 # --------------------------------------------------------------------------
-# Reglage cache
+# Hidden setting
 # --------------------------------------------------------------------------
 
 def test_session_reads_hidden_zoom_setting(local_appdata):
@@ -582,14 +582,17 @@ def test_session_reads_hidden_zoom_setting(local_appdata):
     assert session_mod.Session().zoom_px == 400.0
     os.makedirs(config.settings_dir(), exist_ok=True)
     with open(config.settings_path(), "w", encoding="utf-8") as handle:
-        json.dump({"fastgcp": {"zoom_fenetre_px": 250}}, handle)
+        json.dump({"fastgcp": {"zoom_window_px": 250}}, handle)
     assert session_mod.Session().zoom_px == 250.0
     with open(config.settings_path(), "w", encoding="utf-8") as handle:
-        json.dump({"fastgcp": {"zoom_fenetre_px": "beaucoup", "zoom_px": 600}}, handle)
+        json.dump({"fastgcp": {"zoom_window_px": "a lot", "zoom_px": 600}}, handle)
     assert session_mod.Session().zoom_px == 600.0           # alias
     with open(config.settings_path(), "w", encoding="utf-8") as handle:
-        json.dump({"fastgcp": {"zoom_fenetre_px": 3}}, handle)
-    assert session_mod.Session().zoom_px == 400.0           # hors bornes : defaut
+        json.dump({"fastgcp": {"zoom_window_px": 3}}, handle)
+    assert session_mod.Session().zoom_px == 400.0           # out of bounds: default
+    with open(config.settings_path(), "w", encoding="utf-8") as handle:
+        json.dump({"fastgcp": {"zoom_fenetre_px": 300}}, handle)
+    assert session_mod.Session().zoom_px == 300.0           # key written by earlier versions
     session_mod.reset()
 
 
@@ -605,17 +608,17 @@ def test_session_options_unchanged_by_zoom_setting(local_appdata):
 
 def test_zoom_keeps_the_operator_scale_and_only_recenters(world, sched):
     _chunk, _marker, cam, _other, view = world
-    view._scale = 9.0                      # bien au-dessus de l'ajuste (0.3)
+    view._scale = 9.0                      # well above the fit scale (0.3)
     msapi.zoom_to_point(cam, 1200.0, 800.0, window_px=400)
     sched.run_all()
     assert (view.center.x, view.center.y) == (1200.0, 800.0)
     assert view.scale_sets == [] and view.scale == 9.0
-    assert "echelle de l'operateur gardee" in _zoom_lines()[-1]
+    assert "operator scale kept" in _zoom_lines()[-1]
 
 
 def test_zoom_applies_its_scale_on_a_view_that_is_still_fitted(world, sched):
     _chunk, _marker, cam, _other, view = world
-    view._scale = 0.3                      # photo entiere dans la fenetre
+    view._scale = 0.3                      # whole photo in the window
     msapi.zoom_to_point(cam, 1200.0, 800.0, window_px=400)
     sched.run_all()
     assert view.scale == pytest.approx(4.0)

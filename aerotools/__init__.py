@@ -1,13 +1,13 @@
-"""AeroTools - suite d'outils HELIX AERO pour Agisoft Metashape.
+"""AeroTools - HELIX AERO tool suite for Agisoft Metashape.
 
-Le menu « Aero » est pose au demarrage de Metashape par aerotools.bootstrap,
-appele depuis un lanceur minuscule installe sur chaque poste
+The "Aero" menu is installed when Metashape starts, by aerotools.bootstrap,
+called from a tiny launcher installed on each workstation
 (%LOCALAPPDATA%\\Agisoft\\Metashape Pro\\scripts\\aerotools_launcher.py).
-Tout le reste du code vit sur le serveur, partage par les deux postes.
+All the rest of the code lives on the server, shared by both workstations.
 
-Outils :
-  - fastgcp : pointage manuel assiste des GCP (le premier outil).
-  - aigcp    : detection automatique des cibles (a venir, voir detection.py).
+Tools:
+  - fastgcp : assisted manual picking of GCPs (the first tool).
+  - aigcp    : automatic target detection (upcoming, see detection.py).
 """
 
 __version__ = "0.2.0"

@@ -1,4 +1,4 @@
-"""Faux modules Metashape et PySide2 pour tester la logique pure d'AeroTools."""
+"""Fake Metashape and PySide2 modules to test the pure logic of AeroTools."""
 
 import builtins
 import os
@@ -43,13 +43,13 @@ def _real_settings_untouched():
 
 @pytest.fixture(autouse=True)
 def _journal_log_in_tmp(tmp_path_factory, monkeypatch):
-    """Les tests n'ecrivent jamais dans le vrai aerotools.log du poste."""
+    """Tests never write to the workstation's real aerotools.log."""
     from aerotools import journal
     monkeypatch.setattr(journal, "log_path", lambda: str(tmp_path_factory.getbasetemp() / "aerotools.log"))
 
 
 # --------------------------------------------------------------------------
-# Faux Metashape
+# Fake Metashape
 # --------------------------------------------------------------------------
 
 class Vector(object):
@@ -92,7 +92,7 @@ class Marker(object):
 
 
 class _CamTransform(object):
-    """Camera regardant vers +Z (sign=1) ou -Z (sign=-1) depuis `origin`."""
+    """Camera looking towards +Z (sign=1) or -Z (sign=-1) from `origin`."""
 
     def __init__(self, origin, sign):
         self.origin, self.sign = origin, sign
@@ -152,7 +152,7 @@ class Chunk(object):
 class FakeApp(object):
     def __init__(self):
         self.menu_items = []
-        self.menu_order = []            # entrees et traits dans l'ordre : ("item", label) ou ("separator", menu)
+        self.menu_order = []            # entries and separators in order: ("item", label) or ("separator", menu)
         self.messages = []
         self.document = types.SimpleNamespace(chunk=None)
         self.photo_view = None
@@ -183,7 +183,7 @@ def _install_fake_metashape():
 
 
 # --------------------------------------------------------------------------
-# Faux PySide2 (juste de quoi importer aerotools.qt et aerotools.msapi)
+# Fake PySide2 (just enough to import aerotools.qt and aerotools.msapi)
 # --------------------------------------------------------------------------
 
 class _Anything(object):
@@ -217,8 +217,8 @@ class QApplication(_Anything):
 
 
 class _FakeQtModule(types.ModuleType):
-    """Module Qt factice : tout nom inconnu devient une classe vide, ce qui
-    suffit pour importer panel.py (ses classes heritent de widgets Qt)."""
+    """Fake Qt module: any unknown name becomes an empty class, which
+    is enough to import panel.py (its classes inherit from Qt widgets)."""
 
     def __getattr__(self, name):
         if name.startswith("__"):
@@ -253,9 +253,9 @@ _install_fake_metashape()
 
 @pytest.fixture
 def ms():
-    """Faux module Metashape remis a neuf pour chaque test."""
+    """Fake Metashape module renewed for each test."""
     mod = _install_fake_metashape()
-    # msapi garde une reference au module : on la met a jour s'il est deja charge.
+    # msapi keeps a reference to the module: update it if it is already loaded.
     if "aerotools.msapi" in sys.modules:
         sys.modules["aerotools.msapi"].Metashape = mod
     return mod
@@ -263,7 +263,7 @@ def ms():
 
 @pytest.fixture
 def local_appdata(tmp_path, monkeypatch):
-    """Redirige les reglages du poste vers un dossier temporaire."""
+    """Redirect the workstation settings to a temporary folder."""
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     return tmp_path
 

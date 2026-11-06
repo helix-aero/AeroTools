@@ -1,12 +1,12 @@
-"""Fenetre « Mises a jour » (Qt) : les modules installes, leur date, ce qui est disponible.
+"""Updates window (Qt): the installed modules, their date, what is available.
 
-Une ligne par module installe (aujourd'hui : un seul) avec sa version, la date de la derniere
-mise a jour recue, et ce que le depot propose (nombre de fichiers et poids a telecharger). Un bouton
-« Mettre a jour » a droite de chaque ligne ; en bas a droite, « Tout mettre a jour ».
+One row per installed module (today: just one) with its version, the date of the last
+update received, and what the repository offers (number of files and download size). An
+"Update" button to the right of each row; at the bottom right, "Update all".
 
-Le travail (reseau, disque) se fait dans un fil a part ; la fenetre le suit par un minuteur, reste
-utilisable et dit de ne pas la fermer pendant une mise a jour. A la fin les fichiers sont relus et
-verifies, puis a la fermeture AeroTools recharge son code (sans redemarrer Metashape).
+The work (network, disk) runs in a separate thread; the window follows it with a timer, stays
+usable and says not to close it during an update. At the end the files are re-read and
+verified, then on close AeroTools reloads its code (without restarting Metashape).
 """
 
 import functools
@@ -22,7 +22,7 @@ MARKS = {"ok": ("\u2713", theme.GREEN_BRIGHT), "error": ("\u2715", theme.ORANGE_
 
 
 class _Mark(QtWidgets.QLabel):
-    """Petite coche verte (reussite) ou croix orange (echec) devant un texte d'etat."""
+    """Small green tick (success) or orange cross (failure) in front of a status text."""
 
     def __init__(self, size=16):
         super(_Mark, self).__init__()
@@ -40,7 +40,7 @@ class _Mark(QtWidgets.QLabel):
 
 
 class _Worker(threading.Thread):
-    """Execute `job(worker)` hors du fil Qt ; `progress` et `result` se lisent depuis la fenetre."""
+    """Run `job(worker)` outside the Qt thread; `progress` and `result` are read from the window."""
 
     def __init__(self, job):
         super(_Worker, self).__init__(daemon=True)
@@ -59,7 +59,7 @@ class _Worker(threading.Thread):
 
 
 class _Row(object):
-    """Les widgets d'un module."""
+    """The widgets of one module."""
 
     def __init__(self, plugin, on_update):
         self.plugin = plugin
@@ -93,7 +93,7 @@ class _Row(object):
         outer.addWidget(self.button, 0, QtCore.Qt.AlignVCenter)
 
     def set_status(self, text, kind=None):
-        """Texte d'etat ; `kind` : "ok" (coche verte), "error" (croix orange) ou rien."""
+        """Status text; `kind`: "ok" (green tick), "error" (orange cross) or nothing."""
         self.status.setText(text)
         self.mark.show_kind(kind)
 
@@ -152,7 +152,7 @@ class UpdateDialog(QtWidgets.QDialog):
             self.channel.addItem(i18n.t(key), value)
         current = updater.channel()
         if self.channel.findData(current) < 0:
-            self.channel.addItem(current, current)       # branche saisie a la main dans settings.json
+            self.channel.addItem(current, current)       # branch typed by hand in settings.json
         self.channel.setCurrentIndex(self.channel.findData(current))
         self.channel.activated.connect(lambda _index: self._on_channel())
         buttons.addWidget(self.channel)
@@ -168,7 +168,7 @@ class UpdateDialog(QtWidgets.QDialog):
         self._update_buttons()
         QtCore.QTimer.singleShot(0, self._start_check)
 
-    # -- etat des boutons --------------------------------------------------------
+    # -- button state --------------------------------------------------------
 
     def _busy(self):
         return self._worker is not None
@@ -209,15 +209,15 @@ class UpdateDialog(QtWidgets.QDialog):
         else:
             row.set_status(i18n.t("update.status_error", message=result.get("message", "")), "error")
 
-    # -- verification ------------------------------------------------------------
+    # -- checking ------------------------------------------------------------
 
     def _on_channel(self):
-        """Branche stable ou dev : on retient le choix puis on verifie tout de suite sur cette branche."""
+        """Stable or dev branch: remember the choice, then check right away on that branch."""
         value = self.channel.currentData()
         if self._busy() or not value or value == updater.channel():
             return
         updater.set_channel(value)
-        journal.write("Mises a jour : branche suivie = {}".format(value))
+        journal.write("Updates: followed branch = {}".format(value))
         self._results.clear()
         self._update_buttons()
         self._start_check()
@@ -243,7 +243,7 @@ class UpdateDialog(QtWidgets.QDialog):
         if not self._available():
             self._set_footer("")
 
-    # -- mise a jour -------------------------------------------------------------
+    # -- update -------------------------------------------------------------
 
     def _on_update_one(self, pid):
         self._start_update([pid])
@@ -299,7 +299,7 @@ class UpdateDialog(QtWidgets.QDialog):
             self._results[pid] = {"state": "current", "changes": [], "bytes": 0}
         self._set_footer(i18n.t("update.finished") if self.updated and not problems else "", "ok")
 
-    # -- fil de travail ----------------------------------------------------------
+    # -- worker thread ----------------------------------------------------------
 
     def _launch(self, job, when_done):
         self._worker = _Worker(job)
@@ -332,10 +332,10 @@ class UpdateDialog(QtWidgets.QDialog):
         try:
             self._when_done(worker.result)
         except Exception as exc:
-            journal.write("Mises a jour : affichage : {!r}".format(exc))
+            journal.write("Updates: display: {!r}".format(exc))
         self._update_buttons()
 
-    # -- vie de la fenetre -------------------------------------------------------
+    # -- window life -------------------------------------------------------
 
     def closeEvent(self, event):
         if self._busy():
@@ -349,14 +349,14 @@ class UpdateDialog(QtWidgets.QDialog):
 
 
 def show(parent=None):
-    """Ouvre la fenetre (modale). Renvoie True si une mise a jour a ete installee."""
+    """Open the (modal) window. Returns True if an update was installed."""
     dialog = UpdateDialog(parent)
     ui.run(dialog)
     return dialog.updated
 
 
 def open_and_reload(parent=None):
-    """Ouvre la fenetre ; si du code a change, recharge AeroTools (comme « Recharger AeroTools »)."""
+    """Open the window; if code changed, reload AeroTools (like "Reload AeroTools")."""
     updated = show(parent)
     if updated:
         from . import bootstrap

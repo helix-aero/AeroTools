@@ -1,4 +1,4 @@
-"""Tout le code du paquet doit se parser en Python 3.9 (Python embarque de Metashape)."""
+"""All the package code must parse as Python 3.9 (Metashape's embedded Python)."""
 
 import ast
 import os
