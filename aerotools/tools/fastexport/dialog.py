@@ -850,8 +850,6 @@ class ExportDialog(QtWidgets.QDialog):
                 lines.append(i18n.t("export.check_bad", names=", ".join(result.check["failed"])))
             elif result.check["images"]:
                 lines.append(i18n.t("export.check_ok", n=result.check["images"]))
-        if "dem_image" in result.warnings:
-            lines.append(i18n.t("export.warn_dem_image"))
         return ("\n" + "\n".join(lines)) if lines else ""
 
     def _finish(self, text, kind):

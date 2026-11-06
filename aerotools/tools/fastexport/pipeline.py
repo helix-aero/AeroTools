@@ -14,7 +14,7 @@ import os
 import shutil
 import tempfile
 
-from . import crs, dxfout, external, geotiff, naming, plan, projtool, tiling, vertical
+from . import crs, dxfout, external, geotiff, naming, plan, projtool, relief, tiling, vertical
 
 TMP_NAME = ".fastexport_tmp"
 
@@ -239,12 +239,8 @@ def _to_altitude(ctx, raw, sub):
 def _dem_image(ctx, job, dem_tif, token, work, date_text, pixel_text, result, images):
     """Image de visualisation du MNT (relief colore) pour le DXF."""
     extra = job.extra
-    if not ctx.tools.get("gdal"):
-        if "dem_image" not in result.warnings:
-            result.warnings.append("dem_image")
-        return
     view_tif = os.path.join(work, os.path.splitext(os.path.basename(dem_tif))[0] + "_view.tif")
-    ok, message = external.dem_view(ctx.tools["gdal"], dem_tif, view_tif, tick=ctx.tick)
+    ok, message = relief.render(dem_tif, view_tif, tick=ctx.tick)
     _drop_sidecar(dem_tif)
     if not ok:
         raise Failure(message)

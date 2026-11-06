@@ -708,5 +708,4 @@ TEXTES = {
     "export.exists_note": "{n} fichier(s) existent déjà : on vous le demandera.",
     "export.check_ok": "AutoCAD a ouvert le dessin : {n} image(s) se chargent bien.",
     "export.check_bad": "AutoCAD n'a pas pu charger : {names}",
-    "export.warn_dem_image": "Pas d'image du MNT dans le dessin : il faut QGIS (GDAL). Le GeoTIFF du MNT est écrit.",
 }

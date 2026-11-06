@@ -702,5 +702,4 @@ TEXTES = {
     "export.exists_note": "{n} file(s) already exist: you will be asked.",
     "export.check_ok": "AutoCAD opened the drawing: {n} image(s) load correctly.",
     "export.check_bad": "AutoCAD could not load: {names}",
-    "export.warn_dem_image": "No DEM image in the drawing: it needs QGIS (GDAL). The DEM GeoTIFF was written.",
 }

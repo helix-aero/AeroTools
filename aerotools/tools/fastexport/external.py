@@ -208,31 +208,6 @@ def to_jp2_gm(gm_exe, src, dst, ratio=JP2_GM_RATIO, tick=None):
     return _run_gm(gm_exe, "\n".join(lines) + "\n", dst, tick)
 
 
-def dem_view(gdal_dir, dem_tif, out_tif, tick=None):
-    """MNT flottant -> image RVB en relief colore (gdaldem color-relief, rampe en pourcentages de l'amplitude).
-
-    Les pixels sans donnee deviennent blancs. C'est l'image que le DXF affiche dans le calque MNT."""
-    ramp = os.path.join(os.path.dirname(out_tif), "ramp_%d.txt" % os.getpid())
-    with open(ramp, "w") as handle:
-        handle.write("nv 255 255 255\n0% 46 117 71\n25% 160 190 92\n50% 236 218 128\n75% 188 120 72\n100% 246 246 246\n")
-    command = [os.path.join(gdal_dir, "gdaldem.exe"), "color-relief", "-q", "-of", "GTiff", "-co", "COMPRESS=LZW", dem_tif, ramp,
-               out_tif]
-    try:
-        process = subprocess.Popen(command, env=gdal_env(gdal_dir), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   creationflags=NO_WINDOW)
-        finished = _wait(process, GM_TIMEOUT_S, tick)
-    except OSError as exc:
-        return False, "GDAL : %s" % exc
-    finally:
-        try:
-            os.remove(ramp)
-        except OSError:
-            pass
-    if not finished or process.returncode != 0 or not os.path.isfile(out_tif):
-        return False, "GDAL : echec du relief colore"
-    return True, ""
-
-
 # --------------------------------------------------------------------------------------------------
 # AutoCAD : DWG et controle des images
 # --------------------------------------------------------------------------------------------------

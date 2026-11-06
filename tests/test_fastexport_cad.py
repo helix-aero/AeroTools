@@ -5,7 +5,7 @@ import struct
 
 import pytest
 
-from aerotools.tools.fastexport import dxfout, external, geotiff, pipeline, plan
+from aerotools.tools.fastexport import dxfout, external, geotiff, pipeline, plan, relief
 
 DAY = datetime.date(2026, 7, 4)
 
@@ -195,12 +195,12 @@ def fake_converters(monkeypatch, record):
     monkeypatch.setattr(external, "to_jp2_gm", make("gm"))
     monkeypatch.setattr(external, "to_ecw", make("ecw"))
 
-    def view(gdal_dir, dem, out, tick=None):
+    def view(dem, out, *args, **kwargs):
         write_geotiff(out, 200, 100, 1000.0, 2050.0, 0.5)
         record.append(("view", os.path.basename(dem), os.path.basename(out)))
         return True, ""
 
-    monkeypatch.setattr(external, "dem_view", view)
+    monkeypatch.setattr(relief, "render", view)
 
 
 def test_jp2_export_writes_a_raw_tiff_then_converts_it_and_removes_the_raw(tmp_path, monkeypatch):
@@ -269,15 +269,15 @@ def test_cad_export_writes_assets_a_dxf_and_checks_it_with_autocad(tmp_path, mon
     assert result.dxf == str(tmp_path / "TOPO.dxf") and result.check["images"] == 2 and not result.warnings
 
 
-def test_cad_without_gdal_still_writes_the_dem_geotiff_and_says_the_drawing_has_no_dem_layer(tmp_path, monkeypatch):
+def test_the_dem_layer_needs_no_gdal(tmp_path, monkeypatch):
     env, record = Env(tmp_path), []
     fake_converters(monkeypatch, record)
     jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5, "dem": 0.5}, "cad", str(tmp_path), lang="en",
                            cad={"format": "dxf", "images": "ecw"}, version=1)
     ctx = fake_context(tmp_path, env, "cad", tools={"gm": "GM"}, cad={"format": "dxf", "images": "ecw"})
     result = pipeline.run(ctx, jobs, lambda f, t: None)
-    assert "dem_image" in result.warnings and os.path.isfile(tmp_path / "00_Assets" / "DTM" / "EDF_260704_50cm_dtm.tif")
-    assert b"_MNT" not in open(tmp_path / "TOPO.dxf", "rb").read()
+    assert not result.warnings and os.path.isfile(tmp_path / "00_Assets" / "DTM" / "EDF_260704_50cm_dtm.tif")
+    assert b"_MNT" in open(tmp_path / "TOPO.dxf", "rb").read()
 
 
 def test_dwg_is_made_by_autocad_and_fails_clearly_without_it(tmp_path, monkeypatch):
