@@ -25,6 +25,7 @@ import numpy as np
 from . import detect as D
 from .backend import Backend, Cancelled, Progress
 from .geometry import georef_lines
+from .methods import stage_text
 from .model import Availability, Method, assign_names, margins_for
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -472,12 +473,12 @@ class FakeBackend(Backend):
     def detect(self, polygon, progress, cancelled):
         self.calls.append(("detect", len(polygon)))
         prog = Progress.of(progress, cancelled)
-        self._wait(prog, 0.00, 0.12, "Reading the tie points")
-        self._wait(prog, 0.12, 0.25, "Keeping the points inside the search area")
-        self._wait(prog, 0.25, 0.35, "Thinning the cloud")
+        self._wait(prog, 0.00, 0.12, stage_text("read"))
+        self._wait(prog, 0.12, 0.25, stage_text("select"))
+        self._wait(prog, 0.25, 0.35, stage_text("thin"))
         inner = prog.sub(0.35, 0.95)
         facades = D.detect_in_polygon(self.tie_points, polygon, inner, cancelled, cameras=self.cameras)
-        self._wait(prog, 0.95, 1.0, "%d façade(s) found" % len(facades), ticks=2)
+        self._wait(prog, 0.95, 1.0, stage_text("done", n=len(facades)), ticks=2)
         assign_names(facades)
         return facades
 

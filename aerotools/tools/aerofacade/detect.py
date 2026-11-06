@@ -548,14 +548,15 @@ def detect_in_polygon(points, polygon, progress=None, cancelled=None, cameras=No
     Returns list[Facade]. Raises backend.Cancelled when `cancelled()` becomes true between stages."""
     from .backend import Progress
     from .geometry import filter_points
+    from .methods import stage_text
     prog = Progress.of(progress, cancelled)
-    prog(0.02, "Selecting the points inside the search area")
+    prog(0.02, stage_text("select"))
     Q, _keep = filter_points(points, polygon)
-    prog(0.15, "%d points in the search area" % len(Q))
+    prog(0.15, stage_text("search"))
     walls = detect(Q, method, params)
-    prog(0.9, "Naming the façades")
+    prog(0.9, stage_text("name"))
     facades = walls_to_facades(walls, Q, cameras)
-    prog(1.0, "Done: %d façade(s)" % len(facades))
+    prog(1.0, stage_text("done", n=len(facades)))
     return facades
 
 
