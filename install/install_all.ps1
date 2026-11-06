@@ -126,7 +126,9 @@ function Test-PythonHealthy($path) {
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        & $path -m ensurepip --version 2>$null | Out-Null
+        # `ensurepip --version` ne suffit pas : il affiche la version attendue sans verifier que le .whl correspondant est la.
+        $check = 'import ensurepip, os; v = getattr(ensurepip, ''_PIP_VERSION'', None); d = os.path.join(os.path.dirname(ensurepip.__file__), ''_bundled''); ok = (v is None) or any(n.startswith(''pip-'' + v + ''-'') for n in os.listdir(d)); raise SystemExit(0 if ok else 1)'
+        & $path -c $check 2>$null | Out-Null
         return ($LASTEXITCODE -eq 0)
     } catch {
         return $false
@@ -153,6 +155,61 @@ function Find-SystemPython {
         } catch { }
     }
     return $fallback
+}
+
+
+function Get-PythonProblem($path) {
+    # Une phrase courte si ce Python pose probleme (incomplet, mis a jour a moitie, ancien), sinon ''.
+    if (-not (Test-PythonHealthy $path)) {
+        return 'it looks incomplete or half-updated (the file that installs pip does not match its version)'
+    }
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $number = & $path -c 'import sys; print(sys.version_info[0] * 100 + sys.version_info[1])' 2>$null
+        if ($LASTEXITCODE -eq 0 -and $number -and ([int]$number) -lt 311) { return 'it is an old version (3.10)' }
+    } catch { } finally {
+        $ErrorActionPreference = $previous
+    }
+    return ''
+}
+
+
+function Offer-NewPython($path, $reason) {
+    # Un Python incomplet ou ancien : on propose d'en installer un propre a cote (sans toucher a l'autre) et on le dit clairement.
+    # Sans question possible (-Yes, fenetre non interactive) ou si l'utilisateur refuse, on garde celui-ci : les secours de
+    # l'installeur savent s'en accommoder dans la plupart des cas.
+    Say ''
+    Say ("  The Python found on this computer has a problem: " + $reason + ".") 'Yellow'
+    Say ("  ($path)") 'DarkGray'
+    $hasWinget = [bool](Get-Command winget -ErrorAction SilentlyContinue)
+    if (-not (Test-Interactive)) {
+        Say '  The installer will try to work around it.' 'Yellow'
+        return $path
+    }
+    if (-not $hasWinget) {
+        Say '  Best fix: install Python 3.12 from https://www.python.org/downloads/ (standard installer, tick "Add python.exe to PATH"),' 'Yellow'
+        Say '  then run this installer again. Meanwhile it will try to work around the problem.' 'Yellow'
+        return $path
+    }
+    Say '  I can install a clean, up-to-date Python 3.12 next to it (about 100 MB). The other Python is not changed or removed.' 'Cyan'
+    $answer = (Read-Host '  Install Python 3.12 now? [Y/n]').Trim().ToLower()
+    if ($answer -and $answer -ne 'y' -and $answer -ne 'yes' -and $answer -ne 'o' -and $answer -ne 'oui') {
+        Say '  OK, the installer will try to work around the problem.' 'Yellow'
+        return $path
+    }
+    try {
+        Run-Long 'Python 3.12 installation' 'winget' @('install', '-e', '--id', 'Python.Python.3.12', '--silent', '--accept-package-agreements', '--accept-source-agreements')
+    } catch {
+        Say ('  Python 3.12 could not be installed: ' + $_.Exception.Message.Split("`n")[0]) 'Yellow'
+        return $path
+    }
+    $candidates = @((Find-SystemPython), (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe'))
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate) -and -not (Get-PythonProblem $candidate)) { return $candidate }
+    }
+    Say '  Python 3.12 is installed but this window cannot see it yet: close this window and run the installer again.' 'Yellow'
+    return $path
 }
 
 
@@ -627,6 +684,10 @@ try {
             Say '  Already installed.'
         } else {
             $python = Find-SystemPython
+            if ($python -and -not $DryRun) {
+                $problem = Get-PythonProblem $python
+                if ($problem) { $python = Offer-NewPython $python $problem }
+            }
             if (-not $python) {
                 Say '  No Python 3.10 to 3.13 on this computer.'
                 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
@@ -663,7 +724,8 @@ try {
                     # Typiquement : ensurepip echoue dans l'environnement tout neuf. On le refait sans pip, le pip du systeme suffira.
                     Say ("  Environment creation with pip failed: " + $_.Exception.Message.Split("`n")[0]) 'Yellow'
                     if (Test-Path -LiteralPath $EnvDir) {
-                        Move-Item -LiteralPath $EnvDir -Destination ($EnvDir + '_broken_' + (Get-Date -Format 'yyyyMMdd_HHmmss')) -Force
+                        # Le dossier que cette tentative vient de creer (vide de tout travail de l'utilisateur) : on le retire.
+                        Remove-Item -LiteralPath $EnvDir -Recurse -Force -ErrorAction SilentlyContinue
                     }
                     Run-Long 'Environment creation (without pip)' $python @('-m', 'venv', '--without-pip', $EnvDir)
                 }
