@@ -266,9 +266,14 @@ pixel vectors along the wall and up), image path relative (same folder). `aeroex
 Coordinates: `dxf_epsg` if given, else the chunk's own coordinate system when it is projected, else WGS 84 / UTM of the site. **Checked in AutoCAD 2023 (accoreconsole): the image reloads
 ("loaded and relinked"), `LIST` shows the insertion at Z 61.84 and the top at Z 87.31 (25.47 m = 849 px x 3 cm), width 67.43 m (= 2248 px x 3 cm), extrusion direction horizontal and pointing to the viewer.**
 
-### Live checks in Metashape of the finished tool
-Opening `tool.install()` in Metashape (through the console daemon): the wizard opens, builds the preview (30 s, Metashape's progress dialog shows meanwhile, the work chunk is removed afterwards)
-and shows it. See `facade_shots/20_*` to `30_*` (previews, façades per method, comparison with François's `facade_sud.jpg`, Metashape showing a work chunk).
+### Live run of the whole wizard in Metashape (CARRO, 2026-11-06, `tool.install()` from the console daemon, real mouse clicks)
+Preview 30 s (work chunk built then removed) -> polygon drawn around the building (1828 m2) -> detection **11 s**, 4 façades (A south 58.7 x 22.8 m, B north 66.8 x 17.0 m, C east gable, D west gable;
+A is shorter than the real 66 m because the polygon cut its east end: only data inside the polygon is used) -> C and D removed -> margins 1 m / depth 2 m / 3 cm -> method: depth maps (preselected) ->
+**surfaces: A 120 s, B 98 s** (40 photos each, `downscale` 4) -> **orthophotos: A 31 s, B 26 s** -> export PNG + georeferencing text + DXF in 1.5 s -> `Outputs` next to the project.
+About **4.5 minutes of computing** for two façades. Pictures: `facade_shots/31_*` to `38_*` (wizard screens) and `40_*`, `41_*` (outputs). B matches François's `Face_nord.jpg`, A his `facade_sud.jpg`
+(`27_compare_*`). The UI stayed alive (Metashape's own progress dialog shows on top, the wizard banner says "do not touch Metashape").
+Thumbnails: `exportRaster(width=, height=)` does NOT scale, it cuts a window of that many native pixels (the first wizard thumbnails showed only the top-left corner): the adapter uses `resolution=` instead.
+Reloading code in the console daemon: `from package import module` returns the stale module object after `del sys.modules[...]` unless the package itself is purged too (this wasted one test).
 
 ### Not verified
 `_preview_from_ortho` was checked on a chunk whose orthomosaic is in EPSG:3942 (aligned with the built preview), not on a chunk with a projected CRS that is a compound one or on a very large ortho.

@@ -997,9 +997,11 @@ class MetashapeBackend(Backend):
         """<picture>.txt: the frame, the pixel size and the exact extent, enough to place and measure the picture."""
         ortho = work.orthomosaic
         lines = geometry.georef_lines(f, self._margins_of(work, f), pixel)
-        lines += ["exact picture extent in the plane frame (s along, t up) m: left %.4f bottom %.4f right %.4f top %.4f" %
-                  (ortho.left, ortho.bottom, ortho.right, ortho.top),
-                  "exact picture size px: %d x %d" % (ortho.width, ortho.height)]
+        lines = [ln for ln in lines if not ln.startswith(("image size px", "picture top-left"))]     # replaced by the exact values below
+        lines += ["image size px: %d x %d" % (ortho.width, ortho.height),
+                  "picture top-left corner in the plane (s along, t up) m: %.4f %.4f" % (ortho.left, ortho.top),
+                  "exact picture extent in the plane frame (s along, t up) m: left %.4f bottom %.4f right %.4f top %.4f" %
+                  (ortho.left, ortho.bottom, ortho.right, ortho.top)]
         with open(os.path.splitext(path)[0] + ".txt", "w", encoding="utf-8") as handle:
             handle.write("\n".join(lines) + "\n")
 
