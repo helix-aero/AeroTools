@@ -20,6 +20,7 @@ import os
 import shutil
 import tempfile
 import threading
+import traceback
 
 from ... import config, i18n, journal, msapi, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
@@ -995,6 +996,7 @@ class ExportDialog(QtWidgets.QDialog):
         except Exception as exc:
             problem = i18n.t("export.failed", name=jobs[0].name, error=repr(exc))
             journal.write("Fast Export : {!r}".format(exc))
+            journal.write("Fast Export : {}".format(traceback.format_exc().strip().replace("\n", " | ")))
         self._busy = False
         if problem:
             self._finish(problem, "error")

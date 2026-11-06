@@ -12,6 +12,13 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 
+@pytest.fixture(autouse=True)
+def _journal_log_in_tmp(tmp_path_factory, monkeypatch):
+    """Les tests n'ecrivent jamais dans le vrai aerotools.log du poste."""
+    from aerotools import journal
+    monkeypatch.setattr(journal, "log_path", lambda: str(tmp_path_factory.getbasetemp() / "aerotools.log"))
+
+
 # --------------------------------------------------------------------------
 # Faux Metashape
 # --------------------------------------------------------------------------
