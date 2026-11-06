@@ -98,7 +98,7 @@ def is_default(look):
 # --------------------------------------------------------------------------------------------------
 
 def _builtin():
-    return {"id": DEFAULT_PALETTE, "label": {"en": "Metashape", "fr": "Metashape"},
+    return {"id": DEFAULT_PALETTE, "label": "Metashape",
             "stops": [(pct / 100.0, (r, g, b)) for pct, r, g, b in METASHAPE_RAMP]}
 
 
@@ -114,7 +114,9 @@ def _clean(entry):
     if any(not 0.0 <= p <= 1.0 for p, _rgb in stops) or any(b[0] <= a[0] for a, b in zip(stops, stops[1:])):
         return None
     label = entry.get("label")
-    return {"id": ident, "label": label if isinstance(label, dict) else {}, "stops": stops}
+    if isinstance(label, dict):                       # older palette files: {"en": ...}
+        label = label.get("en")
+    return {"id": ident, "label": label if isinstance(label, str) else "", "stops": stops}
 
 
 def _read(path):
@@ -149,7 +151,6 @@ def palette(ident):
     return found.get(ident) or found[DEFAULT_PALETTE]
 
 
-def label(entry, lang):
-    """Display name of a palette in a language (English, then its id, when it has no name there)."""
-    names = entry.get("label") or {}
-    return names.get(lang) or names.get("en") or entry["id"]
+def label(entry):
+    """Display name of a palette (its id when it has no name)."""
+    return entry.get("label") or entry["id"]

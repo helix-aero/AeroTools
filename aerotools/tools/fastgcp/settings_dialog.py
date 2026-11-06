@@ -179,7 +179,6 @@ class SettingsDialog(QtWidgets.QDialog):
         super(SettingsDialog, self).__init__(parent)
         self.panel = panel
         self._job = None
-        self._lang = i18n.lang()
         self.setWindowTitle(i18n.t("settings.title"))
         self.resize(WIDTH, HEIGHT)
         root = _styled_root(self)
@@ -639,10 +638,6 @@ def show(panel, existing=None):
     try:
         if dialog is not None:
             dialog.objectName()
-            if dialog._lang != i18n.lang():
-                dialog.release()
-                dialog.deleteLater()
-                dialog = None
     except RuntimeError:
         dialog = None
     if dialog is None:

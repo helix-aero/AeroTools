@@ -548,7 +548,7 @@ def _auto_review(state):
 
 def kind_label(kind):
     """Nom du type de cible, toujours en anglais (Spray, Checker) : c'est le nom du produit."""
-    return i18n.texts("en").get("aigcp.type_" + str(kind), str(kind))
+    return i18n.texts().get("aigcp.type_" + str(kind), str(kind))
 
 
 def bar_text(state):

@@ -129,7 +129,7 @@ def grids():
             out.append({"id": stem, "file": props["name"], "url": props["url"], "size": int(props["file_size"]),
                         "sha256": props["sha256sum"], "bbox": box, "area": area, "country": props.get("source_country", ""),
                         "source": str(props["source_crs_code"]), "target": target, "vert_epsg": vert_epsg, "short": short,
-                        "fr": label, "en": label, "added": _version(props.get("version_added")),
+                        "label": label, "added": _version(props.get("version_added")),
                         "depth": bool(ops.get(props["name"], {}).get("flip"))})
         _grids_cache["all"] = out
         _grids_cache["by_id"] = {item["id"]: item for item in out}

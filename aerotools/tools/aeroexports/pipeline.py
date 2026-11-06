@@ -28,7 +28,7 @@ class Context(object):
     """Tout ce dont un export a besoin ; la fenetre le remplit, les tests le remplacent par des faux."""
 
     def __init__(self, chunk, info, folder, site, date, preset, export, tools=None, crs=None, tile_m=None, cad=None,
-                 lang="fr", date_style="short", snap=None, transform=None, tick=None, vertical=None, proj=None, epsg=None,
+                 date_style="short", snap=None, transform=None, tick=None, vertical=None, proj=None, epsg=None,
                  look=None, clip_boundary=True, log=None):
         self.chunk, self.info, self.folder = chunk, info, folder
         self.clip_boundary = bool(clip_boundary)         # cut every Metashape export to the chunk's boundary shapes (same value everywhere)
@@ -37,7 +37,7 @@ class Context(object):
         self.export = export                              # msapi.export_raster ou un faux
         self.tools = tools or {}                          # {"gm": chemin, "acad": chemin accoreconsole, "gdal": dossier}
         self.crs, self.tile_m = crs, tile_m
-        self.lang, self.date_style = lang, date_style
+        self.date_style = date_style
         self.snap, self.transform = snap, transform
         self.tick = tick or (lambda: None)
         self.native = False
@@ -143,7 +143,7 @@ def _tiles(ctx, job, box):
 
 
 def _named(ctx, job, kind, ext, token):
-    return naming.build_name(ctx.site, ctx.date, job.pixel_m, kind, ext, lang=ctx.lang, version=job.version, tile=token,
+    return naming.build_name(ctx.site, ctx.date, job.pixel_m, kind, ext, version=job.version, tile=token,
                              date_style=ctx.date_style)
 
 

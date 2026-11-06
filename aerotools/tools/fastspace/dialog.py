@@ -278,7 +278,6 @@ class SpaceDialog(QtWidgets.QDialog):
         self.projects = []
         self._worker = None
         self._batch = None
-        self._lang = i18n.lang()
         self._stepping = False
         root = ui.styled_root(self)
         layout = QtWidgets.QVBoxLayout(root)
@@ -896,9 +895,6 @@ def show(parent=None, existing=None):
     try:
         if dialog is not None:
             dialog.objectName()
-            if dialog._lang != i18n.lang():
-                dialog.deleteLater()
-                dialog = None
     except RuntimeError:
         dialog = None
     if dialog is None:

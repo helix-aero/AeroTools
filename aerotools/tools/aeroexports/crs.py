@@ -16,7 +16,7 @@ from . import projdb
 ALLOWED_HOSTS = ("cdn.proj.org",)
 MAX_DOWNLOAD_BYTES = 120 * 1024 * 1024
 ELLIPSOID = {"id": projdb.ELLIPSOID_ID, "file": None, "bbox": (-180.0, -90.0, 180.0, 90.0), "url": None,
-             "fr": "Hauteur ellipsoïdale (aucune grille de géoïde)", "en": "Ellipsoidal height (no geoid grid)"}
+             "label": "Ellipsoidal height (no geoid grid)"}
 
 
 # --------------------------------------------------------------------------------------------------
@@ -30,8 +30,8 @@ def vertical_by_id(vid):
     return projdb.grid_by_id(vid)
 
 
-def label(item, lang="fr"):
-    return item.get(lang) or item["fr"]
+def label(item):
+    return item["label"]
 
 
 # --------------------------------------------------------------------------------------------------

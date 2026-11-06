@@ -26,7 +26,7 @@ def export(tmp_path, monkeypatch, clip, mask_error=None, **context):
     monkeypatch.setattr(footprint, "alpha_mask", alpha)
     monkeypatch.setattr(footprint, "dem_mask", lambda path, target=800: (diamond(), 1))
     cad = {"format": "dxf", "images": "jp2", "clip": clip}
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5, "dem": 0.5}, "cad", str(tmp_path), lang="en", cad=cad, version=1)
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5, "dem": 0.5}, "cad", str(tmp_path), cad=cad, version=1)
     result = pipeline.run(fake_context(tmp_path, env, "cad", tools={"gdal": "G"}, cad=cad, **context), jobs, lambda f, t: None)
     text = open(tmp_path / "TOPO.dxf", "rb").read().decode("ascii")
     return result, "\n".join(text.splitlines()), env

@@ -73,7 +73,6 @@ class GcpSelectDialog(QtWidgets.QDialog):
         super(GcpSelectDialog, self).__init__(parent)
         self._collect = collect
         self._apply = apply
-        self._lang = i18n.lang()
         self._worker = None
         self._result = None
         self.setWindowTitle(i18n.t("gcp.title"))
@@ -294,9 +293,6 @@ def show(panel, collect, apply, existing=None):
     try:
         if dialog is not None:
             dialog.objectName()
-            if dialog._lang != i18n.lang():
-                dialog.deleteLater()
-                dialog = None
     except RuntimeError:
         dialog = None
     if dialog is None:

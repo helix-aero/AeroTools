@@ -101,7 +101,6 @@ class ExistsDialog(QtWidgets.QDialog):
 class ExportDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super(ExportDialog, self).__init__(parent)
-        self._lang = i18n.lang()
         self._busy = False
         self._info = {}
         self._chunk = None                                  # the chunk the window shows: pinned at refresh(), used by everything after
@@ -526,7 +525,7 @@ class ExportDialog(QtWidgets.QDialog):
 
     @staticmethod
     def _look_summary(look):
-        palette = looks.label(looks.palette(look.palette), i18n.lang())
+        palette = looks.label(looks.palette(look.palette))
         shading = i18n.t({looks.NONE: "export.shade_none", looks.SUN: "export.shade_sun", looks.LIGHTS4: "export.shade_lights4",
                           looks.SLOPE: "export.shade_slope"}[look.shading])
         return i18n.t("export.look_summary", palette=palette, shading=shading)
@@ -889,7 +888,7 @@ class ExportDialog(QtWidgets.QDialog):
             self.vert_box.setEnabled(False)
         else:
             for spec in vertical.compatible_verticals(int(epsg), lon, lat, folder=crs.own_dir()):
-                self.vert_box.addItem(crs.label(spec, self._lang), spec["id"])
+                self.vert_box.addItem(crs.label(spec), spec["id"])
             self.vert_box.setEnabled(not self._busy)
         self.vert_box.blockSignals(False)
         self._check_geoid()
@@ -1031,7 +1030,7 @@ class ExportDialog(QtWidgets.QDialog):
                 self._geoid_ids = [choice] if spec.get("url") else []
                 self._geoid_states[choice] = found["status"]
                 key = "export.geoid_missing" if found["status"] == "missing" else "export.geoid_stale"
-                text = i18n.t(key, name=crs.label(spec, self._lang), size=size_text(spec.get("size", 0)))
+                text = i18n.t(key, name=crs.label(spec), size=size_text(spec.get("size", 0)))
                 blocking = True
         if not self._geoid_missing:
             declined = set(config.get(SECTION, "geoid_declined") or [])
@@ -1039,7 +1038,7 @@ class ExportDialog(QtWidgets.QDialog):
             if todo:
                 self._geoid_ids = [spec["id"] for spec, _state in todo]
                 self._geoid_states = {spec["id"]: state for spec, state in todo}
-                text = i18n.t("export.geoid_zone", names=", ".join(crs.label(spec, self._lang) for spec, _state in todo),
+                text = i18n.t("export.geoid_zone", names=", ".join(crs.label(spec) for spec, _state in todo),
                               size=size_text(sum(spec["size"] for spec, _state in todo)))
         self._style_geoid()
         self.geoid_text.setText(text)
@@ -1102,7 +1101,7 @@ class ExportDialog(QtWidgets.QDialog):
         thread = threading.Thread(target=work, daemon=True)
         thread.start()
         while thread.is_alive():
-            name = crs.label(crs.vertical_by_id(ids[state["index"]]), self._lang)
+            name = crs.label(crs.vertical_by_id(ids[state["index"]]))
             self.geoid_text.setText(i18n.t("export.geoid_progress", name=name, index=state["index"] + 1, total=len(ids)))
             self.geoid_bar.setValue(min(state["done"], total))
             QtWidgets.QApplication.processEvents()
@@ -1205,7 +1204,7 @@ class ExportDialog(QtWidgets.QDialog):
         """Liste des fichiers pour un numero de version (1 = noms de base ; None = premier numero libre)."""
         wanted = self._wanted()
         return plan.build_jobs(self.site.text().strip(), self._date, wanted, self.preset.currentData(), self._folder(),
-                               lang=self._lang, native={k for k in wanted if self._is_native(k)}, cad=self._cad(),
+                               native={k for k in wanted if self._is_native(k)}, cad=self._cad(),
                                version=version, dem_picture=self._picture_wanted())
 
     def _existing(self, jobs):
@@ -1318,7 +1317,7 @@ class ExportDialog(QtWidgets.QDialog):
             return
         ctx = pipeline.Context(chunk, self._info, self._folder(), self.site.text().strip(), self._date, self.preset.currentData(),
                                msapi.export_raster, tools=dict(self.tools), crs=target, tile_m=self._tile_m(), cad=self._cad(),
-                               lang=self._lang, snap=msapi.snapped_box, transform=msapi.transform_box,
+                               snap=msapi.snapped_box, transform=msapi.transform_box,
                                tick=QtWidgets.QApplication.processEvents, vertical=self._vertical_choice(),
                                proj=projtool.Proj(geoid_dir=crs.own_dir()),
                                epsg=int(self.crs_box.currentData()) if target is not None else None, look=looks.load(),
@@ -1398,9 +1397,6 @@ def show(parent=None, existing=None):
     try:
         if dialog is not None:
             dialog.objectName()
-            if dialog._lang != i18n.lang():
-                dialog.deleteLater()
-                dialog = None
     except RuntimeError:
         dialog = None
     if dialog is None:

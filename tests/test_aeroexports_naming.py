@@ -7,18 +7,17 @@ import pytest
 from aerotools.tools.aeroexports import naming
 
 
-def test_build_name_ortho_mnt_fr_en():
+def test_build_name_ortho_dtm():
     d = datetime.date(2026, 7, 4)
     assert naming.build_name("CITADELLE", d, 0.03, "ortho", "tif") == "CITADELLE_260704_3cm_ortho.tif"
-    assert naming.build_name("CITADELLE", d, 0.05, "dem", ".TIF") == "CITADELLE_260704_5cm_mnt.tif"
-    assert naming.build_name("CITADELLE", d, 0.05, "dem", "tif", lang="en") == "CITADELLE_260704_5cm_dtm.tif"
+    assert naming.build_name("CITADELLE", d, 0.05, "dem", "tif") == "CITADELLE_260704_5cm_dtm.tif"
 
 
 def test_kind_always_last_even_with_version_and_tile():
     d = datetime.date(2026, 7, 4)
     n = naming.build_name("EDF", d, 0.03, "ortho", "ecw", version=2, tile="R02C05")
     assert n == "EDF_260704_3cm_v2_R02C05_ortho.ecw"
-    n = naming.build_name("EDF", d, 0.03, "dem", "tif", version=2, tile="R02C05", lang="en")
+    n = naming.build_name("EDF", d, 0.03, "dem", "tif", version=2, tile="R02C05")
     assert n.endswith("_dtm.tif")
 
 
@@ -26,7 +25,7 @@ def test_ortho_and_dem_tiles_pair_by_prefix():
     d = datetime.date(2026, 7, 4)
     a = naming.build_name("EDF", d, 0.03, "ortho", "tif", tile="E2179_N1208")
     b = naming.build_name("EDF", d, 0.03, "dem", "tif", tile="E2179_N1208")
-    assert a.replace("_ortho.tif", "") == b.replace("_mnt.tif", "")
+    assert a.replace("_ortho.tif", "") == b.replace("_dtm.tif", "")
 
 
 @pytest.mark.parametrize("pixel,expected", [
@@ -100,10 +99,10 @@ def test_next_free_version_shared_by_ortho_and_dem():
                [naming.build_name("EDF", d, 0.03, "dem", "tif", version=v)]
 
     assert naming.next_free_version("x", planned, listing=[]) == 1
-    assert naming.next_free_version("x", planned, listing=["EDF_260704_3cm_mnt.tif"]) == 2
-    present = ["EDF_260704_3cm_ortho.tif", "EDF_260704_3cm_v2_mnt.tif", "autre.txt"]
+    assert naming.next_free_version("x", planned, listing=["EDF_260704_3cm_dtm.tif"]) == 2
+    present = ["EDF_260704_3cm_ortho.tif", "EDF_260704_3cm_v2_dtm.tif", "other.txt"]
     assert naming.next_free_version("x", planned, listing=present) == 3
-    assert naming.next_free_version("x", planned, listing=["EDF_260704_3CM_MNT.TIF"]) == 2     # casse Windows
+    assert naming.next_free_version("x", planned, listing=["EDF_260704_3CM_DTM.TIF"]) == 2     # casse Windows
 
 
 def test_check_path_length(tmp_path):

@@ -19,10 +19,7 @@ import re
 import unicodedata
 from collections import Counter
 
-KINDS = {
-    "fr": {"ortho": "ortho", "dem": "mnt"},
-    "en": {"ortho": "ortho", "dem": "dtm"},
-}
+KINDS = {"ortho": "ortho", "dem": "dtm"}
 
 # Fichiers qui accompagnent un export et qui comptent pour detecter un doublon.
 AUX_EXTS = (".tfw", ".wld", ".jgw", ".prj", ".aux.xml", ".ovr", ".xml", ".dxf", ".dwg", ".ers", ".txt", ".csv")
@@ -190,12 +187,12 @@ def format_resolution(pixel_m):
 # Construction du nom
 # ---------------------------------------------------------------------------
 
-def kind_label(kind, lang="fr"):
-    """'ortho' / 'dem' -> suffixe : ortho, mnt (fr) ou dtm (en)."""
-    return KINDS.get(lang, KINDS["fr"])[kind]
+def kind_label(kind):
+    """'ortho' / 'dem' -> file name suffix: ortho or dtm."""
+    return KINDS[kind]
 
 
-def build_name(site, date, pixel_m, kind, ext, lang="fr", version=1, tile=None, date_style="short"):
+def build_name(site, date, pixel_m, kind, ext, version=1, tile=None, date_style="short"):
     """Nom de fichier complet (sans dossier).
 
     `kind` : 'ortho' ou 'dem' ; `ext` avec ou sans point ; `version` > 1 ajoute _v<N> ;
@@ -208,7 +205,7 @@ def build_name(site, date, pixel_m, kind, ext, lang="fr", version=1, tile=None, 
         parts.append("v%d" % int(version))
     if tile:
         parts.append(sanitize_token(tile))
-    parts.append(kind_label(kind, lang))
+    parts.append(kind_label(kind))
     ext = ext if ext.startswith(".") else "." + ext
     name = "_".join(parts) + ext.lower()
     if not is_valid_windows_name(name):

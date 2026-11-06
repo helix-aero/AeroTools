@@ -38,7 +38,6 @@ GITHUB_URL = "https://github.com/helix-aero/AeroTools"
 SETTLE_MS = (500, 2000)               # relectures du tableau apres une modification en masse
 HEADER_BUTTON = 26                    # boutons ronds du haut : Annuler, Retablir, parametres
 HEADER_ICON = 14
-LANG_WIDTH = 80                       # liste des langues : le drapeau seul
 LOGO_SCALE = 2                        # le logo est dessine en double resolution
 LOGO_WIDTH = 96                       # largeur affichee du logo AERO (le kit demande 64 px au minimum)
 LOGO_FILE = "helix-aero-AERO-degrade-512px.png"
@@ -79,8 +78,6 @@ AIGCP_CHOICE_TEXTS = {
     ("ignore", "blue"): "aigcp.ignore_blue",
     ("ignore", "none"): "aigcp.ignore_none",
 }
-
-# Largeur d'un bouton du selecteur de langue (code a deux lettres).
 
 # Hauteur mini du tableau des marqueurs (il prend tout le reste du dock).
 LIST_MIN_HEIGHT = 120
@@ -420,41 +417,6 @@ def _gear_pixmap(color):
             painter.drawPath(path)
         return _paint(GEAR_ICON, GEAR_ICON, draw)
     return _cached(("gear", color), build)
-
-
-FLAG_W, FLAG_H = 24, 16
-
-
-def _flag_pixmap(code):
-    """Petit drapeau peint (aucune image a livrer) ; gris uni pour une langue sans drapeau."""
-    def build():
-        def draw(painter):
-            clip = QtGui.QPainterPath()
-            clip.addRoundedRect(QtCore.QRectF(0.5, 0.5, FLAG_W - 1.0, FLAG_H - 1.0), 2.5, 2.5)
-            painter.setClipPath(clip)
-            whole = QtCore.QRectF(0, 0, FLAG_W, FLAG_H)
-            if code == "fr":
-                for k, color in enumerate(("#0055a4", "#ffffff", "#ef4135")):
-                    painter.fillRect(QtCore.QRectF(k * FLAG_W / 3.0, 0, FLAG_W / 3.0 + 0.6, FLAG_H),
-                                     QtGui.QColor(color))
-            elif code == "en":
-                painter.fillRect(whole, QtGui.QColor("#012169"))
-                for color, width in (("#ffffff", 3.6), ("#c8102e", 1.4)):
-                    painter.setPen(_pen(color, width))
-                    painter.drawLine(QtCore.QPointF(0, 0), QtCore.QPointF(FLAG_W, FLAG_H))
-                    painter.drawLine(QtCore.QPointF(0, FLAG_H), QtCore.QPointF(FLAG_W, 0))
-                for color, width in (("#ffffff", 5.0), ("#c8102e", 3.0)):
-                    painter.setPen(_pen(color, width))
-                    painter.drawLine(QtCore.QPointF(FLAG_W / 2.0, 0), QtCore.QPointF(FLAG_W / 2.0, FLAG_H))
-                    painter.drawLine(QtCore.QPointF(0, FLAG_H / 2.0), QtCore.QPointF(FLAG_W, FLAG_H / 2.0))
-            else:
-                painter.fillRect(whole, QtGui.QColor("#777777"))
-            painter.setClipping(False)
-            painter.setBrush(QtCore.Qt.NoBrush)
-            painter.setPen(QtGui.QPen(QtGui.QColor(0, 0, 0, 110), 0.8))
-            painter.drawRoundedRect(QtCore.QRectF(0.5, 0.5, FLAG_W - 1.0, FLAG_H - 1.0), 2.5, 2.5)
-        return _paint(FLAG_W, FLAG_H, draw)
-    return _cached(("flag", code), build)
 
 
 UNDO_ICON = 18
@@ -894,10 +856,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._running = True
         self._last_pick = (None, 0.0)
         self._checks = {}
-        self._lang_combo = None
         self._aigcp_combos = {}
         self._review_dialog = None
-        self._lang_cb = None
         # Tri du tableau : (cle, decroissant) ou None = ordre du projet.
         self._sort = None
         self._signature = None            # instantane du tableau, pour voir ce que Metashape a change
@@ -915,9 +875,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._refresh_icons()
         self._subscribe_journal()
         history.subscribe(self._on_history_changed)
-        self._lang_cb = self.retranslate
-        i18n.subscribe(self._lang_cb)
-        self._refresh_lang_buttons()
         self._update_undo_button()
         self.update_active_card()
         self.set_status("")
@@ -1010,7 +967,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return holder
 
     def _build_header(self):
-        """Titre a gauche, a droite : Annuler, Retablir, langue (drapeau), parametres (engrenage)."""
+        """Titre a gauche, a droite : Annuler, Retablir, parametres (engrenage)."""
         header = QtWidgets.QWidget()
         header.setObjectName("aeroHeader")
         layout = QtWidgets.QHBoxLayout(header)
@@ -1024,8 +981,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.redo_button = self._round_button(self._on_redo_clicked)
         layout.addWidget(self.undo_button, 0)
         layout.addWidget(self.redo_button, 0)
-
-        layout.addWidget(self._build_lang_combo(), 0)
 
         self.more_button = self._round_button(self._open_settings)
         self.more_button.setEnabled(True)
@@ -1044,20 +999,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         button.setEnabled(False)
         button.clicked.connect(handler)
         return button
-
-    def _build_lang_combo(self):
-        """Liste deroulante des langues de `i18n.LANGUES`, un drapeau devant chaque nom."""
-        combo = QtWidgets.QComboBox()
-        combo.setObjectName("aeroCombo")
-        combo.setCursor(QtCore.Qt.PointingHandCursor)
-        combo.setFocusPolicy(QtCore.Qt.NoFocus)
-        combo.setIconSize(QtCore.QSize(FLAG_W, FLAG_H))
-        combo.setFixedWidth(LANG_WIDTH)
-        for code, _name in i18n.LANGUES:
-            combo.addItem(QtGui.QIcon(_flag_pixmap(code)), "", code)
-        combo.activated.connect(self._on_lang_activated)
-        self._lang_combo = combo
-        return combo
 
     def _build_play(self):
         """Bouton rond Play / Pause, puis pastille et texte d'etat."""
@@ -1137,7 +1078,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         bar_layout.addWidget(self.aigcp_cancel_button, 0)
         self.aigcp_bar_row.setVisible(False)
         layout.addWidget(self.aigcp_bar_row)
-        self._retranslate_aigcp()
+        self._set_aigcp_texts()
         return card
 
     def _build_combo(self, key, values):
@@ -1411,40 +1352,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         palette.setColor(role, _qcolor(theme.FG_2))
         self.search.setPalette(palette)
 
-    # ------------------------------------------------------------------
-    # Langue
-    # ------------------------------------------------------------------
-
-    def _on_lang_activated(self, index):
-        self._on_lang_clicked(self._lang_combo.itemData(index))
-
-    def _on_lang_clicked(self, code, _checked=False):
-        """Choix d'une langue dans la liste : change la langue, `retranslate` suit par abonnement."""
-        # Abonnement (re)pose a chaque clic : un abonnement perdu ne doit pas
-        # rendre le selecteur muet jusqu'au prochain redemarrage de l'outil.
-        if self._lang_cb is not None:
-            i18n.subscribe(self._lang_cb)
-        if code == i18n.lang():
-            self.retranslate()
-            return
-        if not i18n.set_lang(code):
-            return
-        journal.write("Langue : {}".format(code))
-
-    def _refresh_lang_buttons(self):
-        """Montre la langue active dans la liste."""
-        combo = self._lang_combo
-        if combo is None:
-            return
-        try:
-            index = combo.findData(i18n.lang())
-            if index >= 0 and combo.currentIndex() != index:
-                combo.blockSignals(True)
-                combo.setCurrentIndex(index)
-                combo.blockSignals(False)
-        except RuntimeError:
-            pass
-
     def _set_export_text(self):
         """Texte du bouton Exporter, elide s'il est trop long dans la langue choisie."""
         text = i18n.t("panel.export")
@@ -1452,67 +1359,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.export_button.setText(
             metrics.elidedText(text, QtCore.Qt.ElideRight, EXPORT_TEXT_MAX_PX))
 
-    def retranslate(self):
-        """Remet tout le panneau dans la langue courante, sans le recreer.
-
-        Appele par l'abonnement i18n. Les textes vivants (statut, carte du
-        marqueur, grille) sont relus ; le statut revient au nombre de marqueurs.
-        """
-        try:
-            self.objectName()
-        except RuntimeError:
-            # Panneau deja detruit par Qt : plus rien a traduire.
-            i18n.unsubscribe(self._lang_cb)
-            return
-        # Le surlignage FR / EN d'abord : il suit la langue meme si une etape
-        # plus bas echoue. Chaque etape est isolee, et une erreur (Metashape
-        # leve des RuntimeError pour des objets perimes) ne coupe ni les etapes
-        # suivantes ni l'abonnement : sinon le selecteur resterait muet.
-        for name, step in (
-            ("lang_buttons", self._refresh_lang_buttons),
-            ("eyebrow", self._retranslate_eyebrow),
-            ("search", self._retranslate_search),
-            ("grid", self._retranslate_grid),
-            ("checks", self._retranslate_checks),
-            ("bottom_buttons", self._retranslate_buttons),
-            ("aigcp", self._retranslate_aigcp),
-            ("export", self._retranslate_export),
-            ("credit", self._retranslate_credit),
-            ("state", lambda: self._apply_toggle(self._running)),
-            ("markers", self.refresh_markers),
-            ("card", self.update_active_card),
-        ):
-            try:
-                step()
-            except Exception as exc:
-                try:
-                    journal.write("Langue : etape {} en erreur : {!r}".format(name, exc))
-                except Exception:
-                    pass
-
-    def _retranslate_eyebrow(self):
-        self._eyebrow_active.set_full_text(i18n.t("panel.active_marker").upper())
-
-    def _retranslate_search(self):
-        self.search.setPlaceholderText(i18n.t("panel.search"))
-
-    def _retranslate_grid(self):
-        head = self.grid.headerItem()
-        for column, title in enumerate(column_titles()):
-            head.setText(column, title)
-        self._header.viewport().update()
-
-    def _retranslate_checks(self):
-        for key, box in self._checks.items():
-            box.set_full_text(i18n.t(CHECK_TEXTS[key]))
-
-    def _retranslate_buttons(self):
-        self.log_button.set_full_text(i18n.t("panel.log"))
-        self.qc_button.set_full_text(i18n.t("panel.qc"))
-        self.count_pointed.set_tip(i18n.t("panel.tip_pointed"))
-        self.count_photos.set_tip(i18n.t("panel.tip_seen"))
-
-    def _retranslate_aigcp(self):
+    def _set_aigcp_texts(self):
         """Textes de la carte Detection IA, choix affiches, etat des boutons."""
         self._eyebrow_aigcp.set_full_text(i18n.t("panel.aigcp").upper())
         for key, combo in self._aigcp_combos.items():
@@ -1523,18 +1370,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.aigcp_review_button.set_full_text(i18n.t("aigcp.review"))
         self.aigcp_cancel_button.set_full_text(i18n.t("aigcp.cancel"))
         self.update_aigcp()
-
-    def _retranslate_credit(self):
-        self.ad.set_full_text(i18n.t("panel.ad", site=SITE_NAME))
-        self._set_credit_text()
-        self.github_button.setToolTip(i18n.t("panel.github_tip"))
-
-    def _retranslate_export(self):
-        self._set_export_text()
-        for kind, text_key in EXPORTS:
-            action = self._export_actions.get(kind)
-            if action is not None:
-                action.setText(i18n.t(text_key))
 
     # ------------------------------------------------------------------
     # Options
@@ -2465,10 +2300,4 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             history.unsubscribe(self._on_history_changed)
         except Exception:
             pass
-        try:
-            if self._lang_cb is not None:
-                i18n.unsubscribe(self._lang_cb)
-        except Exception:
-            pass
-        self._lang_cb = None
         self._state = None

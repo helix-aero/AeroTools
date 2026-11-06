@@ -24,8 +24,8 @@ def test_install_menu_is_idempotent(boot, ms):
     assert boot.install_menu() is False
     assert len(ms.app.menu_items) == count
     labels = [item[0] for item in ms.app.menu_items]
-    assert "Aero/Recharger AeroTools" in labels
-    assert "Aero/Verifier les mises a jour..." in labels
+    assert "Aero/Reload AeroTools" in labels
+    assert "Aero/Check for updates..." in labels
     assert "Aero/Aero-GCP" in labels
 
 
@@ -37,9 +37,9 @@ def test_menu_groups_tools_upkeep_and_about_with_separators(boot, ms):
     assert kinds.count("separator") == 2
     first, second = kinds.index("separator"), len(kinds) - 1 - kinds[::-1].index("separator")
     assert [label for kind, label in order[:first]] == ["Aero/" + entry["menu"] for entry in config.TOOLS]
-    assert [label for _kind, label in order[first + 1:second]] == ["Aero/Verifier les mises a jour...",
-                                                                  "Aero/Recharger AeroTools"]
-    assert [label for _kind, label in order[second + 1:]] == ["Aero/A propos"]
+    assert [label for _kind, label in order[first + 1:second]] == ["Aero/Check for updates...",
+                                                                  "Aero/Reload AeroTools"]
+    assert [label for _kind, label in order[second + 1:]] == ["Aero/About"]
     assert labels[0] == "Aero/Aero-GCP"
 
 
@@ -67,18 +67,18 @@ def test_launch_not_ready_tool_loads_nothing(boot, ms, monkeypatch):
         raise AssertionError("import inattendu : " + name)
 
     cfg = sys.modules["aerotools.config"]
-    future = {"id": "futur", "menu": "Futur", "titre": "Futur", "sous_titre": "tool.fastgcp.subtitle",
-              "raccourci": None, "pret": False}
+    future = {"id": "future", "menu": "Future", "title": "Future", "subtitle": "tool.fastgcp.subtitle",
+              "shortcut": None, "ready": False}
     monkeypatch.setattr(cfg, "TOOLS", list(cfg.TOOLS) + [future])
     monkeypatch.setattr(importlib, "import_module", forbidden)
-    assert boot.launch("futur") is False
+    assert boot.launch("future") is False
     assert len(ms.app.messages) == 1
-    assert "Futur" in ms.app.messages[0]
+    assert "Future" in ms.app.messages[0]
 
 
 def test_launch_unknown_tool(boot, ms):
     assert boot.launch("nexiste-pas") is False
-    assert "inconnu" in ms.app.messages[0]
+    assert "unknown tool" in ms.app.messages[0]
 
 
 def test_launch_calls_install_of_ready_tool(boot, ms, monkeypatch):
@@ -108,7 +108,7 @@ def test_one_off_window_is_not_reopened_by_reload(boot, ms, monkeypatch):
     assert boot.launch("fastgcp") is True
     assert boot.launch("fastspace") is True          # Aero-Space est une fenetre ponctuelle
     assert getattr(builtins, "_AEROTOOLS_LAST_TOOL") == "fastgcp"
-    assert [entry["id"] for entry in config.TOOLS if not entry.get("rouvrir")] == ["fastspace", "aeroexports"]
+    assert [entry["id"] for entry in config.TOOLS if not entry.get("reopen")] == ["fastspace", "aeroexports"]
 
 
 def test_reopens_only_panels(boot):
@@ -146,11 +146,11 @@ def test_launch_survives_failing_tool(boot, ms, monkeypatch):
     class Broken(object):
         @staticmethod
         def install():
-            raise RuntimeError("panne")
+            raise RuntimeError("breakdown")
 
     monkeypatch.setattr(importlib, "import_module", lambda name, *a, **k: Broken)
     assert boot.launch("fastgcp") is False
-    assert "n'a pas demarre" in ms.app.messages[0]
+    assert "did not start" in ms.app.messages[0]
 
 
 def test_menu_callback_goes_through_launch(boot, ms, monkeypatch):

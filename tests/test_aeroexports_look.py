@@ -60,7 +60,7 @@ def test_the_package_ships_the_six_palettes_asked_for_and_all_are_valid():
         positions = [p for p, _rgb in entry["stops"]]
         assert positions == sorted(positions) and 0 <= positions[0] and positions[-1] <= 1 and len(positions) >= 2
         assert all(0 <= c <= 255 for _p, rgb in entry["stops"] for c in rgb)
-        assert looks.label(entry, "fr") and looks.label(entry, "en")
+        assert looks.label(entry)
         table = relief.table_for(entry)
         assert table.shape == (256, 3) and table.dtype == np.uint8
 
@@ -81,8 +81,8 @@ def test_a_palette_file_in_the_settings_folder_adds_or_replaces_palettes(tmp_pat
     with open(looks.user_file(), "w", encoding="utf-8") as handle:
         json.dump(mine, handle)
     found = looks.palettes()
-    assert "lava" in found and looks.label(found["lava"], "fr") == "Lava"            # no French name: falls back to English
-    assert looks.label(found["gray"], "en") == "My grey"                              # same id: the user's version wins
+    assert "lava" in found and looks.label(found["lava"]) == "Lava"                # a label given as {"en": ...} is still read
+    assert looks.label(found["gray"]) == "My grey"                              # same id: the user's version wins
     assert not {"broken", "worse", "dark"} & set(found) and "metashape" in found
 
 

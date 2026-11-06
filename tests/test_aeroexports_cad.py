@@ -116,13 +116,13 @@ def test_new_presets_exist_and_export_a_raw_geotiff_first():
 
 
 def test_jp2_and_ecw_jobs_keep_the_dem_as_a_geotiff(tmp_path):
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.03, "dem": 0.2}, "jp2", str(tmp_path), lang="en")
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.03, "dem": 0.2}, "jp2", str(tmp_path))
     assert [job.name for job in jobs] == ["EDF_260704_3cm_ortho.jp2", "EDF_260704_20cm_dtm.tif"]
 
 
 def test_cad_jobs_go_to_the_asset_folders_and_the_dem_gets_an_image(tmp_path):
     folder = str(tmp_path)
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.1, "dem": 0.2}, "cad", folder, lang="en", cad={"format": "dxf", "images": "jp2"})
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.1, "dem": 0.2}, "cad", folder, cad={"format": "dxf", "images": "jp2"})
     ortho, dem = jobs
     assert ortho.path == os.path.join(folder, "00_Assets", "ortho", "EDF_260704_10cm_ortho.jp2")
     assert dem.path == os.path.join(folder, "00_Assets", "DTM", "EDF_260704_20cm_dtm.tif")
@@ -133,18 +133,18 @@ def test_cad_jobs_go_to_the_asset_folders_and_the_dem_gets_an_image(tmp_path):
 
 def test_version_is_forced_for_overwriting_and_free_for_a_new_version(tmp_path):
     folder = str(tmp_path)
-    first = plan.build_jobs("EDF", DAY, {"ortho": 0.03}, "full", folder, lang="en")
+    first = plan.build_jobs("EDF", DAY, {"ortho": 0.03}, "full", folder)
     open(first[0].path, "wb").write(b"x")
-    assert plan.build_jobs("EDF", DAY, {"ortho": 0.03}, "full", folder, lang="en", version=1)[0].name == "EDF_260704_3cm_ortho.tif"
-    assert plan.build_jobs("EDF", DAY, {"ortho": 0.03}, "full", folder, lang="en")[0].name == "EDF_260704_3cm_v2_ortho.tif"
+    assert plan.build_jobs("EDF", DAY, {"ortho": 0.03}, "full", folder, version=1)[0].name == "EDF_260704_3cm_ortho.tif"
+    assert plan.build_jobs("EDF", DAY, {"ortho": 0.03}, "full", folder)[0].name == "EDF_260704_3cm_v2_ortho.tif"
 
 
 def test_cad_versions_look_inside_the_asset_folders(tmp_path):
     folder = str(tmp_path)
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.1}, "cad", folder, lang="en")
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.1}, "cad", folder)
     os.makedirs(os.path.dirname(jobs[0].path))
     open(jobs[0].path, "wb").write(b"x")
-    again = plan.build_jobs("EDF", DAY, {"ortho": 0.1}, "cad", folder, lang="en")
+    again = plan.build_jobs("EDF", DAY, {"ortho": 0.1}, "cad", folder)
     assert again[0].version == 2 and "_v2_" in again[0].name
     assert plan.cad_dxf_name(1) == "TOPO.dxf" and plan.cad_dxf_name(2, "dwg") == "TOPO_v2.dwg"
 
@@ -180,7 +180,7 @@ def fake_context(tmp_path, env, preset, tools=None, **kw):
             "box_dem": (1000.0, 2000.0, 1100.0, 2050.0), "crs_object": "project", "center": (8.7, 41.9)}
     snap = lambda box, pixel: box
     return pipeline.Context(object(), info, str(tmp_path), "EDF", DAY, preset, env.export, tools=tools or {}, snap=snap,
-                            transform=lambda box, a, b: box, lang="en", **kw)
+                            transform=lambda box, a, b: box, **kw)
 
 
 def fake_converters(monkeypatch, record):
@@ -206,7 +206,7 @@ def fake_converters(monkeypatch, record):
 def test_jp2_export_writes_a_raw_tiff_then_converts_it_and_removes_the_raw(tmp_path, monkeypatch):
     env, record = Env(tmp_path), []
     fake_converters(monkeypatch, record)
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "jp2", str(tmp_path), lang="en", version=1)
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "jp2", str(tmp_path), version=1)
     result = pipeline.run(fake_context(tmp_path, env, "jp2", tools={"gdal": "G"}), jobs, lambda f, t: None)
     assert record == [("gdal", "EDF_260704_50cm_ortho.tif", "EDF_260704_50cm_ortho.jp2")]
     assert os.path.exists(tmp_path / "EDF_260704_50cm_ortho.jp2")
@@ -225,7 +225,7 @@ def test_metashape_gets_no_progress_callback_so_it_never_calls_back_into_qt_whil
 
     ctx = fake_context(tmp_path, env, "full")
     ctx.export = export
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), version=1)
     fractions = []
     pipeline.run(ctx, jobs, lambda f, t: fractions.append(f))
     assert seen and all(progress is None and native for progress, native in seen)
@@ -235,7 +235,7 @@ def test_metashape_gets_no_progress_callback_so_it_never_calls_back_into_qt_whil
 def test_ecw_needs_global_mapper_and_jp2_prefers_gdal_then_global_mapper(tmp_path, monkeypatch):
     env, record = Env(tmp_path), []
     fake_converters(monkeypatch, record)
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "ecw", str(tmp_path), lang="en", version=1)
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "ecw", str(tmp_path), version=1)
     with pytest.raises(pipeline.Failure, match="Global Mapper"):
         pipeline.run(fake_context(tmp_path, env, "ecw", tools={}), jobs, lambda f, t: None)
     pipeline.run(fake_context(tmp_path, env, "ecw", tools={"gm": "GM"}), jobs, lambda f, t: None)
@@ -247,7 +247,7 @@ def test_ecw_needs_global_mapper_and_jp2_prefers_gdal_then_global_mapper(tmp_pat
 
 def test_without_any_encoder_metashape_writes_its_own_jp2(tmp_path):
     env = Env(tmp_path)
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "jp2", str(tmp_path), lang="en", version=1)
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "jp2", str(tmp_path), version=1)
     pipeline.run(fake_context(tmp_path, env, "jp2", tools={}), jobs, lambda f, t: None)
     assert open(tmp_path / "EDF_260704_50cm_ortho.jp2", "rb").read() == b"jp2"
 
@@ -256,7 +256,7 @@ def test_cad_export_writes_assets_a_dxf_and_checks_it_with_autocad(tmp_path, mon
     env, record = Env(tmp_path), []
     fake_converters(monkeypatch, record)
     monkeypatch.setattr(external, "check_dxf", lambda core, dxf, tick=None: {"images": 2, "failed": [], "valid": True})
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5, "dem": 0.5}, "cad", str(tmp_path), lang="en",
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5, "dem": 0.5}, "cad", str(tmp_path),
                            cad={"format": "dxf", "images": "jp2"}, version=1)
     ctx = fake_context(tmp_path, env, "cad", tools={"gdal": "G", "acad": "A"}, cad={"format": "dxf", "images": "jp2"})
     result = pipeline.run(ctx, jobs, lambda f, t: None)
@@ -272,7 +272,7 @@ def test_cad_export_writes_assets_a_dxf_and_checks_it_with_autocad(tmp_path, mon
 def test_the_dem_layer_needs_no_gdal(tmp_path, monkeypatch):
     env, record = Env(tmp_path), []
     fake_converters(monkeypatch, record)
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5, "dem": 0.5}, "cad", str(tmp_path), lang="en",
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5, "dem": 0.5}, "cad", str(tmp_path),
                            cad={"format": "dxf", "images": "ecw"}, version=1)
     ctx = fake_context(tmp_path, env, "cad", tools={"gm": "GM"}, cad={"format": "dxf", "images": "ecw"})
     result = pipeline.run(ctx, jobs, lambda f, t: None)
@@ -285,7 +285,7 @@ def test_dwg_is_made_by_autocad_and_fails_clearly_without_it(tmp_path, monkeypat
     fake_converters(monkeypatch, record)
     monkeypatch.setattr(external, "check_dxf", lambda core, dxf, tick=None: {"images": 1, "failed": [], "valid": True})
     monkeypatch.setattr(external, "dxf_to_dwg", lambda core, dxf, dwg, tick=None: (open(dwg, "wb").write(b"dwg") and True, ""))
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "cad", str(tmp_path), lang="en", cad={"format": "dwg", "images": "jp2"},
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "cad", str(tmp_path), cad={"format": "dwg", "images": "jp2"},
                            version=1)
     ctx = fake_context(tmp_path, env, "cad", tools={"gdal": "G", "acad": "A"}, cad={"format": "dwg", "images": "jp2"})
     assert pipeline.run(ctx, jobs, lambda f, t: None).dwg == str(tmp_path / "TOPO.dwg")
@@ -298,7 +298,7 @@ def test_tiles_export_one_file_per_tile_and_skip_empty_ones(tmp_path, monkeypatc
     env, record = Env(tmp_path), []
     fake_converters(monkeypatch, record)
     env.empty_tiles = {(1050, 2000)}                          # la dalle en bas a droite n'a pas de donnees
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), version=1)
     ctx = fake_context(tmp_path, env, "full", tile_m=50)
     result = pipeline.run(ctx, jobs, lambda f, t: None)
     names = sorted(name for _kind, name, _p, _b, _c, _f in env.exports)
@@ -319,7 +319,7 @@ def test_native_pixel_is_rounded_only_when_the_grid_is_imposed(tmp_path):
 
 def test_a_target_crs_converts_the_box_and_is_passed_to_metashape(tmp_path):
     env = Env(tmp_path)
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), version=1)
     ctx = fake_context(tmp_path, env, "full", crs="L93")
     ctx.transform = lambda box, source, target: (10.0, 20.0, 60.0, 45.0)
     pipeline.run(ctx, jobs, lambda f, t: None)
@@ -330,7 +330,7 @@ def test_a_target_crs_converts_the_box_and_is_passed_to_metashape(tmp_path):
 def test_a_failed_export_is_reported_not_swallowed(tmp_path):
     env = Env(tmp_path)
     env.export = lambda *a, **k: (False, "disk full")
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), version=1)
     with pytest.raises(pipeline.Failure, match="disk full"):
         pipeline.run(fake_context(tmp_path, env, "full"), jobs, lambda f, t: None)
 
@@ -384,7 +384,7 @@ def test_a_file_left_by_an_earlier_export_never_passes_for_the_new_one(tmp_path)
 
 def test_an_old_file_is_not_taken_for_a_new_export_that_wrote_nothing(tmp_path):
     env = Env(tmp_path)
-    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), version=1)
     stale = tmp_path / "EDF_260704_50cm_ortho.tif"
     stale.write_bytes(b"left by an export of another chunk")
     env.export = lambda *args, **kwargs: (True, "")        # Metashape writes nothing (no data)

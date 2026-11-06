@@ -70,14 +70,8 @@ def test_sort_does_not_modify_its_input():
 
 
 def test_columns_are_exactly_the_five_asked_for():
-    # COLUMNS et EXPORTS portent des cles de texte : on les lit en francais.
-    assert panel.column_titles() == ["ID", "Erreur X", "Erreur Y", "Erreur Z", "Proj."]
+    # COLUMNS and EXPORTS hold text keys: they are read through the catalog.
+    assert panel.column_titles() == ["ID", "Error X", "Error Y", "Error Z", "Proj."]
     assert [key for _title, key, _width in panel.COLUMNS] == ["id", "x", "y", "z", "proj"]
     assert panel.MIN_PANEL_WIDTH >= 420
-    assert [i18n.t(title) for _key, title in panel.EXPORTS] == ["Rapport PDF", "Tableau CSV"]
-
-
-def test_columns_follow_the_language():
-    i18n.set_lang("en")
-    assert panel.column_titles() == ["ID", "Error X", "Error Y", "Error Z", "Proj."]
     assert [i18n.t(title) for _key, title in panel.EXPORTS] == ["PDF report", "CSV table"]

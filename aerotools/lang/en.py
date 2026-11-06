@@ -1,6 +1,6 @@
-"""English catalog. Same keys and same {fields} as fr.py (a test checks it).
+"""Text catalog of AeroTools.
 
-Texts shown in Metashape message boxes stay in plain ASCII, like the French ones.
+Texts shown in Metashape message boxes stay in plain ASCII.
 """
 
 FORMATS = {
@@ -9,7 +9,7 @@ FORMATS = {
     "csv_delimiter": ",",
 }
 
-TEXTES = {
+TEXTS = {
     # -- Aero menu and Metashape boxes (bootstrap.py, tool.py) -------------
     "menu.reload": "Reload AeroTools",
     "menu.about": "About",

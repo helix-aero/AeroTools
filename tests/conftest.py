@@ -269,21 +269,9 @@ def local_appdata(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def french_by_default(tmp_path, monkeypatch):
-    """Chaque test part en francais, avec des reglages de poste jetables.
-
-    Les textes attendus par les tests sont ceux du catalogue francais, quelle
-    que soit la langue du poste qui lance pytest. La langue est aussi ecrite
-    dans les reglages temporaires : un module i18n recharge en cours de test
-    (apres un purge de sys.modules) retrouve le francais.
-    """
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "poste"))
-    from aerotools import i18n
-
-    i18n.reset()
-    i18n.set_lang("fr")
-    yield
-    i18n.reset()
+def throwaway_settings(tmp_path, monkeypatch):
+    """Every test runs with throw-away workstation settings."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "workstation"))
 
 
 @pytest.fixture

@@ -110,7 +110,7 @@ def listing_of(folder):
     return found
 
 
-def build_jobs(site, date, wanted, preset_key, folder, lang="fr", date_style="short", listing=None, native=(),
+def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listing=None, native=(),
                cad=None, version=None, dem_picture=False):
     """Liste des fichiers a ecrire.
 
@@ -131,12 +131,12 @@ def build_jobs(site, date, wanted, preset_key, folder, lang="fr", date_style="sh
     def locate(kind, version_number):
         """(nom, chemin, extra) de ce que produit un type pour un numero de version."""
         spec = spec_for(preset_key, kind, cad)
-        name = naming.build_name(site, date, wanted[kind], kind, spec["ext"], lang=lang, version=version_number,
+        name = naming.build_name(site, date, wanted[kind], kind, spec["ext"], version=version_number,
                                  date_style=date_style)
         if not is_cad:
             if kind == DEM and dem_picture and preset_key in PICTURE_PRESETS:      # coloured picture next to the DEM
                 ext = PICTURE_PRESETS[preset_key]
-                view = naming.build_name(site, date, wanted[kind], kind, ext, lang=lang, version=version_number,
+                view = naming.build_name(site, date, wanted[kind], kind, ext, version=version_number,
                                          date_style=date_style)
                 return name, os.path.join(folder, name), {"layer_kind": "dem", "view_name": view,
                                                           "view_path": os.path.join(folder, view), "view_ext": ext}
@@ -144,9 +144,9 @@ def build_jobs(site, date, wanted, preset_key, folder, lang="fr", date_style="sh
         where = os.path.join(folder, dxfout.ASSETS, dxfout.ORTHO_DIR if kind == ORTHO else dxfout.DEM_DIR)
         if kind == ORTHO:
             return name, os.path.join(where, name), {"layer_kind": "ortho"}
-        tif = naming.build_name(site, date, wanted[kind], kind, "tif", lang=lang, version=version_number,
+        tif = naming.build_name(site, date, wanted[kind], kind, "tif", version=version_number,
                                 date_style=date_style)
-        view = naming.build_name(site, date, wanted[kind], kind, cad["images"], lang=lang, version=version_number,
+        view = naming.build_name(site, date, wanted[kind], kind, cad["images"], version=version_number,
                                  date_style=date_style)
         return tif, os.path.join(where, tif), {"layer_kind": "dem", "view_name": view, "view_path": os.path.join(where, view),
                                                "view_ext": cad["images"]}

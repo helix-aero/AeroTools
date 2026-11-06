@@ -53,7 +53,6 @@ class QcDialog(QtWidgets.QDialog):
         super(QcDialog, self).__init__(parent)
         self._compute = compute
         self._opener = opener
-        self._lang = i18n.lang()
         self.setWindowTitle(i18n.t("qc.title"))
         self.setModal(False)
         self.resize(WIDTH, HEIGHT)
@@ -179,9 +178,6 @@ def show(panel, compute, opener, diagnostic, existing=None):
     try:
         if dialog is not None:
             dialog.objectName()
-            if dialog._lang != i18n.lang():
-                dialog.deleteLater()
-                dialog = None
     except RuntimeError:
         dialog = None
     if dialog is None:

@@ -31,13 +31,13 @@ def test_quick_view_is_jpeg_compressed_on_white_without_alpha():
 
 def test_build_jobs_names_ortho_and_dem_in_the_outputs_folder(tmp_path):
     jobs = plan.build_jobs("CITADELLE", DAY, {"ortho": 0.03, "dem": 0.1}, "full", str(tmp_path))
-    assert [job.name for job in jobs] == ["CITADELLE_260704_3cm_ortho.tif", "CITADELLE_260704_10cm_mnt.tif"]
+    assert [job.name for job in jobs] == ["CITADELLE_260704_3cm_ortho.tif", "CITADELLE_260704_10cm_dtm.tif"]
     assert jobs[0].path == str(tmp_path / "CITADELLE_260704_3cm_ortho.tif")
     assert [job.kind for job in jobs] == ["ortho", "dem"] and {job.version for job in jobs} == {1}
 
 
 def test_build_jobs_english_names_use_dtm(tmp_path):
-    jobs = plan.build_jobs("EDF", DAY, {"dem": 0.05}, "full", str(tmp_path), lang="en")
+    jobs = plan.build_jobs("EDF", DAY, {"dem": 0.05}, "full", str(tmp_path))
     assert [job.name for job in jobs] == ["EDF_260704_5cm_dtm.tif"]
 
 
@@ -50,7 +50,7 @@ def test_build_jobs_only_lists_what_is_wanted(tmp_path):
 def test_a_second_export_gets_a_version_shared_by_ortho_and_dem(tmp_path):
     (tmp_path / "EDF_260704_3cm_ortho.tif").write_text("x")           # seul l'ortho existe deja
     jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.03, "dem": 0.1}, "full", str(tmp_path))
-    assert [job.name for job in jobs] == ["EDF_260704_3cm_v2_ortho.tif", "EDF_260704_10cm_v2_mnt.tif"]
+    assert [job.name for job in jobs] == ["EDF_260704_3cm_v2_ortho.tif", "EDF_260704_10cm_v2_dtm.tif"]
     assert {job.version for job in jobs} == {2}
 
 

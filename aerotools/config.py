@@ -1,7 +1,7 @@
-"""Chemins, registre des outils et reglages persistants d'AeroTools.
+"""Paths, tool registry and persistent settings of AeroTools.
 
-Les reglages sont ranges par poste (LOCALAPPDATA) et non sur le serveur :
-chaque PC garde ses propres cases cochees, le code reste commun.
+The settings are stored per workstation (LOCALAPPDATA) and not on the server:
+each PC keeps its own ticked boxes, the code stays shared.
 """
 
 import copy
@@ -11,57 +11,57 @@ import os
 APP_NAME = "AeroTools"
 VENDOR = "HELIX AERO"
 
-# Racine du depot : le dossier qui contient le paquet « aerotools ».
+# Repository root: the folder that contains the "aerotools" package.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 ASSETS = os.path.join(ROOT, "assets")
 FONTS = os.path.join(ASSETS, "fonts")
 
-# Registre des outils du menu Aero.
-#   id        : identifiant technique, sert aussi de nom de sous-paquet
-#   menu      : libelle du menu Metashape (ASCII : l'API passe par Qt en latin-1
-#               sur certaines versions, les accents y sont risques). Pour un outil
-#               pas pret, bootstrap y ajoute (a venir) dans la langue du poste.
-#   titre     : nom de l'outil (le meme dans toutes les langues)
-#   sous_titre: cle de texte (aerotools/lang/*.py) de la description de l'outil
-#   raccourci : raccourci clavier Metashape, ou None
-#   pret      : False => l'entree de menu affiche « a venir » au lieu de charger
-#   rouvrir   : True => « Recharger AeroTools » rouvre cet outil (le panneau qui reste a l'ecran) ;
-#               False => une fenetre ponctuelle (Aero-Space) : fermee au rechargement, jamais rouverte
+# Registry of the tools of the Aero menu.
+#   id        : technical identifier, also the name of the sub-package
+#   menu      : label of the Metashape menu (ASCII: on some versions the API goes through Qt in
+#               latin-1, so accents are risky). For a tool that is not ready, bootstrap appends
+#               "(coming soon)".
+#   title     : name of the tool
+#   subtitle  : text key (aerotools/lang/en.py) of the description of the tool
+#   shortcut  : Metashape keyboard shortcut, or None
+#   ready     : False => the menu entry shows "(coming soon)" instead of loading
+#   reopen    : True => "Reload AeroTools" reopens this tool (the panel that stays on screen);
+#               False => a one-off window (Aero-Space): closed at reload, never reopened
 TOOLS = [
     {
         "id": "fastgcp",
         "menu": "Aero-GCP",
-        "titre": "Aero-GCP",
-        "sous_titre": "tool.fastgcp.subtitle",
-        "raccourci": "F8",
-        "pret": True,
-        "rouvrir": True,
+        "title": "Aero-GCP",
+        "subtitle": "tool.fastgcp.subtitle",
+        "shortcut": "F8",
+        "ready": True,
+        "reopen": True,
     },
     {
         "id": "fastspace",
         "menu": "Aero-Space",
-        "titre": "Aero-Space",
-        "sous_titre": "tool.fastspace.subtitle",
-        "raccourci": None,
-        "pret": True,
-        "rouvrir": False,
+        "title": "Aero-Space",
+        "subtitle": "tool.fastspace.subtitle",
+        "shortcut": None,
+        "ready": True,
+        "reopen": False,
     },
     {
         "id": "aeroexports",
         "menu": "Aero-Exports",
-        "titre": "Aero-Exports",
-        "sous_titre": "tool.aeroexports.subtitle",
-        "raccourci": None,
-        "pret": True,
-        "rouvrir": False,
+        "title": "Aero-Exports",
+        "subtitle": "tool.aeroexports.subtitle",
+        "shortcut": None,
+        "ready": True,
+        "reopen": False,
     },
-    # La detection IA (ex-AIGCP) est dans Aero-GCP : plus d'entree de menu a part.
+    # The AI detection (formerly AIGCP) is part of Aero-GCP: no menu entry of its own.
 ]
 
 
 def tool(tool_id):
-    """Fiche d'un outil du registre, ou None."""
+    """Registry entry of a tool, or None."""
     for entry in TOOLS:
         if entry["id"] == tool_id:
             return entry
@@ -69,7 +69,7 @@ def tool(tool_id):
 
 
 # --------------------------------------------------------------------------
-# Reglages par poste
+# Per-workstation settings
 # --------------------------------------------------------------------------
 
 def settings_dir():
@@ -81,14 +81,14 @@ def settings_path():
     return os.path.join(settings_dir(), "settings.json")
 
 
-# Sections renommees : {nouveau nom: ancien nom}. Aero-Exports s'appelait « fastexport » : les choix deja enregistres
-# (cad_format, cad_images, cad_clip, dem_look...) sont recopies vers la nouvelle section a la premiere lecture, sans
-# toucher a l'ancienne (un retour en arriere ne perd rien).
+# Renamed sections: {new name: old name}. Aero-Exports used to be called "fastexport": the choices already saved
+# (cad_format, cad_images, cad_clip, dem_look...) are copied to the new section at the first read, leaving the
+# old one untouched (going back loses nothing).
 LEGACY_SECTIONS = {"aeroexports": "fastexport"}
 
 
 def _migrate_legacy_sections(data):
-    """Recopie les anciennes sections vers les nouvelles si celles-ci n'existent pas. True si `data` a change."""
+    """Copies the old sections to the new ones if these do not exist. True if `data` changed."""
     changed = False
     for new_name, old_name in LEGACY_SECTIONS.items():
         old = data.get(old_name)
@@ -99,7 +99,7 @@ def _migrate_legacy_sections(data):
 
 
 def load_settings():
-    """Reglages du poste. Jamais d'exception : un fichier casse = reglages vides."""
+    """Settings of the workstation. Never raises: a broken file gives empty settings."""
     try:
         with open(settings_path(), "r", encoding="utf-8") as handle:
             data = json.load(handle)
@@ -113,7 +113,7 @@ def load_settings():
 
 
 def save_settings(data):
-    """Ecrit les reglages. Renvoie True si l'ecriture a abouti."""
+    """Writes the settings. Returns True if the write succeeded."""
     try:
         os.makedirs(settings_dir(), exist_ok=True)
         tmp = settings_path() + ".tmp"
@@ -126,7 +126,7 @@ def save_settings(data):
 
 
 def section(name):
-    """Section de reglages sous forme de dict. Une section corrompue = vide."""
+    """A settings section as a dict. A corrupted section gives an empty one."""
     value = load_settings().get(name, {})
     return value if isinstance(value, dict) else {}
 

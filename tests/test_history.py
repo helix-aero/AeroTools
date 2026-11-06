@@ -234,7 +234,7 @@ def test_undo_does_nothing_while_the_tool_is_paused(world):
 
 def test_undo_with_an_empty_history_says_so(world):
     assert marking.undo_last(world.state) is False
-    assert ("status", "Rien à annuler") in world.state.panel.calls
+    assert ("status", "Nothing to undo") in world.state.panel.calls
     assert any("rien a annuler" in line for line in journal.lines())
 
 
