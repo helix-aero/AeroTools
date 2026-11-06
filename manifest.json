@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T22:17:24",
+ "built": "2026-11-07T00:08:41",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -198,8 +198,8 @@
    "size": 13073
   },
   "aerotools/tools/aerofacade/msfacade.py": {
-   "sha256": "bb6f0c2f28d97b6c1c0a8ebde3131a7bfc02baaa611852b12d9b9ec0e5c7b78e",
-   "size": 57141
+   "sha256": "80db25c22d282088d0b821ccfd30f944ec132d9cda665ad5b889613aa96d0186",
+   "size": 57399
   },
   "aerotools/tools/aerofacade/screens_base.py": {
    "sha256": "95fa3fc7794dd28de41fb67b9371fde178036746d6e15de68975877f17891e95",

@@ -609,6 +609,8 @@ class MetashapeBackend(Backend):
         out[:] = np.clip(a * (1 - fy) + b * fy, 0, 255).astype(np.uint8)
         outside = (px < 0) | (py < 0) | (px > src.shape[1] - 1) | (py > src.shape[0] - 1)
         out[outside] = 255
+        if float((out.min(axis=2) >= 250).mean()) > 0.98:        # a chunk whose orthomosaic is not a plan view of this place (leftover work chunk, other frame)
+            raise ValueError("the orthomosaic of this chunk shows nothing of the building area")
         return out, extent
 
     @staticmethod
