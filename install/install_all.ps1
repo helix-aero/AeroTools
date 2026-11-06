@@ -46,6 +46,10 @@ $Template = Join-Path $Root 'install\aerotools_launcher.py.tpl'
 
 $script:TotalSteps = 2
 $script:StepNo = 0
+# Quand ensurepip ne marche pas sur ce poste, l'environnement n'a pas de pip : on installe alors ses paquets avec le pip
+# du Python systeme (pip --python <env>). Le fichier repere dit que c'est voulu (sinon on le croirait casse a chaque fois).
+$script:PipViaSystem = $null
+$NoPipMarker = Join-Path $EnvDir '.pip_from_system_python'
 
 
 function Say($text, $color) {
@@ -181,10 +185,62 @@ function Repair-EnvPip {
 }
 
 
+function Test-EnvPython {
+    # Vrai si le python.exe de l'environnement demarre vraiment (un lanceur dont le Python de base a disparu ne demarre pas).
+    if (-not (Test-Path -LiteralPath $EnvPython)) { return $false }
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $EnvPython -c 'import sys' 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+
+function Enable-SystemPip($systemPython) {
+    # Le pip du Python systeme peut installer dans l'environnement (pip --python) : il ne faut alors aucun pip dedans.
+    if (-not $systemPython -or -not (Test-Path -LiteralPath $systemPython)) { return $false }
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $systemPython -m pip --python $EnvPython --disable-pip-version-check list 2>$null | Out-Null
+        if ($LASTEXITCODE -ne 0) { return $false }
+    } catch {
+        return $false
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    $script:PipViaSystem = $systemPython
+    return $true
+}
+
+
+function Test-EnvReady {
+    # Environnement utilisable : python.exe demarre et pip marche dedans, ou bien il a ete prepare pour le pip du Python systeme.
+    if (Test-EnvPip) { return $true }
+    return ((Test-Path -LiteralPath $NoPipMarker) -and (Test-EnvPython))
+}
+
+
+function Run-Pip($label, [string[]]$pipArguments) {
+    # pip dans l'environnement ; sinon (pas de pip dedans) le pip du Python systeme, qui vise l'environnement.
+    if ($script:PipViaSystem) {
+        Run-Long $label $script:PipViaSystem (@('-m', 'pip', '--python', $EnvPython) + $pipArguments)
+    } else {
+        Run-Long $label $EnvPython (@('-m', 'pip') + $pipArguments)
+    }
+}
+
+
 function Update-Pip {
     # La mise a jour de pip est un confort, pas une necessite : un echec ici ne doit pas arreter l'installation.
+    if ($script:PipViaSystem) { return }
     try {
-        Run-Long 'pip update' $EnvPython @('-m', 'pip', 'install', '--upgrade', 'pip', '--progress-bar', 'off', '--disable-pip-version-check')
+        Run-Pip 'pip update' @('install', '--upgrade', 'pip', '--progress-bar', 'off', '--disable-pip-version-check')
     } catch {
         Say ("  pip could not be updated (the installation goes on): " + $_.Exception.Message.Split("`n")[0]) 'Yellow'
     }
@@ -281,7 +337,7 @@ function Show-Status {
     $ok = $true
     if (Test-LauncherCurrent) { Say 'Aero menu              : installed' } else { Say 'Aero menu              : NOT installed'; $ok = $false }
     if (-not $NoAI) {
-        if (Test-EnvPip) { Say "Python environment    : $EnvPython" }
+        if (Test-EnvReady) { Say "Python environment    : $EnvPython" }
         elseif (Test-Path -LiteralPath $EnvPython) { Say "Python environment    : BROKEN (pip is missing in $EnvPython): run the installer again to repair it"; $ok = $false }
         else { Say "Python environment    : MISSING ($EnvPython)"; $ok = $false }
         $light = Test-EngineInstalled
@@ -388,13 +444,37 @@ try {
         Show-Step 'AI environment'
         if (Test-EnvPip) {
             Say '  Already created.'
+        } elseif ((Test-Path -LiteralPath $NoPipMarker) -and (Test-EnvPython)) {
+            # Fait lors d'une installation precedente : pas de pip dans l'environnement, on passe par celui du Python systeme.
+            $systemPython = if ($python) { $python } else { Find-SystemPython }
+            if (Enable-SystemPip $systemPython) {
+                Say '  Already created (its packages are installed with the pip of the system Python).'
+            } else {
+                throw "The Python environment has no pip and the system Python cannot install into it. Install Python 3.12 from https://www.python.org/downloads/ (the standard installer, with pip) and run this installer again."
+            }
         } else {
             if (Test-Path -LiteralPath $EnvPython) { Repair-EnvPip }
             if (-not (Test-Path -LiteralPath $EnvPython) -and $python) {
-                Run-Long 'Environment creation' $python @('-m', 'venv', $EnvDir)
+                try {
+                    Run-Long 'Environment creation' $python @('-m', 'venv', $EnvDir)
+                } catch {
+                    # Typiquement : ensurepip echoue dans l'environnement tout neuf. On le refait sans pip, le pip du systeme suffira.
+                    Say ("  Environment creation with pip failed: " + $_.Exception.Message.Split("`n")[0]) 'Yellow'
+                    if (Test-Path -LiteralPath $EnvDir) {
+                        Move-Item -LiteralPath $EnvDir -Destination ($EnvDir + '_broken_' + (Get-Date -Format 'yyyyMMdd_HHmmss')) -Force
+                    }
+                    Run-Long 'Environment creation (without pip)' $python @('-m', 'venv', '--without-pip', $EnvDir)
+                }
             }
             if (-not $DryRun -and -not (Test-EnvPip)) {
-                throw "The Python environment has no working pip ($EnvPython). Install Python 3.12 from https://www.python.org/downloads/ (the standard installer, with pip) and run this installer again."
+                # Pas de pip dans l'environnement : le pip du Python systeme installera dedans.
+                $systemPython = if ($python) { $python } else { Find-SystemPython }
+                if ((Test-EnvPython) -and (Enable-SystemPip $systemPython)) {
+                    Say '  The environment has no pip on this computer: the pip of the system Python will be used.' 'Yellow'
+                    New-Item -ItemType File -Force -Path $NoPipMarker | Out-Null
+                } else {
+                    throw "The Python environment has no working pip ($EnvPython) and the system Python cannot install into it. Install Python 3.12 from https://www.python.org/downloads/ (the standard installer, with pip) and run this installer again."
+                }
             }
         }
 
@@ -407,7 +487,7 @@ try {
                 # opencv-python-headless a cote d'un opencv deja la (celui d'ultralytics) les ferait se marcher dessus.
                 $packages = @('numpy', 'onnxruntime')
                 if (-not (Test-Imports @('cv2'))) { $packages += 'opencv-python-headless' }
-                Run-Long 'Light engine installation' $EnvPython (@('-m', 'pip', 'install') + $packages + @('--progress-bar', 'off', '--disable-pip-version-check'))
+                Run-Pip 'Light engine installation' (@('install') + $packages + @('--progress-bar', 'off', '--disable-pip-version-check'))
             }
         }
 
@@ -419,12 +499,12 @@ try {
                 Update-Pip
                 if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
                     Say '  NVIDIA graphics card found: torch with CUDA.'
-                    Run-Long 'torch installation' $EnvPython @('-m', 'pip', 'install', 'torch', 'torchvision', '--index-url', $TorchGpuIndex, '--progress-bar', 'off', '--disable-pip-version-check')
+                    Run-Pip 'torch installation' @('install', 'torch', 'torchvision', '--index-url', $TorchGpuIndex, '--progress-bar', 'off', '--disable-pip-version-check')
                 } else {
                     Say '  No NVIDIA card: torch for the processor.'
-                    Run-Long 'torch installation' $EnvPython @('-m', 'pip', 'install', 'torch', 'torchvision', '--progress-bar', 'off', '--disable-pip-version-check')
+                    Run-Pip 'torch installation' @('install', 'torch', 'torchvision', '--progress-bar', 'off', '--disable-pip-version-check')
                 }
-                Run-Long 'ultralytics installation' $EnvPython @('-m', 'pip', 'install', 'ultralytics', '--progress-bar', 'off', '--disable-pip-version-check')
+                Run-Pip 'ultralytics installation' @('install', 'ultralytics', '--progress-bar', 'off', '--disable-pip-version-check')
             }
         }
 
@@ -433,7 +513,7 @@ try {
             if ((Test-TrainingInstalled) -and -not $DryRun) {
                 Say '  Already installed.'
             } else {
-                Run-Long 'onnx installation' $EnvPython @('-m', 'pip', 'install', 'onnx', '--progress-bar', 'off', '--disable-pip-version-check')
+                Run-Pip 'onnx installation' @('install', 'onnx', '--progress-bar', 'off', '--disable-pip-version-check')
             }
         }
     }
