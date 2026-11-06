@@ -210,6 +210,8 @@ def enu_matrix(chunk):
 class MetashapeBackend(Backend):
     """The Backend that works on a Metashape chunk (pinned when the object is created). See the module docstring for the model."""
 
+    threaded = False                 # the wizard must call every method on the main thread (see the module docstring)
+
     def __init__(self, chunk=None, pump=None, max_cameras=MAX_CAMERAS_DEFAULT, depth_downscale=4, keep_work_chunks=False):
         self.doc = Metashape.app.document
         chunk = chunk if chunk is not None else self.doc.chunk

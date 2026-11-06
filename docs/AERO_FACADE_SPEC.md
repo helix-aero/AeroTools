@@ -185,3 +185,61 @@ Measured (this PC, numpy 2.5, one core):
 - Not verified: other real sites (Citadelle tie points were not re-run), leaning walls (method "combined" is untouched and slow), curved walls.
 
 Open points: the gables of CARRO come out 12 m, not 15.7 m; very low walls (2 to 4 m high, < 40 m2) are dropped by `min_area` in the thick path only; a wall seen through a 2 m alley may fail the "nothing behind it" test.
+
+
+## Adapter notes (Metashape adapter agent, `msfacade.py`; live measurements on CARRO, Metashape 2.2.1, 2026-11-06)
+
+### Export of a vertical-plane orthophoto: DECIDED, measured
+Option (a) works and is the one in the code: **rotate the coordinate system of a throw-away work chunk so that the façade plane is the horizontal
+plane, then use the ordinary horizontal `buildDem` / `buildOrthomosaic` / `exportRaster`.** `chunk.copy(items=[TiePointsData], keypoints=False)`
+(1.6 s), `chunk.crs = CoordinateSystem('LOCAL_CS["AeroFacade plane",LOCAL_DATUM["Local Datum",0],UNIT["metre",1]]')`,
+`chunk.transform.matrix = A * E` where `E` is chunk -> local ENU metres (`localframe * transform`) and `A` ENU -> plane frame (x along the wall to the
+right, y up, z toward the viewer, origin at the bottom-left corner of the wall). After that no `OrthoProjection` is needed: the default horizontal
+projection of the chunk is the façade plane. The user's chunk is never touched.
+
+| What | Measured (CARRO south façade, 65.7 m x 21.6 m, margins 1 m, 3 cm) |
+|---|---|
+| `exportRaster` PNG / TIFF / JPEG of the rotated ortho | writes a file in 0.2 to 0.6 s (2255 x 786 px: 2.5 MB PNG, 5.4 MB TIFF, 0.5 MB JPEG) |
+| pixel size and extent | exactly the requested ones (`ortho.resolution` 0.0300, box `-1.0 .. 80.87` for a requested `-1.0 .. 80.89`), GeoTIFF tags present (pixel scale 0.03, tie point = top-left corner in plane metres, local CS) |
+| orientation | upright and not mirrored; the first test used a wall normal pointing into the building and still gave a clean picture (cameras of the far side projected through the slab): see `_orient` below |
+| scale | the distance between the two vertical joints of the south façade is 23.01 m on our picture, 23.03 m on François's `facade_sud.jpg` (6621 px, assumed 1.000 cm per pixel: its true pixel size is not known, so this is a consistency check, not an absolute accuracy); building ends fall on the picture where the detected wall ends (`s = 0` -> column 33, `s = L` -> column 2223) |
+| time | copy 1.6 s, DEM from tie points 13.5 s, orthophoto 39 s (2255 x 786 px; 29 s for 2299 x 631), export < 1 s |
+| (b) `ortho_view.captureView` | not used: bound to the screen size and to the GUI, framing unexplained in the study; (a) makes it unnecessary |
+| (c) own reprojection | not needed |
+
+Without a region `exportRaster` is still dangerous in a vertical projection; in the rotated chunk it is a normal horizontal export.
+`exportRaster(..., clip_to_boundary=False, save_alpha=False, white_background=True)`: no boundary shape of the user's project applies to the work chunk.
+
+### Threading model (what the UI must do)
+* `MetashapeBackend.threaded = False`: **call every method on the main thread** (the wizard already does: `tool.make_backend`). Metashape processing
+  (`buildDem`, `buildOrthomosaic`, `buildDepthMaps`, `exportRaster`, `chunk.copy`) blocks the main thread and shows Metashape's own progress dialog.
+* Constructor: `MetashapeBackend(chunk=None, pump=QApplication.processEvents, max_cameras=250, depth_downscale=4, keep_work_chunks=False)`.
+  `pump()` is called between Metashape calls and while the detector thread runs, never inside a Metashape callback.
+* `detect()`: reads the tie points on the main thread (1.4 s for 1.1 M points: the study's 8 s was the per-point `crs.project`), then runs the numpy
+  detector in a plain worker thread (it never touches Metashape) while the main thread loops on `join(0.05)` + `progress` + `pump`; the Cancel
+  button therefore works during detection. 23.7 s end to end on CARRO (9 façades). Reading tie points from a non-main thread also works (3 s) but is not used.
+* `progress(fraction, text)` is called from Metashape callbacks (0.2 s throttle): it must only store plain state. Cancel inside a Metashape job:
+  the adapter raises `KeyboardInterrupt` in the callback when `cancelled()` is true (measured: aborts the job in about 0.3 s with no dialog) and turns it into
+  `Cancelled`. Never raise an ordinary exception in a Metashape callback: Metashape opens a modal "Retry processing?" dialog (measured, 147 s lost until clicked).
+  Metashape's own Cancel button (confirmation "Are you sure?") also ends as KeyboardInterrupt "Aborted by user" -> `Cancelled`.
+* `cleanup()` removes the work chunks (`AeroFacade_*`) and the temp files; call it when the wizard closes (unless the user asked to keep them: `keep_work_chunks`).
+
+### Frames and conventions
+* **The preview frame IS the façade frame**: local east/north metres around the middle of the chunk region at the moment the backend is created
+  (`backend.enu`, a 4 x 4 chunk -> ENU matrix, frozen for the whole session). `project_info()["crs"]` = "Local east/north (m)". The polygon, the preview extent and
+  `Facade.polyline_xy()` all live in it, no conversion in the UI. (ENU y is north: checked against WGS84 latitude of the two long walls.)
+* `ortho_preview()`: if the chunk has an orthomosaic it is exported small and resampled onto ENU axes (`_preview_from_ortho`, written, NOT tested live: CARRO has none);
+  otherwise a quick orthomosaic is built in a work chunk from the tie-point surface and at most 120 near-vertical photos, at about 8 cm per pixel: **29 s** for
+  131 m x 122 m on CARRO (1600 px, shows roofs, cars, trees well). Last resort: a tie-point density picture (instant). Tell the operator "about 30 seconds".
+* `detect()` returns façades whose normal points to the side the photos stand on; `_orient` double-checks with the tie-point tracks (which cameras really see
+  the wall, not the mean camera side: on CARRO the flight goes all around the building, 292 cameras on one side, 289 on the other) and turns a façade round if needed.
+  Measured on CARRO: A (south, 65.7 x 21.6 m) 800 k vs 12 k matches on the right side, B (north, 67.0 x 17.0 m) 705 k vs 25 k, C and D the gables 11.5 / 12.0 m, 5 small walls.
+* Work chunks: `AeroFacade_<site>_<letter>`, one per façade (a chunk has one transform, so one plane). Tags in `chunk.meta`: `aerofacade.sig` (hash of plane frame, margins,
+  method, ENU frame: this is how `existing_dems` finds them), `aerofacade.stage` (`dem` / `ortho`), `aerofacade.pixel`, `aerofacade.letter`, `aerofacade.source`, `aerofacade.margins`.
+  Changing margins or method gives another signature, hence a new work chunk. The cameras that do not look at the façade from its viewer side are disabled in the work chunk
+  (at most 250 kept, ranked by visible fraction and frontalness): this is what keeps depth maps and orthophotos short.
+* Names: `<site>_<date>_facade_<A>.<ext>` in `Outputs` next to the project (site from `aeroexports.naming.guess_site`, date = flight date from EXIF `DateTimeOriginal`), plus
+  `<same name>.txt` (engine's `georef_lines` + exact extent and size of the picture).
+
+### Not yet measured / still to do (updated as the work goes on)
+Depth-maps and dense-cloud DEMs through the backend, DXF with the vertical image, end-to-end timings of the whole chain with the wizard, `_preview_from_ortho` on a chunk with a real orthomosaic.
