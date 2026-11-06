@@ -90,6 +90,25 @@ def press(widget, pos):
 # The look window
 # --------------------------------------------------------------------------------------------------
 
+def double_click(widget):
+    event = QtGui.QMouseEvent(QtCore.QEvent.MouseButtonDblClick, QtCore.QPointF(5, 5), QtCore.Qt.LeftButton, QtCore.Qt.LeftButton,
+                              QtCore.Qt.NoModifier)
+    APP.sendEvent(widget, event)
+
+
+def key(widget, code, text=""):
+    for kind in (QtCore.QEvent.KeyPress, QtCore.QEvent.KeyRelease):
+        APP.sendEvent(widget, QtGui.QKeyEvent(kind, code, QtCore.Qt.NoModifier, text))
+
+
+def type_into(value, text, code=QtCore.Qt.Key_Return):
+    """Open the editor of an EditableValue by double-click, type `text`, press Enter (or `code`)."""
+    double_click(value.label)
+    value.edit.setText(text)
+    key(value.edit, code)
+    pump(120)
+
+
 @case("look window: opens with the saved look, paints once, shows the legend", needs_numpy=True)
 def _():
     window = previewwin.PreviewWindow(None, small_preview(), looks.DEFAULT)
@@ -186,6 +205,92 @@ def _():
     ok = looks.is_default(window.current_look()) and window.paints >= 2
     window.close()
     return ok, str(window.current_look())
+
+
+@case("look window: double-click on a value, type a number, Enter: the slider and the picture follow", needs_numpy=True)
+def _():
+    window = previewwin.PreviewWindow(None, small_preview(), looks.DEFAULT)
+    window.show()
+    pump()
+    before = window.paints
+    double_click(window.direction_text.label)
+    opened = window.direction_text.is_editing() and window.direction_text.currentWidget() is window.direction_text.edit
+    window.direction_text.edit.setText("45")
+    key(window.direction_text.edit, QtCore.Qt.Key_Return)
+    pump(150)
+    window.strength_text.begin_edit()
+    window.strength_text.edit.setText("35 %")                       # the unit is accepted
+    key(window.strength_text.edit, QtCore.Qt.Key_Enter)
+    pump(150)
+    look = window.current_look()
+    ok = (opened and not window.direction_text.is_editing() and window.direction.value() == 45 and look.azimuth == 45.0
+          and abs(look.strength - 0.35) < 1e-9 and window.paints > before and "45" in window.direction_text.text()
+          and window.strength_text.text() == "35 %")
+    window.close()
+    return ok, "opened={} dir={} look={} paints {} -> {}".format(opened, window.direction.value(), look, before, window.paints)
+
+
+@case("look window: Esc keeps the old value and does not close the window; a wrong number is refused", needs_numpy=True)
+def _():
+    window = previewwin.PreviewWindow(None, small_preview(), looks.DEFAULT)
+    window.show()
+    pump()
+    type_into(window.direction_text, "90", QtCore.Qt.Key_Escape)
+    escaped = window.direction.value() == 315 and not window.direction_text.is_editing() and window.isVisible()
+    double_click(window.height_text.label)
+    results = []
+    for wrong in ("abc", "200", "-3", ""):                          # height lives in 5..85
+        window.height_text.edit.setText(wrong)
+        key(window.height_text.edit, QtCore.Qt.Key_Return)
+        results.append(window.height_text.is_editing() and window.height.value() == 45 and window.height_text.edit.property("bad"))
+    key(window.height_text.edit, QtCore.Qt.Key_Escape)
+    window.direction_text.begin_edit()
+    window.direction_text.edit.setText("360")                       # a compass wraps: 360 is north
+    key(window.direction_text.edit, QtCore.Qt.Key_Return)
+    pump(120)
+    wrapped = window.direction.value() == 0
+    window.close()
+    return escaped and all(results) and wrapped, "escaped={} wrong={} wrapped={}".format(escaped, results, wrapped)
+
+
+@case("look window: the value can be opened from the keyboard (Enter on it), and leaving with a good number applies it", needs_numpy=True)
+def _():
+    window = previewwin.PreviewWindow(None, small_preview(), looks.DEFAULT)
+    window.show()
+    pump()
+    window.strength_text.label.setFocus()
+    pump(30)
+    key(window.strength_text.label, QtCore.Qt.Key_Return)
+    opened = window.strength_text.is_editing()
+    window.strength_text.edit.setText("20")
+    window.strength_text.edit.left.emit()                           # what a click elsewhere sends
+    pump(120)
+    ok = opened and window.strength.value() == 20 and not window.strength_text.is_editing()
+    window.close()
+    return ok, "strength={}".format(window.strength.value())
+
+
+@case("look window: each control has a reset button that puts its default back, greyed when it is already the default", needs_numpy=True)
+def _():
+    start = looks.Look("rainbow", looks.LIGHTS4, 90.0, 20.0, 0.3, looks.AUTO, None, None)
+    window = previewwin.PreviewWindow(None, small_preview(), start)
+    window.show()
+    pump()
+    pairs = ((window.palette_reset, lambda: window.palette_box.currentData() == looks.DEFAULT.palette),
+             (window.shading_reset, lambda: window.shading_box.currentData() == looks.DEFAULT.shading),
+             (window.direction_reset, lambda: window.direction.value() == 315),
+             (window.height_reset, lambda: window.height.value() == 45),
+             (window.strength_reset, lambda: window.strength.value() == 80),
+             (window.range_reset, lambda: window._range_choice() == looks.FULL))
+    results = []
+    for button, back in pairs:
+        before = button.isEnabled()
+        button.click()
+        pump(100)
+        results.append((before, back(), button.isEnabled()))
+    done = looks.is_default(window.current_look())
+    window.close()
+    return all(r == (True, True, False) for r in results) and done, "{} default={}".format(results, done)
 
 
 @case("look window: degrees (geographic DEM) greys the shading out and says why", needs_numpy=True)

@@ -10,10 +10,12 @@ import numpy as np
 
 from ... import i18n, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from . import look as looks
+from . import controls, look as looks
+from .controls import parse_number  # noqa: F401  (kept here: the tests and older code import it from this module)
 
 DELAY_MS = 35
-WIDTH, HEIGHT = 980, 760
+WIDTH, HEIGHT = 1120, 740
+PANEL_WIDTH = 410
 SCREEN_MARGIN = 70
 LEGEND_WIDTH = 96
 THUMB = (112, 76)
@@ -50,22 +52,13 @@ def compass(azimuth):
     return names[int(((azimuth % 360.0) + 22.5) // 45.0) % 8]
 
 
-def parse_number(text):
-    """Float of a typed value (comma or dot), or None."""
-    try:
-        value = float(str(text).replace(",", ".").strip())
-    except ValueError:
-        return None
-    return value if value == value and abs(value) != float("inf") else None
-
-
 class ImageView(QtWidgets.QWidget):
     """The preview picture, scaled to the available room (aspect kept)."""
 
     def __init__(self):
         super(ImageView, self).__init__()
         self._image = None
-        self.setMinimumSize(420, 320)
+        self.setMinimumSize(480, 360)
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
     def set_image(self, image):
@@ -132,42 +125,54 @@ class PreviewWindow(QtWidgets.QDialog):
         self.setModal(True)
         self.resize(*self._size())
         root = ui.dark_root(self)
-        layout = QtWidgets.QVBoxLayout(root)
+        layout = QtWidgets.QHBoxLayout(root)
         pad = theme.PAD_L
         layout.setContentsMargins(pad, pad, pad, pad)
-        layout.setSpacing(theme.PAD)
-        layout.addWidget(ui.label(i18n.t("export.look_intro")))
-        middle = QtWidgets.QHBoxLayout()
-        middle.setSpacing(theme.PAD)
+        layout.setSpacing(pad)
+        # left: the picture, as large as the window allows
         self.view = ImageView()
-        middle.addWidget(self.view, 1)
+        layout.addWidget(self.view, 1)
         self.legend = LegendBar()
-        middle.addWidget(self.legend)
-        layout.addLayout(middle, 1)
-        if preview.geographic:
-            note = (note + chr(10) if note else "") + i18n.t("export.look_no_shade")
-        self.note = ui.label(note, "aeroMeta")
-        self.note.setVisible(bool(note))
-        layout.addWidget(self.note)
+        layout.addWidget(self.legend)
 
+        # right: the settings, in a column of fixed width; the buttons stay visible under it
+        side = QtWidgets.QVBoxLayout()
+        side.setSpacing(theme.PAD)
+        layout.addLayout(side)
+        page = QtWidgets.QWidget()
+        page.setFixedWidth(PANEL_WIDTH)
+        form = QtWidgets.QVBoxLayout(page)
+        form.setContentsMargins(0, 0, theme.PAD, 0)
+        form.setSpacing(theme.PAD)
+        form.addWidget(ui.label(i18n.t("export.look_intro")))
         grid = QtWidgets.QGridLayout()
         grid.setHorizontalSpacing(theme.PAD)
-        grid.setVerticalSpacing(theme.PAD_S)
+        grid.setVerticalSpacing(theme.PAD)
         grid.setColumnStretch(1, 1)
-        self.palette_box = self._combo(grid, 0, "export.look_palette")
+        self.palette_box, self.palette_reset = self._combo(grid, 0, "export.look_palette", self._reset_palette)
         lang = i18n.lang()
         for ident, entry in looks.palettes().items():
             self.palette_box.addItem(QtGui.QIcon(self._swatch(entry)), looks.label(entry, lang), ident)
-        self.shading_box = self._combo(grid, 1, "export.look_shading")
+        self.shading_box, self.shading_reset = self._combo(grid, 1, "export.look_shading", self._reset_shading)
         for shading in looks.SHADINGS:
             self.shading_box.addItem(shading_name(shading), shading)
-        self.direction, self.direction_text = self._slider(grid, 2, "export.look_direction", 0, 359)
-        self.height, self.height_text = self._slider(grid, 3, "export.look_height", int(looks.ALTITUDE_RANGE[0]),
-                                                     int(looks.ALTITUDE_RANGE[1]))
-        self.strength, self.strength_text = self._slider(grid, 4, "export.look_strength", 0, 100)
-        grid.addWidget(ui.label(i18n.t("export.look_range"), "aeroMeta", wrap=False), 5, 0)
-        holder = QtWidgets.QHBoxLayout()
-        holder.setSpacing(theme.PAD_L)
+        default = looks.DEFAULT
+        self.direction, self.direction_text, self.direction_reset = controls.slider_row(
+            grid, 2, "export.look_direction", 0, 359, lambda v: "{}° ({})".format(v, compass(v)), int(default.azimuth),
+            modulo=360, typed_high=360)
+        self.height, self.height_text, self.height_reset = controls.slider_row(
+            grid, 3, "export.look_height", int(looks.ALTITUDE_RANGE[0]), int(looks.ALTITUDE_RANGE[1]),
+            lambda v: "{}°".format(v), int(default.altitude))
+        self.strength, self.strength_text, self.strength_reset = controls.slider_row(
+            grid, 4, "export.look_strength", 0, 100, lambda v: "{} %".format(v), int(round(default.strength * 100)))
+        for widget, tip_key in ((self.palette_reset, "export.look_palette"), (self.shading_reset, "export.look_shading"),
+                                (self.direction_reset, "export.look_direction"), (self.height_reset, "export.look_height"),
+                                (self.strength_reset, "export.look_strength")):
+            widget.setToolTip(i18n.t("export.reset_one", name=i18n.t(tip_key)))
+        top = QtCore.Qt.AlignTop
+        grid.addWidget(ui.label(i18n.t("export.look_range"), "aeroMeta", wrap=False), 5, 0, top)
+        holder = QtWidgets.QVBoxLayout()
+        holder.setSpacing(theme.PAD_S)
         self.range_group = QtWidgets.QButtonGroup(self)
         self.range_radios = {}
         for value, key in ((looks.AUTO, "export.range_auto"), (looks.FULL, "export.range_full"), (looks.CUSTOM, "export.range_custom")):
@@ -180,30 +185,41 @@ class PreviewWindow(QtWidgets.QDialog):
             radio.toggled.connect(self._on_range_choice)
         self.range_radios[looks.AUTO].setToolTip(i18n.t("export.range_auto_tip"))
         self.range_radios[looks.CUSTOM].setEnabled(custom_allowed)
+        grid.addLayout(holder, 5, 1, 1, 2)
+        self.range_reset = controls.reset_button(self._reset_range, i18n.t("export.reset_one", name=i18n.t("export.look_range")))
+        grid.addWidget(self.range_reset, 5, 3, top)
         self.low_edit, self.high_edit = ui.SelectAllEdit(), ui.SelectAllEdit()
         for edit in (self.low_edit, self.high_edit):
             edit.setFixedWidth(80)
             edit.setAlignment(QtCore.Qt.AlignRight)
             edit.setMaxLength(12)
             edit.textChanged.connect(self._on_range_text)
-        holder.addWidget(self.low_edit)
-        holder.addWidget(ui.label(i18n.t("export.look_to"), "aeroMeta", wrap=False))
-        holder.addWidget(self.high_edit)
-        holder.addStretch(1)
-        grid.addLayout(holder, 5, 1, 1, 2)
+        numbers = QtWidgets.QHBoxLayout()
+        numbers.setSpacing(theme.PAD)
+        numbers.addWidget(self.low_edit)
+        numbers.addWidget(ui.label(i18n.t("export.look_to"), "aeroMeta", wrap=False))
+        numbers.addWidget(self.high_edit)
+        numbers.addStretch(1)
+        grid.addLayout(numbers, 6, 1, 1, 2)
         self.range_error = ui.label(i18n.t("export.look_range_bad"), "aeroMeta")
         self.range_error.setVisible(False)
-        grid.addWidget(self.range_error, 6, 1, 1, 2)
-        layout.addLayout(grid)
+        grid.addWidget(self.range_error, 7, 1, 1, 3)
+        form.addLayout(grid)
+        if preview.geographic:
+            note = (note + chr(10) if note else "") + i18n.t("export.look_no_shade")
+        self.note = ui.label(note, "aeroMeta")
+        self.note.setVisible(bool(note))
+        form.addWidget(self.note)
+        form.addStretch(1)
+        side.addWidget(controls.scroll_page(page), 1)
 
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(theme.PAD)
-        buttons.addWidget(ui.big_button("export.look_reset", self._reset, "aeroBtn", width=170))
-        buttons.addStretch(1)
-        self.apply_button = ui.big_button("export.look_apply", self._apply, "aeroGo", width=210)
-        buttons.addWidget(self.apply_button)
-        buttons.addWidget(ui.big_button("export.cancel", self.reject, "aeroBtn", width=110))
-        layout.addLayout(buttons)
+        self.apply_button = ui.big_button("export.look_apply", self._apply, "aeroGo", width=170)
+        buttons.addWidget(self.apply_button, 1)
+        buttons.addWidget(ui.big_button("export.cancel", self.reject, "aeroBtn", width=100))
+        side.addWidget(ui.big_button("export.look_reset", self._reset, "aeroBtn"))
+        side.addLayout(buttons)
 
         self.palette_box.activated.connect(self._on_change)
         self.shading_box.activated.connect(self._on_change)
@@ -227,24 +243,14 @@ class PreviewWindow(QtWidgets.QDialog):
             return WIDTH, HEIGHT
 
     @staticmethod
-    def _combo(grid, row, key):
+    def _combo(grid, row, key, reset):
+        """A drop-down with its label and its reset button: returns (box, reset button)."""
         grid.addWidget(ui.label(i18n.t(key), "aeroMeta", wrap=False), row, 0)
         box = ui.combo()
         grid.addWidget(box, row, 1, 1, 2)
-        return box
-
-    @staticmethod
-    def _slider(grid, row, key, low, high):
-        grid.addWidget(ui.label(i18n.t(key), "aeroMeta", wrap=False), row, 0)
-        slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        slider.setObjectName("aeroSlider")
-        slider.setRange(low, high)
-        slider.setCursor(QtCore.Qt.PointingHandCursor)
-        grid.addWidget(slider, row, 1)
-        text = ui.label("", "aeroMeta", wrap=False)
-        text.setMinimumWidth(110)
-        grid.addWidget(text, row, 2)
-        return slider, text
+        button = controls.reset_button(reset)
+        grid.addWidget(button, row, 3)
+        return box, button
 
     @staticmethod
     def _swatch(entry):
@@ -268,6 +274,8 @@ class PreviewWindow(QtWidgets.QDialog):
         self.direction.setValue(int(round(look.azimuth)) % 360)
         self.height.setValue(int(round(look.altitude)))
         self.strength.setValue(int(round(look.strength * 100)))
+        for slider, text in ((self.direction, self.direction_text), (self.height, self.height_text), (self.strength, self.strength_text)):
+            text.set_value(slider.value())
         stretch = look.stretch if (look.stretch != looks.CUSTOM or self._custom_allowed) else looks.FULL
         self.range_radios[stretch].setChecked(True)
         low, high = (look.low, look.high) if stretch == looks.CUSTOM else self.preview.span()
@@ -312,10 +320,18 @@ class PreviewWindow(QtWidgets.QDialog):
         custom = self._range_choice() == looks.CUSTOM
         self.low_edit.setEnabled(custom)
         self.high_edit.setEnabled(custom)
-        degrees = self.direction.value()
-        self.direction_text.setText("{} ({})".format("{}°".format(degrees), compass(degrees)))
-        self.height_text.setText("{}°".format(self.height.value()))
-        self.strength_text.setText("{} %".format(self.strength.value()))
+        self.direction_text.set_value(self.direction.value())
+        self.height_text.set_value(self.height.value())
+        self.strength_text.set_value(self.strength.value())
+        for text, slider in ((self.direction_text, self.direction), (self.height_text, self.height), (self.strength_text, self.strength)):
+            text.setEnabled(slider.isEnabled())
+        default = looks.DEFAULT
+        self.palette_reset.setEnabled(self.palette_box.currentData() != default.palette)
+        self.shading_reset.setEnabled(self.shading_box.isEnabled() and self.shading_box.currentData() != default.shading)
+        self.direction_reset.setEnabled(self.direction.isEnabled() and self.direction.value() != int(default.azimuth))
+        self.height_reset.setEnabled(self.height.isEnabled() and self.height.value() != int(default.altitude))
+        self.strength_reset.setEnabled(self.strength.isEnabled() and self.strength.value() != int(round(default.strength * 100)))
+        self.range_reset.setEnabled(self._range_choice() != default.stretch)
 
     # -- events ------------------------------------------------------------------------------
 
@@ -353,6 +369,18 @@ class PreviewWindow(QtWidgets.QDialog):
 
     def _reset(self):
         self._show_look(looks.DEFAULT)
+
+    def _reset_palette(self):
+        self.palette_box.setCurrentIndex(max(0, self.palette_box.findData(looks.DEFAULT.palette)))
+        self._on_change()
+
+    def _reset_shading(self):
+        self.shading_box.setCurrentIndex(max(0, self.shading_box.findData(looks.DEFAULT.shading)))
+        self._on_change()
+
+    def _reset_range(self):
+        """The colour range goes back to "lowest to highest" (the typed numbers follow the DEM again)."""
+        self.range_radios[looks.DEFAULT.stretch].setChecked(True)
 
     def _apply(self):
         look = self._read()
