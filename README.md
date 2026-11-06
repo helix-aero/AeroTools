@@ -51,7 +51,7 @@ AeroTools, below, is the part of our daily tooling that we share with the Metash
   <img alt="Windows" src="https://img.shields.io/badge/platform-Windows-lightgrey">
 </p>
 
-[Tutorial](docs/TUTORIAL.md) · [Version française](README.fr.md) · [Development](docs/DEVELOPMENT.md)
+[Tutorial](docs/TUTORIAL.md) · [Development](docs/DEVELOPMENT.md) · [Contributing](CONTRIBUTING.md)
 
 ![The Aero-GCP panel docked in Metashape: header, play/pause button, AI detection card, active marker, marker table, Residual check and Export buttons](docs/images/panel-overview.png)
 
@@ -75,7 +75,7 @@ again. So we wrote a tool for ourselves. It saved us enough time that we decided
 - **AI detection.** An AI proposes a point on every photo that should see the marker, and you review the proposals.
 - **Review panel.** One thumbnail per photo. Exclude the bad proposals, refine the imprecise ones, validate the rest.
 - **PDF report and CSV table.** One click from the **Export** button.
-- English and French interface. Pause the tool and Metashape behaves as usual.
+- Pause the tool and Metashape behaves as usual.
 
 ## Install
 
@@ -100,13 +100,13 @@ The installer asks which detection engine you want (light, precise, or both) and
 Aero-GCP settings can install any of them afterwards with one click.
 
 The installer writes one small launcher into `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Nothing else is touched.
-`install\desinstaller_aerotools.bat` removes it.
+`install\uninstall_aerotools.bat` removes it.
 
 > [!NOTE]
 > The AI detection runs in a separate, light Python (ONNX Runtime, about 100 MB; no `torch`, no graphics card needed). The same
 > installer sets it up (run it again at any time: it only redoes what is missing). The hand-marking tools work without it.
 > Only retraining the model ("Refine my model") needs the heavy tools (`torch`, about 3 GB): double-click
-> `install\installer_entrainement.bat` if you want that. See the [troubleshooting table](docs/TUTORIAL.md#9-troubleshooting).
+> `install\install_training.bat` if you want that. See the [troubleshooting table](docs/TUTORIAL.md#9-troubleshooting).
 
 ## Quick start
 
@@ -158,7 +158,7 @@ After an AI detection, it adds a section called *Photos picked by the AI*: one b
 confidence, one thumbnail per photo, and the excluded photos too, darkened with a large red cross and left out of the
 statistics. **Export > CSV table** writes the marker table.
 
-See [an example report](docs/exemple_rapport_gcp.pdf) (in French, without the AI section).
+See [an example report](docs/example_gcp_report.pdf).
 
 ## Status
 
@@ -182,7 +182,7 @@ Issues, ideas and pull requests are welcome.
 
 [PolyForm Noncommercial 1.0.0](LICENSE). Copyright 2026 HELIX AERO.
 
-The code and the base AI model (`models/damier.pt`, `models/bombe.pt`, "Aero V1.0") are open to read, and free to use, modify and share for any non-commercial purpose: personal use, study,
+The code and the base AI model (`models/checker.pt`, `models/spray.pt`, "Aero V1.0") are open to read, and free to use, modify and share for any non-commercial purpose: personal use, study,
 research, teaching, hobby projects, non-profit organizations. Commercial use needs a separate license from us.
 If you would like to use AeroTools in a business, get in touch. We are happy to talk.
 

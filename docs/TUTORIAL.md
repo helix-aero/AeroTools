@@ -1,12 +1,10 @@
 # Aero-GCP tutorial
 
-[Version française](TUTORIAL.fr.md)
-
 Aero-GCP is the first tool of AeroTools, the small suite we write at [HELIX AERO](https://helix.aero) for Agisoft Metashape.
 It marks ground control points (GCPs) quickly, and it can propose the marks itself with an AI detector that you review, correct
 and, if you want, retrain on your own corrections.
 
-This tutorial follows the order you will use it in. Every button name is written as it appears in the English interface.
+This tutorial follows the order you will use it in. Every button name is written as it appears in the interface.
 
 - [1. Install and start](#1-install-and-start)
 - [2. Mark GCPs by hand](#2-mark-gcps-by-hand)
@@ -25,23 +23,23 @@ This tutorial follows the order you will use it in. Every button name is written
 You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 
 1. Get this repository (download or clone it) and put it anywhere, for example on a shared drive.
-2. Double-click `CLICK HERE TO INSTALL.bat` (at the root; it runs `install\installer_aerotools.bat`). This single installer also sets up the AI detection (about 100 MB, once, with a "Please wait..." display). It writes one small launcher into
+2. Double-click `CLICK HERE TO INSTALL.bat` (at the root; it runs `install\install_aerotools.bat`). This single installer also sets up the AI detection (about 100 MB, once, with a "Please wait..." display). It writes one small launcher into
    `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\` and touches nothing else.
 3. Restart Metashape. A new **Aero** menu appears.
 4. Open **Aero > Aero-GCP** (shortcut **F8**). The panel docks on the right of the window.
 
-**Aero > Reload AeroTools** re-reads the code without restarting Metashape. `install\desinstaller_aerotools.bat` removes the launcher.
+**Aero > Reload AeroTools** re-reads the code without restarting Metashape. `install\uninstall_aerotools.bat` removes the launcher.
 
 > **Note.** The AI detection runs in a separate light Python (ONNX Runtime, about 100 MB): the installer sets it up (the same
-> installer, run it again if needed). The models `models\damier.onnx` and `models\bombe.onnx` (and their `.pt` source weights) come with
-> the download. Retraining ("Refine my model") also needs `torch` (about 3 GB): run `install\installer_entrainement.bat` once.
+> installer, run it again if needed). The models `models\checker.onnx` and `models\spray.onnx` (and their `.pt` source weights) come with
+> the download. Retraining ("Refine my model") also needs `torch` (about 3 GB): run `install\install_training.bat` once.
 > See [Troubleshooting](#9-troubleshooting). Everything else works without them.
 
 ![The Aero-GCP panel docked in Metashape: header, play/pause button, AI detection card, active marker, marker table, Residual check and Export buttons](images/panel-overview.png)
 
 ## 2. Mark GCPs by hand
 
-The panel header has the title, an undo button, the language list and the **settings** gear. Under it, the round
+The panel header has the title, an undo button and the **settings** gear. Under it, the round
 **Play / Pause** button shows the state of the tool: **Tool active** or **Tool inactive**. When the tool is paused,
 Metashape behaves as usual.
 
@@ -57,7 +55,7 @@ To mark a marker:
 **Ctrl+Shift+Z** puts it back.
 
 > **Note.** If the photo view is already zoomed, Aero-GCP keeps your zoom and only re-centres on the marker. On a photo that is
-> still fitted to the window, it shows about 400 pixels around the marker (hidden setting `zoom_fenetre_px`, see
+> still fitted to the window, it shows about 400 pixels around the marker (hidden setting `zoom_window_px`, see
 > [DEVELOPMENT.md](DEVELOPMENT.md)).
 
 ## 3. The marker list
@@ -303,7 +301,7 @@ wrong, so the worst pick is set aside and the others are judged again until noth
 |---|---|
 | The **Aero** menu is missing | Double-click `CLICK HERE TO INSTALL.bat` again and restart Metashape. |
 | *AI: AIGCP Python not found*, or a box titled *AI detection setup* | The detector runs in its own light Python (ONNX Runtime). The easiest fix is to double-click `CLICK HERE TO INSTALL.bat` again (it sets everything up, about 100 MB). By default Aero-GCP looks for `%USERPROFILE%\AIGCP\_env\Scripts\python.exe`; set the `AIGCP_PYTHON` environment variable, or the `python` key of the `aigcp` section in `settings.json`, to use another one. |
-| *AI: … weights not found* | The two files `damier.pt` and `bombe.pt` should be in the `models` folder of the download: copy them back there if you deleted them, or set `models_dir` in the `aigcp` section. |
+| *AI: … weights not found* | The two files `checker.pt` and `spray.pt` should be in the `models` folder of the download: copy them back there if you deleted them, or set `models_dir` in the `aigcp` section. |
 | The AI finds nothing | Check that the marker has a 3D position or reference coordinates, that the photos are aligned, and that the *Ignore* list is not hiding the photos you want. |
 | A photo is not found or unreadable | The detector reads the original image files at the path Metashape knows. Make sure the drive or share is connected. |
 | *Settings unavailable (numpy missing)* | The View sliders need numpy. Metashape normally ships it. |

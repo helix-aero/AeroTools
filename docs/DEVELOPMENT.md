@@ -3,11 +3,11 @@
 ## Look of the panel
 
 One grey theme, the one of Metashape (`theme.py`: window #282828, base #404040, text #eeeeee), no light or dark switch. The header
-holds the title, Undo, the language list (a flag in front of each language, painted in code) and the **settings** gear, which
+holds the title, Undo and the **settings** gear, which
 opens the settings window (`settings_dialog.py`: open the review automatically, save marker picks, journal, and the AI models
 block, see *AI models and retraining*). The very top is a banner: green strip, the gradient AERO text logo (`assets/logo/helix-aero-AERO-degrade-512px.png`, from the brand kit
 validated on 31/10/2026, kept on the server in `1-HELIX AERO\Logo_Helix_Aero_2026-10-31`; the O and AERO are never combined) and a one-line presentation, all of it a link to helix.aero. In the header: Undo and Redo (Ctrl+Z, Ctrl+Y or
-Ctrl+Shift+Z, `history.py` keeps a redo stack that a new pin clears), the language list showing only the flag, and the gear, all small.
+Ctrl+Shift+Z, `history.py` keeps a redo stack that a new pin clears), and the gear, all small.
 Confirmation and message boxes are our own (`dialogs.py`, fixed width, text measured to fit) because a QMessageBox cut long text under
 Metashape. After removing projections or validating, the marker table is read again at once and twice more (0.5 s and 2 s), since
 Metashape recomputes marker positions a little later. At the bottom of the panel: *Tool made by helix.aero* (link) and a GitHub icon (link,
@@ -40,13 +40,13 @@ The installer writes `aerotools_launcher.py` into Metashape's scripts folder, wi
 At each start Metashape runs it, and it adds the **Aero** menu. A tool module is imported only when its menu entry is clicked.
 **Aero > Reload AeroTools** purges the `aerotools` modules and reopens the last tool, so you can edit code without restarting.
 
-Per-machine settings (theme, language, options) live in `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`.
+Per-machine settings live in `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`.
 
 ## Adding a tool
 
-1. Declare it in `config.TOOLS` (`id`, `menu`, `titre`, `sous_titre`, `raccourci`, `pret`). `sous_titre` is a text key defined in `aerotools/lang/*.py`.
+1. Declare it in `config.TOOLS` (`id`, `menu`, `title`, `subtitle`, `shortcut`, `ready`, `reopen`). `subtitle` is a text key defined in `aerotools/lang/en.py`.
 2. Create `aerotools/tools/<id>/tool.py` with `install()` and `uninstall()`.
-3. Restart Metashape or use Reload AeroTools. While `pret` is `False`, the menu entry says the tool is not available yet.
+3. Restart Metashape or use Reload AeroTools. While `ready` is `False`, the menu entry says the tool is not available yet.
 
 ## Rules of the road
 
@@ -66,34 +66,16 @@ python -m pytest tests -q
 (`python\python.exe` in the Metashape folder) and with a Python that has PySide6.
 `tests_qt/run_qt_aeroexports.py` does the same for Aero-Exports (both windows, DEM card, pixel field, layout at several font scales, coordinate trap); it needs numpy for the preview cases.
 
-## Languages
+## Texts and formats
 
-The panel and the reports (PDF and CSV) come in French and English. Pick the language with the **FR | EN** switch in the
-panel header: the whole panel is translated on the spot, and the choice is saved per machine (`ui.langue` in `settings.json`).
-The report reads the language when you export, so the PDF and the CSV follow the switch (file name, number format,
-CSV delimiter and decimal separator included: `;` and `,` in French, `,` and `.` in English).
+Every visible text (panel, menu, message boxes, PDF report, CSV table) lives in one catalog, `aerotools/lang/en.py`: `TEXTS` (key
+to text) and `FORMATS` (decimal separator, date pattern, CSV delimiter). Numbers use a decimal point, dates are written
+YYYY-MM-DD and the CSV delimiter is a comma.
 
-On the very first start there is no saved choice: AeroTools uses Metashape's language, then the system language,
-and takes French if that is French, English otherwise.
-
-The **Aero** menu is built once at Metashape startup, in the saved language. A language change reaches it at the next
-Metashape start (Reload AeroTools re-reads the code but cannot rename menu entries). Message boxes follow the switch at once.
-The technical journal is always French, on purpose.
-
-Code side:
-
-- `aerotools/i18n.py` has no Qt dependency: `t(key, **fields)`, `lang()`, `set_lang(code)`, `subscribe(callback)`,
-  `fmt_number()`, `fmt_date()`, `csv_delimiter()`. `t()` never raises: a missing text falls back to French, then to the key.
-- Texts live in `aerotools/lang/<code>.py` (`TEXTES`: key to text, `FORMATS`: decimal separator, date pattern, CSV delimiter),
-  loaded on demand. `fr.py` is the reference: `en.py` must have the same keys and the same `{fields}` (a test checks it).
-- Call `i18n.t()` when you display something, never at import time, so a language change takes effect.
-  A test scans the UI modules for visible text left in French.
-
-To add a language (Spanish, say):
-
-1. Copy `aerotools/lang/fr.py` to `aerotools/lang/es.py` and translate the values.
-2. Add `("es", "Español")` to `LANGUES` in `aerotools/i18n.py`.
-3. Run `python -m pytest tests -q`. The switch gets a new button by itself.
+- `aerotools/i18n.py` has no Qt dependency: `t(key, **fields)`, `has(key)`, `fmt_number()`, `fmt_date()`, `csv_delimiter()`.
+  `t()` never raises: a key missing from the catalog gives the key itself, and a `{field}` that is not given is left as written.
+- Call `i18n.t()` when you display something, never at import time.
+- To add a text, add its key to `TEXTS` in `aerotools/lang/en.py` and use it with `i18n.t("key", name=value)`.
 
 ## Training data
 
@@ -103,7 +85,7 @@ to a file in a visible folder. No image is copied. The file format is documented
 ## AI detection (AIGCP)
 
 The **AI detection** card, at the top of the panel, proposes a marker on the photos that should see it. Two models, never mixed:
-checkerboard (`damier`) and spray or chalk mark (`bombe`). Three drop-down lists choose the type, the scope (**Selected markers** or
+checkerboard (`checker`) and spray or chalk mark (`spray`). Three drop-down lists choose the type, the scope (**Selected markers** or
 **All markers**, meaning every marker that has a 3D position: no pin is needed when the marker has reference coordinates) and which photos to leave alone (**Ignore green + blue**,
 green, blue or none). With **Selected markers**, Shift+click or Ctrl+click in the marker list selects several markers and the
 detection covers all of them (one selected marker: the active one). Buttons: **Run detection**, **Clear proposals**, **Review**. The choices are saved per machine.
@@ -116,7 +98,7 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
 - The runner crops a square of `4 x S x pixels-per-metre` around the estimated position of the marker (S = 0.3 / 0.5 / 0.8 m,
   the target size is unknown), resizes it to 160 x 160, keeps the detection closest to the estimate, then re-centres on it.
   If nothing is found it also tries four crops shifted by 0.4 of the crop size, unless the marker's position is confirmed (see
-  the guard below). This is the pipeline measured in `DATASET_GCP_IA\modeles\RAPPORT_ENTRAINEMENT_V2.md`.
+  the guard below). This is the pipeline measured on the training set.
 - **Guard.** When a marker has at least 2 projections (placed by hand or computed by Metashape, AI proposals excluded),
   `msapi.marker_spread_m` measures how far they sit from the reprojection of the marker's 3D point. A detection further than
   `max(gate_min_m, gate_factor x spread)` metres from the expected position is rejected (roof, tree, a neighbouring object) and
@@ -170,12 +152,12 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
   *Use manual refinements to build the training dataset* is unchecked.
 - Picking a marker in the panel also selects it in Metashape's Reference pane: Metashape recentres on its own selected marker
   when the photo changes (Page Up / Page Down).
-- Weights: `models/damier.pt` and `models/bombe.pt` (v2, `poids_recommande_last.pt` of each `modeles\*_v2` folder) and their ONNX export
-  `models/damier.onnx`, `models/bombe.onnx` (what the runner reads; export with `YOLO(...).export(format="onnx", imgsz=160, dynamic=True,
+- Weights: `models/checker.pt` and `models/spray.pt` (v2: the last weights of each v2 training run) and their ONNX export
+  `models/checker.onnx`, `models/spray.onnx` (what the runner reads; export with `YOLO(...).export(format="onnx", imgsz=160, dynamic=True,
   simplify=True, opset=17)`; the training does it by itself). They are stored in git (the base model "Aero V1.0", released with the
   code); any other `*.pt` / `*.onnx` file stays git-ignored.
 - Hidden settings, section `aigcp`: `engine` (auto, light, precise), `python` (path of the Python of the detection engine; default: `AIGCP_PYTHON`, then
-  `~/AIGCP/_env/Scripts/python.exe`), `models_dir`, `conf_damier` (0.25), `conf_bombe` (0.30), `gate_min_m` (0.30),
+  `~/AIGCP/_env/Scripts/python.exe`), `models_dir`, `conf_checker` (0.25), `conf_spray` (0.30), `gate_min_m` (0.30),
   `gate_factor` (5), `consensus_m` (0.25), and the last `type`, `scope`, `ignore` and `review_thumb` (thumbnail size).
 - Limits: the review keeps only the last detection; at most 200 photos per marker and 3000 per run, a marker needs a 3D position and an aligned photo. Measured by script
   on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and 40 px): 98 to 100 % within 3 px.
@@ -302,7 +284,7 @@ full name is the tooltip).
   `refresh()` and writes "The active chunk changed: now working on <label>" on the status line, and the action stops there: nothing is
   previewed or exported on a chunk the user has not seen. It does nothing during an export (the pinned chunk is exported to the end,
   whatever is active meanwhile).
-- The journal says which chunk is exported ("Aero-Exports : export of chunk <label>") and when the window follows another one.
+- The journal says which chunk is exported ("Aero-Exports: export of chunk <label>") and when the window follows another one.
 - A DEM already exported next to the project is reused for the preview only if `preview.belongs_to` agrees: same size in pixels, same
   pixel and same extent (two pixels) as the pinned chunk's DEM, besides the file being newer than the project. If it does not, a small
   export is asked from Metashape instead. The pipeline deletes a file about to be rewritten before exporting it (the user agreed to
@@ -387,7 +369,7 @@ On the 71 Mpx image: ECW 1.9 / 2.0 s, JPEG 2000 4.1 / 2.2 s, TIFF 1.4 to 1.7 / 2
 - What is not known: how it feels in the AutoCAD window (pan and zoom with the display cache), and what Global Mapper's own DXF contains.
   The lag is not claimed to be fixed; ECW is the best candidate.
 
-5-minute protocol for François, in AutoCAD, on one real project (needs Global Mapper for ECW):
+5-minute protocol, in AutoCAD, on one real project (needs Global Mapper for ECW):
 1. Export the same project three times into three folders with the CAD preset: Images = ECW, Images = JPEG 2000, and (for reference) your
    Global Mapper DXF of the same ortho.
 2. Open each `TOPO.dxf`, same machine, same AutoCAD window size. Type `ZOOM` `E` and note how long the picture takes to settle.
@@ -466,7 +448,7 @@ The settings window (gear) has an **AI models** block: the checkbox above, the s
 
 - `training.py` (no Qt) holds the registry (`<storage>/models/<id>/<type>.pt` + `meta.json`, numbers never reused thanks to
   `counter.json`), the active model (`aigcp.weights_path` follows it, a local model that lacks a type falls back on the original
-  weights) and `Training`, which runs `aigcp_train.py` in the external Python (needs torch, ultralytics and onnx: `install/installer_entrainement.bat`;
+  weights) and `Training`, which runs `aigcp_train.py` in the external Python (needs torch, ultralytics and onnx: `install/install_training.bat`;
   never inside Metashape). The window asks for confirmation first (graphics card used heavily, do not touch the computer, the result may be
   better on the user's targets and worse elsewhere, wrong annotations give a worse model, the original model is never modified).
 - The training starts again from the original weights each time, with all the feedback. Per type: crops around the final point
@@ -482,8 +464,8 @@ The settings window (gear) has an **AI models** block: the checkbox above, the s
 
 Written by hand in `settings.json`, section `fastgcp`. There is no switch for them in the panel.
 
-- `zoom_fenetre_px` (default 400): image width, in pixels, shown around the marker when Aero-GCP zooms the photo view.
-- `recalage_max_px` (default 0, off): maximum distance, in pixels, for snapping a click onto the centre of a 2x2 checker
+- `zoom_window_px` (default 400): image width, in pixels, shown around the marker when Aero-GCP zooms the photo view.
+- `snap_max_px` (default 0, off): maximum distance, in pixels, for snapping a click onto the centre of a 2x2 checker
   target (`tools/fastgcp/snap.py`). Off by default: on CITADELLE_Pompeani (93 manual pins, 11 snapped) the manual pins sat
   0.76 px from the reprojected 3D point on average, and the snapped ones 1.83 px. When on, the raw click is kept next to the
   snapped position in the training file (`x_click`, `y_click`).

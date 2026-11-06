@@ -1,17 +1,17 @@
 # -*- coding: utf-8 -*-
-"""Diagnostic des reglages d'image (exposition, contraste, saturation, nettete) du Review panel.
+"""Diagnostic of the image adjustments (exposure, contrast, saturation, sharpness) of the Review panel.
 
-A coller dans la console de Metashape (View > Console), sous la forme d'une seule ligne :
-    exec(open(r"<dossier AeroTools>\\docs\\debug_adjust.py", encoding="utf-8").read())
-ou, sans fichier, la ligne `exec("...")` que fournit la personne qui t'aide.
+Paste into the Metashape console (View > Console), as a single line:
+    exec(open(r"<AeroTools folder>\\docs\\debug_adjust.py", encoding="utf-8").read())
+or, without a file, the `exec("...")` line given to you by the person who is helping you.
 
-Il ne modifie rien dans le projet. Il affiche les versions, dit si numpy est la, teste chaque reglage
-sur une image de 64 x 64 pixels et, si le Review panel est ouvert, l'etat de ses curseurs.
+It changes nothing in the project. It prints the versions, says whether numpy is present, tests each adjustment
+on a 64 x 64 pixel image and, if the Review panel is open, the state of its sliders.
 """
 import sys
 import traceback
 
-print("=== AeroTools debug : reglages d'image ===")
+print("=== AeroTools debug: image adjustments ===")
 try:
     import Metashape
     print("Metashape", Metashape.app.version)
@@ -28,7 +28,7 @@ try:
     import numpy as np
     print("numpy", np.__version__)
 except Exception as exc:
-    print("numpy ABSENT :", repr(exc), "  <- sans numpy les curseurs sont desactives")
+    print("numpy MISSING:", repr(exc), "  <- without numpy the sliders are disabled")
 
 try:
     from aerotools.tools.fastgcp import imageadjust
@@ -42,13 +42,13 @@ try:
             after = QtGui.QColor(out.pixel(10, 10))
             b = (before.red(), before.green(), before.blue())
             a = (after.red(), after.green(), after.blue())
-            verdict = "OK" if (a != b or name == "sharpness") else "SANS EFFET"
+            verdict = "OK" if (a != b or name == "sharpness") else "NO EFFECT"
             print("  %-10s %-11s %s -> %s" % (name, verdict, b, a))
         except Exception:
-            print("  %-10s ERREUR" % name)
+            print("  %-10s ERROR" % name)
             traceback.print_exc()
 except Exception:
-    print("Impossible d'importer aerotools.tools.fastgcp.imageadjust :")
+    print("Cannot import aerotools.tools.fastgcp.imageadjust:")
     traceback.print_exc()
 
 try:
@@ -57,23 +57,23 @@ try:
     panel = getattr(state, "panel", None)
     dialog = getattr(panel, "_review_dialog", None) if panel is not None else None
     if dialog is None:
-        print("Review panel : pas ouvert (ouvre-le avec le bouton Review, puis relance ce diagnostic).")
+        print("Review panel: not open (open it with the Review button, then run this diagnostic again).")
     else:
-        print("Review panel ouvert. Reglages :", dialog.adjust.values)
-        print("  abonnes du modele :", len(dialog.adjust._subscribers), "| minuteur actif :", dialog._refresh.isActive())
+        print("Review panel open. Adjustments:", dialog.adjust.values)
+        print("  model subscribers:", len(dialog.adjust._subscribers), "| timer active:", dialog._refresh.isActive())
         for key, slider in dialog.panel._sliders.items():
-            print("  curseur %-10s actif=%s valeur=%s" % (key, slider.isEnabled(), slider.value()))
+            print("  slider %-10s enabled=%s value=%s" % (key, slider.isEnabled(), slider.value()))
         slider = dialog.panel._sliders["exposure"]
         if slider.isEnabled():
             original = slider.value()
             slider.setValue(40 if original != 40 else 30)
             QtWidgets.QApplication.processEvents()
-            print("  apres un essai d'exposition : modele =", dialog.adjust.values["exposure"])
-            slider.setValue(original)                 # on remet le reglage de l'operateur
+            print("  after an exposure test: model =", dialog.adjust.values["exposure"])
+            slider.setValue(original)                 # put the operator's setting back
             QtWidgets.QApplication.processEvents()
         else:
-            print("  le curseur d'exposition est DESACTIVE (numpy absent ?)")
+            print("  the exposure slider is DISABLED (numpy missing?)")
 except Exception:
-    print("Etat du Review panel illisible :")
+    print("Review panel state unreadable:")
     traceback.print_exc()
-print("=== fin du diagnostic : copie tout ce qui precede et envoie-le ===")
+print("=== end of the diagnostic: copy everything above and send it ===")
