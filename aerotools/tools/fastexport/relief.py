@@ -101,8 +101,32 @@ def shade_block(z, nodata, low, pixel_x, pixel_y, look, dtype=np.float64):
     the edge is repeated, so the shading is defined up to the borders."""
     if look.shading == looks.NONE or look.strength <= 0:
         return None
-    filled = np.where(nodata_mask(z, nodata), low, z).astype(dtype)
+    filled = fill_for_shading(z, nodata_mask(z, nodata), low, dtype)
     return shade_factor(np.pad(filled, 1, mode="edge"), pixel_x, pixel_y, look)
+
+
+def fill_for_shading(z, void, low, dtype=np.float64):
+    """Copy of `z` where each no-data pixel touching data takes the mean of its data neighbours, so the slope stops at the edge of
+    the data instead of seeing a cliff down to `low` (that drew a dark line along every border). Other no-data pixels take `low`."""
+    filled = np.where(void, 0, z).astype(dtype)
+    if void.any() and not void.all():
+        valid = ~void
+        padded_z, padded_v = np.pad(filled, 1), np.pad(valid, 1)
+        total = np.zeros_like(filled)
+        count = np.zeros(filled.shape, dtype=np.int32)
+        rows, cols = filled.shape
+        for dr in (0, 1, 2):
+            for dc in (0, 1, 2):
+                near = padded_v[dr:dr + rows, dc:dc + cols]
+                total += np.where(near, padded_z[dr:dr + rows, dc:dc + cols], 0)
+                count += near
+        grow = void & (count > 0)
+        filled[grow] = total[grow] / count[grow]
+        valid = valid | grow
+        filled[~valid] = low
+    elif void.all():
+        filled[:] = low
+    return filled
 
 
 # --------------------------------------------------------------------------------------------------

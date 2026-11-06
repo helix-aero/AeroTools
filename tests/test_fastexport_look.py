@@ -129,7 +129,14 @@ def test_the_default_look_paints_exactly_what_the_export_painted_before(tmp_path
     z = hill_dem(dem, nodata_rows=4)
     ok, message = relief.render(dem, out)
     assert ok, message
-    assert np.array_equal(read_rgb(out), legacy_picture(z))
+    picture, legacy = read_rgb(out), legacy_picture(z)
+    bad = ~np.isfinite(z) | (z < -9000.0)
+    touching = np.zeros_like(bad)                                  # data pixels next to no data: the slope there no longer sees a cliff
+    for dr in (-1, 0, 1):
+        for dc in (-1, 0, 1):
+            touching |= np.roll(np.roll(bad, dr, axis=0), dc, axis=1)
+    assert np.array_equal(picture[~touching], legacy[~touching])   # everywhere else the picture is the one made before looks existed
+    assert np.array_equal(picture[bad], legacy[bad])               # and no data stays white
     ok, _ = relief.render(dem, str(tmp_path / "again.tif"), look=looks.DEFAULT)
     assert ok and open(out, "rb").read() == open(str(tmp_path / "again.tif"), "rb").read()
 
@@ -219,3 +226,14 @@ def test_a_geographic_dem_has_no_shading_but_is_still_coloured(tmp_path):
     assert relief.render(dem, out)[0]
     flat = relief.colorize(z, float(z.min()), float(z.max()), relief.lookup_table())
     assert np.array_equal(read_rgb(out), flat)
+
+
+def test_no_dark_line_along_the_border_of_the_data(tmp_path):
+    """Filling the no-data pixels with the lowest height made a cliff at every border: a dark line on the sunny side."""
+    z = np.full((40, 40), 10.0, dtype=np.float32)                   # flat ground: nothing should be shaded
+    z[:, :10] = -32767.0
+    filled = relief.fill_for_shading(z, z < -9000.0, 10.0)
+    shade = relief.shade_factor(np.pad(filled, 1, mode="edge"), 0.5, 0.5, looks.DEFAULT)
+    assert np.allclose(shade[:, 8:], 1.0, atol=1e-6)
+    cliff = relief.shade_factor(np.pad(np.where(z < -9000.0, 10.0 - 5.0, z).astype(np.float64), 1, mode="edge"), 0.5, 0.5, looks.DEFAULT)
+    assert abs(cliff[:, 9:11] - 1.0).max() > 0.05                    # what the old filling did

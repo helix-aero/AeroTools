@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T11:50:32",
+ "built": "2026-11-06T11:52:47",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -150,8 +150,8 @@
    "size": 6187
   },
   "aerotools/tools/fastexport/relief.py": {
-   "sha256": "892ffb6d19e2a6313536833b3b70a0efd0dd00163fa75d2fa2171337509f3ab2",
-   "size": 11939
+   "sha256": "2db84a82c601eb68adda778d64de842df22ce8a86a06d3d6d847498f0bb75d99",
+   "size": 12997
   },
   "aerotools/tools/fastexport/tiffio.py": {
    "sha256": "55135742a6edb2aace39e19cbaa0e2f5445a806e8f550feb2efee6093b7f2ba4",
