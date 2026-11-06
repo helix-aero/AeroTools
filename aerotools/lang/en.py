@@ -634,6 +634,9 @@ TEXTES = {
     "export.failed": "{name}: {error}",
     "export.missing": "the file was not written",
     "export.no_chunk": "Open a project first.",
+    "export.chunk": "Chunk: {name}",
+    "export.chunk_none": "No chunk",
+    "export.chunk_changed": "The active chunk changed: now working on {name}",
 
     # -- Aero-Exports : SCR -------------------------------------------------
     "export.crs": "Coordinate system: {crs}",

@@ -731,6 +731,147 @@ def _():
     return fits and any(bars), "fits={} bars={}".format(fits, bars)
 
 
+# --------------------------------------------------------------------------------------------------
+# Always the right chunk: the window pins the chunk it shows; a chunk changed in Metashape is noticed, never exported by surprise
+# --------------------------------------------------------------------------------------------------
+
+class FakeChunk(object):
+    def __init__(self, key, label):
+        self.key, self.label = key, label
+
+
+JULY, MAY = FakeChunk(1, "July"), FakeChunk(2, "May")
+CHUNK_INFO = {
+    "July": {"ortho": (0.03, 6000, 5000), "dem": (0.12, 1500, 1250), "box_ortho": (100.0, 200.0, 280.0, 350.0),
+             "box_dem": (100.0, 200.0, 280.0, 350.0), "crs": "RGF93 v1 / Lambert-93", "dates": ["2026:07:10 09:00:00"],
+             "crs_object": None, "center": None},
+    "May": {"ortho": (0.05, 3000, 2500), "dem": (0.2, 700, 600), "box_ortho": (900.0, 800.0, 1050.0, 925.0),
+            "box_dem": (900.0, 800.0, 1040.0, 920.0), "crs": "WGS 84 / UTM zone 32N", "dates": ["2026:05:12 09:00:00"],
+            "crs_object": None, "center": None},
+}
+ACTIVE = {"chunk": JULY}
+
+
+def open_chunk_dialog(label=None, scale=1.0, size=(1080, 740)):
+    """The window with two chunks of one project (different boxes, systems, dates); July is active."""
+    from aerotools.tools.aeroexports import dialog
+    from aerotools import msapi
+    path = os.path.join(tempfile.mkdtemp(prefix="aerotools_qt_chunk_"), "SITE.psx")
+    open(path, "w").write("x")
+    config.put("aeroexports", "dem_look", None)
+    config.put("aeroexports", "preset", "full")
+    ACTIVE["chunk"] = JULY
+    JULY.label = label or "July"
+    msapi.document_path = lambda: path
+    msapi.chunk = lambda: ACTIVE["chunk"]
+    msapi.raster_info = lambda chk=None: dict(CHUNK_INFO["July" if chk is JULY else "May"])
+    dialog.crs.check_geoid_presence = lambda choice: {"status": "ok", "spec": {}}
+    dialog.crs.zone_grids = lambda *args: []
+    box = dialog.ExportDialog(None)
+    rescale(box, scale)
+    if size:
+        box.resize(*size)
+    box.show()
+    box.refresh()
+    box.site.setText("SITE")
+    pump(100)
+    return box
+
+
+def fake_export(calls, during=None):
+    def export(chk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None):
+        calls.append({"chunk": chk, "kind": kind, "path": path, "pixel": pixel, "box": box})
+        if during is not None and len(calls) == 1:
+            during()
+        with open(path, "wb") as handle:
+            handle.write(b"x")
+        return True, ""
+    return export
+
+
+@case("chunk: the window names its chunk, and a chunk changed before Export is shown, not exported by surprise")
+def _():
+    from aerotools import msapi
+    box = open_chunk_dialog()
+    header = box.chunk_title.text()
+    names_july = [job.name for job in box._jobs]
+    box._preview, box._preview_key = object(), box._preview_signature()           # a preview made on July
+    calls = []
+    msapi.export_raster = fake_export(calls)
+    ACTIVE["chunk"] = MAY                                                          # the user switched chunk in Metashape
+    box._on_export()
+    notice = box.status.text()
+    names_may = [job.name for job in box._jobs]
+    first = (list(calls), box._chunk is MAY, box.chunk_title.text(), notice, box._preview, box._preview_model_cached())
+    box._on_export()                                                               # now the user presses Export on what he sees
+    box.close()
+    ok = (header == "Chunk: July" and first[0] == [] and first[1] and first[2] == "Chunk: May"
+          and "active chunk changed" in first[3] and "May" in first[3] and first[4] is None and first[5] is None
+          and all("260710" in n for n in names_july) and all("260512" in n for n in names_may)
+          and len(calls) == 2 and all(c["chunk"] is MAY for c in calls))
+    return ok, "header={!r} first={} names={} / {} calls={}".format(header, first, names_july, names_may, [c["path"] for c in calls])
+
+
+@case("chunk: a chunk switched while the export runs does not change what is exported (the pinned chunk is used to the end)")
+def _():
+    from aerotools import msapi
+    box = open_chunk_dialog()
+    calls = []
+    msapi.export_raster = fake_export(calls, during=lambda: ACTIVE.update(chunk=MAY))
+    box._on_export()
+    done = box.status.text()
+    title_after = box.chunk_title.text()
+    all_july = len(calls) == 2 and all(c["chunk"] is JULY for c in calls)
+    box._follow_chunk()                                                            # back in front: now it shows May
+    title_then = box.chunk_title.text()
+    box.close()
+    return all_july and title_after == "Chunk: July" and title_then == "Chunk: May", \
+        "calls={} done={!r} after={!r} then={!r}".format([(c["chunk"].label, c["kind"]) for c in calls], done, title_after, title_then)
+
+
+@case("chunk: the preview never works on another chunk than the one shown")
+def _():
+    box = open_chunk_dialog()
+    ACTIVE["chunk"] = MAY
+    model = box._preview_model()
+    ok = model is None and box._chunk is MAY and "May" in box.status.text() and "Chunk: May" == box.chunk_title.text()
+    box.close()
+    return ok, "status={!r}".format(box.status.text())
+
+
+@case("chunk: the signature of the preview changes with the chunk")
+def _():
+    box = open_chunk_dialog()
+    first = box._preview_signature()
+    ACTIVE["chunk"] = MAY
+    box._follow_chunk()
+    second = box._preview_signature()
+    box.close()
+    return first != second, "{} / {}".format(first, second)
+
+
+@case("large fonts: the chunk line stays inside its panel at x1, x1.25, x1.5 and x2, a long name is cut with the full name as tooltip")
+def _():
+    from aerotools.tools.aeroexports import controls
+    controls.screen_area = lambda: SCREEN
+    long_name = "Chunk of the July flight over the harbour and the old town with the second battery " * 3
+    results = {}
+    try:
+        for factor in SCALES:
+            box = open_chunk_dialog(label=long_name, scale=factor)
+            pump(150)
+            title = box.chunk_title
+            results[factor] = (cut_off(box), title.text().endswith("…"), title.toolTip() == "Chunk: " + long_name,
+                               title.isVisible() and title.height() > 0)
+            box.close()
+            unscale()
+    finally:
+        unscale()
+        controls.screen_area = lambda: QtCore.QRect(0, 0, 1086, 800)
+    bad = {f: r for f, r in results.items() if r[0] or not all(r[1:])}
+    return not bad, "problems: {}".format(bad)
+
+
 def main():
     pump(30)
     print("-" * 60)

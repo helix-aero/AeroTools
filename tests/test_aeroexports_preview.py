@@ -167,3 +167,24 @@ def test_a_failed_or_empty_small_export_raises_a_clear_error(tmp_path):
         preview.fetch_small(lambda *a, **k: (True, ""), object(), (0, 0, 10, 10), str(tmp_path))     # says OK but wrote nothing
     with pytest.raises(ValueError):
         preview.fetch_small(lambda *a, **k: (True, ""), object(), None, str(tmp_path))
+
+
+# -- an export left on disk is reused for the preview only if it is THIS chunk's DEM ---------------------------------------
+
+def test_an_export_of_another_chunk_is_not_reused_for_the_preview(tmp_path):
+    june = tmp_path / "SITE_260610_20cm_dtm.tif"          # what the July chunk would be called too if the date were the same
+    make_dem(str(june), np.full((40, 30), 5.0, dtype="<f4"), 900.0, 920.0, 0.2)       # 30 x 40 px at 0.2 m: x 900..906, y 912..920
+    native_here = (0.2, 30, 40)
+    box_here = (900.0, 912.0, 906.0, 920.0)
+    assert preview.usable_export([str(june)], None, box_here, native_here) == str(june)
+    # the chunk now shown has another extent / size / pixel: the file on disk is not its DEM
+    assert preview.usable_export([str(june)], None, (100.0, 200.0, 106.0, 208.0), native_here) is None
+    assert preview.usable_export([str(june)], None, box_here, (0.2, 31, 40)) is None
+    assert preview.usable_export([str(june)], None, box_here, (0.1, 30, 40)) is None
+    assert preview.usable_export([str(tmp_path / "missing.tif")], None, box_here, native_here) is None
+
+
+def test_an_unreadable_export_is_not_reused_for_the_preview(tmp_path):
+    bad = tmp_path / "SITE_260610_20cm_dtm.tif"
+    bad.write_text("not a tiff")
+    assert preview.usable_export([str(bad)], None, (0.0, 0.0, 6.0, 8.0), (0.2, 30, 40)) is None

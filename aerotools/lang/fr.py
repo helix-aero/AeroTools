@@ -640,6 +640,9 @@ TEXTES = {
     "export.failed": "{name} : {error}",
     "export.missing": "le fichier n'a pas été écrit",
     "export.no_chunk": "Ouvre un projet d'abord.",
+    "export.chunk": "Chunk : {name}",
+    "export.chunk_none": "Aucun chunk",
+    "export.chunk_changed": "Le chunk actif a changé : on travaille maintenant sur {name}",
 
     # -- Aero-Exports : SCR -------------------------------------------------
     "export.crs": "Système de coordonnées : {crs}",

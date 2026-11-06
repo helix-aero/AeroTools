@@ -371,3 +371,23 @@ def test_newest_version_wins(tmp_path):
         path.parent.mkdir()
         path.write_bytes(b"x")
     assert external._newest([str(old), str(new)]) == str(new)
+
+
+def test_a_file_left_by_an_earlier_export_never_passes_for_the_new_one(tmp_path):
+    from aerotools.tools.aeroexports import pipeline
+    old = tmp_path / "SITE_260610_5cm_ortho.tif"
+    old.write_bytes(b"old export of another chunk")
+    pipeline._clear_stale(str(old))
+    assert not old.exists()
+    pipeline._clear_stale(str(old))                       # nothing there: no error
+
+
+def test_an_old_file_is_not_taken_for_a_new_export_that_wrote_nothing(tmp_path):
+    env = Env(tmp_path)
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
+    stale = tmp_path / "EDF_260704_50cm_ortho.tif"
+    stale.write_bytes(b"left by an export of another chunk")
+    env.export = lambda *args, **kwargs: (True, "")        # Metashape writes nothing (no data)
+    with pytest.raises(pipeline.Failure):
+        pipeline.run(fake_context(tmp_path, env, "full"), jobs, lambda f, t: None)
+    assert not stale.exists()

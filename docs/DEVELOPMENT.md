@@ -284,9 +284,33 @@ registry and the usual folders, or pointed at by the user):
   what to pick. Unticking the raster in degrees gives back "Same as the project". Exporting a drawing, tiles or a pixel in cm from a raster in
   degrees without a projected system is refused in words before any file is written (`_degrees_blocks`).
 - The error line names the file that really failed: `pipeline.Context.failed` is set before each file (and for TOPO.dxf / .dwg).
-- Tests: `python -B tests_qt\run_qt_aeroexports.py` (29 cases) includes the layout at x1, x1.25, x1.5 and x2 font scale for both windows
+- Tests: `python -B tests_qt\run_qt_aeroexports.py` (35 cases) includes the layout at x1, x1.25, x1.5 and x2 font scale for both windows
   (`rescale` grows every font, `cut_off` lists any widget past its panel's right edge or the window's) and a small 1024 px screen.
   Offscreen Qt has no real DPI scaling, so this is an approximation of 125-200 %; the real check is Metashape on a scaled display.
+
+### Always the right chunk
+
+The window is not modal, so the active chunk can change in Metashape while it is open. Rule: everything the window does belongs to ONE
+chunk, the one named on the first line of the left panel ("Chunk: <label>", an `ElidedLabel`: a long name is cut with "..." and the
+full name is the tooltip).
+- `refresh()` pins the chunk with what it reads from it: `self._chunk`, `self._pin = (project path, chunk key)`, `self._info`
+  (`msapi.raster_info(chunk)`, boxes, systems, dates). The preview (`fetch_small`, `dem_range`), the export (`pipeline.Context.chunk`,
+  the clip mask) and the job names all use that chunk and that info, never a fresh `msapi.chunk()`. `refresh()` also drops the preview
+  and the planned jobs; the preview signature contains the chunk key.
+- `_follow_chunk()` compares the pin with the current project and active chunk. It runs when the window becomes active again
+  (`changeEvent`), before the look window opens (`_preview_model`) and before an export (`_on_export`). If they differ it calls
+  `refresh()` and writes "The active chunk changed: now working on <label>" on the status line, and the action stops there: nothing is
+  previewed or exported on a chunk the user has not seen. It does nothing during an export (the pinned chunk is exported to the end,
+  whatever is active meanwhile).
+- The journal says which chunk is exported ("Aero-Exports : export of chunk <label>") and when the window follows another one.
+- A DEM already exported next to the project is reused for the preview only if `preview.belongs_to` agrees: same size in pixels, same
+  pixel and same extent (two pixels) as the pinned chunk's DEM, besides the file being newer than the project. If it does not, a small
+  export is asked from Metashape instead. The pipeline deletes a file about to be rewritten before exporting it (the user agreed to
+  overwrite), so a file left by an earlier export is never taken for the new one when Metashape writes nothing (empty tile).
+- Tests: `tests/test_aeroexports_preview.py` (`belongs_to`), `tests/test_aeroexports_cad.py` (stale files), and the Qt harness
+  (two fake chunks with different boxes, dates and systems: switch between refresh and export, switch during an export, preview, the
+  header at x1 to x2 font scales). Not covered offscreen: the real activation event (an offscreen window is never active; the harness calls
+  `_follow_chunk()` as `changeEvent` does) and Metashape's real `Chunk.key`.
 
 ### AutoCAD speed: what was measured
 

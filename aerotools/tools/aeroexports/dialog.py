@@ -100,6 +100,9 @@ class ExportDialog(QtWidgets.QDialog):
         self._lang = i18n.lang()
         self._busy = False
         self._info = {}
+        self._chunk = None                                  # the chunk the window shows: pinned at refresh(), used by everything after
+        self._pin = (None, None)                            # (project path, chunk key) of that chunk
+        self._chunk_label = ""
         self._psx = ""
         self._native = {}
         self._jobs = []
@@ -147,6 +150,9 @@ class ExportDialog(QtWidgets.QDialog):
         right_layout.setSpacing(theme.PAD + theme.PAD_S)
         right_column.addWidget(controls.scroll_page(right, cap=self._panel_cap()), 1)
 
+        # Which chunk this window works on, always in view: the export is of THIS chunk, whatever is active in Metashape later.
+        self.chunk_title = controls.ElidedLabel("aeroTitle")
+        layout.addWidget(self.chunk_title)
         layout.addWidget(ui.label(i18n.t("export.what_section"), "aeroSection"))
         self.cards, self.fields, self.native_labels = {}, {}, {}
         for kind in plan.KINDS:
@@ -348,6 +354,27 @@ class ExportDialog(QtWidgets.QDialog):
             self._fitted = True
             controls.fit_window(self)                       # minimum size from the panels, once the styles (fonts, scaling) are applied
 
+    def changeEvent(self, event):
+        super(ExportDialog, self).changeEvent(event)
+        if event.type() == QtCore.QEvent.ActivationChange and self.isActiveWindow():
+            self._follow_chunk()                            # back in front: is it still the chunk we show?
+
+    @staticmethod
+    def _current_pin():
+        return (msapi.document_path(), msapi.chunk_key(msapi.chunk()))
+
+    def _follow_chunk(self):
+        """If the active chunk (or project) is no longer the one this window shows, show the new one and say so in one line.
+        Returns True when it changed (the caller stops there: nothing is previewed or exported on a chunk the user has not seen).
+        Never during an export: the pinned chunk keeps being exported, whatever is active in Metashape meanwhile."""
+        if self._busy or self._current_pin() == self._pin:
+            return False
+        self.refresh()
+        if self._chunk is not None:
+            self.status.setText(i18n.t("export.chunk_changed", name=self._chunk_label))
+            journal.write("Aero-Exports : active chunk changed, now {}".format(self._chunk_label))
+        return True
+
     @staticmethod
     def _size():
         area = controls.screen_area()
@@ -455,7 +482,7 @@ class ExportDialog(QtWidgets.QDialog):
             saved = os.path.getmtime(self._psx) if self._psx else 0
         except OSError:
             saved = 0
-        return (self._psx, saved, tuple(self._info.get("box_dem") or ()), tuple(self._info.get(plan.DEM) or ()))
+        return (self._psx, self._pin[1], saved, tuple(self._info.get("box_dem") or ()), tuple(self._info.get(plan.DEM) or ()))
 
     def _preview_model_cached(self):
         return self._preview if self._preview is not None and self._preview_key == self._preview_signature() else None
@@ -463,10 +490,12 @@ class ExportDialog(QtWidgets.QDialog):
     def _preview_model(self):
         """The small DEM of the preview: the DEM already exported next to the project if it is still current, else a small export
         by Metashape (a few seconds at most; no progress callback into Metashape). None, with the reason shown, if it fails."""
+        if self._follow_chunk():                            # another chunk is active now: show it first, the user decides
+            return None
         cached = self._preview_model_cached()
         if cached is not None:
             return cached
-        chunk = msapi.chunk()
+        chunk = self._chunk                                 # the pinned chunk, never a fresh msapi.chunk()
         if chunk is None or not self._info.get(plan.DEM):
             self._finish(i18n.t("export.no_chunk"), "error")
             return None
@@ -475,10 +504,13 @@ class ExportDialog(QtWidgets.QDialog):
         QtWidgets.QApplication.processEvents()              # before the call into Metashape, never inside it
         work, model, problem = None, None, ""
         try:
-            path = preview.usable_export([job.path for job in self._jobs if job.kind == plan.DEM], self._psx)
+            box, native = self._info.get("box_dem"), self._info.get(plan.DEM)
+            # an export already on disk is reused only if it is this chunk's DEM (same size, pixel and extent), not another chunk's
+            path = preview.usable_export([job.path for job in self._jobs if job.kind == plan.DEM] if box and native else [],
+                                         self._psx, box, native)
             if path is None:
                 work = tempfile.mkdtemp(prefix="aero_preview_")
-                path = preview.fetch_small(msapi.export_raster, chunk, self._info.get("box_dem"), work)
+                path = preview.fetch_small(msapi.export_raster, chunk, box, work)
             model = preview.Preview.from_tiff(path, exact=msapi.dem_range(chunk))
             if not model.valid:
                 problem = i18n.t("export.look_empty")
@@ -522,10 +554,19 @@ class ExportDialog(QtWidgets.QDialog):
         """Relit le projet (ce qui existe, sa resolution, son nom) : a l'ouverture et a chaque retour devant."""
         if self._busy:
             return
-        self._info = msapi.raster_info()
+        # Pin the chunk with what we read from it: everything after (preview, export, clip, names) uses this chunk and this info,
+        # so a chunk changed in Metashape meanwhile can never mix its raster with another chunk's box, system or date.
+        self._psx = msapi.document_path()
+        self._chunk = msapi.chunk()
+        self._pin = (self._psx, msapi.chunk_key(self._chunk))
+        self._chunk_label = msapi.chunk_label(self._chunk)
+        self._info = msapi.raster_info(self._chunk)
+        self._preview, self._preview_key = None, None       # the small DEM of the look window belongs to the previous chunk
+        self._jobs = []
+        self.chunk_title.setFullText(i18n.t("export.chunk", name=self._chunk_label) if self._chunk is not None
+                                     else i18n.t("export.chunk_none"))
         crs_object = self._info.get("crs_object")
         self._project_epsg = msapi.project_epsg(crs_object) if crs_object is not None else None
-        self._psx = msapi.document_path()
         self._detect_tools()
         for kind in plan.KINDS:
             found = self._info.get(kind)
@@ -1078,9 +1119,13 @@ class ExportDialog(QtWidgets.QDialog):
     # -- export -----------------------------------------------------------------------------
 
     def _on_export(self):
-        if self._busy or not self._jobs:
+        if self._busy:
             return
-        chunk = msapi.chunk()
+        if self._follow_chunk():                            # never export silently on a chunk the user has not seen
+            return
+        if not self._jobs:
+            return
+        chunk = self._chunk                                 # the pinned chunk, the one named at the top of the window
         if chunk is None:
             self._finish(i18n.t("export.no_chunk"), "error")
             return
@@ -1117,6 +1162,7 @@ class ExportDialog(QtWidgets.QDialog):
                                tick=QtWidgets.QApplication.processEvents, vertical=self._vertical_choice(),
                                proj=projtool.Proj(geoid_dir=crs.own_dir()),
                                epsg=int(self.crs_box.currentData()) if target is not None else None, look=looks.load())
+        journal.write("Aero-Exports : export of chunk {}".format(self._chunk_label))
         self._busy = True
         self.bar.setRange(0, 1000)
         self.bar.setValue(0)

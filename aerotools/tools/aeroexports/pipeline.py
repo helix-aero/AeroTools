@@ -162,6 +162,16 @@ def _record(ctx, raw, layer, final):
             "pixel": (info["pixel"][0], info["pixel"][1])}
 
 
+def _clear_stale(path):
+    """Delete the file about to be written (the user already agreed to overwrite it). Otherwise a tile or a raster that Metashape
+    does not write (no data) would be taken for the new one when a file of the same name is still there. Raises Failure."""
+    try:
+        if os.path.isfile(path):
+            os.remove(path)
+    except OSError as exc:
+        raise Failure("Impossible d'ecraser %s : %s" % (os.path.basename(path), exc))
+
+
 def run_job(ctx, job, work, report, result, images):
     """Ecrit un fichier de la liste (ou toutes ses dalles). `report(fraction)` : avancement de ce fichier."""
     spec = job.spec
@@ -197,6 +207,7 @@ def run_job(ctx, job, work, report, result, images):
             raw = final
         # Pas de rappel de progression : Metashape l'appellerait en plein calcul (peut-etre depuis un autre fil) et toucher
         # une barre Qt a cet instant plante Metashape (« Recursive repaint detected »). La barre avance entre les fichiers.
+        _clear_stale(raw)           # a file left by an earlier export (maybe of another chunk) must never pass for this one
         ctx.native = True
         try:
             ok, error = ctx.export(ctx.chunk, job.kind, raw_spec, raw, pixel, tile_box, big=_big(ctx, job), progress=None,

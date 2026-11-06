@@ -160,16 +160,37 @@ class Preview(object):
 # Where the small DEM comes from
 # --------------------------------------------------------------------------------------------------
 
-def usable_export(paths, psx=None):
-    """First DEM file of `paths` that exists and is not older than the project file (so it still matches the project), or None."""
+def belongs_to(path, box, native):
+    """True when the GeoTIFF `path` is the DEM of the chunk described by `box` (left, bottom, right, top) and `native`
+    (pixel size in metres, width, height): same pixel, same size in pixels, same extent (within two pixels). Two chunks of
+    the same site can have the same file name pattern, so the file itself is checked, not only its name and date."""
+    from . import geotiff
+    info = geotiff.read_geotiff(path)
+    if info is None:
+        return False
+    pixel, width, height = native
+    if info["width"] != width or info["height"] != height:
+        return False
+    if abs(info["pixel"][0] - pixel) > pixel * 1e-3 or abs(info["pixel"][1] - pixel) > pixel * 1e-3:
+        return False
+    tolerance = 2.0 * max(info["pixel"])
+    return all(abs(a - b) <= tolerance for a, b in zip(geotiff.extent(info), box))
+
+
+def usable_export(paths, psx=None, box=None, native=None):
+    """First DEM file of `paths` that exists, is not older than the project file, and (when `box` and `native` are given, as
+    they are for a chunk) really is this chunk's DEM on Metashape's own grid (see `belongs_to`), or None."""
     try:
         limit = os.path.getmtime(psx) if psx and os.path.isfile(psx) else None
     except OSError:
         limit = None
     for path in paths:
         try:
-            if os.path.isfile(path) and (limit is None or os.path.getmtime(path) >= limit):
-                return path
+            if not os.path.isfile(path) or (limit is not None and os.path.getmtime(path) < limit):
+                continue
+            if box and native and not belongs_to(path, box, native):
+                continue
+            return path
         except OSError:
             continue
     return None

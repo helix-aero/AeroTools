@@ -345,6 +345,42 @@ class WrapText(QtWidgets.QTextEdit):
             self.setFixedHeight(height)
 
 
+class ElidedLabel(QtWidgets.QLabel):
+    """One line that is cut with "..." when it does not fit, and never makes its window wider. The whole text is the tooltip."""
+
+    def __init__(self, object_name=None):
+        super(ElidedLabel, self).__init__()
+        if object_name:
+            self.setObjectName(object_name)
+        self._full = ""
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+
+    def setFullText(self, text):
+        self._full = str(text)
+        self.setToolTip(self._full)
+        self._elide()
+
+    def fullText(self):
+        return self._full
+
+    def minimumSizeHint(self):
+        return QtCore.QSize(40, super(ElidedLabel, self).minimumSizeHint().height())
+
+    def sizeHint(self):
+        return QtCore.QSize(200, super(ElidedLabel, self).sizeHint().height())
+
+    def resizeEvent(self, event):
+        super(ElidedLabel, self).resizeEvent(event)
+        self._elide()
+
+    def _elide(self):
+        width = self.width()
+        shown = self.fontMetrics().elidedText(self._full, QtCore.Qt.ElideRight, max(20, width)) if width > 1 else self._full
+        if shown != self.text():
+            self.setText(shown)
+
+
 def slider_row(grid, row, key, low, high, show, default, modulo=None, typed_high=None):
     """One line of the settings: label, short slider, editable value, reset button. Returns (slider, value, reset).
 
