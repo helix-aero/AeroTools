@@ -36,6 +36,7 @@ class Context(object):
         self.lang, self.date_style = lang, date_style
         self.snap, self.transform = snap, transform
         self.tick = tick or (lambda: None)
+        self.native = False
         self.vertical, self.proj, self.epsg = vertical, proj, epsg   # grille d'altitude (id), moteur PROJ, EPSG du SCR de sortie
 
 
@@ -181,8 +182,12 @@ def run_job(ctx, job, work, report, result, images):
         if metashape_jp2:
             raw_spec = dict(spec, image="jp2", ext="jp2")
             raw = final
-        ok, error = ctx.export(ctx.chunk, job.kind, raw_spec, raw, pixel, tile_box, big=_big(ctx, job), progress=sub,
-                               crs=ctx.crs)
+        ctx.native = True                     # Metashape peint ses propres fenetres pendant ce calcul : on n'y relance pas la boucle Qt
+        try:
+            ok, error = ctx.export(ctx.chunk, job.kind, raw_spec, raw, pixel, tile_box, big=_big(ctx, job), progress=sub,
+                                   crs=ctx.crs)
+        finally:
+            ctx.native = False
         if not ok:
             raise Failure(error or "Metashape n'a pas ecrit le fichier")
         if not os.path.isfile(raw):

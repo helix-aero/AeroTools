@@ -214,6 +214,23 @@ def test_jp2_export_writes_a_raw_tiff_then_converts_it_and_removes_the_raw(tmp_p
     assert result.tiles == 1 and result.files[0][1] == len(b"converted")
 
 
+def test_no_event_loop_is_run_while_metashape_is_exporting(tmp_path, monkeypatch):
+    """Metashape appelle notre rappel en plein calcul : la fenetre ne doit pas y relancer la boucle Qt (crash de repaint)."""
+    env, seen = Env(tmp_path), []
+    original = env.export
+
+    def export(*args, **kwargs):
+        seen.append(ctx.native)
+        return original(*args, **kwargs)
+
+    ctx = fake_context(tmp_path, env, "full")
+    ctx.export = export
+    jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
+    pipeline.run(ctx, jobs, lambda f, t: seen.append(("progress", ctx.native)))
+    assert seen[0] is True and ctx.native is False                  # pendant l'export de Metashape, pas apres
+    assert ("progress", True) in seen                                 # son rappel de progression arrive bien dans cette fenetre
+
+
 def test_ecw_needs_global_mapper_and_jp2_prefers_gdal_then_global_mapper(tmp_path, monkeypatch):
     env, record = Env(tmp_path), []
     fake_converters(monkeypatch, record)

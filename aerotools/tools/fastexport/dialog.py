@@ -818,7 +818,8 @@ class ExportDialog(QtWidgets.QDialog):
             self.bar.setValue(int(1000 * max(0.0, min(1.0, fraction))))
             if name:
                 self.status.setText(i18n.t("export.working", name=name, i=1, n=len(jobs)))
-            QtWidgets.QApplication.processEvents()
+            if not ctx.native:                    # appele par Metashape en plein calcul : pas de boucle d'evenements (crash de repaint)
+                QtWidgets.QApplication.processEvents()
 
         problem, result = "", None
         try:
