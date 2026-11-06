@@ -1,4 +1,4 @@
-"""Le tableau du panneau suit Metashape : relu a intervalle regulier, moins souvent si la lecture est lente."""
+"""The panel table follows Metashape: reread at regular intervals, less often if the read is slow."""
 
 from aerotools.tools.fastgcp import tool
 

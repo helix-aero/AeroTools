@@ -1,8 +1,8 @@
-"""Panneau de reglages d'affichage (Qt) : quatre curseurs et « Reinitialiser ».
+"""Display adjustment panel (Qt): four sliders and a "Reset" button.
 
-Le meme panneau sert dans le Review panel et dans la fenetre d'affinage ; les deux
-lisent le meme objet `imageadjust.Adjustments`, donc un reglage fait dans l'un se
-retrouve dans l'autre. Les reglages ne touchent que l'affichage (voir imageadjust.py).
+The same panel is used in the Review panel and in the refinement window; both
+read the same `imageadjust.Adjustments` object, so an adjustment made in one is
+found in the other. The adjustments only affect the display (see imageadjust.py).
 """
 
 from ... import i18n, theme
@@ -19,7 +19,7 @@ def _signed(value):
 
 
 class _ResetSlider(QtWidgets.QSlider):
-    """Curseur dont le double-clic ramene la valeur neutre (0), comme dans Lightroom."""
+    """Slider whose double-click brings back the neutral value (0), as in Lightroom."""
 
     def mouseDoubleClickEvent(self, event):
         self.setValue(0 if self.minimum() <= 0 <= self.maximum() else self.minimum())
@@ -27,7 +27,7 @@ class _ResetSlider(QtWidgets.QSlider):
 
 
 class _ResetLabel(QtWidgets.QLabel):
-    """Libelle ou valeur : double-clic = remise a zero du reglage correspondant."""
+    """Label or value: double-click resets the matching adjustment."""
 
     def __init__(self, text, on_reset):
         super(_ResetLabel, self).__init__(text)
@@ -39,7 +39,7 @@ class _ResetLabel(QtWidgets.QLabel):
 
 
 class AdjustPanel(QtWidgets.QFrame):
-    """Cadre a droite des images : `top` (widget facultatif, ex. le zoom) puis les reglages."""
+    """Frame at the right of the images: `top` (optional widget, e.g. the zoom) then the adjustments."""
 
     def __init__(self, model, top=None, hint_key=None, parent=None):
         super(AdjustPanel, self).__init__(parent)
@@ -107,7 +107,7 @@ class AdjustPanel(QtWidgets.QFrame):
         slider.setObjectName("aeroSlider")
         slider.setToolTip(i18n.t("review.slider_tip"))
         slider.setRange(*imageadjust.RANGES[key])
-        slider.setTracking(True)                 # l'effet suit le curseur pendant qu'on le glisse
+        slider.setTracking(True)                 # the effect follows the slider while it is dragged
         slider.setEnabled(imageadjust.available())
         slider.valueChanged.connect(lambda v, k=key: self.model.set(k, v))
         box.addWidget(slider)

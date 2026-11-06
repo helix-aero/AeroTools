@@ -1,13 +1,13 @@
-"""Aero-Exports : ce qui se passe quand on clique « Export » (sans Qt : la fenetre lui donne ses rappels).
+"""Aero-Exports: what happens when "Export" is clicked (no Qt: the window gives it its callbacks).
 
-Pour chaque fichier de la liste (plan.Job) :
-  1. Metashape ecrit un GeoTIFF (exportRaster), en un seul morceau ou dalle par dalle ;
-  2. si le format voulu est JPEG 2000 ou ECW, GDAL ou Global Mapper convertit ce GeoTIFF ;
-  3. en mode CAD, un DXF (TOPO.dxf) pose toutes les images au bon endroit, puis AutoCAD en fait un DWG et verifie que
-     les images se rechargent.
+For each file of the list (plan.Job):
+  1. Metashape writes a GeoTIFF (exportRaster), in one piece or tile by tile;
+  2. if the wanted format is JPEG 2000 or ECW, GDAL or Global Mapper converts that GeoTIFF;
+  3. in CAD mode, a DXF (TOPO.dxf) places all the images at the right spot, then AutoCAD turns it into a DWG and checks that
+     the images reload.
 
-Rien n'est suppose de la machine : les outils viennent de `ctx.tools` (voir external.find_*). Une dalle sans donnee
-n'ecrit aucun fichier : elle est simplement sautee.
+Nothing is assumed about the machine: the tools come from `ctx.tools` (see external.find_*). A tile without data
+writes no file: it is simply skipped.
 """
 
 import math
@@ -21,46 +21,46 @@ TMP_NAME = ".aeroexports_tmp"
 
 
 class Failure(Exception):
-    """Echec lisible : le message s'affiche tel quel."""
+    """Readable failure: the message is shown as it is."""
 
 
 class Context(object):
-    """Tout ce dont un export a besoin ; la fenetre le remplit, les tests le remplacent par des faux."""
+    """Everything an export needs; the window fills it in, the tests replace it with fakes."""
 
     def __init__(self, chunk, info, folder, site, date, preset, export, tools=None, crs=None, tile_m=None, cad=None,
-                 lang="fr", date_style="short", snap=None, transform=None, tick=None, vertical=None, proj=None, epsg=None,
+                 date_style="short", snap=None, transform=None, tick=None, vertical=None, proj=None, epsg=None,
                  look=None, clip_boundary=True, log=None):
         self.chunk, self.info, self.folder = chunk, info, folder
         self.clip_boundary = bool(clip_boundary)         # cut every Metashape export to the chunk's boundary shapes (same value everywhere)
         self.log = log or (lambda text: None)            # one line of journal
         self.site, self.date, self.preset, self.cad = site, date, preset, cad or {}
-        self.export = export                              # msapi.export_raster ou un faux
-        self.tools = tools or {}                          # {"gm": chemin, "acad": chemin accoreconsole, "gdal": dossier}
+        self.export = export                              # msapi.export_raster or a fake
+        self.tools = tools or {}                          # {"gm": path, "acad": accoreconsole path, "gdal": folder}
         self.crs, self.tile_m = crs, tile_m
-        self.lang, self.date_style = lang, date_style
+        self.date_style = date_style
         self.snap, self.transform = snap, transform
         self.tick = tick or (lambda: None)
         self.native = False
-        self.vertical, self.proj, self.epsg = vertical, proj, epsg   # grille d'altitude (id), moteur PROJ, EPSG du SCR de sortie
-        self.look = looks.normalized(look if look is not None else looks.DEFAULT)   # palette / ombrage de l'image du MNT
-        self.failed = ""                                  # nom du fichier en cours d'ecriture : celui qui a echoue si `run` leve
+        self.vertical, self.proj, self.epsg = vertical, proj, epsg   # height grid (id), PROJ engine, EPSG of the output CRS
+        self.look = looks.normalized(look if look is not None else looks.DEFAULT)   # palette / shading of the DEM image
+        self.failed = ""                                  # name of the file being written: the one that failed if `run` raises
 
 
 class Result(object):
     def __init__(self):
-        self.files = []                                   # (chemin, octets) de tout ce qui a ete ecrit
+        self.files = []                                   # (path, bytes) of everything written
         self.warnings = []
         self.dxf = self.dwg = None
-        self.check = None                                 # {"images": n, "failed": [...], "valid": bool} d'AutoCAD
+        self.check = None                                 # AutoCAD's {"images": n, "failed": [...], "valid": bool}
         self.tiles = 0
 
 
 # --------------------------------------------------------------------------------------------------
-# Un fichier
+# One file
 # --------------------------------------------------------------------------------------------------
 
 def encoder(ctx):
-    """Qui ecrit le JPEG 2000 : "gdal", "gm", ou "metashape" (son JPEG 2000 maison, plus lourd, sans outil externe)."""
+    """Who writes the JPEG 2000: "gdal", "gm", or "metashape" (its own JPEG 2000, heavier, no external tool)."""
     if ctx.tools.get("gdal"):
         return "gdal"
     if ctx.tools.get("gm"):
@@ -69,10 +69,10 @@ def encoder(ctx):
 
 
 def _convert(ctx, post, src, dst):
-    """GeoTIFF -> JPEG 2000 / ECW. Leve Failure."""
+    """GeoTIFF -> JPEG 2000 / ECW. Raises Failure."""
     if post == "ecw":
         if not ctx.tools.get("gm"):
-            raise Failure("ECW : Global Mapper est introuvable")
+            raise Failure("ECW: Global Mapper not found")
         ok, message = external.to_ecw(ctx.tools["gm"], src, dst, tick=ctx.tick)
     else:
         which = encoder(ctx)
@@ -83,8 +83,8 @@ def _convert(ctx, post, src, dst):
         elif which == "gm":
             ok, message = external.to_jp2_gm(ctx.tools["gm"], src, dst, tick=ctx.tick)
         else:
-            raise Failure("JPEG 2000 : aucun encodeur externe")
-    for path in (src, dst):                               # GDAL laisse parfois un .aux.xml (statistiques) : inutile ici
+            raise Failure("JPEG 2000: no external encoder")
+    for path in (src, dst):                               # GDAL sometimes leaves an .aux.xml (statistics): useless here
         _drop_sidecar(path)
     if not ok:
         raise Failure(message)
@@ -99,29 +99,29 @@ def _drop_sidecar(path):
 
 
 def pixel_of(ctx, job):
-    """Taille de pixel utilisee quand l'export impose une grille (changement de SCR, dalles). Le pixel natif de Metashape
-    (1.0008 cm) est alors arrondi au dixieme de millimetre (1 cm) : sans cela les dalles ne tombent pas sur des pixels entiers."""
+    """Pixel size used when the export imposes a grid (CRS change, tiles). Metashape's native pixel
+    (1.0008 cm) is then rounded to a tenth of a millimetre (1 cm): without this the tiles do not fall on whole pixels."""
     return round(float(job.pixel_m), 4) if (ctx.crs is not None or ctx.tile_m) and job.native else float(job.pixel_m)
 
 
 def _grid(ctx, job):
-    """(pixel, emprise) a donner a Metashape pour ce fichier ; (None, None) = sa grille native."""
+    """(pixel, extent) to give Metashape for this file; (None, None) = its native grid."""
     kind = job.kind
     native = job.native and ctx.crs is None and not ctx.tile_m
     box = ctx.info.get("box_" + kind)
     if native or not box:
         return None, None
     if ctx.crs is None and ctx.info.get("geographic_" + kind):
-        # Une ortho / un MNT en degres : un pixel en centimetres n'a pas de sens, Metashape rend « Empty raster ».
+        # An orthomosaic / DEM in degrees: a pixel in centimetres makes no sense, Metashape returns "Empty raster".
         raise Failure("The {} is in a geographic system (degrees). Pick a projected system in \"Export in\", "
                       "for example RGF93 v1 / CC42.".format("orthomosaic" if kind == "ortho" else "DEM"))
     if ctx.crs is not None:
-        # L'emprise est dans le SCR de CE raster (l'ortho peut etre en degres et le MNT en metres).
+        # The extent is in the CRS of THIS raster (the orthomosaic can be in degrees and the DEM in metres).
         source = ctx.info.get("crs_" + kind) or ctx.info.get("crs_object")
         moved = ctx.transform(box, source, ctx.crs)
         if moved is None:
             reason = getattr(ctx.transform, "last_error", "")
-            raise Failure("Impossible de convertir l'emprise vers le SCR choisi" + (" (%s)" % reason if reason else ""))
+            raise Failure("Cannot convert the extent to the chosen CRS" + (" (%s)" % reason if reason else ""))
         if not all(math.isfinite(value) for value in moved):
             raise Failure("The area of the {} could not be converted to the chosen system.".format(
                 "orthomosaic" if kind == "ortho" else "DEM"))
@@ -131,7 +131,7 @@ def _grid(ctx, job):
 
 
 def _tiles(ctx, job, box):
-    """Liste de (jeton de nom ou None, emprise flottante) : une seule dalle si le decoupage n'est pas demande."""
+    """List of (name token or None, floating extent): a single tile if tiling is not requested."""
     if not ctx.tile_m or not box:
         return [(None, box)]
     pixel = pixel_of(ctx, job)
@@ -143,7 +143,7 @@ def _tiles(ctx, job, box):
 
 
 def _named(ctx, job, kind, ext, token):
-    return naming.build_name(ctx.site, ctx.date, job.pixel_m, kind, ext, lang=ctx.lang, version=job.version, tile=token,
+    return naming.build_name(ctx.site, ctx.date, job.pixel_m, kind, ext, version=job.version, tile=token,
                              date_style=ctx.date_style)
 
 
@@ -155,10 +155,10 @@ def _big(ctx, job):
 
 
 def _record(ctx, raw, layer, final):
-    """Placement d'une image dans le DXF, lu dans le GeoTIFF brut."""
+    """Placement of an image in the DXF, read from the raw GeoTIFF."""
     info = geotiff.read_geotiff(raw)
     if info is None:
-        raise Failure("Georeferencement illisible : %s" % os.path.basename(raw))
+        raise Failure("Unreadable georeferencing: %s" % os.path.basename(raw))
     left, bottom, right, top = geotiff.extent(info)
     return {"layer": layer, "path": final, "size_px": (info["width"], info["height"]), "insert": (left, bottom),
             "pixel": (info["pixel"][0], info["pixel"][1])}
@@ -171,11 +171,11 @@ def _clear_stale(path):
         if os.path.isfile(path):
             os.remove(path)
     except OSError as exc:
-        raise Failure("Impossible d'ecraser %s : %s" % (os.path.basename(path), exc))
+        raise Failure("Cannot overwrite %s: %s" % (os.path.basename(path), exc))
 
 
 def run_job(ctx, job, work, report, result, images):
-    """Ecrit un fichier de la liste (ou toutes ses dalles). `report(fraction)` : avancement de ce fichier."""
+    """Write one file of the list (or all its tiles). `report(fraction)`: progress of this file."""
     spec = job.spec
     post = spec.get("post")
     is_cad = ctx.preset == plan.CAD
@@ -207,8 +207,8 @@ def run_job(ctx, job, work, report, result, images):
         if metashape_jp2:
             raw_spec = dict(spec, image="jp2", ext="jp2")
             raw = final
-        # Pas de rappel de progression : Metashape l'appellerait en plein calcul (peut-etre depuis un autre fil) et toucher
-        # une barre Qt a cet instant plante Metashape (« Recursive repaint detected »). La barre avance entre les fichiers.
+        # No progress callback: Metashape would call it in the middle of its computation (maybe from another thread) and touching
+        # a Qt bar at that moment crashes Metashape ("Recursive repaint detected"). The bar moves between files.
         _clear_stale(raw)           # a file left by an earlier export (maybe of another chunk) must never pass for this one
         ctx.native = True
         try:
@@ -218,11 +218,11 @@ def run_job(ctx, job, work, report, result, images):
             ctx.native = False
         sub(100)
         if not ok:
-            raise Failure(error or "Metashape n'a pas ecrit le fichier")
+            raise Failure(error or "Metashape did not write the file")
         if not os.path.isfile(raw):
             if len(tiles) > 1:
-                continue                                  # dalle sans donnee : rien a ecrire
-            raise Failure("Metashape n'a pas ecrit le fichier")
+                continue                                  # tile without data: nothing to write
+            raise Failure("Metashape did not write the file")
         result.tiles += 1
         if job.kind == plan.DEM and ctx.vertical:
             _to_altitude(ctx, raw, sub)
@@ -236,7 +236,7 @@ def run_job(ctx, job, work, report, result, images):
         if is_cad and job.kind == plan.ORTHO:
             source = raw if raw != final else None
             if source is None:
-                raise Failure("Image sans GeoTIFF source : placement impossible")
+                raise Failure("Image without a source GeoTIFF: cannot place it")
             record = _record(ctx, source, dxfout.layer_name(date_text, pixel_text, "ortho"), final)
             _clip_ortho(ctx, source, work, record, result)
             images.append(record)
@@ -247,11 +247,11 @@ def run_job(ctx, job, work, report, result, images):
 
 
 def _to_altitude(ctx, raw, sub):
-    """Hauteurs ellipsoidales du MNT -> altitudes de la grille choisie (notre dossier Geoid). PROJ calcule, notre lecteur controle.
-    Leve Failure."""
+    """Ellipsoidal heights of the DEM -> altitudes of the chosen grid (our Geoid folder). PROJ computes, our reader checks.
+    Raises Failure."""
     engine = ctx.proj
     if engine is None or not engine.available():
-        raise Failure("Altitude : PROJ est introuvable (dossier aerotools/vendor/proj)")
+        raise Failure("Altitude: PROJ not found (folder aerotools/vendor/proj)")
     try:
         grid = vertical.load_grid(ctx.vertical)
         spec = crs.vertical_by_id(ctx.vertical)
@@ -261,11 +261,11 @@ def _to_altitude(ctx, raw, sub):
                              progress=lambda part: (sub(100.0 * part), ctx.tick()))
         os.replace(tmp, raw)
     except (ValueError, OSError, projtool.ProjError) as exc:
-        raise Failure("Altitude %s : %s" % (ctx.vertical, exc))
+        raise Failure("Altitude %s: %s" % (ctx.vertical, exc))
 
 
 MASK_SPEC = {"ext": "tif", "image": "tiff", "compression": "none", "tiled": False, "overviews": False, "world": False,
-             "white": False, "alpha": True}          # petit export RVBA sans compression : seul l'alpha nous sert
+             "white": False, "alpha": True}          # small uncompressed RGBA export: only the alpha is of use to us
 
 
 def _clip_warning(result):
@@ -274,18 +274,18 @@ def _clip_warning(result):
 
 
 def _clip_ortho(ctx, raw, work, record, result):
-    """Polygone de decoupe de l'ortho (emprise reelle des donnees) si l'option est cochee. Un echec n'arrete pas l'export."""
+    """Clip polygon of the orthomosaic (real extent of the data) if the option is ticked. A failure does not stop the export."""
     if not ctx.cad.get("clip"):
         return
     try:
         info = geotiff.read_geotiff(raw)
         left, bottom, right, top = geotiff.extent(info)
-        cell = max(max(right - left, top - bottom) / float(footprint.TARGET_PX), info["pixel"][0])   # jamais plus fin que l'image
+        cell = max(max(right - left, top - bottom) / float(footprint.TARGET_PX), info["pixel"][0])   # never finer than the image
         mask_path = os.path.join(work, "mask_%s.tif" % os.path.splitext(os.path.basename(raw))[0])
         ok, error = ctx.export(ctx.chunk, plan.ORTHO, MASK_SPEC, mask_path, cell, (left, bottom, right, top), big=False,
                                progress=None, crs=ctx.crs, clip_to_boundary=ctx.clip_boundary)
         if not ok or not os.path.isfile(mask_path):
-            raise ValueError(error or "pas de masque")
+            raise ValueError(error or "no mask")
         mask_info = geotiff.read_geotiff(mask_path)
         record["clip"] = footprint.clip_polygon(footprint.alpha_mask(mask_path), geotiff.extent(mask_info), info) or None
         os.remove(mask_path)
@@ -294,7 +294,7 @@ def _clip_ortho(ctx, raw, work, record, result):
 
 
 def _clip_dem(ctx, dem_tif, view_tif, record, result):
-    """Polygone de decoupe de l'image du MNT : les pixels qui ont une hauteur."""
+    """Clip polygon of the DEM image: the pixels that have a height."""
     if not ctx.cad.get("clip"):
         return
     try:
@@ -319,8 +319,8 @@ def _look_for(ctx, result):
 
 
 def _dem_image(ctx, job, dem_tif, token, work, date_text, pixel_text, result, images):
-    """Image de visualisation du MNT (relief colore) : pour le DXF (`images` : liste des images a placer), ou seule a cote du MNT
-    (`images` est None)."""
+    """Display picture of the DEM (coloured relief): for the DXF (`images`: list of the images to place), or alone next to the DEM
+    (`images` is None)."""
     extra = job.extra
     view_tif = os.path.join(work, os.path.splitext(os.path.basename(dem_tif))[0] + "_view.tif")
     ok, message = relief.render(dem_tif, view_tif, look=_look_for(ctx, result), tick=ctx.tick)
@@ -328,7 +328,7 @@ def _dem_image(ctx, job, dem_tif, token, work, date_text, pixel_text, result, im
     if not ok:
         raise Failure(message)
     view_final = os.path.join(os.path.dirname(extra["view_path"]), _named(ctx, job, plan.DEM, extra["view_ext"], token))
-    # le relief colore est un GeoTIFF RVB : il suit le meme chemin que l'ortho (GDAL en priorite ou Global Mapper)
+    # the coloured relief is an RGB GeoTIFF: it follows the same path as the orthomosaic (GDAL first, or Global Mapper)
     _convert(ctx, extra["view_ext"], view_tif, view_final)
     result.files.append((view_final, os.path.getsize(view_final)))
     if images is not None:
@@ -339,11 +339,11 @@ def _dem_image(ctx, job, dem_tif, token, work, date_text, pixel_text, result, im
 
 
 # --------------------------------------------------------------------------------------------------
-# L'export entier
+# The whole export
 # --------------------------------------------------------------------------------------------------
 
 def run(ctx, jobs, progress):
-    """Ecrit tout. `progress(fraction 0..1, texte)`. Renvoie un Result ; leve Failure."""
+    """Write everything. `progress(fraction 0..1, text)`. Returns a Result; raises Failure."""
     result = Result()
     if not jobs:
         return result
@@ -367,9 +367,9 @@ def run(ctx, jobs, progress):
 
 
 def _write_cad(ctx, jobs, images, result):
-    """TOPO.dxf (et TOPO.dwg) : toutes les images a leur place, chemins relatifs."""
+    """TOPO.dxf (and TOPO.dwg): all the images in place, relative paths."""
     if not images:
-        raise Failure("Aucune image a placer dans le dessin")
+        raise Failure("No image to place in the drawing")
     version = jobs[0].version
     dxf = os.path.join(ctx.folder, plan.cad_dxf_name(version, "dxf"))
     ctx.failed = os.path.basename(dxf)
@@ -385,7 +385,7 @@ def _write_cad(ctx, jobs, images, result):
         result.check = external.check_dxf(core, dxf, tick=ctx.tick)
     if ctx.cad.get("format") == "dwg":
         if not core:
-            raise Failure("DWG : AutoCAD est introuvable")
+            raise Failure("DWG: AutoCAD not found")
         dwg = os.path.join(ctx.folder, plan.cad_dxf_name(version, "dwg"))
         ctx.failed = os.path.basename(dwg)
         ok, message = external.dxf_to_dwg(core, dxf, dwg, tick=ctx.tick)

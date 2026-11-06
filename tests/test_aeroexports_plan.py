@@ -1,6 +1,6 @@
-import os
-"""Aero-Exports : presets, liste des fichiers, appel d'export (sans Metashape ni Qt)."""
+"""Aero-Exports: presets, list of files, export call (without Metashape or Qt)."""
 import datetime
+import os
 import types
 
 import pytest
@@ -14,7 +14,7 @@ DAY = datetime.date(2026, 7, 4)
 def test_default_preset_is_lossless_geotiff():
     ortho = plan.spec_for("full", "ortho")
     assert (ortho["ext"], ortho["image"], ortho["compression"], ortho["alpha"]) == ("tif", "tiff", "lzw", True)
-    assert plan.spec_for("nope", "dem") == plan.spec_for("full", "dem")          # clef inconnue : le premier preset
+    assert plan.spec_for("nope", "dem") == plan.spec_for("full", "dem")          # unknown key: the first preset
 
 
 def test_every_preset_keeps_the_dem_lossless_and_never_jpeg_compresses_it():
@@ -31,13 +31,13 @@ def test_quick_view_is_jpeg_compressed_on_white_without_alpha():
 
 def test_build_jobs_names_ortho_and_dem_in_the_outputs_folder(tmp_path):
     jobs = plan.build_jobs("CITADELLE", DAY, {"ortho": 0.03, "dem": 0.1}, "full", str(tmp_path))
-    assert [job.name for job in jobs] == ["CITADELLE_260704_3cm_ortho.tif", "CITADELLE_260704_10cm_mnt.tif"]
+    assert [job.name for job in jobs] == ["CITADELLE_260704_3cm_ortho.tif", "CITADELLE_260704_10cm_dtm.tif"]
     assert jobs[0].path == str(tmp_path / "CITADELLE_260704_3cm_ortho.tif")
     assert [job.kind for job in jobs] == ["ortho", "dem"] and {job.version for job in jobs} == {1}
 
 
-def test_build_jobs_english_names_use_dtm(tmp_path):
-    jobs = plan.build_jobs("EDF", DAY, {"dem": 0.05}, "full", str(tmp_path), lang="en")
+def test_build_jobs_name_the_dem_dtm(tmp_path):
+    jobs = plan.build_jobs("EDF", DAY, {"dem": 0.05}, "full", str(tmp_path))
     assert [job.name for job in jobs] == ["EDF_260704_5cm_dtm.tif"]
 
 
@@ -48,14 +48,14 @@ def test_build_jobs_only_lists_what_is_wanted(tmp_path):
 
 
 def test_a_second_export_gets_a_version_shared_by_ortho_and_dem(tmp_path):
-    (tmp_path / "EDF_260704_3cm_ortho.tif").write_text("x")           # seul l'ortho existe deja
+    (tmp_path / "EDF_260704_3cm_ortho.tif").write_text("x")           # only the orthomosaic already exists
     jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.03, "dem": 0.1}, "full", str(tmp_path))
-    assert [job.name for job in jobs] == ["EDF_260704_3cm_v2_ortho.tif", "EDF_260704_10cm_v2_mnt.tif"]
+    assert [job.name for job in jobs] == ["EDF_260704_3cm_v2_ortho.tif", "EDF_260704_10cm_v2_dtm.tif"]
     assert {job.version for job in jobs} == {2}
 
 
 def test_the_world_file_of_a_jpeg_counts_as_an_existing_file(tmp_path):
-    (tmp_path / "EDF_260704_3cm_ortho.jgw").write_text("0")           # un .jgw orphelin suffit a changer de version
+    (tmp_path / "EDF_260704_3cm_ortho.jgw").write_text("0")           # an orphan .jgw is enough to change the version
     jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.03}, "jpeg", str(tmp_path))
     assert jobs[0].name == "EDF_260704_3cm_v2_ortho.jpg"
 
@@ -73,11 +73,11 @@ def test_native_jobs_are_flagged(tmp_path):
 
 def test_bigtiff_threshold():
     assert not plan.needs_bigtiff(10000, 10000)                      # 400 Mo
-    assert plan.needs_bigtiff(30000, 30000)                          # 3,6 Go brut en RGBA
+    assert plan.needs_bigtiff(30000, 30000)                          # 3.6 GB raw in RGBA
     assert plan.needs_bigtiff(30000, 30000, bands=1, bytes_per_sample=4)
 
 
-# -- appel de Metashape (faux module) --------------------------------------------------------------
+# -- call of Metashape (fake module) --------------------------------------------------------------
 
 class FakeCompression(object):
     TiffCompressionNone, TiffCompressionLZW, TiffCompressionJPEG = 0, 1, 2
@@ -104,7 +104,7 @@ def meta(ms):
     return ms
 
 
-BOX = (2175791.52, 1206800.37, 2175892.49, 1206680.1)          # gauche, bas, droite, haut (peu importe l'ordre ici)
+BOX = (2175791.52, 1206800.37, 2175892.49, 1206680.1)          # left, bottom, right, top (the order does not matter here)
 
 
 def test_export_raster_passes_the_preset_to_metashape(meta):
@@ -222,7 +222,7 @@ def test_raster_signature_changes_with_the_chunk_the_default_rasters_and_the_sha
     assert msapi.raster_signature(make(1, shapes=2)) != base                        # a shape was added
 
 
-# -- changement de SCR : emprise ---------------------------------------------------------------------
+# -- CRS change: extent ---------------------------------------------------------------------
 
 COMPOUND = ('COMPD_CS["RGF93 v1 / CC42 + RAC09",PROJCS["RGF93 v1 / CC42",GEOGCS["RGF93 v1",DATUM["D",SPHEROID["GRS 1980",6378137,298.257]]],'
             'PROJECTION["Lambert_Conformal_Conic_2SP"],UNIT["metre",1]],VERT_CS["RAC09",VERT_DATUM["IGN78",2005]]]')
@@ -271,7 +271,7 @@ def test_transform_box_gives_up_with_a_reason(meta):
 
 
 def test_every_shared_widget_the_export_window_asks_ui_for_exists():
-    """Le 05/11, un revert avait retire ui.OptionCard : la fenetre ne demarrait plus (AttributeError). On relit les noms."""
+    """A revert once removed ui.OptionCard: the window no longer started (AttributeError). The names are read again."""
     import re
     root = os.path.join(os.path.dirname(__file__), "..", "aerotools")
     dialog = open(os.path.join(root, "tools", "aeroexports", "dialog.py"), encoding="utf-8").read()

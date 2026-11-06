@@ -1,4 +1,4 @@
-"""Formats et tris du tableau des marqueurs (fonctions pures de panel.py)."""
+"""Formats and sorts of the marker table (pure functions of panel.py)."""
 
 from aerotools import i18n
 from aerotools.tools.fastgcp import panel
@@ -36,7 +36,7 @@ def test_format_error_without_value_is_a_dash():
 def test_default_order_is_the_project_order():
     rows = [_row("GCP10"), _row("GCP2"), _row("GCP1")]
     assert _labels(panel.sort_rows(rows, None)) == ["GCP10", "GCP2", "GCP1"]
-    assert _labels(panel.sort_rows(rows, "inconnue", True)) == ["GCP10", "GCP2", "GCP1"]
+    assert _labels(panel.sort_rows(rows, "unknown", True)) == ["GCP10", "GCP2", "GCP1"]
 
 
 def test_sort_by_id_is_natural_both_ways():
@@ -70,14 +70,8 @@ def test_sort_does_not_modify_its_input():
 
 
 def test_columns_are_exactly_the_five_asked_for():
-    # COLUMNS et EXPORTS portent des cles de texte : on les lit en francais.
-    assert panel.column_titles() == ["ID", "Erreur X", "Erreur Y", "Erreur Z", "Proj."]
+    # COLUMNS and EXPORTS hold text keys: they are read through the catalog.
+    assert panel.column_titles() == ["ID", "Error X", "Error Y", "Error Z", "Proj."]
     assert [key for _title, key, _width in panel.COLUMNS] == ["id", "x", "y", "z", "proj"]
     assert panel.MIN_PANEL_WIDTH >= 420
-    assert [i18n.t(title) for _key, title in panel.EXPORTS] == ["Rapport PDF", "Tableau CSV"]
-
-
-def test_columns_follow_the_language():
-    i18n.set_lang("en")
-    assert panel.column_titles() == ["ID", "Error X", "Error Y", "Error Z", "Proj."]
     assert [i18n.t(title) for _key, title in panel.EXPORTS] == ["PDF report", "CSV table"]

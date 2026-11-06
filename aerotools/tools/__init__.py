@@ -1,1 +1,1 @@
-"""Outils de la suite AeroTools. Un sous-paquet par outil, declare dans config.TOOLS."""
+"""Tools of the AeroTools suite. One subpackage per tool, declared in config.TOOLS."""

@@ -1,24 +1,24 @@
-"""Enveloppe des appels Metashape utilises par AeroTools.
+"""Wrapper around the Metashape calls used by AeroTools.
 
-Tout ce qui touche a l'API Metashape est ici : les outils n'appellent jamais
-`Metashape.*` directement. Deux raisons : les API de vue photo ne sont pas
-documentees et bougent d'une version a l'autre, et les references Python vers
-des objets du document deviennent invalides (RuntimeError) des que l'on change
-de chunk. Chaque fonction est donc defensive et renvoie une valeur neutre
-plutot que de lever.
+Everything that touches the Metashape API is here: the tools never call
+`Metashape.*` directly. Two reasons: the photo view APIs are not
+documented and move from one version to the next, and Python references to
+document objects become invalid (RuntimeError) as soon as the chunk
+changes. Each function is therefore defensive and returns a neutral value
+rather than raising.
 
-API Metashape mobilisees :
+Metashape APIs used:
   Metashape.app.document / .photo_view / .photos_pane / .update()
-  Metashape.app.addMenuItem(libelle, fonction, shortcut=...)
+  Metashape.app.addMenuItem(label, function, shortcut=...)
   chunk.cameras, chunk.markers, chunk.crs, chunk.transform
   marker.projections[camera] = Metashape.Marker.Projection(Vector, True)
   del marker.projections[camera], marker.position, marker.reference.location
   chunk.crs.project / unproject / localframe, chunk.transform.matrix.mulp
   camera.project(point), camera.transform, camera.sensor.width / .height
   photo_view.camera / .center / .scale / .width / .height / .open(camera)
-  (center : pixel image au milieu de la vue ; scale : pixels ecran par pixel
-  image. Semantique deduite de image_coords_at et d'anciens scripts, a
-  confirmer avec diag_zoom.py)
+  (center: image pixel at the middle of the view; scale: screen pixels per image
+  pixel. Semantics inferred from image_coords_at and from older scripts, to be
+  confirmed with diag_zoom.py)
 """
 
 import math
@@ -28,11 +28,11 @@ import Metashape
 from . import journal
 from .qt import QtCore, QtWidgets
 
-# Au-dela de cette distance, une photo n'est pas proposee pour un marqueur qui
-# n'a pas encore de projection (sinon tout un vol « voit » le point).
+# Beyond this distance, a photo is not offered for a marker that has no
+# projection yet (otherwise a whole flight "sees" the point).
 MAX_FILTER_DIST_M = 400.0
 
-# Onglets de la vue centrale qui ne sont pas des photos.
+# Tabs of the central view that are not photos.
 NON_PHOTO_KEYWORDS = (
     "model", "ortho", "dem", "point cloud", "dense cloud", "depth map",
     "tiled", "console", "reference", "workspace", "animation", "report",
@@ -80,7 +80,7 @@ def photo_view():
 
 
 def app_version():
-    """Version de Metashape, ou chaine vide si elle n'est pas accessible."""
+    """Metashape version, or an empty string if it is not accessible."""
     try:
         return str(Metashape.app.version)
     except Exception:
@@ -94,10 +94,10 @@ def refresh():
         pass
 
 
-# Le wrapper Python de la fenetre principale doit rester vivant : des qu'il est
-# libere (variable locale d'une fonction terminee), PySide2 invalide les wrappers
-# de tous ses enfants (« Internal C++ object already deleted » alors que les
-# widgets existent toujours), et le clic dans la vue photo n'est plus reconnu.
+# The Python wrapper of the main window must stay alive: as soon as it is
+# released (local variable of a finished function), PySide2 invalidates the wrappers
+# of all its children ("Internal C++ object already deleted" while the
+# widgets still exist), and the click in the photo view is no longer recognized.
 _MAIN_WINDOW = None
 
 
@@ -120,7 +120,7 @@ def main_window():
 
 
 # --------------------------------------------------------------------------
-# Marqueurs
+# Markers
 # --------------------------------------------------------------------------
 
 def markers(chk):
@@ -142,11 +142,11 @@ def selected_markers(chk):
 
 
 def select_marker(chk, marker):
-    """Selectionne ce seul marqueur dans Metashape (panneau Reference). Ne leve jamais.
+    """Select only this marker in Metashape (Reference pane). Never raises.
 
-    Metashape se recentre sur SON marqueur selectionne a chaque changement de
-    photo (Page precedente / suivante) : il doit etre le marqueur courant de
-    FastGCP, sinon la vue part sur l'ancien. Renvoie True si la selection est faite.
+    Metashape recenters on ITS selected marker at each photo change
+    (Page up / down): it must be FastGCP's current marker, otherwise the view
+    goes to the old one. Returns True if the selection is done.
     """
     try:
         for other in markers(chk):
@@ -169,15 +169,15 @@ def marker_label(marker):
 
 
 def projection_cameras(marker, without_proposals=False):
-    """Cameras ou ce marqueur a deja une projection.
+    """Cameras where this marker already has a projection.
 
-    `without_proposals=True` ecarte les projections proposees par la detection
-    IA de FastGCP (voir mark_proposal) et celles-la seulement : les autres
-    projections du projet (posees a la main ou calculees par Metashape)
-    restent.
+    `without_proposals=True` leaves out the projections proposed by FastGCP's
+    AI detection (see mark_proposal) and only those: the other
+    projections of the project (placed by hand or computed by Metashape)
+    stay.
 
-    `marker.projections` ne s'itere pas de la meme facon selon la version :
-    on essaie l'iteration directe, puis keys(), puis items().
+    `marker.projections` is not iterated the same way depending on the version:
+    try direct iteration, then keys(), then items().
     """
     try:
         projections = marker.projections
@@ -212,9 +212,9 @@ def projection_cameras(marker, without_proposals=False):
     return cameras
 
 
-# Projections posees par la detection IA et pas encore validees : (chunk, marqueur,
-# photo). Metashape ne distingue pas une proposition d'un point bleu qu'il a
-# lui-meme calcule : on s'en souvient ici, pour ne pas les compter comme pointees.
+# Projections placed by the AI detection and not yet validated: (chunk, marker,
+# photo). Metashape does not tell a proposal from a blue point it computed
+# itself: it is remembered here, so as not to count them as placed.
 _PROPOSALS = set()
 
 
@@ -231,9 +231,9 @@ def unmark_proposal(marker, camera):
 
 
 def is_proposal(marker, camera):
-    """Cette projection est-elle une proposition de l'IA encore non validee ?
+    """Is this projection an AI proposal that is not yet validated?
 
-    Des que l'operateur la remplace par un pointage (pinned), elle n'en est plus une.
+    As soon as the operator replaces it with a pick (pinned), it no longer is one.
     """
     if not _PROPOSALS:
         return False
@@ -248,17 +248,17 @@ def is_proposal(marker, camera):
 
 
 def projection_count(marker):
-    """Nombre de photos avec une projection, propositions de l'IA exclues."""
+    """Number of photos with a projection, AI proposals excluded."""
     return len(projection_cameras(marker, without_proposals=True))
 
 
 def marker_point(chk, marker):
-    """Position du marqueur en coordonnees internes du chunk, ou None.
+    """Position of the marker in the chunk's internal coordinates, or None.
 
-    Si le marqueur n'est pas encore triangule, on part de ses coordonnees de
-    reference : c'est ce qui permet de filtrer les photos d'un GCP jamais
-    pointe. Cette reference est exprimee dans le repere des marqueurs (`marker_crs`),
-    qui peut differer de celui du chunk (ex. chunk en WGS 84, marqueurs en metres).
+    If the marker is not triangulated yet, start from its reference
+    coordinates: this is what makes it possible to filter the photos of a GCP never
+    placed. This reference is expressed in the markers' coordinate system (`marker_crs`),
+    which may differ from the chunk's (e.g. chunk in WGS 84, markers in meters).
     """
     try:
         if marker.position is not None:
@@ -277,7 +277,7 @@ def marker_point(chk, marker):
 
 
 def _components(vector):
-    """(x, y, z) d'un vecteur Metashape, ou None."""
+    """(x, y, z) of a Metashape vector, or None."""
     try:
         return float(vector.x), float(vector.y), float(vector.z)
     except Exception:
@@ -293,22 +293,22 @@ def _finite(values):
     )
 
 
-# Une ligne de diagnostic par chunk et par cause (voir _log_once).
+# One diagnostic line per chunk and per cause (see _log_once).
 _DIAG_LOGGED = set()
 
-# Ellipsoide GRS80 / WGS84, pour convertir des degres en metres locaux.
+# GRS80 / WGS84 ellipsoid, to convert degrees to local meters.
 _ELL_A = 6378137.0
 _ELL_E2 = 0.00669437999014
 
 
 def _log_once(chk, kind, text):
-    """Ecrit une seule fois par chunk (et par cause) une ligne dans le journal."""
+    """Write a line to the journal only once per chunk (and per cause)."""
     key = (chunk_key(chk), kind)
     if key in _DIAG_LOGGED:
         return
     _DIAG_LOGGED.add(key)
     try:
-        journal.write("Erreurs du tableau : " + text)
+        journal.write("Table errors: " + text)
     except Exception:
         pass
 
@@ -321,10 +321,10 @@ def _type_name(value):
 
 
 def crs_kind(crs):
-    """"projected", "geographic", "geocentric" ou None si on ne sait pas.
+    """"projected", "geographic", "geocentric" or None if unknown.
 
-    Lu dans le WKT (un CRS compose avec geoide contient PROJCS), puis dans
-    la chaine proj4.
+    Read from the WKT (a compound CRS with a geoid contains PROJCS), then from
+    the proj4 string.
     """
     try:
         wkt = str(crs.wkt).upper()
@@ -350,56 +350,56 @@ def crs_kind(crs):
 
 
 def marker_errors(chk, marker):
-    """Erreur du marqueur en metres : position estimee moins position de reference.
+    """Marker error in meters: estimated position minus reference position.
 
-    Renvoie {"x", "y", "z", "total"}, chaque valeur etant un flottant ou None
-    (pas de coordonnee de reference, marqueur non estime, calcul impossible).
-    Ne leve jamais : le panneau et le rapport PDF s'en servent tels quels.
-    Quand un marqueur a une reference et une position mais que le calcul
-    echoue, une ligne du journal (une par chunk) donne la cause exacte.
+    Returns {"x", "y", "z", "total"}, each value being a float or None
+    (no reference coordinate, marker not estimated, computation impossible).
+    Never raises: the panel and the PDF report use it as is.
+    When a marker has a reference and a position but the computation
+    fails, a journal line (one per chunk) gives the exact cause.
 
-    Chemins essayes dans l'ordre, le premier resultat fini l'emporte :
-      A. repere de coordonnees defini : les deux positions en geocentrique
-         (estimee par la matrice du chunk, reference par crs.unproject), ecart
-         tourne dans le repere local du point (crs.localframe) : est, nord,
-         haut en metres, comme le tableau Reference (a la convergence des
-         meridiens pres, negligeable au centimetre) ;
-      B. CRS projete : crs.project(position estimee) moins la reference,
-         deja en metres ;
-      C. CRS geographique : ecart en degres converti en metres locaux ;
-      sans systeme de coordonnees : difference dans le repere du chunk, mise
-      a l'echelle metrique (chunk.transform.scale).
+    Paths tried in order, the first finite result wins:
+      A. coordinate system defined: both positions in geocentric
+         (estimated through the chunk matrix, reference through crs.unproject), difference
+         rotated into the point's local frame (crs.localframe): east, north,
+         up in meters, like the Reference table (up to the meridian
+         convergence, negligible at the centimeter level);
+      B. projected CRS: crs.project(estimated position) minus the reference,
+         already in meters;
+      C. geographic CRS: difference in degrees converted to local meters;
+      without a coordinate system: difference in the chunk frame, scaled
+      to metric (chunk.transform.scale).
     """
     empty = {"x": None, "y": None, "z": None, "total": None}
     try:
         position = marker.position
         reference = marker.reference.location
     except Exception as exc:
-        _log_once(chk, "lecture", "lecture du marqueur impossible : {!r}".format(exc))
+        _log_once(chk, "read", "cannot read the marker: {!r}".format(exc))
         return empty
     if reference is None:
         return empty
     label = marker_label(marker)
     if position is None:
-        _log_once(chk, "non_estime",
-                  "{} a une reference mais pas de position estimee (marqueur non "
-                  "triangule, normal tant qu'il n'est pas pointe)".format(label))
+        _log_once(chk, "not_estimated",
+                  "{} has a reference but no estimated position (marker not "
+                  "triangulated, normal until it is placed)".format(label))
         return empty
     notes = []
     try:
         values = _error_components(chk, position, reference, notes)
     except Exception as exc:
-        notes.append("exception inattendue {!r}".format(exc))
+        notes.append("unexpected exception {!r}".format(exc))
         values = None
     if not _finite(values):
-        _log_once(chk, "echec", _diagnostic(chk, marker, position, reference, notes))
+        _log_once(chk, "failure", _diagnostic(chk, marker, position, reference, notes))
         return empty
     x, y, z = values
     return {"x": x, "y": y, "z": z, "total": math.sqrt(x * x + y * y + z * z)}
 
 
 def marker_enabled(marker):
-    """True si le marqueur sert de point de controle (case cochee dans Reference), None si illisible."""
+    """True if the marker is used as a control point (box ticked in Reference), None if unreadable."""
     try:
         return bool(marker.reference.enabled)
     except Exception:
@@ -407,7 +407,7 @@ def marker_enabled(marker):
 
 
 def set_marker_enabled(marker, value):
-    """Coche ou decoche le marqueur dans Reference. Renvoie True si c'est fait."""
+    """Tick or untick the marker in Reference. Returns True if done."""
     try:
         marker.reference.enabled = bool(value)
         return True
@@ -416,7 +416,7 @@ def set_marker_enabled(marker, value):
 
 
 def cameras_georeferenced(chk):
-    """(cameras dont la position de reference est utilisee, cameras alignees) : PPK / RTK si la plupart le sont."""
+    """(cameras whose reference position is used, aligned cameras): PPK / RTK if most of them are."""
     used = total = 0
     for cam in _cameras(chk):
         if _camera_transform(cam) is None:
@@ -431,17 +431,17 @@ def cameras_georeferenced(chk):
 
 
 def marker_frame_points(chk):
-    """Marqueurs avec position estimee ET reference, dans un meme repere local en metres.
+    """Markers with an estimated position AND a reference, in the same local frame in meters.
 
-    Renvoie ([{label, marker, n, est, ref}], pourquoi). `est` : position estimee (avec la matrice du
-    chunk), `ref` : position de reference, toutes deux en est / nord / haut autour d'un meme point
-    (chemin A de `marker_errors`, avec le geoide du systeme de coordonnees) ; sans systeme de
-    coordonnees, repere du chunk en metres. `pourquoi` n'est rempli que si la liste est vide."""
+    Returns ([{label, marker, n, est, ref}], why). `est`: estimated position (with the chunk
+    matrix), `ref`: reference position, both as east / north / up around the same point
+    (path A of `marker_errors`, with the geoid of the coordinate system); without a coordinate
+    system, the chunk frame in meters. `why` is only filled when the list is empty."""
     try:
         crs = getattr(chk, "marker_crs", None) or chk.crs
         matrix = chk.transform.matrix
     except Exception as exc:
-        return [], "lecture du chunk impossible : {!r}".format(exc)
+        return [], "cannot read the chunk: {!r}".format(exc)
     items = []
     for marker in markers(chk):
         try:
@@ -451,9 +451,9 @@ def marker_frame_points(chk):
         if position is not None and reference is not None:
             items.append((marker, position, reference))
     if not items:
-        return [], "aucun marqueur avec une position estimee et une reference"
+        return [], "no marker with an estimated position and a reference"
     if matrix is None:
-        return [], "le chunk n'a pas de matrice de transformation"
+        return [], "the chunk has no transformation matrix"
     try:
         scale = float(chk.transform.scale or 1.0)
     except Exception:
@@ -471,8 +471,8 @@ def marker_frame_points(chk):
     def chunk_path():
         return (lambda position, reference: (_components(matrix.mulp(position)), _components(reference)))
 
-    attempts = [("repere local", local_path_a), ("repere projete", projected_path)] if crs is not None else []
-    attempts.append(("repere du chunk", chunk_path))
+    attempts = [("local frame", local_path_a), ("projected frame", projected_path)] if crs is not None else []
+    attempts.append(("chunk frame", chunk_path))
     notes = []
     for name, build in attempts:
         try:
@@ -481,24 +481,24 @@ def marker_frame_points(chk):
             for marker, position, reference in items:
                 est, ref = convert(position, reference)
                 if not (_finite(est) and _finite(ref)):
-                    raise ValueError("valeur non finie")
+                    raise ValueError("non-finite value")
                 points.append({"label": marker_label(marker), "marker": marker, "n": projection_count(marker),
                                "est": est, "ref": ref})
             return points, ""
         except Exception as exc:
-            notes.append("{} : {!r}".format(name, exc))
-    return [], " ; ".join(notes)
+            notes.append("{}: {!r}".format(name, exc))
+    return [], "; ".join(notes)
 
 
 def _diagnostic(chk, marker, position, reference, notes):
-    """Phrase unique qui dit pourquoi le calcul a echoue."""
-    parts = ["calcul impossible pour {} (chunk {})".format(
+    """Single sentence saying why the computation failed."""
+    parts = ["computation impossible for {} (chunk {})".format(
         marker_label(marker), chunk_label(chk) or "?")]
     try:
         crs = getattr(chk, "marker_crs", None) or chk.crs
         parts.append("crs={} type={}".format(getattr(crs, "name", crs), crs_kind(crs)))
     except Exception as exc:
-        parts.append("crs illisible {!r}".format(exc))
+        parts.append("crs unreadable {!r}".format(exc))
     try:
         enabled = marker.reference.enabled
     except Exception:
@@ -508,20 +508,20 @@ def _diagnostic(chk, marker, position, reference, notes):
     parts.append("position={}".format(_components(position)))
     try:
         matrix = chk.transform.matrix
-        parts.append("matrice={}".format(_type_name(matrix)))
+        parts.append("matrix={}".format(_type_name(matrix)))
         try:
             parts.append("mulp->{}".format(_type_name(matrix.mulp(position))))
         except Exception as exc:
-            parts.append("mulp echoue {!r}".format(exc))
+            parts.append("mulp failed {!r}".format(exc))
         try:
             parts.append("localframe->{}".format(
                 _type_name(chk.crs.localframe(matrix.mulp(position)))))
         except Exception as exc:
-            parts.append("localframe echoue {!r}".format(exc))
+            parts.append("localframe failed {!r}".format(exc))
     except Exception as exc:
-        parts.append("matrice illisible {!r}".format(exc))
+        parts.append("matrix unreadable {!r}".format(exc))
     parts.extend(notes)
-    return " ; ".join(parts)
+    return "; ".join(parts)
 
 
 def _delta_vector(values):
@@ -529,11 +529,11 @@ def _delta_vector(values):
 
 
 def _rotate(local, delta, notes):
-    """Applique la matrice `local` a l'ecart `delta` (vecteur de 3). Plusieurs
-    formes, selon ce que la matrice accepte (4x4 homogene, 3x3, lignes)."""
+    """Apply the `local` matrix to the offset `delta` (3-vector). Several
+    forms, depending on what the matrix accepts (4x4 homogeneous, 3x3, rows)."""
     attempts = (
         ("mulv", lambda: local.mulv(delta)),
-        ("produit", lambda: local * delta),
+        ("product", lambda: local * delta),
         ("rotation", lambda: local.rotation() * delta),
     )
     for name, call in attempts:
@@ -542,7 +542,7 @@ def _rotate(local, delta, notes):
             if _finite(values):
                 return values
         except Exception as exc:
-            notes.append("localframe.{} echoue {!r}".format(name, exc))
+            notes.append("localframe.{} failed {!r}".format(name, exc))
     try:
         d = _components(delta)
         rows = []
@@ -553,17 +553,17 @@ def _rotate(local, delta, notes):
         if _finite(values):
             return values
     except Exception as exc:
-        notes.append("localframe.lignes echoue {!r}".format(exc))
+        notes.append("localframe.rows failed {!r}".format(exc))
     return None
 
 
 def _error_components(chk, position, reference, notes):
     ref = _components(reference)
     if ref is None:
-        notes.append("reference illisible")
+        notes.append("reference unreadable")
         return None
-    # La reference est exprimee dans le repere des marqueurs, qui peut differer
-    # de celui du chunk (ex. chunk en WGS 84, marqueurs en metres).
+    # The reference is expressed in the markers' coordinate system, which may differ
+    # from the chunk's (e.g. chunk in WGS 84, markers in meters).
     try:
         crs = getattr(chk, "marker_crs", None) or chk.crs
     except Exception:
@@ -578,64 +578,64 @@ def _error_components(chk, position, reference, notes):
         scale = 1.0
 
     if crs is None:
-        # Repere local : la reference est dans le repere du chunk, en metres
-        # apres la similitude du chunk.
+        # Local frame: the reference is in the chunk frame, in meters
+        # after the chunk similarity.
         if matrix is not None:
             try:
                 estimated = _components(matrix.mulp(position))
                 if estimated is not None:
                     return tuple(e - r for e, r in zip(estimated, ref))
             except Exception as exc:
-                notes.append("local : mulp echoue {!r}".format(exc))
+                notes.append("local: mulp failed {!r}".format(exc))
         estimated = _components(position)
         if estimated is None:
             return None
         return tuple((e - r) * scale for e, r in zip(estimated, ref))
 
     if matrix is None:
-        notes.append("chunk.transform.matrix est None")
+        notes.append("chunk.transform.matrix is None")
         return None
     try:
         world = matrix.mulp(position)
     except Exception as exc:
-        notes.append("matrice.mulp echoue {!r}".format(exc))
+        notes.append("matrix.mulp failed {!r}".format(exc))
         return None
     world_c = _components(world)
     if world_c is None:
-        notes.append("position du chunk illisible")
+        notes.append("chunk position unreadable")
         return None
     kind = crs_kind(crs)
 
-    # A. geocentrique tourne dans le repere local.
+    # A. geocentric rotated into the local frame.
     try:
         ref_ecef = _components(crs.unproject(reference))
         if ref_ecef is None:
-            raise ValueError("unproject sans resultat")
+            raise ValueError("unproject returned nothing")
         delta = _delta_vector(w - r for w, r in zip(world_c, ref_ecef))
         local = crs.localframe(world)
         values = _rotate(local, delta, notes)
         if _finite(values):
             return values
     except Exception as exc:
-        notes.append("chemin A echoue {!r}".format(exc))
+        notes.append("path A failed {!r}".format(exc))
 
-    # B et C partent de la position estimee exprimee dans le systeme du CRS.
+    # B and C start from the estimated position expressed in the CRS system.
     try:
         estimated = _components(crs.project(world))
     except Exception as exc:
-        notes.append("crs.project echoue {!r}".format(exc))
+        notes.append("crs.project failed {!r}".format(exc))
         return None
     if estimated is None:
-        notes.append("crs.project sans resultat")
+        notes.append("crs.project returned nothing")
         return None
     looks_degrees = abs(ref[0]) <= 180.0 and abs(ref[1]) <= 90.0
 
-    # B. CRS projete : l'ecart est deja en metres.
+    # B. Projected CRS: the difference is already in meters.
     if kind == "projected" or (kind is None and not looks_degrees):
         values = tuple(e - r for e, r in zip(estimated, ref))
         if _finite(values):
             return values
-    # C. CRS geographique : degres vers metres locaux.
+    # C. Geographic CRS: degrees to local meters.
     if kind == "geographic" or (kind is None and looks_degrees):
         lat = math.radians(ref[1])
         sin2 = math.sin(lat) ** 2
@@ -648,16 +648,16 @@ def _error_components(chk, position, reference, notes):
         values = (east, north, estimated[2] - ref[2])
         if _finite(values):
             return values
-    notes.append("aucun chemin applicable (crs de type {})".format(kind))
+    notes.append("no applicable path (crs of type {})".format(kind))
     return None
 
 
 def cameras_seeing_marker(chk, marker, max_dist_m=MAX_FILTER_DIST_M):
-    """Photos a proposer pour ce marqueur, de la plus proche a la plus lointaine.
+    """Photos to offer for this marker, from the nearest to the farthest.
 
-    D'abord les projections deja posees, puis les photos alignees d'ou le point
-    tombe dans l'image, devant la camera et a moins de `max_dist_m`.
-    Renvoie (cameras, diagnostic).
+    First the projections already placed, then the aligned photos where the point
+    falls inside the image, in front of the camera and within `max_dist_m`.
+    Returns (cameras, diagnostic).
     """
     diagnostic = {}
     cameras = projection_cameras(marker)
@@ -671,10 +671,10 @@ def cameras_seeing_marker(chk, marker, max_dist_m=MAX_FILTER_DIST_M):
 
     point = marker_point(chk, marker)
     diagnostic["point"] = point is not None
-    diagnostic["alignees"] = sum(
+    diagnostic["aligned"] = sum(
         1 for cam in _cameras(chk) if _camera_transform(cam) is not None
     )
-    diagnostic["proches"] = diagnostic["devant"] = diagnostic["dans_image"] = 0
+    diagnostic["near"] = diagnostic["in_front"] = diagnostic["in_image"] = 0
     if point is None:
         return cameras, diagnostic
 
@@ -693,20 +693,20 @@ def cameras_seeing_marker(chk, marker, max_dist_m=MAX_FILTER_DIST_M):
             distance = (cam.center - point).norm()
             if distance > limit:
                 continue
-            diagnostic["proches"] += 1
+            diagnostic["near"] += 1
             local = cam.transform.inv().mulp(point)
             if local.z <= 0:
                 continue
-            diagnostic["devant"] += 1
+            diagnostic["in_front"] += 1
             uv = cam.project(point)
             if uv is None:
                 continue
             width, height = cam.sensor.width, cam.sensor.height
             if 0 <= uv.x < width and 0 <= uv.y < height:
-                diagnostic["dans_image"] += 1
+                diagnostic["in_image"] += 1
                 extra.append((distance, cam))
         except Exception as exc:
-            diagnostic["erreur"] = str(exc)
+            diagnostic["error"] = str(exc)
             continue
     extra.sort(key=lambda item: item[0])
     cameras.extend(cam for _distance, cam in extra)
@@ -728,15 +728,15 @@ def _camera_transform(cam):
 
 
 # --------------------------------------------------------------------------
-# Vue photo
+# Photo view
 # --------------------------------------------------------------------------
 
 def photo_view_widgets():
-    """Widgets Qt qui ont exactement la taille de la vue photo.
+    """Qt widgets that have exactly the size of the photo view.
 
-    Metashape n'expose pas le widget de la vue photo : on le retrouve par sa
-    taille, que l'API donne (`photo_view.width` / `.height`), et on garde le
-    plus profond dans l'arbre.
+    Metashape does not expose the photo view widget: it is found by its
+    size, which the API gives (`photo_view.width` / `.height`), and the
+    deepest one in the tree is kept.
     """
     view = photo_view()
     if view is None:
@@ -774,11 +774,11 @@ def photo_view_widgets():
 
 
 def central_tab_under(global_pos):
-    """(texte de l'onglet central actif, clic dans un panneau dockable).
+    """(text of the active central tab, click inside a dockable pane).
 
-    Metashape 2.2 n'a pas de QMdiArea : la vue centrale est un QTabWidget dont
-    les onglets sont Model / Ortho / <nom de photo>. On remonte du widget sous
-    le curseur jusqu'a ce QTabWidget et on lit l'onglet actif.
+    Metashape 2.2 has no QMdiArea: the central view is a QTabWidget whose
+    tabs are Model / Ortho / <photo name>. Walk up from the widget under
+    the cursor to that QTabWidget and read the active tab.
     """
     widget = QtWidgets.QApplication.widgetAt(global_pos)
     if widget is None:
@@ -793,8 +793,8 @@ def central_tab_under(global_pos):
             break
         if tabs is None and isinstance(node, QtWidgets.QTabWidget):
             tabs = node
-        # Certains widgets de Metashape (la console Python) masquent `parent`
-        # par un attribut qui n'est pas appelable : on s'arrete la, sans lever.
+        # Some Metashape widgets (the Python console) shadow `parent`
+        # with an attribute that is not callable: stop there, without raising.
         try:
             getter = node.parent
             node = getter() if callable(getter) else None
@@ -814,8 +814,8 @@ def _title_is_photo(title, chk):
         return False
     text = title.strip()
     stem = text.rsplit(".", 1)[0]
-    # Un onglet qui porte exactement le nom d'une photo du chunk est une photo,
-    # meme si ce nom contient un mot de la liste noire (« DEM_001 », « model »).
+    # A tab that carries exactly the name of a photo of the chunk is a photo,
+    # even if that name contains a word of the blacklist ("DEM_001", "model").
     if chk is not None:
         for cam in _cameras(chk):
             try:
@@ -828,12 +828,12 @@ def _title_is_photo(title, chk):
     for keyword in NON_PHOTO_KEYWORDS:
         if keyword in lowered:
             return False
-    # Onglet central non blackliste : on le considere comme une photo.
+    # Central tab that is not blacklisted: considered a photo.
     return True
 
 
 def cursor_over_photo_view(global_pos):
-    """True seulement si l'onglet central sous le curseur est une photo."""
+    """True only if the central tab under the cursor is a photo."""
     title, _in_dock = central_tab_under(global_pos)
     if title is None:
         return False
@@ -841,28 +841,28 @@ def cursor_over_photo_view(global_pos):
 
 
 def describe_position(global_pos):
-    """Phrase courte expliquant pourquoi un clic a ete ignore."""
+    """Short sentence explaining why a click was ignored."""
     title, in_dock = central_tab_under(global_pos)
     if in_dock:
-        return "panneau Metashape"
+        return "Metashape pane"
     if title:
-        return "onglet « {} »".format(title)
-    return "hors de la vue centrale"
+        return "tab \"{}\"".format(title)
+    return "outside the central view"
 
 
 # --------------------------------------------------------------------------
-# Pose d'une projection
+# Placing a projection
 # --------------------------------------------------------------------------
 
 def image_coords_at(global_pos):
-    """Coordonnees image (pixels capteur) sous le curseur, ou (None, raison)."""
+    """Image coordinates (sensor pixels) under the cursor, or (None, reason)."""
     view = photo_view()
     if view is None or view.camera is None:
-        return None, "aucune photo ouverte"
+        return None, "no photo open"
     try:
         width, height, scale, center = view.width, view.height, view.scale, view.center
     except Exception:
-        return None, "vue photo illisible"
+        return None, "photo view unreadable"
 
     target = None
     local = None
@@ -876,35 +876,35 @@ def image_coords_at(global_pos):
         except RuntimeError:
             continue
     if target is None:
-        return None, "curseur hors de la vue photo"
+        return None, "cursor outside the photo view"
 
-    # Valable pour n'importe quel zoom : la vue est relue a chaque clic (centre
-    # et echelle courants), rien n'est memorise ni suppose « ajuste a la fenetre ».
+    # Valid for any zoom: the view is re-read at each click (current center
+    # and scale), nothing is remembered or assumed "fitted to the window".
     try:
         scale = float(scale)
         center_x, center_y = float(center.x), float(center.y)
     except Exception:
-        return None, "centre ou echelle de la vue illisibles"
+        return None, "view center or scale unreadable"
     if not (scale > 0.0 and math.isfinite(scale)):
-        return None, "echelle de la vue illisible"
+        return None, "view scale unreadable"
     img_x = center_x + (local.x() - width / 2.0) / scale
     img_y = center_y + (local.y() - height / 2.0) / scale
     try:
         sensor_w = view.camera.sensor.width
         sensor_h = view.camera.sensor.height
     except Exception:
-        return None, "capteur inconnu"
+        return None, "unknown sensor"
     if img_x < 0 or img_y < 0 or img_x > sensor_w or img_y > sensor_h:
-        return None, "pixel hors image ({:.0f}, {:.0f})".format(img_x, img_y)
+        return None, "pixel outside the image ({:.0f}, {:.0f})".format(img_x, img_y)
     return (img_x, img_y), None
 
 
 def set_projection(marker, camera, img_x, img_y, pinned=True):
-    """Pose la projection du marqueur sur cette camera. Renvoie (ok, message).
+    """Place the marker's projection on this camera. Returns (ok, message).
 
-    `pinned=True` : pointage de l'operateur (pastille verte dans Metashape).
-    `pinned=False` : projection proposee par une detection automatique (AIGCP),
-    que Metashape affiche en bleu et qu'il peut reajuster.
+    `pinned=True`: operator pick (green flag in Metashape).
+    `pinned=False`: projection proposed by an automatic detection (AIGCP),
+    which Metashape shows in blue and may readjust.
     """
     try:
         projection = Metashape.Marker.Projection(
@@ -918,9 +918,9 @@ def set_projection(marker, camera, img_x, img_y, pinned=True):
 
 
 def get_projection(marker, camera):
-    """Projection actuelle du marqueur sur cette photo : (x, y, pinned), ou None.
+    """Current projection of the marker on this photo: (x, y, pinned), or None.
 
-    Sert a memoriser l'etat d'avant pour pouvoir annuler. Ne leve jamais.
+    Used to remember the previous state so that it can be undone. Never raises.
     """
     try:
         projection = marker.projections[camera]
@@ -940,9 +940,9 @@ def get_projection(marker, camera):
 
 
 def remove_projection(marker, camera, update=True):
-    """Supprime la projection du marqueur sur cette photo. Renvoie (ok, message).
+    """Remove the marker's projection on this photo. Returns (ok, message).
 
-    `update=False` : ne rafraichit pas Metashape (l'appelant le fait une fois pour toute une serie).
+    `update=False`: does not refresh Metashape (the caller does it once for a whole series).
     """
     try:
         try:
@@ -957,9 +957,9 @@ def remove_projection(marker, camera, update=True):
 
 
 def remove_all_projections(marker):
-    """Supprime toutes les projections du marqueur (posees, bleues, propositions de l'IA).
+    """Remove all the marker's projections (placed, blue, AI proposals).
 
-    Renvoie le nombre de projections retirees. Le marqueur reste dans le chunk. Ne leve jamais.
+    Returns the number of projections removed. The marker stays in the chunk. Never raises.
     """
     removed = 0
     for camera in projection_cameras(marker):
@@ -970,7 +970,7 @@ def remove_all_projections(marker):
 
 
 def remove_marker(chk, marker):
-    """Supprime le marqueur du chunk. Renvoie (ok, message)."""
+    """Remove the marker from the chunk. Returns (ok, message)."""
     try:
         try:
             chk.remove([marker])
@@ -1011,11 +1011,11 @@ def camera_size(camera):
 
 
 # --------------------------------------------------------------------------
-# Navigation entre photos
+# Navigation between photos
 # --------------------------------------------------------------------------
 
 def current_camera():
-    """Camera ouverte dans la vue photo, ou None."""
+    """Camera open in the photo view, or None."""
     view = photo_view()
     try:
         return view.camera if view is not None else None
@@ -1031,10 +1031,10 @@ def camera_key(camera):
 
 
 def open_photo(camera):
-    """Ouvre `camera` dans la vue photo. Renvoie (ok, message), ne leve jamais."""
+    """Open `camera` in the photo view. Returns (ok, message), never raises."""
     view = photo_view()
     if view is None:
-        return False, "vue photo indisponible"
+        return False, "photo view unavailable"
     try:
         view.open(camera)
         return True, camera_label(camera)
@@ -1043,18 +1043,18 @@ def open_photo(camera):
 
 
 def open_next_camera():
-    """Ouvre la camera suivante du chunk dans la vue photo. (ok, message)."""
+    """Open the next camera of the chunk in the photo view. (ok, message)."""
     view = photo_view()
     chk = chunk()
     if view is None or chk is None or view.camera is None:
-        return False, "aucune photo ouverte"
+        return False, "no photo open"
     cameras = _cameras(chk)
     try:
         index = cameras.index(view.camera)
     except ValueError:
-        return False, "photo courante absente du chunk"
+        return False, "current photo not in the chunk"
     if index + 1 >= len(cameras):
-        return False, "derniere photo du chunk"
+        return False, "last photo of the chunk"
     try:
         view.open(cameras[index + 1])
         return True, camera_label(cameras[index + 1])
@@ -1063,49 +1063,49 @@ def open_next_camera():
 
 
 # --------------------------------------------------------------------------
-# Zoom de la vue photo
+# Photo view zoom
 # --------------------------------------------------------------------------
 #
-# Semantique supposee de la vue photo (voir image_coords_at, qui l'utilise deja
-# et les anciens scripts de _sources_reference) :
-#   photo_view.center : pixel de l'image (x, y) affiche au milieu de la vue ;
-#   photo_view.scale  : facteur, pixels ecran par pixel image (16.74 = 1674 %).
-# Rien de tout cela n'est documente par Agisoft : zoom_to_point relit la vue
-# apres l'avoir modifiee et journalise une fois ce qu'il a lu (diag_zoom.py
-# donne la verite a la main).
+# Assumed semantics of the photo view (see image_coords_at, which already uses it,
+# and the older scripts of _sources_reference):
+#   photo_view.center: image pixel (x, y) displayed at the middle of the view;
+#   photo_view.scale : factor, screen pixels per image pixel (16.74 = 1674 %).
+# None of this is documented by Agisoft: zoom_to_point re-reads the view
+# after changing it and journals once what it read (diag_zoom.py
+# gives the truth by hand).
 
-# Largeur d'image visible dans la vue, par defaut (pixels image).
+# Image width visible in the view, by default (image pixels).
 ZOOM_DEFAULT_WINDOW_PX = 400.0
-# Echelle quand la largeur de la vue est inconnue.
+# Scale when the view width is unknown.
 ZOOM_FALLBACK_SCALE = 4.0
-# Echelle maximale du zoom automatique.
+# Maximum scale of the automatic zoom.
 ZOOM_MAX_SCALE = 16.0
-# Delai avant la premiere tentative, puis avant la seconde (ms) : l'ouverture
-# d'une photo par photo_view.open() n'est pas toujours terminee au retour.
+# Delay before the first attempt, then before the second (ms): opening
+# a photo with photo_view.open() is not always finished on return.
 ZOOM_DELAYS_MS = (60, 150)
-# Ecart tolere entre le centre demande et le centre relu (pixels image) et
-# entre l'echelle demandee et l'echelle relue (relatif).
+# Tolerated difference between the requested center and the re-read center (image pixels) and
+# between the requested scale and the re-read scale (relative).
 _ZOOM_CENTER_TOL_PX = 2.0
 _ZOOM_SCALE_TOL = 0.05
 
-# Vue deja zoomee par l'operateur (ou par Metashape, qui recentre lui-meme sur le
-# marqueur en gardant l'echelle) : echelle courante > ajuster-a-la-fenetre x ce
-# facteur. Le zoom automatique ne touche alors qu'au centre, jamais a l'echelle :
-# ni double zoom, ni dezoom. Sur une photo encore « ajustee » (premiere photo),
-# l'echelle automatique s'applique.
+# View already zoomed by the operator (or by Metashape, which recenters on the
+# marker by itself while keeping the scale): current scale > fit-to-window x this
+# factor. The automatic zoom then only touches the center, never the scale:
+# no double zoom, no zoom out. On a photo still "fitted" (first photo),
+# the automatic scale applies.
 ZOOM_KEEP_FACTOR = 1.5
 
-# La ligne detaillee zoom : centre=... n'est ecrite qu'une fois par session.
+# The detailed line zoom: center=... is only written once per session.
 _ZOOM_LOGGED = [False]
 
 
 def _schedule(delay_ms, function):
-    """Appelle `function` apres `delay_ms` (la boucle Qt doit tourner)."""
+    """Call `function` after `delay_ms` (the Qt loop must be running)."""
     QtCore.QTimer.singleShot(int(delay_ms), function)
 
 
 def _number(value):
-    """Flottant fini, ou None."""
+    """Finite float, or None."""
     try:
         number = float(value)
     except Exception:
@@ -1114,7 +1114,7 @@ def _number(value):
 
 
 def _xy(value):
-    """(x, y) d'un Vector (ou d'une sequence), ou None."""
+    """(x, y) of a Vector (or of a sequence), or None."""
     try:
         return float(value.x), float(value.y)
     except Exception:
@@ -1125,10 +1125,10 @@ def _xy(value):
 
 
 def view_state(view=None):
-    """Etat lu de la vue photo : dict camera / center / scale / width / height.
+    """State read from the photo view: dict camera / center / scale / width / height.
 
-    Chaque attribut est lu seul ; une lecture qui echoue donne None. `center`
-    est un couple (x, y) ou None, les autres valeurs des flottants ou None.
+    Each attribute is read on its own; a failed read gives None. `center`
+    is an (x, y) pair or None, the other values floats or None.
     """
     if view is None:
         view = photo_view()
@@ -1153,7 +1153,7 @@ def view_state(view=None):
 
 
 def fit_scale(camera, width, height):
-    """Echelle ajuster a la fenetre pour cette image, ou None."""
+    """Fit-to-window scale for this image, or None."""
     image_w, image_h = camera_size(camera)
     if image_w <= 0 or image_h <= 0 or not width or not height:
         return None
@@ -1163,10 +1163,10 @@ def fit_scale(camera, width, height):
 
 
 def zoom_scale(camera=None, window_px=None):
-    """Echelle du zoom automatique : largeur de la vue / `window_px`.
+    """Automatic zoom scale: view width / `window_px`.
 
-    Bornee entre l'echelle qui ajuste l'image a la fenetre et ZOOM_MAX_SCALE.
-    Largeur de vue inconnue : ZOOM_FALLBACK_SCALE.
+    Bounded between the scale that fits the image to the window and ZOOM_MAX_SCALE.
+    Unknown view width: ZOOM_FALLBACK_SCALE.
     """
     state = view_state()
     width, height = state["width"], state["height"]
@@ -1185,10 +1185,10 @@ def zoom_scale(camera=None, window_px=None):
 
 
 def marker_ground_scale(chk, marker, camera):
-    """Echelle au sol (pixels par metre) du marqueur sur cette photo, ou None.
+    """Ground scale (pixels per meter) of the marker on this photo, or None.
 
-    Meme convention que le jeu d'entrainement AIGCP : focale en pixels divisee
-    par la distance camera-marqueur en metres. Ne leve jamais.
+    Same convention as the AIGCP training set: focal length in pixels divided
+    by the camera-marker distance in meters. Never raises.
     """
     try:
         point = marker_point(chk, marker)
@@ -1206,7 +1206,7 @@ def marker_ground_scale(chk, marker, camera):
 
 
 def chunk_scale(chk):
-    """Metres par unite interne du chunk (1.0 si inconnu)."""
+    """Meters per internal unit of the chunk (1.0 if unknown)."""
     try:
         return float(chk.transform.scale) or 1.0
     except Exception:
@@ -1214,11 +1214,11 @@ def chunk_scale(chk):
 
 
 def pixel_ray(camera, x, y):
-    """Rayon qui part de la camera vers le pixel (x, y) de la photo.
+    """Ray from the camera towards the pixel (x, y) of the photo.
 
-    Renvoie (origine, direction) en coordonnees internes du chunk, ou None.
-    Sert a verifier que des detections sur plusieurs photos se recoupent en un
-    meme point 3D. Ne leve jamais.
+    Returns (origin, direction) in the chunk's internal coordinates, or None.
+    Used to check that detections on several photos intersect at the
+    same 3D point. Never raises.
     """
     try:
         direction = camera.sensor.calibration.unproject(Metashape.Vector([x, y]))
@@ -1233,7 +1233,7 @@ def pixel_ray(camera, x, y):
 
 
 def project_point(camera, point):
-    """Pixel (x, y) ou le point 3D (coordonnees internes du chunk) tombe sur cette photo, ou None."""
+    """Pixel (x, y) where the 3D point (chunk internal coordinates) falls on this photo, or None."""
     try:
         return _xy(camera.project(Metashape.Vector(list(_components(point)))))
     except Exception:
@@ -1241,10 +1241,10 @@ def project_point(camera, point):
 
 
 def marker_estimate(chk, marker, camera):
-    """Projection du point 3D du marqueur sur cette photo : (x, y) ou None.
+    """Projection of the marker's 3D point on this photo: (x, y) or None.
 
-    Contrairement a marker_anchor, ignore toute projection deja posee : c'est la
-    ou le marqueur DEVRAIT etre, pas ou il est. Ne leve jamais.
+    Unlike marker_anchor, ignores any projection already placed: this is
+    where the marker SHOULD be, not where it is. Never raises.
     """
     try:
         image_w, image_h = camera_size(camera)
@@ -1265,7 +1265,7 @@ def marker_estimate(chk, marker, camera):
 
 
 def _accuracy_m(value):
-    """Plus grande composante d'une precision (vecteur ou nombre), ou None."""
+    """Largest component of an accuracy (vector or number), or None."""
     if value is None:
         return None
     try:
@@ -1278,11 +1278,11 @@ def _accuracy_m(value):
 
 
 def marker_reference_info(marker, chk=None):
-    """(utilise comme GCP, precision de reference en m) ; None pour ce qu'on ne sait pas lire.
+    """(used as GCP, reference accuracy in m); None for what cannot be read.
 
-    `reference.enabled` vrai : le marqueur sert de point d'appui (GCP) ; faux : point de
-    controle. La precision est celle du marqueur, sinon celle du chunk (`marker_location_accuracy`,
-    la valeur que le tableau Reference de Metashape affiche). Ne leve jamais.
+    `reference.enabled` true: the marker is a ground control point (GCP); false: check
+    point. The accuracy is the marker's, otherwise the chunk's (`marker_location_accuracy`,
+    the value that Metashape's Reference table shows). Never raises.
     """
     try:
         reference = marker.reference
@@ -1306,15 +1306,15 @@ def marker_reference_info(marker, chk=None):
 
 
 def marker_spread_m(chk, marker):
-    """Plus grand ecart, en metres au sol, entre une projection du marqueur et la
-    reprojection de son point 3D ; None si on ne peut pas le dire.
+    """Largest offset, in ground meters, between a projection of the marker and the
+    reprojection of its 3D point; None if it cannot be told.
 
-    Toutes les projections comptent, posees a la main ou calculees par Metashape,
-    sauf les propositions de l'IA : si elles retombent toutes pres de la
-    reprojection du point 3D, la position du marqueur est connue a cet ecart pres
-    sur les autres photos. None quand le marqueur a moins de 2 projections ou pas
-    de position : on ne sait pas alors a quel point elle est fiable.
-    Ne leve jamais.
+    All projections count, placed by hand or computed by Metashape,
+    except AI proposals: if they all fall close to the
+    reprojection of the 3D point, the marker position is known to within that offset
+    on the other photos. None when the marker has fewer than 2 projections or no
+    position: it is then unknown how reliable it is.
+    Never raises.
     """
     try:
         if marker.position is None:
@@ -1337,44 +1337,44 @@ def marker_spread_m(chk, marker):
 
 
 def marker_anchor(chk, marker, camera):
-    """Pixel de `camera` autour duquel zoomer pour ce marqueur.
+    """Pixel of `camera` around which to zoom for this marker.
 
-    Renvoie ((x, y), source) avec source "pointee" (projection deja posee sur
-    cette photo) ou "estimee" (projection de la position du marqueur, meme
-    convention que cameras_seeing_marker), ou (None, raison) si on ne sait pas
-    ou si le point tombe hors image. Ne leve jamais.
+    Returns ((x, y), source) with source "placed" (projection already placed on
+    this photo) or "estimated" (projection of the marker position, same
+    convention as cameras_seeing_marker), or (None, reason) if unknown
+    or if the point falls outside the image. Never raises.
     """
     try:
         image_w, image_h = camera_size(camera)
         if image_w <= 0 or image_h <= 0:
-            return None, "taille de l'image inconnue"
+            return None, "unknown image size"
         x = y = None
         source = ""
         projection = get_projection(marker, camera)
         if projection is not None:
             x, y = projection[0], projection[1]
-            source = "pointee"
+            source = "placed"
         else:
             transform = _camera_transform(camera)
             if transform is None:
-                return None, "photo non alignee"
+                return None, "photo not aligned"
             point = marker_point(chk, marker)
             if point is None:
-                return None, "marqueur sans position ni projection"
+                return None, "marker with no position or projection"
             if transform.inv().mulp(point).z <= 0:
-                return None, "le point est derriere la photo"
+                return None, "the point is behind the photo"
             pixel = _xy(camera.project(point))
             if pixel is None:
                 return None, "projection impossible"
             x, y = pixel
-            source = "estimee"
+            source = "estimated"
         if _number(x) is None or _number(y) is None:
-            return None, "coordonnees illisibles"
+            return None, "unreadable coordinates"
         if x < 0 or y < 0 or x > image_w or y > image_h:
-            return None, "{} hors image ({:.0f}, {:.0f})".format(source, x, y)
+            return None, "{} outside the image ({:.0f}, {:.0f})".format(source, x, y)
         return (float(x), float(y)), source
     except Exception as exc:
-        return None, "calcul impossible ({!r})".format(exc)
+        return None, "computation impossible ({!r})".format(exc)
 
 
 def _close(read, wanted):
@@ -1384,11 +1384,11 @@ def _close(read, wanted):
 
 
 def _apply_center(view, x, y):
-    """Pose view.center, en essayant un Vector a 2 puis a 3 composantes.
+    """Set view.center, trying a 2-component then a 3-component Vector.
 
-    Renvoie (forme, centre_relu, erreur) : forme vaut "2", "3" ou None si
-    aucune forme n'a ete acceptee. On passe a la forme suivante tant que le
-    centre relu ne correspond pas a celui demande.
+    Returns (form, center_read, error): form is "2", "3" or None if
+    no form was accepted. Move on to the next form as long as the
+    center read back does not match the requested one.
     """
     form = None
     read = None
@@ -1410,20 +1410,20 @@ def _apply_center(view, x, y):
 
 
 def _zoom_attempt(camera, x, y, scale, window_px, last):
-    """Une tentative de zoom. Renvoie (statut, detail).
+    """One zoom attempt. Returns (status, detail).
 
-    Statuts : "ok", "retry" (a refaire plus tard), "fail" (inutile de
-    reessayer), "abandon" (photo jamais apparue apres la derniere tentative).
+    Statuses: "ok", "retry" (to redo later), "fail" (no point in
+    retrying), "abandon" (photo never appeared after the last attempt).
     """
     view = photo_view()
     if view is None:
-        return "fail", "vue photo indisponible"
+        return "fail", "photo view unavailable"
     opened = view_state(view)["camera"]
     wanted_key = camera_key(camera)
     if opened is None or wanted_key is None or camera_key(opened) != wanted_key:
         if last:
-            return "abandon", "la photo {} n'est pas ouverte".format(camera_label(camera))
-        return "retry", "photo pas encore ouverte"
+            return "abandon", "photo {} is not open".format(camera_label(camera))
+        return "retry", "photo not open yet"
 
     keep = False
     if scale is not None:
@@ -1439,15 +1439,15 @@ def _zoom_attempt(camera, x, y, scale, window_px, last):
             target_scale = zoom_scale(camera, window_px)
     form, read_center, error = _apply_center(view, x, y)
     if form is None:
-        return "fail", "centre refuse ({!r})".format(error)
+        return "fail", "center refused ({!r})".format(error)
     if not keep:
         try:
             view.scale = target_scale
         except Exception as exc:
-            return "fail", "echelle refusee ({!r})".format(exc)
+            return "fail", "scale refused ({!r})".format(exc)
 
     after = view_state(view)
-    # Changer l'echelle peut deplacer le centre : on le repose une fois.
+    # Changing the scale can move the center: set it once more.
     if not _close(after["center"], (x, y)):
         form2, _read2, _error2 = _apply_center(view, x, y)
         form = form2 or form
@@ -1456,53 +1456,53 @@ def _zoom_attempt(camera, x, y, scale, window_px, last):
                 and abs(after["scale"] - target_scale) <= _ZOOM_SCALE_TOL * target_scale)
     center_ok = _close(after["center"], (x, y))
 
-    detail = "centre=({:.1f}, {:.1f}) echelle={:.4f} lu=(centre {}, echelle {}) forme={} composantes".format(
+    detail = "center=({:.1f}, {:.1f}) scale={:.4f} read=(center {}, scale {}) form={} components".format(
         x, y, target_scale,
-        "({:.1f}, {:.1f})".format(*after["center"]) if after["center"] else "illisible",
-        "{:.4f}".format(after["scale"]) if after["scale"] is not None else "illisible",
+        "({:.1f}, {:.1f})".format(*after["center"]) if after["center"] else "unreadable",
+        "{:.4f}".format(after["scale"]) if after["scale"] is not None else "unreadable",
         form)
     if keep:
-        detail += " ; echelle de l'operateur gardee"
+        detail += "; operator scale kept"
     if not (scale_ok and center_ok) and not last:
         return "retry", detail
     if not _ZOOM_LOGGED[0] or not (scale_ok and center_ok):
         _ZOOM_LOGGED[0] = True
-        suffix = "" if (scale_ok and center_ok) else " ; lu different du demande"
+        suffix = "" if (scale_ok and center_ok) else "; read differs from requested"
         try:
-            journal.write("zoom : " + detail + suffix)
+            journal.write("zoom: " + detail + suffix)
         except Exception:
             pass
     return "ok", detail
 
 
 def zoom_to_point(camera, x, y, scale=None, window_px=None, on_done=None, guard=None):
-    """Centre la vue photo sur le pixel (x, y) de `camera` et fixe le zoom.
+    """Center the photo view on the pixel (x, y) of `camera` and set the zoom.
 
-    L'application est differee (ZOOM_DELAYS_MS) : apres open_photo(), la vue
-    n'est pas toujours prete. A chaque tentative on relit `photo_view.camera` ;
-    si ce n'est pas `camera`, on recommence une fois, puis on abandonne. Le
-    centre est pose en coordonnees image, puis l'echelle, puis tout est relu.
+    The application is deferred (ZOOM_DELAYS_MS): after open_photo(), the view
+    is not always ready. At each attempt `photo_view.camera` is re-read;
+    if it is not `camera`, retry once, then give up. The
+    center is set in image coordinates, then the scale, then everything is re-read.
 
-    `scale` : echelle imposee (pixels ecran par pixel image) ; sinon calculee
-    par zoom_scale(camera, window_px). `guard` : fonction sans argument, le zoom
-    est annule si elle renvoie False au moment d'appliquer (outil en pause).
-    `on_done(ok)` est appele a la fin, appliquee ou abandonnee.
+    `scale`: imposed scale (screen pixels per image pixel); otherwise computed
+    by zoom_scale(camera, window_px). `guard`: no-argument function, the zoom
+    is cancelled if it returns False at the time of applying (tool paused).
+    `on_done(ok)` is called at the end, applied or abandoned.
 
-    Renvoie True si le zoom a ete programme, False sinon. Ne leve jamais.
+    Returns True if the zoom was scheduled, False otherwise. Never raises.
     """
     try:
         px, py = _number(x), _number(y)
         if camera is None or px is None or py is None:
-            journal.write("zoom : demande invalide (photo ou point manquant)")
+            journal.write("zoom: invalid request (photo or point missing)")
             return False
         wanted = None
         if scale is not None:
             wanted = _number(scale)
             if wanted is None or wanted <= 0:
-                journal.write("zoom : echelle invalide ({!r})".format(scale))
+                journal.write("zoom: invalid scale ({!r})".format(scale))
                 return False
         if photo_view() is None:
-            journal.write("zoom : vue photo indisponible")
+            journal.write("zoom: photo view unavailable")
             return False
         delays = tuple(ZOOM_DELAYS_MS)
 
@@ -1531,8 +1531,8 @@ def zoom_to_point(camera, x, y, scale=None, window_px=None, on_done=None, guard=
                     status, detail = "fail", repr(exc)
             if status != "ok":
                 try:
-                    journal.write("zoom : {} ({})".format(
-                        "abandonne" if status == "abandon" else "impossible", detail))
+                    journal.write("zoom: {} ({})".format(
+                        "abandoned" if status == "abandon" else "impossible", detail))
                 except Exception:
                     pass
             finish(status == "ok")
@@ -1541,14 +1541,14 @@ def zoom_to_point(camera, x, y, scale=None, window_px=None, on_done=None, guard=
         return True
     except Exception as exc:
         try:
-            journal.write("zoom : {!r}".format(exc))
+            journal.write("zoom: {!r}".format(exc))
         except Exception:
             pass
         return False
 
 
 def send_page_down():
-    """Envoie une touche Page suivante : suit l'ordre et le filtre du panneau Photos."""
+    """Send a Page Down key: follows the order and the filter of the Photos pane."""
     window = main_window()
     instance = QtWidgets.QApplication.instance()
     if window is None or instance is None:
@@ -1577,7 +1577,7 @@ def send_page_down():
 
 
 # --------------------------------------------------------------------------
-# Panneau Photos
+# Photos pane
 # --------------------------------------------------------------------------
 
 def set_photo_filter(cameras):
@@ -1597,7 +1597,7 @@ def reset_photo_filter():
 
 
 # --------------------------------------------------------------------------
-# Export d'ortho et de MNT (Aero-Exports)
+# Orthomosaic and DEM export (Aero-Exports)
 # --------------------------------------------------------------------------
 
 _TIFF_COMPRESSION = {"none": "TiffCompressionNone", "lzw": "TiffCompressionLZW", "jpeg": "TiffCompressionJPEG",
@@ -1606,7 +1606,7 @@ EXIF_DATE_SAMPLE = 60
 
 
 def document_path():
-    """Chemin du .psx du document ouvert, ou "" tant qu'il n'est pas enregistre."""
+    """Path of the .psx of the open document, or "" as long as it is not saved."""
     doc = document()
     try:
         return str(doc.path or "") if doc is not None else ""
@@ -1615,7 +1615,7 @@ def document_path():
 
 
 def _raster_of(chk, name):
-    """(resolution en metres, largeur, hauteur) de chk.orthomosaic / chk.elevation, ou None s'il n'existe pas."""
+    """(resolution in meters, width, height) of chk.orthomosaic / chk.elevation, or None if it does not exist."""
     try:
         item = getattr(chk, name)
         if item is None:
@@ -1626,7 +1626,7 @@ def _raster_of(chk, name):
 
 
 def _box_of(chk, name):
-    """(gauche, bas, droite, haut) de chk.orthomosaic / chk.elevation dans les unites de leur projection, ou None."""
+    """(left, bottom, right, top) of chk.orthomosaic / chk.elevation in the units of their projection, or None."""
     try:
         item = getattr(chk, name)
         return (float(item.left), float(item.bottom), float(item.right), float(item.top)) if item is not None else None
@@ -1685,10 +1685,10 @@ def raster_signature(chk):
 
 
 def raster_info(chk=None):
-    """Ce qu'on peut exporter dans ce chunk : {"ortho": (res, w, h) ou None, "dem": ..., "box_ortho": (g, b, d, h) ou
-    None, "box_dem": ..., "crs": texte, "dates": [...]}.
+    """What can be exported from this chunk: {"ortho": (res, w, h) or None, "dem": ..., "box_ortho": (l, b, r, t) or
+    None, "box_dem": ..., "crs": text, "dates": [...]}.
 
-    `dates` : dates EXIF d'un echantillon de photos (le nom de fichier en tire la date du vol)."""
+    `dates`: EXIF dates of a sample of photos (the file name takes the flight date from them)."""
     chk = chk if chk is not None else chunk()
     info = {"ortho": None, "dem": None, "box_ortho": None, "box_dem": None, "crs": "", "dates": [], "crs_object": None,
             "crs_ortho": None, "crs_dem": None, "center": None,
@@ -1713,8 +1713,8 @@ def raster_info(chk=None):
                 break
         except Exception:
             continue
-    # Chaque raster a son propre SCR : une ortho en degres (WGS 84) peut cohabiter avec un MNT en metres (CC42), et son
-    # emprise n'est lisible que dans son SCR.
+    # Each raster has its own CRS: an orthomosaic in degrees (WGS 84) can coexist with a DEM in meters (CC42), and its
+    # extent is only readable in its CRS.
     for kind, name in (("ortho", "orthomosaic"), ("dem", "elevation")):
         info["crs_" + kind] = None
         try:
@@ -1752,7 +1752,7 @@ def dem_range(chk=None):
 
 
 def _center_lonlat(crs, box):
-    """(longitude, latitude) du centre de l'emprise, en degres, ou None."""
+    """(longitude, latitude) of the extent center, in degrees, or None."""
     if crs is None or not box:
         return None
     try:
@@ -1765,8 +1765,8 @@ def _center_lonlat(crs, box):
 
 
 def target_crs(horizontal_epsg):
-    """SCR horizontal de sortie `EPSG::n`, ou None si Metashape le refuse. Sans systeme vertical : Metashape exporte alors les
-    hauteurs ellipsoidales, et les altitudes sont calculees par AeroTools (voir tools/aeroexports/vertical.py)."""
+    """Horizontal output CRS `EPSG::n`, or None if Metashape refuses it. Without a vertical system: Metashape then exports
+    ellipsoidal heights, and the altitudes are computed by AeroTools (see tools/aeroexports/vertical.py)."""
     try:
         return Metashape.CoordinateSystem("EPSG::%d" % horizontal_epsg)
     except Exception:
@@ -1774,7 +1774,7 @@ def target_crs(horizontal_epsg):
 
 
 def project_epsg(crs):
-    """Code EPSG (entier) du SCR horizontal du projet, ou None (SCR personnalise, sans code)."""
+    """EPSG code (integer) of the project's horizontal CRS, or None (custom CRS, no code)."""
     try:
         part = horizontal_part(crs)
         text = str(part.authority) if part is not None else ""
@@ -1785,7 +1785,7 @@ def project_epsg(crs):
 
 
 def is_geographic(crs):
-    """Vrai si l'horizontal de ce SCR est en degres (longitude / latitude) : un pixel en centimetres n'y a pas de sens."""
+    """True if the horizontal of this CRS is in degrees (longitude / latitude): a pixel in centimeters makes no sense there."""
     try:
         part = horizontal_part(crs)
         return part is not None and str(part.wkt).lstrip().upper().startswith("GEOGCS")
@@ -1794,7 +1794,7 @@ def is_geographic(crs):
 
 
 def horizontal_part(crs):
-    """Partie horizontale d'un SCR compose (le PROJCS / GEOGCS du COMPD_CS) ; le SCR lui-meme s'il n'est pas compose, None si illisible."""
+    """Horizontal part of a compound CRS (the PROJCS / GEOGCS of the COMPD_CS); the CRS itself if it is not compound, None if unreadable."""
     try:
         wkt = str(crs.wkt)
         if not wkt.lstrip().upper().startswith("COMPD_CS"):
@@ -1818,10 +1818,10 @@ def horizontal_part(crs):
 
 
 def transform_box(box, source, target):
-    """Emprise (gauche, bas, droite, haut) d'un SCR vers un autre : enveloppe des quatre coins, ou None.
+    """Extent (left, bottom, right, top) from one CRS to another: envelope of the four corners, or None.
 
-    Seul le plan compte pour une emprise : si la conversion complete echoue (grille de geoide absente, par exemple), on la
-    refait sans les altitudes. La raison du dernier echec reste dans `transform_box.last_error`."""
+    Only the plane matters for an extent: if the full conversion fails (geoid grid missing, for example), it is
+    redone without the altitudes. The reason for the last failure stays in `transform_box.last_error`."""
     transform_box.last_error = ""
     left, bottom, right, top = box
     pairs = [(source, target)]
@@ -1843,24 +1843,24 @@ transform_box.last_error = ""
 
 
 def snapped_box(box, pixel):
-    """Emprise (gauche, bas, droite, haut) elargie aux multiples de `pixel` : la grille de l'export tombe sur des
-    coordonnees rondes et chaque pixel mesure exactement `pixel`."""
+    """Extent (left, bottom, right, top) widened to multiples of `pixel`: the export grid falls on
+    round coordinates and each pixel measures exactly `pixel`."""
     left, bottom, right, top = box
     return (math.floor(left / pixel + 1e-9) * pixel, math.floor(bottom / pixel + 1e-9) * pixel,
             math.ceil(right / pixel - 1e-9) * pixel, math.ceil(top / pixel - 1e-9) * pixel)
 
 
 def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None, clip_to_boundary=True):
-    """Ecrit l'ortho (kind "ortho") ou le MNT (kind "dem") dans `path`. Renvoie (ok, message d'erreur).
+    """Write the orthomosaic (kind "ortho") or the DEM (kind "dem") to `path`. Returns (ok, error message).
 
-    `spec` : un reglage de tools/aeroexports/plan.py. Sans `pixel` (ou sans `box`), Metashape garde sa propre grille.
-    Avec `pixel` (en unites de la projection, par exemple 0.03) et `box` (emprise du raster), le pixel mesure
-    exactement `pixel` et la grille est alignee sur des multiples de `pixel` : releve fait sur Metashape 2.2.1,
-    ou `resolution=0.5` donnait 0.49996 (metres au sol) alors que `resolution_x/y=0.5` donne 0.5 exactement.
-    `crs` : SCR de sortie (voir target_crs) ; `box` est alors exprimee dans ce SCR (voir transform_box).
-    `clip_to_boundary` : decouper l'export aux formes « boundary » du chunk (OuterBoundary / InnerBoundary). Toujours passe a
-    Metashape (jamais son defaut sous-entendu) : sans cela un MNT peut perdre plus de la moitie de ses pixels sans que personne le voie.
-    `progress(pourcent)` est appele pendant le calcul."""
+    `spec`: a setting from tools/aeroexports/plan.py. Without `pixel` (or without `box`), Metashape keeps its own grid.
+    With `pixel` (in projection units, for example 0.03) and `box` (extent of the raster), the pixel measures
+    exactly `pixel` and the grid is aligned on multiples of `pixel`: observed on Metashape 2.2.1,
+    where `resolution=0.5` gave 0.49996 (ground meters) while `resolution_x/y=0.5` gives exactly 0.5.
+    `crs`: output CRS (see target_crs); `box` is then expressed in that CRS (see transform_box).
+    `clip_to_boundary`: cut the export to the chunk's "boundary" shapes (OuterBoundary / InnerBoundary). Always passed to
+    Metashape (never its implied default): without it a DEM can lose more than half of its pixels without anyone noticing.
+    `progress(percent)` is called during the computation."""
     try:
         compression = Metashape.ImageCompression()
         compression.tiff_big = bool(big)
@@ -1903,7 +1903,7 @@ def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progre
 # --------------------------------------------------------------------------
 
 def add_menu_item(label, callback, shortcut=None):
-    """Ajoute une entree de menu. Renvoie True si Metashape l'a acceptee."""
+    """Add a menu entry. Returns True if Metashape accepted it."""
     try:
         if shortcut:
             Metashape.app.addMenuItem(label, callback, shortcut=shortcut)
@@ -1919,7 +1919,7 @@ def add_menu_item(label, callback, shortcut=None):
 
 
 def add_menu_separator(menu):
-    """Ajoute un trait de separation a la fin du menu `menu`. Renvoie True si Metashape l'a accepte."""
+    """Add a separator line at the end of the menu `menu`. Returns True if Metashape accepted it."""
     try:
         Metashape.app.addMenuSeparator(menu)
         return True
@@ -1935,14 +1935,14 @@ def message_box(text):
 
 
 # --------------------------------------------------------------------------
-# Controle des residus
+# Residual check
 # --------------------------------------------------------------------------
 
 def worst_projection(marker):
-    """(camera, ecart en pixels) de la projection posee a la main la plus
-    eloignee de la reprojection du point 3D du marqueur, ou None.
+    """(camera, offset in pixels) of the hand-placed projection farthest
+    from the reprojection of the marker's 3D point, or None.
 
-    Sert a ouvrir d'un clic la photo qui explique un gros residu. Ne leve jamais.
+    Used to open in one click the photo that explains a large residual. Never raises.
     """
     try:
         position = marker.position

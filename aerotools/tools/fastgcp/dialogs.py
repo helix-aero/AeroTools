@@ -1,14 +1,14 @@
-"""Boites de dialogue maison (Qt) : question Oui / Non et message simple.
+"""Custom dialog boxes (Qt): Yes / No question and simple message.
 
-Sous Metashape, un QMessageBox coupe son texte quand il est long ; ces boites ont une
-largeur fixe, un texte a la ligne qui prend toute la hauteur dont il a besoin, et le
-style du panneau. `ask` renvoie True pour Oui, `inform` n'a qu'un bouton.
+Under Metashape, a QMessageBox cuts its text when it is long; these boxes have a
+fixed width, wrapped text that takes all the height it needs, and the
+panel style. `ask` returns True for Yes, `inform` has a single button.
 """
 
 from ... import i18n, theme
 from ...qt import QtCore, QtWidgets
 
-WIDTH = 480          # largeur demandee ; la fenetre peut etre plus etroite, le texte suit
+WIDTH = 480          # requested width; the window may be narrower, the text follows
 MIN_WIDTH = 300
 BUTTON_HEIGHT = 40
 BUTTON_WIDTH = 120
@@ -31,12 +31,11 @@ def _button(text, handler, object_name="aeroGhost"):
 
 
 class _Box(QtWidgets.QDialog):
-    """Fenetre dont le texte reste entier quelle que soit la largeur obtenue.
+    """Window whose text stays whole whatever width it ends up with.
 
-    Le QLabel passe a la ligne tout seul. Une fois la fenetre affichee on lui donne, une seule
-    fois par largeur, la hauteur que ce texte demande : la mise en page seule la sous-estime
-    parfois (le dernier paragraphe etait coupe). Pas de boucle : on ne refait rien tant que la
-    largeur ne change pas.
+    The QLabel wraps by itself. Once the window is shown it is given, once per width, the
+    height this text asks for: the layout alone sometimes underestimates it (the last
+    paragraph used to be cut). No loop: nothing is redone while the width does not change.
     """
     label = None
     _fitted = None
@@ -58,12 +57,12 @@ class _Box(QtWidgets.QDialog):
 
 
 def _build(parent, title, text, buttons):
-    """Fenetre modale : `buttons` = [(texte, valeur rendue, objectName)]. Renvoie (dialog, choix)."""
+    """Modal window: `buttons` = [(text, returned value, objectName)]. Returns (dialog, choice)."""
     dialog = _Box(parent)
     dialog.setWindowTitle(title)
     dialog.setModal(True)
     dialog.setMinimumWidth(MIN_WIDTH)
-    dialog.resize(WIDTH, 10)          # la hauteur minimale de la mise en page fait le reste
+    dialog.resize(WIDTH, 10)          # the minimum height of the layout does the rest
     outer = QtWidgets.QVBoxLayout(dialog)
     outer.setContentsMargins(0, 0, 0, 0)
     root = QtWidgets.QWidget()
@@ -76,8 +75,8 @@ def _build(parent, title, text, buttons):
     pad = theme.PAD * 2
     layout.setContentsMargins(pad, pad, pad, pad)
     layout.setSpacing(theme.PAD * 2)
-    # Un QLabel qui passe a la ligne, sans taille fixe : sa hauteur suit la largeur reellement obtenue
-    # (sous Metashape la fenetre est parfois plus etroite que demandee).
+    # A wrapping QLabel without a fixed size: its height follows the width actually obtained
+    # (under Metashape the window is sometimes narrower than requested).
     label = QtWidgets.QLabel(text)
     label.setWordWrap(True)
     label.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
@@ -98,9 +97,9 @@ def _build(parent, title, text, buttons):
 
 
 def ask(parent, title, text):
-    """Question Oui / Non (Non a la fermeture). True si Oui.
+    """Yes / No question (No on close). True if Yes.
 
-    Ordre de Windows : la reponse positive a gauche, la negative a droite.
+    Windows order: the positive answer on the left, the negative one on the right.
     """
     dialog, choice = _build(parent, title, text, [
         (i18n.t("dialogs.yes"), True, "aeroYes"), (i18n.t("dialogs.no"), False, "aeroNo")])
@@ -109,6 +108,6 @@ def ask(parent, title, text):
 
 
 def inform(parent, title, text):
-    """Message avec un seul bouton."""
+    """Message with a single button."""
     dialog, _choice = _build(parent, title, text, [(i18n.t("dialogs.ok"), True, "aeroRun")])
     _run(dialog)

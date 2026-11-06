@@ -1,6 +1,6 @@
-"""English catalog. Same keys and same {fields} as fr.py (a test checks it).
+"""Text catalog of AeroTools.
 
-Texts shown in Metashape message boxes stay in plain ASCII, like the French ones.
+Texts shown in Metashape message boxes stay in plain ASCII.
 """
 
 FORMATS = {
@@ -9,7 +9,7 @@ FORMATS = {
     "csv_delimiter": ",",
 }
 
-TEXTES = {
+TEXTS = {
     # -- Aero menu and Metashape boxes (bootstrap.py, tool.py) -------------
     "menu.reload": "Reload AeroTools",
     "menu.about": "About",
@@ -77,8 +77,8 @@ TEXTES = {
     "aigcp.no_python": "AI: AIGCP Python not found ({path})",
     "aigcp.no_weights": "AI: {kind} weights not found ({path})",
     "aigcp.no_runner": "AI: runner not found ({path})",
-    "aigcp.type_damier": "Checker",
-    "aigcp.type_bombe": "Spray",
+    "aigcp.type_checker": "Checker",
+    "aigcp.type_spray": "Spray",
     "aigcp.scope_marker": "Selected markers",
     "aigcp.scope_all": "All markers",
     "aigcp.ignore_both": "Ignore green + blue",
@@ -273,7 +273,7 @@ TEXTES = {
     "csv.ref_y": "Reference Y",
     "csv.ref_z": "Reference Z",
 
-    # -- Parametres, suppression, credit -----------------------------------
+    # -- Settings, deletion, credit ----------------------------------------
     "review.slider_tip": "Double-click to reset",
     "review.busy_title": "Applying changes",
     "review.busy_note": "One moment, please don't touch Metashape meanwhile.",
@@ -312,54 +312,54 @@ TEXTES = {
     "settings.delete_confirm": "Delete the model {name}? This cannot be undone.",
     "settings.close": "Close",
 
-    # -- Rapport : photos exclues ------------------------------------------
+    # -- Report: excluded photos -------------------------------------------
     "report.ai.excluded": "excluded",
     "report.ai.info_excluded": "{n} photo(s) excluded",
 
-    # -- Reentrainement : erreurs ------------------------------------------
+    # -- Retraining: errors ------------------------------------------------
     "settings.err_busy": "Another training is already running.",
     "settings.err_no_python": "The AI Python environment was not found: {detail}",
     "settings.err_no_script": "The training script was not found: {detail}",
     "settings.err_no_data": "Not enough annotations to train: at least {n} corrected or validated points are needed for one target type.",
     "settings.train_warning": "Warning: on your check data, the new model scores lower than the original one. You can revert to the original model.",
 
-    # -- Boites de dialogue ------------------------------------------------
+    # -- Dialog boxes ------------------------------------------------------
     "dialogs.yes": "Yes",
     "dialogs.no": "No",
     "dialogs.ok": "OK",
     "panel.busy_projections": "Removing the projections of {n} marker(s)…",
 
-    # -- Retablir, bandeau -------------------------------------------------
+    # -- Restore, banner ---------------------------------------------------
     "redo.nothing": "Nothing to redo",
     "redo.failed": "Redo failed",
     "redo.done": "Redone: {label}",
     "panel.ad": "Complex flights made easy",
 
-    # -- Dossier de stockage -----------------------------------------------
+    # -- Storage folder ----------------------------------------------------
     "settings.open_folder": "Open",
     "settings.copy_confirm": "This folder holds no annotation or model yet. Copy the {a} annotation(s) and the {m} local model(s) of the current folder into it? The current folder is left untouched.",
     "settings.copy_failed": "The copy failed: {message}",
 
-    # -- Barre de detection IA ---------------------------------------------
+    # -- AI detection bar --------------------------------------------------
     "aigcp.cancel": "Cancel",
     "aigcp.cancelled": "AI: detection cancelled",
     "aigcp.bar": "AI ({kind}) · {done}/{total} photos",
     "aigcp.bar_start": "AI ({kind}) · starting…",
 
-    # -- Exclure apres validation ------------------------------------------
+    # -- Exclude after validation ------------------------------------------
     "review.confirm_exclude_done": "Remove {n} validated or refined point(s) from the project? The photos go back to how they were before the detection, and Restore puts them back.",
 
-    # -- Photo choisie -----------------------------------------------------
+    # -- Chosen photo ------------------------------------------------------
     "review.preview": "Selected photo",
     "review.preview_none": "Click a thumbnail to see it here, larger.",
 
-    # -- Installation de la detection IA -----------------------------------
+    # -- AI detection install ----------------------------------------------
     "aigcp.setup_title": "AI detection setup",
     "aigcp.setup_needed": "The AI detection is not installed on this computer yet.\n\n{detail}\n\nOne-time setup: double-click\n{script}\nIt installs everything in one go, with a progress display (Python and the detection engine, about 100 MB, internet connection needed). Then restart Metashape. Hand marking works without it.",
 
-    # -- Outils d'entrainement ---------------------------------------------
+    # -- Training tools ----------------------------------------------------
 
-    # -- Moteurs de detection et installation ------------------------------
+    # -- Detection engines and install -------------------------------------
     "settings.engine_auto": "Automatic",
     "settings.engine_light": "Light  ·  100 MB",
     "settings.engine_precise": "Precise  ·  3 GB",
@@ -391,7 +391,7 @@ TEXTES = {
     "install.manual": "Automatic installation is not possible here. Double-click\n{script}\nthen restart Metashape.",
     "install.not_started": "The installer could not start ({error}).",
 
-    # -- Mises a jour ------------------------------------------------------
+    # -- Updates -----------------------------------------------------------
     "menu.update": "Check for updates...",
     "boot.update_failed": "AeroTools: the updates window did not open.\n\n{error}",
     "update.title": "AeroTools updates",
@@ -422,7 +422,7 @@ TEXTES = {
     "update.channel_tip": "Stable branch: the validated version. Dev branch: the stable version plus the latest changes, not yet validated. Every change goes to the dev branch first, then to the stable branch once it is tested.",
     "settings.update_open": "Check for updates",
 
-    # -- Diagnostic du pointage --------------------------------------------
+    # -- Marking diagnostics -----------------------------------------------
     "diag.menu": "Full marking diagnostic...",
     "diag.title": "Marking diagnostic",
     "diag.explain": "For each manual pick, the 3D position of the marker is recomputed WITHOUT that photo, then we measure how many pixels it falls from your pick. A few pixels is normal. A large gap means a shifted pick or a badly aligned photo.",
@@ -494,10 +494,10 @@ TEXTES = {
     "space.failed_title": "Some projects were not processed",
     "space.failed_line": "{name}: {error}",
 
-    # -- Aero-Space : allegement -------------------------------------------
+    # -- Aero-Space: lightening --------------------------------------------
     "space.mode_recycle_none": "Recycle Bin not possible when lightening: Metashape erases its own files when it saves",
 
-    # -- Aero-Space : fichiers gardes --------------------------------------
+    # -- Aero-Space: kept files --------------------------------------------
     "space.col_kept": "Kept",
     "space.tip_kept": "{files} file(s) and {dirs} folder(s) next to the project stay in place ({size}).",
     "space.tip_biggest": "Biggest: {names}",
@@ -506,10 +506,10 @@ TEXTES = {
     "space.confirm_delete_kept": "Next to the project, {files} file(s) ({size}) stay in place.",
     "space.confirm_delete_risk": "Warning, DEM or ortho built in Metashape with no export found next to it for: {names} ({size}). They go with the project: export them first if you need them.",
 
-    # -- Aero-Space : somme de la selection --------------------------------
+    # -- Aero-Space: sum of the selection ----------------------------------
     "space.selection_rows": "{n} project(s) highlighted (not ticked) - dense {dense}, depth maps {depth}, orthophotos {ortho} - whole projects {total}",
 
-    # -- Parametres : sections ---------------------------------------------
+    # -- Settings: sections ------------------------------------------------
     "settings.sec_detect": "Detection",
     "settings.sec_model": "Model",
     "settings.sec_data": "Data",
@@ -524,7 +524,7 @@ TEXTES = {
     "settings.flow_model": "Active model",
     "settings.train_need_data": "Correct some targets in the review to be able to train",
 
-    # -- Residual check et Ajuster -----------------------------------------
+    # -- Residual check and Adjust -----------------------------------------
     "panel.adjust": "Adjust",
     "qc.title": "Marker check",
     "qc.col_marker": "Marker",
@@ -579,10 +579,10 @@ TEXTES = {
     "gcp.confirm": "Tick {n} marker(s) as control points ({names}) and untick the others?\n\nSave your project first if you want to be able to go back.",
     "gcp.done": "Done: {n} marker(s) ticked ({names}).\n\nNow: Optimize Cameras, then check the results in the Reference pane.",
 
-    # -- Ajuster : infobulle -----------------------------------------------
+    # -- Adjust: tooltip ---------------------------------------------------
     "gcp.col_xyz_tip": "3D RMSE, measured on the CTRL markers (not ticked)",
 
-    # -- Aero-Space : options visibles et clic droit -----------------------
+    # -- Aero-Space: visible options and right click -----------------------
     "space.choose": "Choose one",
     "space.menu_lighten": "Lighten",
     "space.menu_lighten_n": "Lighten {n} projects",
@@ -590,7 +590,7 @@ TEXTES = {
     "space.menu_delete_n": "Delete {n} projects",
     "space.menu_reveal": "Reveal in Explorer",
 
-    # -- Aero-Space : verrous ----------------------------------------------
+    # -- Aero-Space: locks -------------------------------------------------
     "space.force_text": "{n} project(s) look open in another Metashape: {names}\n\nA lock file says someone is working on them. Deleting them anyway can destroy that work.\n\nIf Metashape crashed and left the lock behind, it is safe to go on.",
     "space.force_owners": "Lock written by: {owners}",
     "space.force_confirm": "Confirm delete",
@@ -826,9 +826,9 @@ TEXTES = {
     "export.look_clipped": "The picture is cut to the chunk's boundary shapes (untick \"Clip to the chunk's boundary shapes\" to see the whole DEM).",
     "export.chunk_changed": "The active chunk changed: now working on {name}",
 
-    # -- Aero-Exports : SCR -------------------------------------------------
+    # -- Aero-Exports: CRS --------------------------------------------------
     "export.crs": "Coordinate system: {crs}",
-    # -- Aero-Space : choix de ce qu'on retire ------------------------
+    # -- Aero-Space: choice of what to remove -------------------------
     "space.col_dense": "Dense cloud",
     "space.col_depth": "Depth maps",
     "space.col_ortho": "Orthophotos",
@@ -843,7 +843,7 @@ TEXTES = {
     "space.free_total": "Space freed: {size}",
     "space.pick_one": "Tick at least one item.",
 
-    # -- Aero-Exports : coordonnees, formats, logiciels externes ------------
+    # -- Aero-Exports: coordinates, formats, external software --------------
     "export.preset_jp2": "JPEG 2000 (light and sharp)",
     "export.preset_jp2_tip": "Same quality class as ECW at a similar size. Written with QGIS (OpenJPEG) or Global Mapper.",
     "export.preset_ecw": "ECW (needs Global Mapper)",

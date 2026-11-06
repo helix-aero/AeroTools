@@ -1,7 +1,7 @@
-"""Chemin SVG -> QPainterPath, pour peindre une petite icone sans fichier ni QtSvg.
+"""SVG path -> QPainterPath, to paint a small icon without a file or QtSvg.
 
-Commandes prises en charge : M m L l H h V v C c A a Z z (avec les repetitions
-implicites des coordonnees). Les arcs sont convertis en courbes de Bezier.
+Supported commands: M m L l H h V v C c A a Z z (with implicit repetition of
+coordinates). Arcs are converted to Bezier curves.
 """
 
 import math
@@ -52,7 +52,7 @@ class _Scanner(object):
         return float(self.text[start:self.pos])
 
     def flag(self):
-        """Un drapeau d'arc : un seul chiffre (0 ou 1), parfois colle au suivant."""
+        """An arc flag: a single digit (0 or 1), sometimes glued to the next one."""
         self._skip()
         char = self.text[self.pos]
         self.pos += 1
@@ -60,7 +60,7 @@ class _Scanner(object):
 
 
 def _arc(path, x0, y0, rx, ry, rotation, large, sweep, x, y):
-    """Ajoute l'arc elliptique SVG de (x0, y0) a (x, y) sous forme de courbes de Bezier."""
+    """Append the SVG elliptical arc from (x0, y0) to (x, y) as Bezier curves."""
     if rx == 0 or ry == 0 or (x0 == x and y0 == y):
         path.lineTo(x, y)
         return
@@ -108,7 +108,7 @@ def _arc(path, x0, y0, rx, ry, rotation, large, sweep, x, y):
 
 
 def parse(data):
-    """QPainterPath des donnees `d` d'un chemin SVG."""
+    """QPainterPath of the `d` data of an SVG path."""
     path = QtGui.QPainterPath()
     scan = _Scanner(data)
     x = y = start_x = start_y = 0.0
@@ -132,7 +132,7 @@ def parse(data):
             x, y = (x + nx, y + ny) if relative else (nx, ny)
             path.moveTo(x, y)
             start_x, start_y = x, y
-            command = "l" if relative else "L"       # les paires suivantes sont des lignes
+            command = "l" if relative else "L"       # the following pairs are lines
         elif upper == "L":
             nx, ny = args
             x, y = (x + nx, y + ny) if relative else (nx, ny)

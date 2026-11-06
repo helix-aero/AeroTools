@@ -1,13 +1,13 @@
-"""Etat de la session FastGCP.
+"""FastGCP session state.
 
-Un seul objet partage par le panneau, le filtre de clics et le filtre photos.
-Il vit dans ce module plutot que dans tool.py pour que personne n'ait a
-importer tool.py (et donc panel.py) juste pour lire une option.
+A single object shared by the panel, the click filter and the photos filter.
+It lives in this module rather than in tool.py so that nobody has to
+import tool.py (and therefore panel.py) just to read an option.
 
-Les options sont relues au demarrage depuis les reglages du poste et
-reecrites a chaque changement : chaque PC garde ses habitudes. Trois d'entre
-elles (filtre Photos, suivi de la selection Reference, passage a la photo
-suivante) sont fixes : voir FIXED.
+The options are read back at startup from the machine's settings and
+written again at each change: each PC keeps its habits. Three of
+them (Photos filter, following of the Reference selection, move to the next
+photo) are fixed: see FIXED.
 """
 
 from ... import config
@@ -15,46 +15,46 @@ from . import history
 
 SECTION = "fastgcp"
 
-# Anciennes valeurs de l'option « apres pointage ». Le passage a la photo
-# suivante est desormais fixe (photos.advance_after_place) ; les constantes
-# restent definies pour les modules qui les importent encore.
+# Former values of the "after marking" option. The move to the next photo
+# is now fixed (photos.advance_after_place); the constants stay defined
+# for the modules that still import them.
 AFTER_STAY = "stay"
 AFTER_PAGEDOWN = "pagedown"
 AFTER_API = "api"
 
 AFTER_LABELS = (
-    (AFTER_PAGEDOWN, "Suivante (liste)"),
-    (AFTER_API, "Suivante (projet)"),
-    (AFTER_STAY, "Rester"),
+    (AFTER_PAGEDOWN, "Next (list)"),
+    (AFTER_API, "Next (project)"),
+    (AFTER_STAY, "Stay"),
 )
 
-# Options qui ne sont plus des choix : valeur imposee a chaque chargement,
-# toute ecriture est ignoree (un ancien settings.json ne les change pas).
+# Options that are no longer choices: value imposed at each load,
+# any write is ignored (an old settings.json does not change them).
 FIXED = {
     "sync_selection": True,
     "auto_filter": True,
     "after_place": AFTER_API,
 }
 
-# Options supprimees : ni lues, ni ecrites.
+# Removed options: neither read nor written.
 RETIRED = ("click_only",)
 
-# ai_auto_review : la fenetre de revue s'ouvre toute seule a la fin d'une detection IA.
+# ai_auto_review: the review window opens by itself at the end of an AI detection.
 DEFAULTS = dict(FIXED, collect_dataset=False, show_log=False, ai_auto_review=True)
 
-# Reglage cache (aucune option dans l'interface) : largeur d'image, en pixels,
-# visible autour du marqueur quand FastGCP zoome la vue photo. A ecrire a la
-# main dans settings.json, section fastgcp : "zoom_fenetre_px": 400.
-ZOOM_KEY = "zoom_fenetre_px"
-ZOOM_KEY_ALIAS = "zoom_px"
+# Hidden setting (no option in the interface): image width, in pixels,
+# visible around the marker when FastGCP zooms the photo view. To be written by
+# hand in settings.json, section fastgcp: "zoom_window_px": 400.
+ZOOM_KEY = "zoom_window_px"
+ZOOM_LEGACY_KEYS = ("zoom_fenetre_px", "zoom_px")      # older spellings of the same setting, still read
 ZOOM_DEFAULT_PX = 400
 ZOOM_MIN_PX = 20
 ZOOM_MAX_PX = 20000
 
 
 def read_zoom_px(stored):
-    """Largeur de fenetre du zoom, lue dans les reglages ; repli sur 400."""
-    for key in (ZOOM_KEY, ZOOM_KEY_ALIAS):
+    """Zoom window width, read from the settings; falls back to 400."""
+    for key in (ZOOM_KEY,) + ZOOM_LEGACY_KEYS:
         value = stored.get(key)
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             continue
@@ -63,27 +63,29 @@ def read_zoom_px(stored):
     return float(ZOOM_DEFAULT_PX)
 
 
-# Reglage cache : decalage maximal, en pixels, du recalage du clic sur le centre
-# de la cible (voir snap.py). 0 (defaut) coupe le recalage. A ecrire a la main
-# dans settings.json, section fastgcp : "recalage_max_px": 3.5.
+# Hidden setting: maximum offset, in pixels, of the snapping of the click onto the
+# centre of the target (see snap.py). 0 (default) turns the snapping off. To be written
+# by hand in settings.json, section fastgcp: "snap_max_px": 3.5.
 #
-# Coupe par defaut : mesure du 3 novembre 2026 sur CITADELLE_Pompeani (93
-# pointages manuels, 11 recales). Par rapport a la reprojection du point 3D, les
-# pointages a la main sont a 0,76 px en moyenne, apres recalage a 1,83 px. Dans
-# une vue zoomee le clic est deja plus juste que le croisement de damier retrouve
-# sur ces cibles.
-SNAP_KEY = "recalage_max_px"
+# Off by default: measured on 3 November 2026 on CITADELLE_Pompeani (93
+# manual markings, 11 snapped). Against the reprojection of the 3D point, the
+# manual markings are at 0.76 px on average, after snapping at 1.83 px. In
+# a zoomed view the click is already more accurate than the checker crossing found
+# on these targets.
+SNAP_KEY = "snap_max_px"
+SNAP_LEGACY_KEYS = ("recalage_max_px",)                # older spelling of the same setting, still read
 SNAP_DEFAULT_PX = 0.0
 SNAP_MAX_PX = 20.0
 
 
 def read_snap_px(stored):
-    """Decalage maximal du recalage, lu dans les reglages ; repli sur 0 (coupe)."""
-    value = stored.get(SNAP_KEY)
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return SNAP_DEFAULT_PX
-    if 0 <= value <= SNAP_MAX_PX:
-        return float(value)
+    """Maximum snapping offset, read from the settings; falls back to 0 (off)."""
+    for key in (SNAP_KEY,) + SNAP_LEGACY_KEYS:
+        value = stored.get(key)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        if 0 <= value <= SNAP_MAX_PX:
+            return float(value)
     return SNAP_DEFAULT_PX
 
 
@@ -103,10 +105,10 @@ class Session(object):
         self.last_chunk_key = None
         self.last_filter_key = None
         self.last_diagnostic = {}
-        # (cle de la photo, etiquette du marqueur) deja zoomes, du plus ancien
-        # au plus recent : voir photos.zoom_on_marker.
+        # (photo key, marker label) already zoomed, from the oldest
+        # to the most recent: see photos.zoom_on_marker.
         self.zoomed = []
-        # Detection IA (aigcp.py) : calcul en cours, propositions posees.
+        # AI detection (aigcp.py): computation in progress, proposals placed.
         self.aigcp_run = None
         self.aigcp_applied = []
         self.aigcp_review = None
@@ -140,7 +142,7 @@ class Session(object):
         self.options[key] = value
         config.put(SECTION, key, value)
 
-    # -- marqueur courant ------------------------------------------------
+    # -- current marker --------------------------------------------------
 
     def active_label(self):
         if self.active_marker is None:
@@ -148,12 +150,12 @@ class Session(object):
         try:
             return self.active_marker.label
         except RuntimeError:
-            # Reference devenue invalide (changement de chunk, marqueur efface).
+            # Reference became invalid (chunk change, marker deleted).
             self.active_marker = None
             return None
 
     def forget_chunk(self):
-        # Les references de l'historique meurent avec le chunk.
+        # The history references die with the chunk.
         history.clear()
         self.active_marker = None
         self.last_selected_label = None
@@ -169,7 +171,7 @@ _SESSION = None
 
 
 def current():
-    """Session FastGCP, creee au premier appel."""
+    """FastGCP session, created on the first call."""
     global _SESSION
     if _SESSION is None:
         _SESSION = Session()

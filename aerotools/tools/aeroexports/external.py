@@ -1,13 +1,13 @@
-"""Aero-Exports : les logiciels externes qu'on peut utiliser (Global Mapper, AutoCAD, GDAL), detectes sur la machine.
+"""Aero-Exports: the external software that can be used (Global Mapper, AutoCAD, GDAL), detected on the machine.
 
-Rien n'est suppose : aucun chemin n'est ecrit en dur. On cherche dans le registre et dans les dossiers
-d'installation habituels ; l'utilisateur peut aussi designer l'executable (le chemin est alors garde dans les reglages).
+Nothing is assumed: no path is hard-coded. The registry and the usual installation folders are searched;
+the user can also point to the executable (the path is then kept in the settings).
 
-  Global Mapper  ecrit l'ECW (le seul moyen de l'obtenir sans cle OEM Hexagon) ; il lit un script .gms
-  AutoCAD        `accoreconsole.exe` (moteur sans fenetre) transforme un DXF en DWG et verifie que les images se chargent
-  GDAL           (QGIS / OSGeo4W) ecrit le JPEG 2000 quand on prefere ne pas utiliser celui de Metashape
+  Global Mapper  writes the ECW (the only way to get it without an Hexagon OEM key); it reads a .gms script
+  AutoCAD        `accoreconsole.exe` (windowless engine) turns a DXF into a DWG and checks that the images load
+  GDAL           (QGIS / OSGeo4W) writes the JPEG 2000 when one prefers not to use Metashape's
 
-Rien n'est telecharge ni installe ici. Les liens d'achat sont des adresses officielles, ouvertes par l'utilisateur.
+Nothing is downloaded or installed here. The purchase links are official addresses, opened by the user.
 """
 
 import glob
@@ -17,7 +17,7 @@ import subprocess
 import tempfile
 import time
 
-try:                                        # Windows seulement
+try:                                        # Windows only
     import winreg
 except ImportError:                         # pragma: no cover
     winreg = None
@@ -28,9 +28,9 @@ AUTOCAD_URL = "https://www.autodesk.com/products/autocad/overview"
 QGIS_URL = "https://qgis.org/download/"
 GM_NAMES = ("global_mapper.exe",)
 ACCORE = "accoreconsole.exe"
-ECW_RATIO = 10                              # rapport de compression ECW demande a Global Mapper (10:1, qualite visuelle)
-JP2_QUALITY = 5                             # OpenJPEG : ~9:1. Mesure sur CITADELLE a poids voisin de l'ECW 10:1 : 42 dB contre 37 dB
-JP2_GM_RATIO = 20                           # Global Mapper en JPEG 2000 : 11:1, 41 dB (meme mesure)
+ECW_RATIO = 10                              # ECW compression ratio requested from Global Mapper (10:1, visual quality)
+JP2_QUALITY = 5                             # OpenJPEG: ~9:1. Measured on CITADELLE at a file size close to the ECW 10:1: 42 dB against 37 dB
+JP2_GM_RATIO = 20                           # Global Mapper in JPEG 2000: 11:1, 41 dB (same measurement)
 GM_TIMEOUT_S = 3600
 ACAD_TIMEOUT_S = 600
 
@@ -45,7 +45,7 @@ def _program_dirs():
 
 
 def _uninstall_locations(pattern):
-    """InstallLocation des programmes dont le nom contient `pattern` (registre Windows)."""
+    """InstallLocation of the programs whose name contains `pattern` (Windows registry)."""
     out = []
     if winreg is None:
         return out
@@ -72,7 +72,7 @@ def _uninstall_locations(pattern):
 
 
 def _version_key(path):
-    """Cle de tri : les nombres du chemin (GlobalMapper26.0, AutoCAD 2023) pour prendre la version la plus recente."""
+    """Sort key: the numbers in the path (GlobalMapper26.0, AutoCAD 2023), to pick the most recent version."""
     return [int(n) for n in re.findall(r"\d+", path)]
 
 
@@ -82,7 +82,7 @@ def _newest(paths):
 
 
 def find_global_mapper(saved=""):
-    """Chemin de global_mapper.exe ("" si absent). `saved` : chemin deja choisi par l'utilisateur."""
+    """Path of global_mapper.exe ("" if absent). `saved`: path already chosen by the user."""
     if saved and os.path.isfile(saved) and os.path.basename(saved).lower() in GM_NAMES:
         return saved
     candidates = []
@@ -96,7 +96,7 @@ def find_global_mapper(saved=""):
 
 
 def find_autocad(saved=""):
-    """Chemin d'accoreconsole.exe ("" si AutoCAD est absent). `saved` peut etre acad.exe ou accoreconsole.exe."""
+    """Path of accoreconsole.exe ("" if AutoCAD is absent). `saved` may be acad.exe or accoreconsole.exe."""
     if saved:
         folder = saved if os.path.isdir(saved) else os.path.dirname(saved)
         core = os.path.join(folder, ACCORE)
@@ -111,7 +111,7 @@ def find_autocad(saved=""):
 
 
 def find_gdal(saved=""):
-    """Dossier des programmes GDAL (QGIS, OSGeo4W) qui contient gdal_translate.exe ("" si absent)."""
+    """Folder of the GDAL programs (QGIS, OSGeo4W) that contains gdal_translate.exe ("" if absent)."""
     if saved and os.path.isfile(os.path.join(saved, "gdal_translate.exe")):
         return saved
     candidates = []
@@ -123,11 +123,11 @@ def find_gdal(saved=""):
 
 
 # --------------------------------------------------------------------------------------------------
-# Global Mapper : ECW
+# Global Mapper: ECW
 # --------------------------------------------------------------------------------------------------
 
 def gm_script(src, dst, ratio=ECW_RATIO):
-    """Texte du script .gms : un GeoTIFF devient un ECW (verifie avec Global Mapper 26)."""
+    """Text of the .gms script: a GeoTIFF becomes an ECW (checked with Global Mapper 26)."""
     return "\n".join(["GLOBAL_MAPPER_SCRIPT VERSION=1.00", "UNLOAD_ALL",
                       'IMPORT FILENAME="%s" TYPE=GEOTIFF' % src.replace("/", "\\"),
                       'EXPORT_RASTER FILENAME="%s" TYPE=ECW TARGET_COMPRESSION=%d' % (dst.replace("/", "\\"), ratio),
@@ -135,7 +135,7 @@ def gm_script(src, dst, ratio=ECW_RATIO):
 
 
 def _wait(process, timeout, tick=None):
-    """Attend la fin d'un processus en rendant la main a l'interface. Renvoie True si fini, False si delai depasse."""
+    """Wait for a process to end while yielding to the interface. Returns True if finished, False on timeout."""
     started = time.time()
     while process.poll() is None:
         if time.time() - started > timeout:
@@ -148,7 +148,7 @@ def _wait(process, timeout, tick=None):
 
 
 def _run_gm(gm_exe, script_text, dst, tick=None):
-    """Lance Global Mapper sur un script et controle le fichier produit. Renvoie (ok, message)."""
+    """Run Global Mapper on a script and check the file produced. Returns (ok, message)."""
     with tempfile.TemporaryDirectory(prefix="aero_gm_") as work:
         script = os.path.join(work, "run.gms")
         with open(script, "w", encoding="ascii", errors="replace") as handle:
@@ -156,23 +156,23 @@ def _run_gm(gm_exe, script_text, dst, tick=None):
         try:
             process = subprocess.Popen([gm_exe, script], cwd=work)
         except OSError as exc:
-            return False, "Global Mapper : %s" % exc
+            return False, "Global Mapper: %s" % exc
         if not _wait(process, GM_TIMEOUT_S, tick):
-            return False, "Global Mapper : delai depasse"
+            return False, "Global Mapper: timed out"
     if not os.path.isfile(dst) or os.path.getsize(dst) == 0:
-        return False, "Global Mapper n'a pas ecrit le fichier (licence ou export refuse ?)"
+        return False, "Global Mapper did not write the file (licence or export refused?)"
     return True, ""
 
 
 def to_ecw(gm_exe, src, dst, ratio=ECW_RATIO, tick=None):
-    """GeoTIFF -> ECW par Global Mapper. Renvoie (ok, message). Le fichier produit est controle (existe, non vide)."""
+    """GeoTIFF -> ECW through Global Mapper. Returns (ok, message). The file produced is checked (exists, not empty)."""
     if os.path.exists(dst):
         os.remove(dst)
     return _run_gm(gm_exe, gm_script(src, dst, ratio), dst, tick)
 
 
 # --------------------------------------------------------------------------------------------------
-# GDAL : JPEG 2000 (OpenJPEG)
+# GDAL: JPEG 2000 (OpenJPEG)
 # --------------------------------------------------------------------------------------------------
 
 def gdal_env(gdal_dir):
@@ -182,7 +182,7 @@ def gdal_env(gdal_dir):
 
 
 def to_jp2_gdal(gdal_dir, src, dst, quality=JP2_QUALITY, tick=None):
-    """GeoTIFF RVB -> JPEG 2000 par GDAL (OpenJPEG). `quality` : plus petit = fichier plus leger (5 : environ 9:1)."""
+    """RGB GeoTIFF -> JPEG 2000 through GDAL (OpenJPEG). `quality`: smaller = lighter file (5: about 9:1)."""
     if os.path.exists(dst):
         os.remove(dst)
     command = [os.path.join(gdal_dir, "gdal_translate.exe"), "-q", "-of", "JP2OpenJPEG", "-co", "QUALITY=%d" % quality,
@@ -191,16 +191,16 @@ def to_jp2_gdal(gdal_dir, src, dst, quality=JP2_QUALITY, tick=None):
         process = subprocess.Popen(command, env=gdal_env(gdal_dir), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    creationflags=NO_WINDOW)
     except OSError as exc:
-        return False, "GDAL : %s" % exc
+        return False, "GDAL: %s" % exc
     if not _wait(process, GM_TIMEOUT_S, tick):
-        return False, "GDAL : delai depasse"
+        return False, "GDAL: timed out"
     if process.returncode != 0 or not os.path.isfile(dst) or os.path.getsize(dst) == 0:
-        return False, "GDAL : echec du JPEG 2000"
+        return False, "GDAL: JPEG 2000 failed"
     return True, ""
 
 
 def to_jp2_gm(gm_exe, src, dst, ratio=JP2_GM_RATIO, tick=None):
-    """GeoTIFF -> JPEG 2000 par Global Mapper. Renvoie (ok, message)."""
+    """GeoTIFF -> JPEG 2000 through Global Mapper. Returns (ok, message)."""
     if os.path.exists(dst):
         os.remove(dst)
     lines = ["GLOBAL_MAPPER_SCRIPT VERSION=1.00", "UNLOAD_ALL", 'IMPORT FILENAME="%s" TYPE=GEOTIFF' % src.replace("/", "\\"),
@@ -209,11 +209,11 @@ def to_jp2_gm(gm_exe, src, dst, ratio=JP2_GM_RATIO, tick=None):
 
 
 # --------------------------------------------------------------------------------------------------
-# AutoCAD : DWG et controle des images
+# AutoCAD: DWG and image check
 # --------------------------------------------------------------------------------------------------
 
 def acad_script_check():
-    """Script AutoCAD : recharge toutes les images du DXF puis les liste."""
+    """AutoCAD script: reloads all the images of the DXF, then lists them."""
     return "-IMAGE\nR\n*\n-IMAGE\n?\n*\n_QUIT\nY\n"
 
 
@@ -222,7 +222,7 @@ def acad_script_dwg(dwg, version="2018"):
 
 
 def _run_core(core, dxf, script_text, tick=None):
-    """Lance accoreconsole sur `dxf` avec le script ; renvoie le texte affiche par AutoCAD ("" si echec)."""
+    """Run accoreconsole on `dxf` with the script; returns the text printed by AutoCAD ("" on failure)."""
     with tempfile.TemporaryDirectory(prefix="aero_acad_") as work:
         script = os.path.join(work, "run.scr")
         with open(script, "w", encoding="ascii", errors="replace", newline="\n") as handle:
@@ -251,7 +251,7 @@ def _run_core(core, dxf, script_text, tick=None):
 
 
 def parse_check(text):
-    """Resultat du controle AutoCAD : {"images": nombre d'images chargees, "failed": [noms], "valid": le DXF s'est ouvert}."""
+    """Result of the AutoCAD check: {"images": number of images loaded, "failed": [names], "valid": the DXF opened}."""
     loaded = re.findall(r"^(\S+) loaded and relinked", text, re.M)
     failed = re.findall(r"^(\S+) .*(?:not found|cannot|unable|failed)", text, re.M | re.I)
     valid = ("Invalid or incomplete DXF" not in text and "Reload image" in text) or bool(loaded)
@@ -259,15 +259,16 @@ def parse_check(text):
 
 
 def check_dxf(core, dxf, tick=None):
-    """Ouvre le DXF dans AutoCAD (sans fenetre) et verifie que chaque image se recharge. Renvoie parse_check()."""
+    """Open the DXF in AutoCAD (windowless) and check that each image reloads. Returns parse_check()."""
     return parse_check(_run_core(core, dxf, acad_script_check(), tick))
 
 
 def dxf_to_dwg(core, dxf, dwg, tick=None):
-    """DXF -> DWG par AutoCAD. Renvoie (ok, message). Le DWG est controle (existe, non vide)."""
+    """DXF -> DWG through AutoCAD. Returns (ok, message). The DWG is checked (exists, not empty)."""
     if os.path.exists(dwg):
         os.remove(dwg)
     _run_core(core, dxf, acad_script_dwg(dwg), tick)
     if not os.path.isfile(dwg) or os.path.getsize(dwg) == 0:
-        return False, "AutoCAD n'a pas ecrit le DWG"
+        return False, "AutoCAD did not write the DWG"
+
     return True, ""

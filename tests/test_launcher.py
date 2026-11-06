@@ -1,4 +1,4 @@
-"""Le modele de lanceur : dossier absent = une ligne, aucune exception."""
+"""The launcher template: missing folder = one line, no exception."""
 
 import ast
 import os
@@ -30,6 +30,6 @@ def test_template_is_python39_and_has_no_pyside_import():
 def test_launcher_installs_menu(ms, clean_bootstrap_flags):
     before = list(sys.path)
     exec(compile(_render(HERE), "launcher", "exec"), {})
-    assert any(label == "Aero/Recharger AeroTools" for label, _cb, _sc in ms.app.menu_items)
+    assert any(label == "Aero/Reload AeroTools" for label, _cb, _sc in ms.app.menu_items)
     assert HERE in sys.path
     sys.path[:] = before

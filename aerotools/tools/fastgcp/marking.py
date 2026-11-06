@@ -1,13 +1,13 @@
-"""Pose d'une projection de marqueur par clic dans la vue photo.
+"""Placement of a marker projection by a click in the photo view.
 
-Un filtre d'evenements est installe sur l'application Qt. Au clic declencheur
-(clic gauche simple, ou Maj + clic gauche) il demande a `place_at` de poser la
-projection du marqueur courant sous le curseur, en ecrasant celle que le
-marqueur avait deja sur cette photo. L'evenement n'est consomme que si la
-projection a ete posee : sinon Metashape garde la main (rotation, panoramique,
-selection). Ctrl/Alt + clic, clic droit et molette ne sont jamais interceptes.
+An event filter is installed on the Qt application. On the triggering click
+(plain left click, or Shift + left click) it asks `place_at` to place the
+projection of the current marker under the cursor, overwriting the one the
+marker already had on this photo. The event is only consumed if the
+projection was placed: otherwise Metashape keeps control (rotation, panning,
+selection). Ctrl/Alt + click, right click and wheel are never intercepted.
 
-Le meme chemin sert au raccourci clavier (place_at_cursor).
+The same path serves the keyboard shortcut (place_at_cursor).
 """
 
 import time
@@ -17,89 +17,89 @@ from ... import i18n, journal, msapi
 from ...qt import QtCore, cursor_pos, event_global_pos, modifiers
 from . import dataset, detection, history, photos, snap
 
-# True : un clic gauche simple pose le point, Maj + clic aussi. False : seul
-# Maj + clic pose (ancien comportement).
+# True: a plain left click places the point, Shift + click too. False: only
+# Shift + click places it (former behaviour).
 PLAIN_CLICK_PLACES = True
 
-# Deux appels du filtre pour le meme clic (l'evenement refuse remonte les
-# parents, chacun repasse par le filtre) ne doivent journaliser qu'une fois.
+# Two calls of the filter for the same click (the refused event goes up the
+# parents, each one going through the filter again) must only log once.
 _DEDUP_WINDOW_S = 0.25
 
 
 # --------------------------------------------------------------------------
-# Pose
+# Placement
 # --------------------------------------------------------------------------
 
 def _refuse(message):
-    journal.write("Pointage ignore : " + message)
+    journal.write("Marking ignored: " + message)
     return False
 
 
 def _snapped(state, camera, label, x, y):
-    """Position a poser : le clic recale sur le centre de la cible s'il y en a un
-    tout pres, sinon le clic lui-meme. Ne leve jamais."""
+    """Position to place: the click snapped onto the centre of the target if there is one
+    very close, otherwise the click itself. Never raises."""
     try:
         limit = getattr(state, "snap_px", 0.0)
         if limit <= 0:
             return x, y
         result = snap.snap_click(camera, x, y, limit)
         if result[0] is None:
-            # Une seule ligne par photo ne serait pas plus utile : le motif du
-            # non-recalage aide a comprendre une cible mal reconnue.
-            journal.write("{} : clic garde tel quel ({})".format(label, result[1]))
+            # A single line per photo would not be more useful: the reason for the
+            # missing snap helps to understand a badly recognised target.
+            journal.write("{}: click kept as is ({})".format(label, result[1]))
             return x, y
         nx, ny, shift = result
-        journal.write("{} : recale de {:.1f} px sur le centre de la cible".format(label, shift))
+        journal.write("{}: snapped by {:.1f} px onto the target centre".format(label, shift))
         return nx, ny
     except Exception as exc:
         try:
-            journal.write("recalage : {!r}".format(exc))
+            journal.write("snapping: {!r}".format(exc))
         except Exception:
             pass
         return x, y
 
 
 def place_at(state, global_pos):
-    """Pose la projection du marqueur courant sous `global_pos`.
+    """Place the projection of the current marker under `global_pos`.
 
-    Renvoie True seulement si la projection a ete posee. Chaque refus laisse
-    une ligne courte dans le journal.
+    Returns True only if the projection was placed. Each refusal leaves
+    a short line in the journal.
     """
     if not state.enabled:
-        return _refuse("outil desactive")
+        return _refuse("tool disabled")
 
     label = state.active_label()
     if label is None:
-        return _refuse("aucun marqueur courant")
+        return _refuse("no current marker")
     marker = state.active_marker
 
     if not msapi.cursor_over_photo_view(global_pos):
-        return _refuse("curseur hors d'une photo ({})".format(
+        return _refuse("cursor outside a photo ({})".format(
             msapi.describe_position(global_pos)
         ))
 
     chunk = msapi.chunk()
     if chunk is None:
-        return _refuse("aucun chunk actif")
+        return _refuse("no active chunk")
     try:
         view = msapi.photo_view()
         camera = view.camera if view is not None else None
     except Exception:
         camera = None
     if camera is None:
-        return _refuse("aucune photo ouverte")
+        return _refuse("no photo open")
     if not msapi.camera_in_chunk(chunk, camera):
-        return _refuse("la photo ouverte n'appartient pas au chunk actif")
+        return _refuse("the open photo does not belong to the active chunk")
 
     coords, reason = msapi.image_coords_at(global_pos)
     if coords is None:
-        return _refuse(reason or "position illisible")
+        return _refuse(reason or "unreadable position")
     click_x, click_y = coords
     x, y = _snapped(state, camera, label, click_x, click_y)
 
     camera_name = msapi.camera_label(camera)
 
-    # L'historique est ecrit AVANT la pose : il garde la projection d'avant.
+    # The history is written BEFORE the placement: it keeps the previous projection.
     entry = history.push(
         marker, camera, msapi.get_projection(marker, camera),
         chunk_key=msapi.chunk_key(chunk), label=label, camera_name=camera_name,
@@ -107,14 +107,14 @@ def place_at(state, global_pos):
     ok, message = msapi.set_projection(marker, camera, x, y)
     if not ok:
         history.discard(entry)
-        journal.write("Echec de la pose de {} : {}".format(label, message))
+        journal.write("Failed to place {}: {}".format(label, message))
         return False
 
-    journal.write("{} pose en ({:.0f}, {:.0f}) sur {}".format(
+    journal.write("{} placed at ({:.0f}, {:.0f}) on {}".format(
         label, x, y, camera_name
     ))
 
-    # Suites du pointage : aucune ne doit remettre en cause la pose.
+    # Follow-ups of the marking: none of them may call the placement into question.
     try:
         width, height = msapi.camera_size(camera)
         record = {
@@ -133,7 +133,7 @@ def place_at(state, global_pos):
         written = dataset.record_pin(state, record)
         detection.notify_pin(written if written is not None else record)
     except Exception as exc:
-        journal.write("suites du pointage : {!r}".format(exc))
+        journal.write("marking follow-ups: {!r}".format(exc))
     photos.advance_after_place(state)
     photos.panel_call(state, "update_active_card")
     photos.panel_call(state, "refresh_errors")
@@ -141,17 +141,17 @@ def place_at(state, global_pos):
 
 
 def place_at_cursor(state):
-    """Raccourci Ctrl+Maj+M : pose sous le curseur."""
+    """Ctrl+Shift+M shortcut: place under the cursor."""
     if not state.enabled:
         return
     try:
         place_at(state, cursor_pos())
     except Exception as exc:
-        journal.write("pointage au curseur : {!r}".format(exc))
+        journal.write("marking at the cursor: {!r}".format(exc))
 
 
 # --------------------------------------------------------------------------
-# Annulation
+# Undo
 # --------------------------------------------------------------------------
 
 def _undo_status(state, text):
@@ -159,18 +159,18 @@ def _undo_status(state, text):
 
 
 def undo_last(state):
-    """Defait le dernier pointage pose par FastGCP.
+    """Undo the last marking placed by FastGCP.
 
-    Restaure la projection que le marqueur avait avant sur cette photo, ou la
-    supprime s'il n'en avait pas ; rouvre la photo, remet le marqueur comme
-    marqueur courant et rafraichit le panneau. Renvoie True si quelque chose a
-    ete defait. Ne leve jamais.
+    Restores the projection the marker had before on this photo, or removes it
+    if it had none; reopens the photo, makes the marker the current
+    marker again and refreshes the panel. Returns True if something was
+    undone. Never raises.
     """
     try:
         return _undo_last(state)
     except Exception as exc:
         try:
-            journal.write("annulation : {!r}".format(exc))
+            journal.write("undo: {!r}".format(exc))
         except Exception:
             pass
         return False
@@ -187,65 +187,65 @@ def _undo_last(state):
         entry = history.pop()
         if entry is None:
             _undo_status(state, i18n.t("undo.nothing"))
-            journal.write("Annuler : rien a annuler")
+            journal.write("Undo: nothing to undo")
             return False
         if chunk is None or (entry.chunk_key is not None and entry.chunk_key != key):
-            # Le chunk a change depuis : ces pointages ne sont plus atteignables.
+            # The chunk has changed since: these markings can no longer be reached.
             history.clear()
-            journal.write("Annuler : historique d'un autre chunk, vide")
+            journal.write("Undo: history of another chunk, emptied")
             return False
         if entry.is_valid() and msapi.camera_in_chunk(chunk, entry.camera):
             break
-        journal.write("Annuler : entree ignoree (marqueur ou photo disparus)")
+        journal.write("Undo: entry ignored (marker or photo gone)")
 
     marker, camera = entry.marker, entry.camera
     label = msapi.marker_label(marker) or entry.label
     camera_name = msapi.camera_label(camera) or entry.camera_name
 
-    after = msapi.get_projection(marker, camera)          # ce que Retablir remettra
+    after = msapi.get_projection(marker, camera)          # what Redo will put back
     previous = entry.previous
     if previous is None:
         ok, message = msapi.remove_projection(marker, camera)
-        what = "projection retiree"
+        what = "projection removed"
     else:
         ok, message = msapi.set_projection(marker, camera, previous[0], previous[1], previous[2])
-        what = "position precedente restauree"
+        what = "previous position restored"
     if not ok:
-        journal.write("Echec de l'annulation de {} sur {} : {}".format(
+        journal.write("Failed to undo {} on {}: {}".format(
             label, camera_name, message))
         _undo_status(state, i18n.t("undo.failed"))
         return False
 
-    # Une photo suivante programmee par le pointage defait n'a plus lieu d'etre.
+    # A next photo scheduled by the undone marking no longer applies.
     history.push_redo(marker, camera, after, chunk_key=entry.chunk_key, label=label, camera_name=camera_name)
     _show_result(state, marker, camera, label)
     _undo_status(state, i18n.t("undo.done", label=label))
-    journal.write("Annule : {} sur {} ({})".format(label, camera_name, what))
+    journal.write("Undone: {} on {} ({})".format(label, camera_name, what))
     return True
 
 
 def _show_result(state, marker, camera, label):
-    """Apres Annuler ou Retablir : photo rouverte, zoom sur le point, panneau relu."""
+    """After Undo or Redo: photo reopened, zoom on the point, panel reread."""
     photos.cancel_advance()
     state.active_marker = marker
     if getattr(state, "panel", None) is not None:
         photos.panel_call(state, "set_active_marker_by_label", label)
     already_open = msapi.camera_key(msapi.current_camera()) == msapi.camera_key(camera)
     msapi.open_photo(camera)
-    # Photo rouverte : zoom sur le point. Photo deja a l'ecran : on ne touche pas au
-    # zoom de l'operateur.
+    # Photo reopened: zoom on the point. Photo already on screen: the operator's
+    # zoom is left alone.
     photos.zoom_on_marker(state, marker, camera, force=not already_open)
     photos.panel_call(state, "update_active_card")
     photos.panel_call(state, "refresh_errors")
 
 
 def redo_last(state):
-    """Repose le dernier pointage defait par Annuler. True si c'est fait. Ne leve jamais."""
+    """Place the last marking undone by Undo again. True if done. Never raises."""
     try:
         return _redo_last(state)
     except Exception as exc:
         try:
-            journal.write("retablir : {!r}".format(exc))
+            journal.write("redo: {!r}".format(exc))
         except Exception:
             pass
         return False
@@ -279,21 +279,21 @@ def _redo_last(state):
         ok, message = msapi.set_projection(marker, camera, after[0], after[1], after[2])
     if not ok:
         history.discard(undo)
-        journal.write("Echec de Retablir {} sur {} : {}".format(label, camera_name, message))
+        journal.write("Failed to redo {} on {}: {}".format(label, camera_name, message))
         _undo_status(state, i18n.t("redo.failed"))
         return False
     _show_result(state, marker, camera, label)
     _undo_status(state, i18n.t("redo.done", label=label))
-    journal.write("Retabli : {} sur {}".format(label, camera_name))
+    journal.write("Redone: {} on {}".format(label, camera_name))
     return True
 
 
 # --------------------------------------------------------------------------
-# Filtre d'evenements
+# Event filter
 # --------------------------------------------------------------------------
 
 class ClickFilter(QtCore.QObject):
-    """Intercepte le clic gauche declencheur et pose la projection."""
+    """Intercepts the triggering left click and places the projection."""
 
     def __init__(self, state, parent=None):
         super(ClickFilter, self).__init__(parent)
@@ -303,7 +303,7 @@ class ClickFilter(QtCore.QObject):
         self._last_refused = None
 
     def _is_trigger(self, ev):
-        """Clic gauche, sans Ctrl ni Alt, avec ou sans Maj selon PLAIN_CLICK_PLACES."""
+        """Left click, without Ctrl or Alt, with or without Shift depending on PLAIN_CLICK_PLACES."""
         if ev.button() != QtCore.Qt.LeftButton:
             return False
         ctrl, shift, alt = modifiers(ev)
@@ -334,7 +334,7 @@ class ClickFilter(QtCore.QObject):
             if not self._is_trigger(ev):
                 return False
             pos = event_global_pos(ev)
-            # Clic hors vue photo : on ne dit rien et on laisse Metashape faire.
+            # Click outside the photo view: say nothing and let Metashape act.
             if not msapi.cursor_over_photo_view(pos):
                 return False
             if self._already_refused(ev, pos):
@@ -349,18 +349,18 @@ class ClickFilter(QtCore.QObject):
             if not self._error_logged:
                 self._error_logged = True
                 try:
-                    journal.write("filtre de clics : {!r} | {}".format(exc, " / ".join(l.strip() for l in traceback.format_exc().strip().splitlines()[-4:])))
+                    journal.write("click filter: {!r} | {}".format(exc, " / ".join(l.strip() for l in traceback.format_exc().strip().splitlines()[-4:])))
                 except Exception:
                     pass
             return False
 
 
 def install_filter(state):
-    """Installe le filtre de clics sur l'application Qt."""
+    """Install the click filter on the Qt application."""
     remove_filter(state)
     app = QtCore.QCoreApplication.instance()
     if app is None:
-        journal.write("filtre de clics : application Qt introuvable")
+        journal.write("click filter: Qt application not found")
         return None
     click_filter = ClickFilter(state)
     app.installEventFilter(click_filter)
@@ -369,7 +369,7 @@ def install_filter(state):
 
 
 def remove_filter(state):
-    """Retire le filtre de clics. Sans erreur s'il n'y en a pas."""
+    """Remove the click filter. No error if there is none."""
     click_filter = getattr(state, "click_filter", None)
     state.click_filter = None
     if click_filter is None:

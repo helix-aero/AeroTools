@@ -1,7 +1,7 @@
-"""Petits morceaux d'interface communs aux fenetres d'AeroTools (installation, mise a jour).
+"""Small UI building blocks shared by the AeroTools windows (install, update).
 
-Meme style que le panneau FastGCP : sous Metashape un QDialog ne peint pas le fond voulu,
-un QWidget interne le fait (voir `styled_root`).
+Same style as the FastGCP panel: under Metashape a QDialog does not paint the wanted background,
+an inner QWidget does (see `styled_root`).
 """
 
 from . import i18n, theme
@@ -20,7 +20,7 @@ def styled_root(dialog):
 
 
 def run(dialog):
-    """exec_ (PySide2) ou exec (PySide6)."""
+    """exec_ (PySide2) or exec (PySide6)."""
     return (getattr(dialog, "exec_", None) or getattr(dialog, "exec"))()
 
 
@@ -37,7 +37,7 @@ def button(text_key, handler, object_name="aeroGhost", width=96, **fields):
 
 
 def big_button(text_key, handler, kind="aeroBtn", width=0, **fields):
-    """Gros bouton (40 px, texte centre) des fenetres sombres. `aeroGo` = vert, `aeroBtn` = gris."""
+    """Big button (40 px, centered text) of the dark windows. `aeroGo` = green, `aeroBtn` = grey."""
     widget = QtWidgets.QPushButton(i18n.t(text_key, **fields) if fields else i18n.t(text_key))
     widget.setObjectName(kind)
     widget.setCursor(QtCore.Qt.PointingHandCursor)
@@ -61,14 +61,14 @@ def combo(parent=None):
 
 
 def dark_root(dialog):
-    """Comme `styled_root`, avec le fond sombre des fenetres Parametres."""
+    """Like `styled_root`, with the dark background of the Settings windows."""
     root = styled_root(dialog)
     root.setProperty("settings", True)
     return root
 
 
 def tile(caption=""):
-    """Petite case chiffree : (cadre, etiquette du chiffre, etiquette du titre)."""
+    """Small number tile: (frame, number label, title label)."""
     frame = QtWidgets.QFrame()
     frame.setObjectName("aeroStat")
     layout = QtWidgets.QVBoxLayout(frame)
@@ -89,7 +89,7 @@ MARKS = {"ok": ("\u2713", theme.GREEN_BRIGHT), "error": ("\u2715", theme.ORANGE_
 
 
 class Mark(QtWidgets.QLabel):
-    """Petite coche verte (reussite) ou croix orange (echec) devant un texte d'etat."""
+    """Small green tick (success) or orange cross (failure) in front of a status text."""
 
     def __init__(self, size=16):
         super(Mark, self).__init__()
@@ -107,11 +107,11 @@ class Mark(QtWidgets.QLabel):
 
 
 class SelectAllEdit(QtWidgets.QLineEdit):
-    """Champ de saisie dont tout le texte est selectionne des qu'on y entre (clic ou Tab) : on tape, la valeur est remplacee."""
+    """Input field whose whole text is selected as soon as it is entered (click or Tab): typing replaces the value."""
 
     def focusInEvent(self, event):
         super(SelectAllEdit, self).focusInEvent(event)
-        QtCore.QTimer.singleShot(0, self.selectAll)         # apres le clic, qui placerait sinon le curseur
+        QtCore.QTimer.singleShot(0, self.selectAll)         # after the click, which would otherwise place the cursor
 
     def mousePressEvent(self, event):
         entering = not self.hasFocus()
@@ -121,9 +121,9 @@ class SelectAllEdit(QtWidgets.QLineEdit):
 
 
 class OptionCard(QtWidgets.QFrame):
-    """Une option : un bouton (rond ou case) dans un cadre qui passe au vert une fois choisi (orange si `danger`).
+    """An option: a button (radio or checkbox) in a frame that turns green once chosen (orange if `danger`).
 
-    Le cadre est cliquable partout. `grid` sert a poser d'autres elements a cote du bouton (colonne 1 et suivantes)."""
+    The whole frame is clickable. `grid` is used to place other elements next to the button (column 1 onwards)."""
 
     def __init__(self, button, danger=False):
         super(OptionCard, self).__init__()
@@ -168,7 +168,7 @@ TABLE_STYLE = """
 
 
 def table_style():
-    """Style d'un tableau sur fond noir (pop-ups des marqueurs)."""
+    """Style of a table on a black background (marker pop-ups)."""
     return TABLE_STYLE.format(pane=theme.PANE, head=theme.PANE_HEAD, fg_0=theme.FG_0, fg_1=theme.FG_1,
                               fg_2=theme.FG_2, border=theme.BORDER_SOFT, soft=theme.GREEN_SOFT)
 

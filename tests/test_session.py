@@ -26,7 +26,7 @@ def test_defaults():
     assert state.option("after_place") == session_mod.AFTER_API
     assert state.option("auto_filter") is True
     assert state.option("sync_selection") is True
-    assert state.option("inconnue") is None
+    assert state.option("unknown") is None
 
 
 def test_fixed_options_override_stored_settings():
@@ -64,7 +64,7 @@ def test_after_constants_are_kept_for_the_panel():
 
 
 def test_non_bool_value_for_bool_option_falls_back():
-    _write_stored({"collect_dataset": "oui", "show_log": True})
+    _write_stored({"collect_dataset": "yes", "show_log": True})
     state = session_mod.Session()
     assert state.option("collect_dataset") is False
     assert state.option("show_log") is True
@@ -95,7 +95,7 @@ def test_current_is_singleton_until_reset():
 def test_corrupted_section_does_not_break_session():
     os.makedirs(config.settings_dir(), exist_ok=True)
     with open(config.settings_path(), "w", encoding="utf-8") as handle:
-        json.dump({"fastgcp": "casse"}, handle)
+        json.dump({"fastgcp": "broken"}, handle)
     assert session_mod.Session().options == session_mod.DEFAULTS
 
 
@@ -113,7 +113,7 @@ def test_active_label_handles_dead_reference():
     class Dead(object):
         @property
         def label(self):
-            raise RuntimeError("objet detruit")
+            raise RuntimeError("object destroyed")
 
     state.active_marker = Dead()
     assert state.active_label() is None

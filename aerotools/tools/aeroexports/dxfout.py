@@ -1,17 +1,17 @@
-"""Aero-Exports : DXF qui reference les orthos et les MNT par des entites IMAGE georeferencees (sans dependance).
+"""Aero-Exports: DXF that references the orthomosaics and DEMs through georeferenced IMAGE entities (no dependency).
 
-Pourquoi un DXF et pas un GeoTIFF : AutoCAD « simple » ne lit pas toujours le georef d'un GeoTIFF ou d'un ECW. Une
-entite IMAGE a ses coordonnees monde dans le dessin lui-meme (point d'insertion + taille d'un pixel), donc l'image se
-pose au bon endroit et a la bonne echelle quel que soit le produit Autodesk.
+Why a DXF and not a GeoTIFF: plain AutoCAD does not always read the georeferencing of a GeoTIFF or an ECW. An IMAGE
+entity carries its world coordinates in the drawing itself (insertion point + size of one pixel), so the image
+lands at the right place and scale whatever the Autodesk product.
 
-L'image n'est pas integree : le DXF pointe vers le fichier avec un chemin RELATIF (le dossier se deplace d'un bloc) :
+The image is not embedded: the DXF points to the file with a RELATIVE path (the folder can be moved as a whole):
 
     TOPO.dxf
     00_Assets\\ortho\\SITE_260704_3cm_ortho.jp2
     00_Assets\\DTM\\SITE_260704_20cm_dtm.jp2
 
-Le DXF est ecrit a la main (R2000, structure relevee sur la sortie d'ezdxf puis verifiee dans AutoCAD 2023 par
-accoreconsole) : ni ezdxf ni AutoCAD ne sont necessaires pour l'ecrire. Python 3.9, sans dependance.
+The DXF is written by hand (R2000, structure taken from ezdxf's output and then checked in AutoCAD 2023 with
+accoreconsole): neither ezdxf nor AutoCAD is needed to write it. Python 3.9, no dependency.
 """
 
 import os
@@ -21,33 +21,33 @@ ORTHO_DIR = "ortho"
 DEM_DIR = "DTM"
 CONTINUOUS = "Continuous"
 
-# 0x10.. : poignees des objets du dessin ; les images en prennent d'autres au-dessus.
+# 0x10.. : handles of the drawing objects; the images take others above them.
 H_ROOT_DICT, H_IMAGE_DICT = "A", "B"
-H_PLOT_DICT, H_PLOT_NORMAL = "12", "13"      # style de trace « Normal » : AutoCAD l'exige sur chaque calque
+H_PLOT_DICT, H_PLOT_NORMAL = "12", "13"      # "Normal" plot style: AutoCAD requires it on every layer
 H_MODEL_RECORD, H_PAPER_RECORD = "1F", "1B"
 H_LTYPE, H_STYLE, H_APPID, H_LAYER0 = "14", "15", "16", "17"
 FIRST_FREE = 0x100
 
 
 def relative_path(asset_path, dxf_path):
-    """Chemin de l'image vu depuis le dossier du DXF, avec des antislashs (Windows / AutoCAD)."""
+    """Path of the image seen from the DXF's folder, with backslashes (Windows / AutoCAD)."""
     base = os.path.dirname(os.path.abspath(dxf_path))
     return os.path.relpath(os.path.abspath(asset_path), base).replace("/", "\\")
 
 
 def asset_folder(dxf_path, kind):
-    """Dossier des images d'un DXF : `00_Assets\\ortho` ou `00_Assets\\DTM`."""
+    """Image folder of a DXF: `00_Assets\\ortho` or `00_Assets\\DTM`."""
     return os.path.join(os.path.dirname(os.path.abspath(dxf_path)), ASSETS, ORTHO_DIR if kind == "ortho" else DEM_DIR)
 
 
 def layer_name(date_text, pixel_text, kind):
-    """Calque d'une image : « 260704_0.1_ortho » ou « 260704_0.2_MNT » (date, pixel en metres, nature)."""
-    tail = "ortho" if kind == "ortho" else "MNT"
+    """Layer of an image: "260704_0.1_ortho" or "260704_0.2_DTM" (date, pixel in metres, kind)."""
+    tail = "ortho" if kind == "ortho" else "DTM"
     return "_".join(part for part in (date_text, pixel_text, tail) if part)
 
 
 def _clean_layer(name):
-    """Un nom de calque DXF ne contient pas < > / \\ \" : ; ? * | = `."""
+    """A DXF layer name cannot contain < > / \\ \" : ; ? * | = `."""
     bad = '<>/\\":;?*|=`'
     cleaned = "".join("_" if char in bad else char for char in name).strip()
     return cleaned[:255] or "0"
@@ -79,11 +79,11 @@ def closed_polygon(points):
 
 
 def build_dxf(images, units_m=True):
-    """Texte d'un DXF R2000.
+    """Text of an R2000 DXF.
 
-    `images` : liste de dicts {"layer", "file" (chemin tel qu'ecrit dans le DXF), "size_px": (largeur, hauteur),
-    "insert": (x, y) coin bas-gauche en unites du dessin, "pixel": (largeur d'un pixel, hauteur d'un pixel),
-    "clip" (facultatif) : polygone ferme [(x, y), ...] en pixels de l'image, depuis son coin HAUT-gauche, y vers le bas (voir footprint.py)}.
+    `images`: list of dicts {"layer", "file" (path as written in the DXF), "size_px": (width, height),
+    "insert": (x, y) bottom-left corner in drawing units, "pixel": (width of a pixel, height of a pixel),
+    "clip" (optional): closed polygon [(x, y), ...] in image pixels, from its TOP-left corner, y pointing down (see footprint.py)}.
     """
     w = _Writer()
     layers = []
@@ -98,7 +98,7 @@ def build_dxf(images, units_m=True):
         return "%X" % handle[0]
 
     layer_handles = {name: new_handle() for name in layers}
-    defs = [(new_handle(), new_handle(), new_handle(), item) for item in images]   # (entite, definition, reactor)
+    defs = [(new_handle(), new_handle(), new_handle(), item) for item in images]   # (entity, definition, reactor)
 
     w.add(0, "SECTION"); w.add(2, "HEADER")
     w.add(9, "$ACADVER"); w.add(1, "AC1015")
@@ -185,11 +185,11 @@ def build_dxf(images, units_m=True):
         clip = closed_polygon(item.get("clip"))
         w.add(340, definition); w.add(70, 7 if clip else 3); w.add(280, 1 if clip else 0)
         w.add(281, 50); w.add(282, 50); w.add(283, 0)
-        if clip:                                        # decoupe polygonale (sommets en pixels, polygone ferme)
+        if clip:                                        # polygonal clip (vertices in pixels, closed polygon)
             w.add(360, reactor); w.add(71, 2); w.add(91, len(clip))
             for x_clip, y_clip in clip:
                 w.add(14, _number(x_clip)); w.add(24, _number(y_clip))
-        else:                                           # decoupe rectangulaire : l'image entiere
+        else:                                           # rectangular clip: the whole image
             w.add(360, reactor); w.add(71, 1); w.add(91, 2)
             w.add(14, -0.5); w.add(24, -0.5); w.add(14, _number(width - 0.5)); w.add(24, _number(height - 0.5))
     w.add(0, "ENDSEC")
@@ -219,7 +219,7 @@ def build_dxf(images, units_m=True):
 
 
 def write_dxf(path, images, units_m=True):
-    """Ecrit le DXF (ASCII, CRLF) et renvoie son chemin."""
+    """Write the DXF (ASCII, CRLF) and return its path."""
     folder = os.path.dirname(os.path.abspath(path))
     os.makedirs(folder, exist_ok=True)
     with open(path, "w", encoding="ascii", errors="replace", newline="") as handle:
@@ -228,6 +228,7 @@ def write_dxf(path, images, units_m=True):
 
 
 def placement(left, bottom, right, top, size_px):
-    """(insertion bas-gauche, pixel) d'une image nord-en-haut dont l'emprise est (gauche, bas, droite, haut)."""
+    """(bottom-left insertion, pixel) of a north-up image whose extent is (left, bottom, right, top)."""
+
     width, height = size_px
     return (left, bottom), ((right - left) / float(width), (top - bottom) / float(height))

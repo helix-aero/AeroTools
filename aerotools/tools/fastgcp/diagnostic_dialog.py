@@ -1,7 +1,7 @@
-"""Fenetre « Diagnostic du pointage » (Qt) : le resultat de diagnostic.py, avec ouverture des photos.
+"""Marking diagnostic window (Qt): the result of diagnostic.py, with photo opening.
 
-Fenetre non modale : on peut laisser la liste ouverte, ouvrir une photo, corriger, puis cliquer
-« Recalculer ». Un double-clic (ou le bouton) ouvre la photo du probleme, zoomee sur le marqueur.
+Non-modal window: the list can stay open while you open a photo, fix it, then click
+"Recompute". A double-click (or the button) opens the photo of the problem, zoomed on the marker.
 """
 
 from ... import i18n, theme, ui
@@ -21,7 +21,7 @@ def cm_text(meters):
 
 
 def lines(result):
-    """[(texte, element ou None, titre ?)] : ce que la liste affiche, dans l'ordre."""
+    """[(text, item or None, is title?)]: what the list shows, in order."""
     out = []
     if result["projections"]:
         out.append((i18n.t("diag.sec_projections", limit=px_text(result["limit_px"])), None, True))
@@ -63,7 +63,7 @@ def summary_text(result):
 
 class DiagnosticDialog(QtWidgets.QDialog):
     def __init__(self, compute, opener, parent=None):
-        """`compute()` rend le resultat de diagnostic.analyze ; `opener(item)` ouvre la photo de l'element."""
+        """`compute()` returns the result of diagnostic.analyze; `opener(item)` opens the item's photo."""
         super(DiagnosticDialog, self).__init__(parent)
         self._compute = compute
         self._opener = opener
@@ -138,7 +138,7 @@ class DiagnosticDialog(QtWidgets.QDialog):
 
 
 def show(panel, compute, opener, existing=None):
-    """Ouvre (ou rafraichit) la fenetre. Renvoie l'instance, a garder."""
+    """Opens (or refreshes) the window. Returns the instance, to be kept."""
     dialog = existing
     try:
         if dialog is not None:

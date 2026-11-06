@@ -1,17 +1,17 @@
-"""Coherence geometrique des detections d'un meme marqueur (sans Metashape).
+"""Geometric consistency of the detections of one marker (no Metashape).
 
-Chaque detection sur une photo est un rayon : l'origine est le centre de la
-camera, la direction part vers le pixel detecte. Les vraies detections d'une
-meme cible se recoupent en un seul point 3D ; une fausse (toiture, arbre, tache
-voisine) tombe ailleurs, differemment sur chaque photo, et ne recoupe rien.
+Each detection on a photo is a ray: the origin is the camera centre, the
+direction points towards the detected pixel. The true detections of one target
+intersect at a single 3D point; a false one (roof, tree, neighbouring stain)
+falls elsewhere, differently on each photo, and intersects nothing.
 
-`consensus` cherche le point 3D qui reunit le plus de rayons (RANSAC sur des
-paires de rayons, puis affinage aux moindres carres) et dit quelles detections
-sont des inliers. Aucune connaissance a priori du marqueur n'est necessaire :
-cela marche aussi pour un marqueur sans aucun pointage.
+`consensus` looks for the 3D point that gathers the most rays (RANSAC over pairs
+of rays, then least-squares refinement) and says which detections are inliers.
+No prior knowledge of the marker is needed: it also works for a marker with no
+pin at all.
 
-Les rayons sont donnes dans les coordonnees internes du chunk : le seuil est
-exprime dans la meme unite (l'appelant convertit des metres avec l'echelle).
+Rays are given in the chunk's internal coordinates: the threshold is expressed
+in the same unit (the caller converts metres using the scale).
 """
 
 import itertools
@@ -20,7 +20,7 @@ import random
 
 MIN_RAYS = 3
 MAX_PAIRS = 400
-# Deux rayons presque paralleles ne definissent pas bien un point.
+# Two nearly parallel rays do not define a point well.
 MIN_PAIR_ANGLE_DEG = 0.5
 
 
@@ -40,7 +40,7 @@ def _unit(v):
 
 
 def _clean(rays):
-    """Rayons dont la direction est normalisee ; None pour un rayon inutilisable."""
+    """Rays with a normalised direction; None for an unusable ray."""
     out = []
     for ray in rays:
         try:
@@ -54,7 +54,7 @@ def _clean(rays):
 
 
 def distance_to_ray(point, ray):
-    """(distance du point au rayon, profondeur du point le long du rayon)."""
+    """(distance from the point to the ray, depth of the point along the ray)."""
     delta = _sub(point, ray[0])
     depth = _dot(delta, ray[1])
     perpendicular = _sub(delta, (ray[1][0] * depth, ray[1][1] * depth, ray[1][2] * depth))
@@ -62,7 +62,7 @@ def distance_to_ray(point, ray):
 
 
 def triangulate(rays):
-    """Point qui minimise la somme des carres des distances aux rayons, ou None."""
+    """Point that minimises the sum of squared distances to the rays, or None."""
     a = [[0.0] * 3 for _ in range(3)]
     b = [0.0] * 3
     for origin, u in rays:
@@ -115,12 +115,12 @@ def _pairs(count, rng):
 
 
 def consensus(rays, threshold, seed=0):
-    """Le point 3D qui reunit le plus de rayons.
+    """The 3D point that gathers the most rays.
 
-    `rays` : liste de (origine, direction), None accepte pour une detection sans
-    rayon. Renvoie (flags, point) : `flags[i]` vrai si le rayon i passe a moins de
-    `threshold` du point ; (None, None) s'il y a moins de MIN_RAYS rayons utilisables
-    ou si aucun point ne se degage.
+    `rays`: list of (origin, direction); None is accepted for a detection without a
+    ray. Returns (flags, point): `flags[i]` is true if ray i passes within
+    `threshold` of the point; (None, None) if there are fewer than MIN_RAYS usable
+    rays or if no point emerges.
     """
     clean = _clean(rays)
     usable = [i for i, ray in enumerate(clean) if ray is not None]

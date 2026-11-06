@@ -8,7 +8,7 @@ def test_settings_roundtrip(local_appdata):
     assert config.load_settings() == {}
     assert config.put("fastgcp", "auto_filter", False) is True
     assert config.get("fastgcp", "auto_filter") is False
-    assert config.get("fastgcp", "inconnu", 42) == 42
+    assert config.get("fastgcp", "unknown", 42) == 42
     expected = os.path.join(str(local_appdata), "HELIX", "AeroTools", "settings.json")
     assert config.settings_path() == expected
     with open(expected, encoding="utf-8") as handle:
@@ -24,9 +24,9 @@ def test_put_keeps_other_sections(local_appdata):
 def test_corrupted_file_gives_empty_settings(local_appdata):
     os.makedirs(config.settings_dir())
     with open(config.settings_path(), "w", encoding="utf-8") as handle:
-        handle.write("{pas du json")
+        handle.write("{not json")
     assert config.load_settings() == {}
-    assert config.get("fastgcp", "x", "defaut") == "defaut"
+    assert config.get("fastgcp", "x", "default") == "default"
 
 
 def test_non_dict_json_gives_empty_settings(local_appdata):
@@ -40,13 +40,13 @@ def test_section_of_wrong_type_does_not_raise(local_appdata):
     os.makedirs(config.settings_dir())
     with open(config.settings_path(), "w", encoding="utf-8") as handle:
         json.dump({"fastgcp": 3}, handle)
-    assert config.get("fastgcp", "x", "defaut") == "defaut"
+    assert config.get("fastgcp", "x", "default") == "default"
 
 
 def test_registry():
-    assert config.tool("fastgcp")["pret"] is True
-    assert config.tool("aigcp") is None            # la detection IA est dans FastGCP : pas d'entree a part
-    assert config.tool("nexiste-pas") is None
+    assert config.tool("fastgcp")["ready"] is True
+    assert config.tool("aigcp") is None            # AI detection lives inside FastGCP: no separate entry
+    assert config.tool("no-such-tool") is None
     ids = [entry["id"] for entry in config.TOOLS]
     assert len(ids) == len(set(ids))
 

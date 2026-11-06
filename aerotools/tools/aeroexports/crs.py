@@ -1,8 +1,8 @@
-"""Aero-Exports : etat des grilles d'altitude dans notre dossier `Geoid`, telechargement verifie.
+"""Aero-Exports: state of the height grids in our `Geoid` folder, verified download.
 
-Le catalogue (systemes, grilles, tailles, SHA-256, urls) vient de `projdb.py` (base de PROJ et index PROJ-data) : plus de table ecrite a
-la main, donc le monde entier. Sans dependance (urllib), tourne dans le Python de Metashape (3.9). Les grilles sont rangees dans
-`own_dir()` et lues par PROJ et par `vertical.py` : on ne regarde jamais dans les dossiers de Metashape.
+The catalogue (systems, grids, sizes, SHA-256, URLs) comes from `projdb.py` (PROJ database and PROJ-data index): no hand-written
+table any more, so it covers the whole world. No dependency (urllib), runs in Metashape's Python (3.9). The grids are stored in
+`own_dir()` and read by PROJ and by `vertical.py`: Metashape's own folders are never searched.
 """
 
 import hashlib
@@ -16,26 +16,26 @@ from . import projdb
 ALLOWED_HOSTS = ("cdn.proj.org",)
 MAX_DOWNLOAD_BYTES = 120 * 1024 * 1024
 ELLIPSOID = {"id": projdb.ELLIPSOID_ID, "file": None, "bbox": (-180.0, -90.0, 180.0, 90.0), "url": None,
-             "fr": "Hauteur ellipsoïdale (aucune grille de géoïde)", "en": "Ellipsoidal height (no geoid grid)"}
+             "label": "Ellipsoidal height (no geoid grid)"}
 
 
 # --------------------------------------------------------------------------------------------------
-# Fiches
+# Records
 # --------------------------------------------------------------------------------------------------
 
 def vertical_by_id(vid):
-    """Fiche d'une grille d'altitude (id = nom du fichier sans extension) ou de l'ellipsoide ; None si inconnue."""
+    """Record of a height grid (id = file name without extension) or of the ellipsoid; None if unknown."""
     if vid == projdb.ELLIPSOID_ID:
         return ELLIPSOID
     return projdb.grid_by_id(vid)
 
 
-def label(item, lang="fr"):
-    return item.get(lang) or item["fr"]
+def label(item):
+    return item["label"]
 
 
 # --------------------------------------------------------------------------------------------------
-# Geoides adaptes a un lieu
+# Geoids suited to a location
 # --------------------------------------------------------------------------------------------------
 
 def covers(item, lon, lat):
@@ -43,8 +43,8 @@ def covers(item, lon, lat):
 
 
 def own_dir():
-    """Dossier « Geoid » d'AeroTools (par poste) : les grilles telechargees par la fenetre y sont rangees et lues. Rien n'est
-    cherche dans les dossiers de Metashape."""
+    """AeroTools' "Geoid" folder (per workstation): the grids downloaded by the window are stored and read there. Nothing is
+    searched in Metashape's folders."""
     from ... import config
     return os.path.join(config.settings_dir(), "Geoid")
 
@@ -53,8 +53,9 @@ _SHA_CACHE = {}
 
 
 def grid_state(vertical_id, folder=None):
-    """("ok" | "stale" | "missing", chemin) de la grille dans notre dossier. « stale » : le fichier est la mais son empreinte
-    (SHA-256) n'est pas celle de la grille officielle du catalogue : copie abimee, ancienne ou modifiee, a retelecharger."""
+    """("ok" | "stale" | "missing", path) of the grid in our folder. "stale": the file is there but its fingerprint
+    (SHA-256) is not that of the official grid in the catalogue: damaged, old or modified copy, to be downloaded again."""
+
     spec = vertical_by_id(vertical_id)
     if spec is None or not spec.get("file"):
         raise KeyError(vertical_id)
@@ -67,12 +68,12 @@ def grid_state(vertical_id, folder=None):
     return ("ok" if _SHA_CACHE[stamp] == spec.get("sha256") else "stale"), path
 
 
-ZONE_MAX_SIZE = 5 * 1024 * 1024         # l'invite de la zone ne propose que les petites grilles ; les grosses se telechargent au choix
+ZONE_MAX_SIZE = 5 * 1024 * 1024         # the zone prompt only offers small grids; large ones are downloaded on demand
 
 
 def zone_grids(project_epsg, lon, lat, folder=None):
-    """[(fiche, etat)] des grilles du repere du projet qui couvrent (lon, lat), de moins de 5 Mo, absentes ou perimees. Sans repere ou
-    sans position : rien (on ne sait pas ce qui sert)."""
+    """[(record, state)] of the project CRS grids that cover (lon, lat), under 5 MB, missing or stale. Without a CRS or
+    a position: nothing (we cannot tell what is useful)."""
     if lon is None or lat is None or not project_epsg or not projdb.available():
         return []
     out = []
@@ -84,7 +85,7 @@ def zone_grids(project_epsg, lon, lat, folder=None):
 
 
 def check_geoid_presence(vertical_id, folder=None, lon=None, lat=None):
-    """Diagnostic pour l'interface : {'status': 'ok'|'stale'|'missing'|'not_covering'|'none', 'spec': fiche, 'path': chemin}."""
+    """Diagnosis for the interface: {'status': 'ok'|'stale'|'missing'|'not_covering'|'none', 'spec': record, 'path': path}."""
     spec = vertical_by_id(vertical_id)
     if spec is None:
         raise KeyError(vertical_id)
@@ -97,7 +98,7 @@ def check_geoid_presence(vertical_id, folder=None, lon=None, lat=None):
 
 
 # --------------------------------------------------------------------------------------------------
-# Telechargement verifie
+# Verified download
 # --------------------------------------------------------------------------------------------------
 
 def sha256_file(path, chunk=1 << 20):
@@ -111,24 +112,24 @@ def sha256_file(path, chunk=1 << 20):
 def _check_url(url):
     parts = urllib.parse.urlparse(url)
     if parts.scheme != "https" or parts.hostname not in ALLOWED_HOSTS:
-        raise ValueError("source non autorisee : %s (seulement HTTPS vers %s)" % (url, ", ".join(ALLOWED_HOSTS)))
+        raise ValueError("source not allowed: %s (HTTPS to %s only)" % (url, ", ".join(ALLOWED_HOSTS)))
 
 
 def download_geoid(vertical_id, dest_dir, overwrite=False, progress=None, timeout=60, opener=None):
-    """Telecharge la grille du catalogue dans `dest_dir` ; verifie taille ET sha256 AVANT de la poser.
+    """Download the catalogue grid into `dest_dir`; checks size AND sha256 BEFORE putting it in place.
 
-    * HTTPS uniquement, hotes de ALLOWED_HOSTS, au plus MAX_DOWNLOAD_BYTES ;
-    * ecrit dans un fichier temporaire du meme dossier, renomme seulement si le hash est bon (atomique) ;
-    * ne remplace jamais un fichier existant sauf `overwrite=True` ;
-    * ne s'execute rien : c'est une donnee. Renvoie le chemin final. Leve ValueError / OSError.
-    `progress(octets_recus, octets_total)` optionnel ; `opener` (tests) remplace urllib.request.urlopen.
+    * HTTPS only, hosts from ALLOWED_HOSTS, at most MAX_DOWNLOAD_BYTES;
+    * writes to a temporary file in the same folder, renamed only if the hash is correct (atomic);
+    * never replaces an existing file unless `overwrite=True`;
+    * nothing is executed: it is data. Returns the final path. Raises ValueError / OSError.
+    `progress(bytes_received, bytes_total)` optional; `opener` (tests) replaces urllib.request.urlopen.
     """
     spec = vertical_by_id(vertical_id)
     if spec is None or not spec.get("url"):
-        raise ValueError("pas de source officielle telechargeable pour %r" % (vertical_id,))
+        raise ValueError("no official downloadable source for %r" % (vertical_id,))
     _check_url(spec["url"])
     if spec["size"] > MAX_DOWNLOAD_BYTES:
-        raise ValueError("fichier trop gros (%d octets)" % spec["size"])
+        raise ValueError("file too large (%d bytes)" % spec["size"])
     os.makedirs(dest_dir, exist_ok=True)
     final = os.path.join(dest_dir, spec["file"])
     if os.path.exists(final) and not overwrite:
@@ -146,15 +147,16 @@ def download_geoid(vertical_id, dest_dir, overwrite=False, progress=None, timeou
                     break
                 got += len(block)
                 if got > MAX_DOWNLOAD_BYTES:
-                    raise ValueError("telechargement trop gros")
+                    raise ValueError("download too large")
                 out.write(block)
                 if progress:
                     progress(got, total)
         if os.path.getsize(tmp) != spec["size"]:
-            raise ValueError("taille recue %d, attendue %d" % (os.path.getsize(tmp), spec["size"]))
+            raise ValueError("received size %d, expected %d" % (os.path.getsize(tmp), spec["size"]))
         digest = sha256_file(tmp)
         if digest != spec["sha256"]:
-            raise ValueError("sha256 inattendu : %s (attendu %s)" % (digest, spec["sha256"]))
+            raise ValueError("unexpected sha256: %s (expected %s)" % (digest, spec["sha256"]))
+
         os.replace(tmp, final)
         return final
     finally:

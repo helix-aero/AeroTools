@@ -1,23 +1,23 @@
-"""Rapport PDF et export CSV des GCP du chunk courant (FastGCP).
+"""PDF report and CSV export of the GCPs of the current chunk (FastGCP).
 
-Trois couches, separees pour pouvoir tester la premiere sans Qt :
+Three layers, kept apart so that the first one can be tested without Qt:
 
-  collect_data(chunk)        lit le chunk et calcule les statistiques (pur Python)
-  collect_images(state, d)   prend les captures d'ecran (Qt, dans Metashape)
-  build_pdf(data, path, ..)  peint le PDF avec QPdfWriter et QPainter
+  collect_data(chunk)        reads the chunk and computes the statistics (pure Python)
+  collect_images(state, d)   takes the screenshots (Qt, inside Metashape)
+  build_pdf(data, path, ..)  paints the PDF with QPdfWriter and QPainter
 
-`export_pdf(state)` et `export_csv(state)` sont les points d'entree du panneau :
-ils demandent le fichier, ecrivent, journalisent, et ne levent jamais.
+`export_pdf(state)` and `export_csv(state)` are the entry points of the panel:
+they ask for the file, write it, log, and never raise.
 
-Choix de rendu :
-  - A4 a 300 dpi, tout est peint en vectoriel (graphiques compris) ;
-  - les polices variables Rubik et Manrope ne gardent pas leurs graisses dans
-    un PDF Qt (Qt5 n'expose que l'instance par defaut, Qt6 l'embarque sans ses
-    variations). Les titres et les chiffres cles sont donc peints en contours
-    (QPainterPath), la graisse venant de la police si Qt la fournit, sinon d'un
-    leger trait de contour. Le texte courant (tableau, legendes) reste du vrai
-    texte, selectionnable, en Segoe UI (repli : police sans empattement du poste) ;
-  - jamais de dependance hors Qt.
+Rendering choices:
+  - A4 at 300 dpi, everything is painted as vector graphics (charts included);
+  - the variable fonts Rubik and Manrope do not keep their weights in a Qt PDF
+    (Qt5 only exposes the default instance, Qt6 embeds it without its variations).
+    Titles and key figures are therefore painted as outlines (QPainterPath), the
+    weight coming from the font if Qt provides it, otherwise from a light outline
+    stroke. Running text (table, legends) stays real, selectable text, in
+    Segoe UI (fallback: the sans-serif font of the machine);
+  - no dependency outside Qt.
 """
 
 import csv
@@ -32,21 +32,21 @@ from ...qt import QtCore, QtGui, QtWidgets
 from . import review
 
 # --------------------------------------------------------------------------
-# Constantes
+# Constants
 # --------------------------------------------------------------------------
 
 DPI = 300
-PT_TO_DEVICE = DPI / 72.0           # le peintre travaille en points (1/72 pouce)
+PT_TO_DEVICE = DPI / 72.0           # the painter works in points (1/72 inch)
 MARGIN = 40.0
-BAR_LIMIT = 20                      # barres du graphique des erreurs
-THRESHOLD_FACTOR = 2.0              # mise en evidence : valeur > 2 x RMS
-MIN_FOR_THRESHOLD = 3               # pas de seuil avec moins de 3 mesures
-CROP_W, CROP_H = 330, 220           # vignette autour de la projection, en pixels image
-CROP_ZOOM = 3                       # agrandissement de la vignette
-ROW_H = 15.0                        # hauteur d'une ligne du tableau
-TEXT_SCALE = 10                     # le texte est dessine a 10x puis reduit
+BAR_LIMIT = 20                      # bars of the error chart
+THRESHOLD_FACTOR = 2.0              # highlighted when the value is > 2 x RMS
+MIN_FOR_THRESHOLD = 3               # no threshold with fewer than 3 measurements
+CROP_W, CROP_H = 330, 220           # thumbnail around the projection, in image pixels
+CROP_ZOOM = 3                       # thumbnail magnification
+ROW_H = 15.0                        # height of a table row
+TEXT_SCALE = 10                     # text is drawn at 10x then scaled down
 
-# Palette du rapport : toujours claire, quel que soit le theme du panneau.
+# Report palette: always light, whatever the theme of the panel.
 INK = "#111214"
 INK_2 = "#2b2e33"
 MUTED = "#5d6067"
@@ -71,27 +71,26 @@ DOT = "·"
 # --------------------------------------------------------------------------
 
 def fmt_num(value, decimals=3):
-    """Nombre dans la langue du rapport (virgule en francais, point en anglais).
+    """Number formatted for the report (decimal point).
 
-    Tiret cadratin si la valeur est absente ou illisible. La langue est lue a
-    chaque appel : celle qui est choisie au moment de l'export.
+    Em dash if the value is missing or unreadable.
     """
     return i18n.fmt_number(value, decimals) or EM_DASH
 
 
 def fmt_m(value, decimals=3):
-    """« 0,123 m » ou un tiret."""
+    """"0.123 m" or a dash."""
     text = fmt_num(value, decimals)
     return text if text == EM_DASH else text + " m"
 
 
 def _typo(text):
-    """Moins typographique pour le texte courant."""
+    """Typographic minus sign for running text."""
     return MINUS + text[1:] if text and text[0] == "-" else text
 
 
 def safe_name(text, default="Chunk"):
-    """Nom de fichier sur : ASCII, sans espaces ni caracteres speciaux."""
+    """Safe file name: ASCII, no spaces or special characters."""
     text = unicodedata.normalize("NFKD", str(text or ""))
     text = text.encode("ascii", "ignore").decode("ascii")
     text = re.sub(r"[^A-Za-z0-9._-]+", "_", text).strip("._-")
@@ -100,9 +99,9 @@ def safe_name(text, default="Chunk"):
 
 
 def suggested_filename(chunk_label, ext=".pdf", today=None, kind=None):
-    """`AAAA-MM-JJ_Rapport_GCP_<chunk>.pdf`, ou `YYYY-MM-DD_GCP_report_<chunk>.pdf` en anglais.
+    """`YYYY-MM-DD_GCP_report_<chunk>.pdf`.
 
-    `kind` : mot du nom (par defaut, celui du rapport dans la langue choisie).
+    `kind`: the word of the name (by default the report one, from the text catalog).
     """
     day = today or datetime.date.today()
     if kind is None:
@@ -111,7 +110,7 @@ def suggested_filename(chunk_label, ext=".pdf", today=None, kind=None):
 
 
 def project_path():
-    """Chemin du projet .psx ouvert, ou chaine vide."""
+    """Path of the open .psx project, or an empty string."""
     try:
         return str(getattr(msapi.document(), "path", "") or "")
     except Exception:
@@ -119,7 +118,7 @@ def project_path():
 
 
 def project_directory():
-    """Dossier du projet .psx s'il existe, sinon None."""
+    """Folder of the .psx project if it exists, otherwise None."""
     path = project_path()
     if path:
         folder = os.path.dirname(path)
@@ -129,7 +128,7 @@ def project_directory():
 
 
 def default_directory():
-    """Dossier propose a l'enregistrement : projet, sinon Documents, sinon base."""
+    """Folder offered when saving: project, else Documents, else home."""
     folder = project_directory()
     if folder:
         return folder
@@ -144,7 +143,7 @@ def default_directory():
 
 
 # --------------------------------------------------------------------------
-# Donnees (sans Qt)
+# Data (no Qt)
 # --------------------------------------------------------------------------
 
 def _finite(value):
@@ -156,10 +155,10 @@ def _finite(value):
 
 
 def _fallback_errors(chk, marker):
-    """Erreurs d'un marqueur si msapi.marker_errors n'existe pas (encore).
+    """Errors of a marker if msapi.marker_errors does not exist (yet).
 
-    Methode de l'exemple officiel de l'API Metashape : estimee moins reference,
-    ramenee dans le repere local (est, nord, haut) au point du marqueur.
+    Method of the official Metashape API example: estimated minus reference,
+    brought into the local frame (east, north, up) at the marker point.
     """
     try:
         reference = marker.reference.location
@@ -180,7 +179,7 @@ def _fallback_errors(chk, marker):
 
 
 def _marker_errors(chk, marker):
-    """{"x","y","z","total"} en metres, valeurs None si inconnues. Ne leve pas."""
+    """{"x","y","z","total"} in metres, None values when unknown. Never raises."""
     reader = getattr(msapi, "marker_errors", None)
     try:
         raw = reader(chk, marker) if reader is not None else _fallback_errors(chk, marker)
@@ -194,7 +193,7 @@ def _marker_errors(chk, marker):
 
 
 def _reference_xyz(marker):
-    """Coordonnees de reference (x, y, z) du marqueur, ou None."""
+    """Reference coordinates (x, y, z) of the marker, or None."""
     try:
         location = marker.reference.location
         if location is None:
@@ -236,11 +235,11 @@ def _meta():
 
 
 def collect_data(chunk, today=None):
-    """Lit les marqueurs du chunk. Pur Python, aucun appel Qt.
+    """Reads the markers of the chunk. Pure Python, no Qt call.
 
-    Renvoie {"chunk": nom, "date": date, "meta": {...}, "markers": [...],
-    "stats": {...}}. Un marqueur : label, x, y, z, total (m, ou None),
-    projections (int), pointed (bool), ref ((x, y, z) ou None).
+    Returns {"chunk": name, "date": date, "meta": {...}, "markers": [...],
+    "stats": {...}}. A marker: label, x, y, z, total (m, or None),
+    projections (int), pointed (bool), ref ((x, y, z) or None).
     """
     markers = []
     for marker in msapi.markers(chunk):
@@ -302,15 +301,15 @@ def collect_data(chunk, today=None):
 
 
 def over_threshold(value, threshold):
-    """True si |value| depasse le seuil (seuil None : jamais)."""
+    """True if |value| exceeds the threshold (a None threshold: never)."""
     return value is not None and threshold is not None and abs(value) > threshold
 
 
 def projection_bins(counts, max_bins=12):
-    """Regroupe les comptes de projections pour l'histogramme.
+    """Groups the projection counts for the histogram.
 
-    Renvoie [(libelle, effectif, contient_zero)]. Un groupe par valeur tant que
-    le maximum est petit, sinon des groupes de largeur egale.
+    Returns [(label, count, contains_zero)]. One bin per value as long as the
+    maximum is small, otherwise bins of equal width.
     """
     if not counts:
         return []
@@ -340,12 +339,12 @@ def csv_header(with_reference):
 
 
 def _csv_num(value):
-    """Nombre du CSV : vide si inconnu (Excel lit mieux une cellule vide qu'un tiret)."""
+    """CSV number: empty when unknown (Excel reads an empty cell better than a dash)."""
     return "" if value is None else fmt_num(value)
 
 
 def csv_rows(data):
-    """Lignes du CSV (listes de textes), en-tete compris."""
+    """Rows of the CSV (lists of strings), header included."""
     markers = data["markers"]
     with_ref = any(m.get("ref") for m in markers)
     rows = [csv_header(with_ref)]
@@ -365,10 +364,7 @@ def csv_rows(data):
 
 
 def write_csv(data, path):
-    """Ecrit le CSV, UTF-8 avec BOM (Excel), dans la langue choisie.
-
-    Francais : point-virgule et virgule decimale. Anglais : virgule et point.
-    """
+    """Writes the CSV, UTF-8 with BOM (Excel), comma-delimited with a decimal point."""
     with open(path, "w", newline="", encoding="utf-8-sig") as handle:
         writer = csv.writer(handle, delimiter=i18n.csv_delimiter(), lineterminator="\r\n")
         for row in csv_rows(data):
@@ -377,7 +373,7 @@ def write_csv(data, path):
 
 
 # --------------------------------------------------------------------------
-# Outils de dessin
+# Drawing tools
 # --------------------------------------------------------------------------
 
 def _font_families():
@@ -403,10 +399,10 @@ def _font_styles(family):
 
 
 class _Style(object):
-    """Polices du rapport. Une instance par PDF."""
+    """Fonts of the report. One instance per PDF."""
 
-    # Graisses : 0 normal, 1 moyen, 2 demi-gras, 3 gras.
-    FAUX_STROKE = (0.010, 0.020, 0.032, 0.044)   # x taille, si Qt n'a qu'une graisse
+    # Weights: 0 normal, 1 medium, 2 semi-bold, 3 bold.
+    FAUX_STROKE = (0.010, 0.020, 0.032, 0.044)   # x size, if Qt only has one weight
 
     def __init__(self):
         try:
@@ -431,13 +427,13 @@ class _Style(object):
         return font
 
     def display_font(self, px, weight):
-        """(police, epaisseur de trait en points)."""
+        """(font, stroke width in points)."""
         font = QtGui.QFont(self.display_family)
         font.setPixelSize(max(1, int(round(px * TEXT_SCALE))))
         font.setHintingPreference(QtGui.QFont.PreferNoHinting)
         weight = max(0, min(3, int(weight)))
         if self.real_weights:
-            # Rubik reel : on reste un cran sous les noms pour rester proche du rendu Qt5.
+            # Real Rubik: stay one step below the names to stay close to the Qt5 rendering.
             font.setWeight((QtGui.QFont.Normal, QtGui.QFont.Medium,
                             QtGui.QFont.Medium, QtGui.QFont.DemiBold)[weight])
             return font, 0.0
@@ -467,7 +463,7 @@ def _qcolor(color, alpha=1.0):
 
 
 def _nice_top(value, divisions=4):
-    """(sommet, pas) d'un axe qui part de 0 et couvre `value`."""
+    """(top, step) of an axis that starts at 0 and covers `value`."""
     if value is None or value <= 0:
         return 1.0, 0.25
     raw = value / float(divisions)
@@ -489,13 +485,13 @@ def _tick_decimals(step):
 
 
 class _Canvas(object):
-    """Un QPainter et les primitives du rapport (unites : points)."""
+    """A QPainter and the drawing primitives of the report (units: points)."""
 
     def __init__(self, painter, style):
         self.p = painter
         self.st = style
 
-    # -- texte ------------------------------------------------------------
+    # -- text -------------------------------------------------------------
 
     def width(self, text, px, kind="body", weight=1, spacing=0.0):
         text = str(text)
@@ -505,7 +501,7 @@ class _Canvas(object):
 
     def text(self, x, y, text, px, color=INK, kind="body", weight=1, align="l",
              alpha=1.0, spacing=0.0):
-        """Ecrit `text` avec la ligne de base en `y`. Renvoie la largeur."""
+        """Writes `text` with the baseline at `y`. Returns the width."""
         text = str(text)
         if not text:
             return 0.0
@@ -553,10 +549,10 @@ class _Canvas(object):
         p.restore()
 
     def link(self, x, y, text, px, url, kind="body", weight=1, align="l"):
-        """Rend cliquable (lien PDF) le texte deja ecrit avec la ligne de base en `y`.
+        """Makes the text already written with the baseline at `y` clickable (PDF link).
 
-        Un QTextDocument invisible porte l'ancre : Qt en fait une annotation de lien. La zone
-        suit la police du systeme, a quelques points pres de celle du texte ecrit.
+        An invisible QTextDocument carries the anchor: Qt turns it into a link annotation. The
+        area follows the system font, within a few points of the font of the written text.
         """
         text = str(text)
         width = self.width(text, px, kind, weight)
@@ -578,7 +574,7 @@ class _Canvas(object):
         p.restore()
 
     def fit(self, text, px, max_width, kind="body", weight=1):
-        """Raccourcit `text` avec une ellipse pour tenir dans `max_width`."""
+        """Shortens `text` with an ellipsis to fit in `max_width`."""
         text = str(text)
         if self.width(text, px, kind, weight) <= max_width:
             return text
@@ -587,7 +583,7 @@ class _Canvas(object):
         return text.rstrip() + "…"
 
     def wrap(self, text, px, max_width, kind="body", weight=1, max_lines=3):
-        """Coupe `text` en lignes de largeur `max_width` (au plus `max_lines`)."""
+        """Splits `text` into lines of width `max_width` (at most `max_lines`)."""
         lines, current = [], ""
         for word in str(text).split():
             trial = (current + " " + word).strip()
@@ -603,7 +599,7 @@ class _Canvas(object):
             lines[-1] = self.fit(lines[-1] + " …", px, max_width, kind, weight)
         return lines
 
-    # -- formes -----------------------------------------------------------
+    # -- shapes -----------------------------------------------------------
 
     def rect(self, x, y, w, h, fill=None, line=None, radius=0.0, line_w=0.6, alpha=1.0):
         p = self.p
@@ -642,7 +638,7 @@ class _Canvas(object):
 
 
 # --------------------------------------------------------------------------
-# Elements de page
+# Page elements
 # --------------------------------------------------------------------------
 
 def _fmt_date(day):
@@ -674,7 +670,7 @@ def _gradient_brush(x0, y0, x1, y1):
 
 
 def _rule(cv, W, height=3.0):
-    """Filet du degrade du logo en haut de page."""
+    """Logo gradient rule at the top of the page."""
     cv.p.setPen(QtCore.Qt.NoPen)
     cv.p.setBrush(_gradient_brush(0, height, W, 0))
     cv.p.drawRect(QtCore.QRectF(0, 0, W, height))
@@ -690,7 +686,7 @@ def _page_title(cv, W, data, title, subtitle=None):
 
 
 def _draw_band(cv, W, data):
-    """Bandeau titre de la page 1."""
+    """Title band of page 1."""
     height = 132.0
     cv.p.setPen(QtCore.Qt.NoPen)
     cv.p.setBrush(_gradient_brush(0, height, W, 0))
@@ -774,7 +770,7 @@ def _empty_note(cv, x, y, w, h, text=None):
 
 
 def _bar_chart(cv, x, y, w, h, data):
-    """Barres horizontales : erreur totale par marqueur, tri decroissant."""
+    """Horizontal bars: total error per marker, sorted in descending order."""
     s = data["stats"]
     cv.card(x, y, w, h)
     valid = [m for m in data["markers"] if m["total"] is not None]
@@ -836,7 +832,7 @@ def _bar_chart(cv, x, y, w, h, data):
 
 
 def _scatter_chart(cv, x, y, w, h, data):
-    """Dispersion en plan : erreur X en abscisse, erreur Y en ordonnee."""
+    """Plan scatter: X error on the abscissa, Y error on the ordinate."""
     s = data["stats"]
     cv.card(x, y, w, h)
     _card_title(cv, x, y, i18n.t("report.scatter.title"), i18n.t("report.scatter.sub"))
@@ -954,7 +950,7 @@ def _page_summary(cv, W, H, data, page, total):
 
 
 # --------------------------------------------------------------------------
-# Tableau
+# Table
 # --------------------------------------------------------------------------
 
 TABLE_TOP = 78.0
@@ -963,14 +959,14 @@ HIST_H = 176.0
 
 
 def _table_plan(n_rows, H):
-    """Repartition des lignes sur les pages : (pages_de_lignes, histo_avec_derniere).
+    """Distribution of the rows over the pages: (rows_per_page, histogram_with_last).
 
-    `pages_de_lignes` est une liste de nombres de lignes. L'histogramme se met
-    sous la derniere table s'il y a la place, sinon il a sa page.
+    `rows_per_page` is a list of row counts. The histogram goes under the last
+    table if there is room, otherwise it gets its own page.
     """
     bottom = H - 46.0
     per_page = int((bottom - TABLE_TOP - TABLE_HEAD_H - 8.0) // ROW_H)
-    # Sous la table : 22 pt de legende, puis l'histogramme, avant le filet du pied.
+    # Under the table: 22 pt of legend, then the histogram, before the footer rule.
     with_hist = int((H - 48.0 - TABLE_TOP - TABLE_HEAD_H - 8.0 - 22.0 - HIST_H) // ROW_H)
     n_rows = max(n_rows, 0)
     chunks = []
@@ -997,7 +993,7 @@ def _draw_table(cv, x, y, w, rows, stats, first_index):
     for width in reversed(col_w):
         cols.append(edge)
         edge -= width
-    cols.reverse()                                    # bords droits des 5 colonnes
+    cols.reverse()                                    # right edges of the 5 columns
     heads = [i18n.t(key) for key in ("report.table.x", "report.table.y", "report.table.z",
                                      "report.table.total", "report.table.proj")]
     cv.rect(x + 0.3, y + 0.3, w - 0.6, TABLE_HEAD_H, fill="#ecece8", radius=6.5)
@@ -1081,7 +1077,7 @@ def _histogram_card(cv, x, y, w, h, data):
 
 
 def _draw_table_pages(draw_page, cv, W, H, data, first_page_no, total):
-    """Peint les pages du tableau. `draw_page()` ouvre une nouvelle page."""
+    """Paints the table pages. `draw_page()` opens a new page."""
     plan, hist_inline = _table_plan(len(data["markers"]), H)
     inner = W - 2 * MARGIN
     markers = data["markers"]
@@ -1132,7 +1128,7 @@ def _table_pages_count(n_rows, H):
 
 
 # --------------------------------------------------------------------------
-# Captures
+# Screenshots
 # --------------------------------------------------------------------------
 
 def _fit_box(iw, ih, bw, bh):
@@ -1151,7 +1147,7 @@ def _caption_height(lines):
 
 
 def _capture_height(image, width, lines, max_h):
-    """Hauteur naturelle d'une carte de capture de largeur `width`, plafonnee a `max_h`."""
+    """Natural height of a screenshot card of width `width`, capped at `max_h`."""
     caption_h = _caption_height(lines)
     _iw, ih = _fit_box(image.width(), image.height(), width - 2 * CARD_PAD,
                        max_h - 2 * CARD_PAD - caption_h)
@@ -1159,7 +1155,7 @@ def _capture_height(image, width, lines, max_h):
 
 
 def _capture_card(cv, x, y, w, h, image, lines):
-    """Carte avec l'image centree en haut et sa legende en dessous. Renvoie h."""
+    """Card with the image centred at the top and its caption below. Returns h."""
     cv.card(x, y, w, h)
     caption_h = _caption_height(lines)
     iw, ih = _fit_box(image.width(), image.height(), w - 2 * CARD_PAD,
@@ -1247,15 +1243,15 @@ def _page_captures(cv, W, H, data, images, page, total):
 
 
 # --------------------------------------------------------------------------
-# Photos pointees par l'IA : une vignette par photo, croix rouge et indice de confiance
+# Photos picked by the AI: one thumbnail per photo, red cross and confidence value
 # --------------------------------------------------------------------------
 
-AI_CELL = 58.0                      # cote d'une vignette, en points
+AI_CELL = 58.0                      # side of a thumbnail, in points
 AI_GAP = 7.0
 AI_CAPTION_H = 11.0
-AI_HEAD_H = 42.0                    # titre du marqueur + deux lignes d'informations
-AI_THUMB_PX = 160                   # cote de la vignette peinte, en pixels
-AI_FALLBACK_PX = 96                 # region lue dans la photo quand le recadrage n'existe plus
+AI_HEAD_H = 42.0                    # marker title + two lines of information
+AI_THUMB_PX = 160                   # side of the painted thumbnail, in pixels
+AI_FALLBACK_PX = 96                 # region read from the photo when the crop no longer exists
 AI_RED = "#ff4a2e"
 SITE_URL = "https://helix.aero"
 SITE_TEXT = "helix.aero"
@@ -1267,11 +1263,11 @@ def _ai_columns(width):
 
 
 def _ai_plan(sections, width=A4_W, height=A4_H):
-    """Pages des photos pointees par l'IA, sans rien dessiner.
+    """Pages of the photos picked by the AI, without drawing anything.
 
-    `sections` : [{"label": str, "items": [...]}]. Renvoie une liste de pages ; une page est
-    une liste de ("head", section, suite) ou ("row", [items]). Un marqueur qui ne tient pas
-    sur la page continue sur la suivante, avec son titre repete.
+    `sections`: [{"label": str, "items": [...]}]. Returns a list of pages; a page is a
+    list of ("head", section, continued) or ("row", [items]). A marker that does not fit on
+    the page continues on the next one, with its title repeated.
     """
     cols = _ai_columns(width)
     row_h = AI_CELL + AI_CAPTION_H + AI_GAP
@@ -1336,9 +1332,9 @@ def _median_of(values):
 
 
 def ai_info_parts(info):
-    """Phrases courtes decrivant un marqueur dans le rapport : erreur, pointage, confiance, GCP.
+    """Short phrases describing a marker in the report: error, pointing, confidence, GCP.
 
-    `info` : dict de ai_sections (cles absentes ou None = on n'en parle pas). Sans Qt.
+    `info`: dict from ai_sections (missing or None keys are not mentioned). No Qt.
     """
     parts = []
     if info.get("total") is not None:
@@ -1369,7 +1365,7 @@ def ai_info_parts(info):
 
 
 def _ai_mark(image, cx, cy, color):
-    """Croix a quatre branches (vide au centre, halo blanc) sur une vignette de AI_THUMB_PX."""
+    """Four-armed cross (empty centre, white halo) on a thumbnail of AI_THUMB_PX."""
     marked = image.convertToFormat(QtGui.QImage.Format_RGB32)
     painter = QtGui.QPainter(marked)
     try:
@@ -1386,7 +1382,7 @@ def _ai_mark(image, cx, cy, color):
 
 
 def _ai_excluded(image):
-    """Vignette d'une photo exclue : assombrie, avec une grande croix rouge d'un coin a l'autre."""
+    """Thumbnail of an excluded photo: darkened, with a large red cross from corner to corner."""
     marked = image.convertToFormat(QtGui.QImage.Format_RGB32)
     painter = QtGui.QPainter(marked)
     try:
@@ -1404,10 +1400,10 @@ def _ai_excluded(image):
 
 
 def _ai_thumb(entry, excluded=False):
-    """Vignette carree d'une proposition, croix sur son point ; None si la photo est illisible.
+    """Square thumbnail of a proposal, cross on its point; None if the photo is unreadable.
 
-    On reprend le recadrage ecrit par la detection quand il existe encore ; sinon on lit
-    la region dans la photo d'origine. Une photo `excluded` porte une grande croix rouge.
+    The crop written by the detection is reused when it still exists; otherwise the region
+    is read from the original photo. An `excluded` photo carries a large red cross.
     """
     x, y = entry["x"], entry["y"]
     if review.has_crop(entry) and os.path.isfile(entry["big"]):
@@ -1439,10 +1435,10 @@ def _natural(label):
 
 
 def _ai_still_there(entry):
-    """La proposition est-elle toujours dans le projet, dans l'etat que le journal lui donne ?
+    """Is the proposal still in the project, in the state the journal gives it?
 
-    Gardee : projection non posee. Validee ou affinee : projection posee a la main (un
-    Ctrl+Z ou un « Effacer » apres coup la fait sortir du rapport).
+    Kept: projection not placed. Accepted or refined: projection placed by hand (a later
+    Ctrl+Z or "Delete" takes it out of the report).
     """
     projection = msapi.get_projection(entry["marker"], entry["camera"])
     if projection is None:
@@ -1451,11 +1447,11 @@ def _ai_still_there(entry):
 
 
 def _ai_info(entries, data):
-    """Informations d'un marqueur pour l'en-tete de sa section (voir ai_info_parts).
+    """Information about a marker for the header of its section (see ai_info_parts).
 
-    L'erreur et le nombre de projections viennent de `data` (collect_data) ; la precision de
-    pointage est l'ecart, en pixels, entre chaque point retenu et la reprojection du point 3D
-    du marqueur ; la confiance est celle de l'IA sur les points retenus.
+    The error and the number of projections come from `data` (collect_data); the pointing
+    accuracy is the gap, in pixels, between each retained point and the reprojection of the
+    3D point of the marker; the confidence is the AI one on the retained points.
     """
     marker = entries[0]["marker"]
     info = {}
@@ -1478,11 +1474,11 @@ def _ai_info(entries, data):
 
 
 def ai_sections(state, data=None):
-    """Vignettes des photos pointees par l'IA, par marqueur : [{"label", "items": [...], "info": {...}}].
+    """Thumbnails of the photos picked by the AI, per marker: [{"label", "items": [...], "info": {...}}].
 
-    Les propositions gardees, validees ou affinees comptent si leur projection existe encore
-    dans le projet ; les photos exclues y figurent aussi, avec une grande croix rouge, sans
-    entrer dans les statistiques du marqueur. Une photo illisible est simplement absente.
+    Kept, accepted or refined proposals count if their projection still exists in the
+    project; excluded photos appear too, with a large red cross, without entering the
+    statistics of the marker. An unreadable photo is simply absent.
     """
     grouped, kept, excluded = {}, {}, {}
     for entry in getattr(state, "aigcp_log", None) or []:
@@ -1494,7 +1490,7 @@ def ai_sections(state, data=None):
                 continue
             image = _ai_thumb(entry, excluded=out)
         except Exception as exc:
-            journal.write("Rapport : vignette IA ignorée : {!r}".format(exc))
+            journal.write("Report: AI thumbnail skipped: {!r}".format(exc))
             continue
         if image is None:
             continue
@@ -1518,7 +1514,7 @@ def ai_sections(state, data=None):
         try:
             info = _ai_info(kept[label], data) if label in kept else {}
         except Exception as exc:
-            journal.write("Rapport : informations de {} ignorées : {!r}".format(label, exc))
+            journal.write("Report: information for {} skipped: {!r}".format(label, exc))
             info = {}
         if excluded.get(label):
             info["excluded"] = excluded[label]
@@ -1548,18 +1544,19 @@ def _new_writer(path, title):
 
 
 def page_count(data, images=None):
-    """Nombre de pages que build_pdf produira (A4 : 842 pt de haut)."""
+    """Number of pages that build_pdf will produce (A4: 842 pt high)."""
     ai = len(_ai_plan((images or {}).get("ai_picks") or []))
     return 1 + _table_pages_count(len(data["markers"]), 841.89) + (1 if _has_images(images) else 0) + ai
 
 
 def build_pdf(data, path, images=None):
-    """Peint le rapport dans `path` et renvoie le nombre de pages.
+    """Paints the report into `path` and returns the number of pages.
 
-    `images` (toutes optionnelles) : {"photo": QImage, "photo_caption": str,
+    `images` (all optional): {"photo": QImage, "photo_caption": str,
     "crops": [{"image": QImage, "caption": str}], "panel": QImage,
-    "panel_caption": str, "ai_picks": [{"label": str, "items": [...]}]} (voir ai_sections). Leve une exception si le fichier ne peut pas etre
-    ecrit : l'appelant (export_pdf) la transforme en message.
+    "panel_caption": str, "ai_picks": [{"label": str, "items": [...]}]} (see ai_sections).
+    Raises an exception if the file cannot be written: the caller (export_pdf) turns it into
+    a message.
     """
     if QtWidgets.QApplication.instance() is None:
         raise RuntimeError(i18n.t("err.no_qt"))
@@ -1613,11 +1610,11 @@ def _remove(path):
 
 
 # --------------------------------------------------------------------------
-# Captures d'ecran (Qt, dans Metashape)
+# Screenshots (Qt, inside Metashape)
 # --------------------------------------------------------------------------
 
 def _to_image(obj):
-    """QImage depuis un QPixmap ou un QImage, None si vide."""
+    """QImage from a QPixmap or a QImage, None if empty."""
     try:
         image = obj.toImage() if hasattr(obj, "toImage") else obj
         return None if image is None or image.isNull() else image
@@ -1626,7 +1623,7 @@ def _to_image(obj):
 
 
 def looks_blank(image, grid=48):
-    """True si l'image est vide ou n'a qu'une ou deux couleurs (rendu GL rate)."""
+    """True if the image is empty or has only one or two colours (failed GL render)."""
     try:
         if image is None or image.isNull():
             return True
@@ -1653,7 +1650,7 @@ def _grab_widget(widget):
 
 
 def _grab_screen_region(widget):
-    """Plan B : pixels reellement affiches a l'ecran pour ce widget (rendu GL)."""
+    """Plan B: pixels actually displayed on screen for this widget (GL rendering)."""
     try:
         screen = QtGui.QGuiApplication.primaryScreen()
         window = widget.window()
@@ -1666,7 +1663,7 @@ def _grab_screen_region(widget):
 
 
 def _grab_photo_view():
-    """Capture de la vue photo ouverte, ou None."""
+    """Screenshot of the open photo view, or None."""
     for widget in msapi.photo_view_widgets():
         for grabber in (_grab_widget, _grab_screen_region):
             image = grabber(widget)
@@ -1676,11 +1673,11 @@ def _grab_photo_view():
 
 
 def _read_region(path, cx, cy, width, height, sensor):
-    """Region `width` x `height` (pixels) centree sur (cx, cy) dans le fichier image.
+    """Region `width` x `height` (pixels) centred on (cx, cy) in the image file.
 
-    (cx, cy) est en pixels du capteur Metashape. Renvoie (QImage, cx_local,
-    cy_local, echelle fichier/capteur) ou None si le fichier est illisible ou
-    n'a pas le meme format que le capteur.
+    (cx, cy) is in Metashape sensor pixels. Returns (QImage, local_cx,
+    local_cy, file/sensor scale) or None if the file is unreadable or does
+    not have the same aspect ratio as the sensor.
     """
     if not path or not os.path.isfile(path):
         return None
@@ -1714,7 +1711,7 @@ def _read_region(path, cx, cy, width, height, sensor):
 
 
 def _annotate(image, zoom, posed, estimated):
-    """Agrandit la vignette, dessine le point pose (cercle) et l'estime (croix)."""
+    """Enlarges the thumbnail, draws the placed point (circle) and the estimated one (cross)."""
     if zoom != 1:
         image = image.scaled(image.width() * zoom, image.height() * zoom,
                              QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
@@ -1752,7 +1749,7 @@ def _vec_xy(vec):
 
 
 def _marker_views(marker):
-    """[(ecart_px ou None, camera, (u, v) pose, (u, v) estime ou None)], ecart decroissant."""
+    """[(gap_px or None, camera, placed (u, v), estimated (u, v) or None)], gap descending."""
     views = []
     try:
         position = marker.position
@@ -1778,7 +1775,7 @@ def _marker_views(marker):
 
 
 def _crop_for_marker(marker, entry):
-    """Vignette annotee et sa legende pour un marqueur, ou None."""
+    """Annotated thumbnail and its caption for a marker, or None."""
     for gap, cam, posed, estimated in _marker_views(marker):
         region = _read_region(msapi.camera_image_path(cam), posed[0], posed[1],
                               CROP_W, CROP_H, msapi.camera_size(cam))
@@ -1802,7 +1799,7 @@ def _crop_for_marker(marker, entry):
 
 
 def _pick_crops(chk, data, limit=2):
-    """Vignettes des marqueurs les plus ecartes, sinon les moins pointes."""
+    """Thumbnails of the markers with the largest error, otherwise the least pointed ones."""
     by_label = {}
     for marker in msapi.markers(chk):
         by_label.setdefault(msapi.marker_label(marker), marker)
@@ -1820,7 +1817,7 @@ def _pick_crops(chk, data, limit=2):
         try:
             crop = _crop_for_marker(marker, entry)
         except Exception as exc:
-            journal.write("Rapport : vignette de {} ignorée : {!r}".format(entry["label"], exc))
+            journal.write("Report: thumbnail of {} skipped: {!r}".format(entry["label"], exc))
             continue
         if crop is not None:
             crops.append(crop)
@@ -1830,7 +1827,7 @@ def _pick_crops(chk, data, limit=2):
 
 
 def _photo_fallback(state):
-    """Plan B de la vue photo : recadrage large de l'image ouverte autour du marqueur courant."""
+    """Plan B for the photo view: wide crop of the open image around the current marker."""
     marker = getattr(state, "active_marker", None)
     cam = msapi.current_camera()
     if marker is None or cam is None:
@@ -1850,7 +1847,7 @@ def _photo_fallback(state):
 
 
 def collect_images(state, data):
-    """Captures pour la page 3. Chaque capture ratee est simplement absente."""
+    """Screenshots for page 3. Each failed screenshot is simply absent."""
     images = {}
     chk = msapi.chunk()
     try:
@@ -1881,21 +1878,21 @@ def collect_images(state, data):
         if photo is not None:
             images["photo"], images["photo_caption"] = photo, caption
     except Exception as exc:
-        journal.write("Rapport : capture de la vue photo ignorée : {!r}".format(exc))
+        journal.write("Report: photo view screenshot skipped: {!r}".format(exc))
 
     try:
         crops = _pick_crops(chk, data)
         if crops:
             images["crops"] = crops
     except Exception as exc:
-        journal.write("Rapport : vignettes ignorées : {!r}".format(exc))
+        journal.write("Report: thumbnails skipped: {!r}".format(exc))
 
     try:
         picks = ai_sections(state, data)
         if picks:
             images["ai_picks"] = picks
     except Exception as exc:
-        journal.write("Rapport : photos pointées par l'IA ignorées : {!r}".format(exc))
+        journal.write("Report: AI-picked photos skipped: {!r}".format(exc))
 
     try:
         panel = getattr(state, "panel", None)
@@ -1905,16 +1902,16 @@ def collect_images(state, data):
                 images["panel"] = image
                 images["panel_caption"] = i18n.t("report.shots.panel")
     except Exception as exc:
-        journal.write("Rapport : capture du panneau ignorée : {!r}".format(exc))
+        journal.write("Report: panel screenshot skipped: {!r}".format(exc))
     return images
 
 
 # --------------------------------------------------------------------------
-# Dialogues (isoles pour pouvoir les remplacer dans les tests)
+# Dialogs (isolated so that tests can replace them)
 # --------------------------------------------------------------------------
 
 def ask_save_path(parent, caption, default_path, name_filter):
-    """Chemin choisi par l'utilisateur, ou chaine vide."""
+    """Path chosen by the user, or an empty string."""
     result = QtWidgets.QFileDialog.getSaveFileName(parent, caption, default_path, name_filter)
     path = result[0] if isinstance(result, (tuple, list)) else result
     return str(path or "")
@@ -1932,11 +1929,11 @@ def show_message(parent, title, text, warning=False):
             title, text, QtWidgets.QMessageBox.Ok, parent)
         _exec(box)
     except Exception:
-        msapi.message_box("{} : {}".format(title, text))
+        msapi.message_box("{}: {}".format(title, text))
 
 
 def offer_open(parent, title, path):
-    """Petite boite avec un bouton pour ouvrir le fichier. Renvoie True si ouvert."""
+    """Small box with a button to open the file. Returns True if opened."""
     try:
         box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Information, title,
                                     i18n.t("dlg.saved", path=path),
@@ -1947,7 +1944,7 @@ def offer_open(parent, title, path):
         if box.clickedButton() is open_button:
             return open_file(path)
     except Exception as exc:
-        journal.write("Rapport : ouverture proposée impossible : {!r}".format(exc))
+        journal.write("Report: could not offer to open the file: {!r}".format(exc))
     return False
 
 
@@ -1985,25 +1982,22 @@ def _explain(exc):
 
 
 def _fail(state, parent, kind, exc):
-    """Echec d'un export (`kind` : "pdf" ou "csv") : journal, statut, message.
-
-    Le journal technique reste en francais quelle que soit la langue choisie.
-    """
-    journal.write("Rapport : Export {} impossible : {!r}".format(str(kind).upper(), exc))
+    """Failure of an export (`kind`: "pdf" or "csv"): journal, status, message."""
+    journal.write("Report: {} export failed: {!r}".format(str(kind).upper(), exc))
     what = i18n.t("err." + kind)
     _status(state, what)
     show_message(parent, what, _explain(exc), warning=True)
 
 
 def _prepare(state, parent, ext, caption, name_filter, kind):
-    """Chunk, donnees et chemin choisi. Renvoie (data, path) ou (None, None)."""
+    """Chunk, data and chosen path. Returns (data, path) or (None, None)."""
     chk = msapi.chunk()
     if chk is None:
         show_message(parent, i18n.t("dlg.title"), i18n.t("dlg.no_chunk"), warning=True)
         return None, None
     data = collect_data(chk)
     if not data["markers"]:
-        journal.write("Rapport : aucun marqueur dans le chunk {}".format(data["chunk"]))
+        journal.write("Report: no marker in chunk {}".format(data["chunk"]))
         show_message(parent, i18n.t("dlg.title"), i18n.t("dlg.no_markers"), warning=True)
         return None, None
     default = os.path.join(default_directory(), suggested_filename(data["chunk"], ext, kind=kind))
@@ -2016,13 +2010,13 @@ def _prepare(state, parent, ext, caption, name_filter, kind):
 
 
 # --------------------------------------------------------------------------
-# Points d'entree du panneau
+# Entry points of the panel
 # --------------------------------------------------------------------------
 
 def export_pdf(state, parent=None):
-    """Demande le fichier, ecrit le rapport PDF. Renvoie le chemin, ou None.
+    """Asks for the file, writes the PDF report. Returns the path, or None.
 
-    Ne leve jamais : une erreur va au journal et dans un message lisible.
+    Never raises: an error goes to the journal and into a readable message.
     """
     try:
         data, path = _prepare(state, parent, ".pdf", i18n.t("dlg.save_pdf"),
@@ -2035,7 +2029,7 @@ def export_pdf(state, parent=None):
             pages = build_pdf(data, path, images)
         finally:
             _busy(False)
-        journal.write("Rapport PDF écrit : {} ({} pages, {} marqueurs)".format(
+        journal.write("PDF report written: {} ({} pages, {} markers)".format(
             path, pages, data["stats"]["n_markers"]))
         done = i18n.t("dlg.pdf_done")
         _status(state, done)
@@ -2047,14 +2041,14 @@ def export_pdf(state, parent=None):
 
 
 def export_csv(state, parent=None):
-    """Meme logique pour le CSV du tableau (Excel). Renvoie le chemin, ou None."""
+    """Same logic for the CSV of the table (Excel). Returns the path, or None."""
     try:
         data, path = _prepare(state, parent, ".csv", i18n.t("dlg.save_csv"),
                               i18n.t("dlg.filter_csv"), i18n.t("file.table"))
         if data is None:
             return None
         write_csv(data, path)
-        journal.write("Tableau CSV écrit : {} ({} marqueurs)".format(
+        journal.write("CSV table written: {} ({} markers)".format(
             path, data["stats"]["n_markers"]))
         done = i18n.t("dlg.csv_done")
         _status(state, done)

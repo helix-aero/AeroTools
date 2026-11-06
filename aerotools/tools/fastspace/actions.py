@@ -1,29 +1,29 @@
-"""Ce que Fast Space sait faire d'un projet : l'alleger (version douce) ou le supprimer (version dure).
+"""What Fast Space can do with a project: lighten it (soft version) or delete it (hard version).
 
-Deux sorts possibles pour ce qu'on retire :
-  RECYCLE    corbeille Windows : on peut tout restaurer tant qu'on ne la vide pas (disque local seulement ;
-             sur un lecteur reseau Windows n'a pas de corbeille) ;
-  PERMANENT  suppression definitive. L'interface demande alors de taper DELETE.
+Two possible fates for what is removed:
+  RECYCLE    Windows recycle bin: everything can be restored as long as it is not emptied (local disk only;
+             a Windows network drive has no recycle bin);
+  PERMANENT  permanent deletion. The interface then asks to type DELETE.
 
-Alleger (`lighten`) retire, au choix, le nuage dense, les cartes de profondeur et les orthophotos (les images
-redressees de l'ortho, `Orthomosaic.removeOrthophotos()`), en gardant l'alignement, les marqueurs, les MNT et les
-mosaiques. Pour que le projet reste coherent (Metashape garde la liste de ses
-nuages denses dans le fichier du projet), on passe par l'API de Metashape, qui efface lui-meme ses
-fichiers a l'enregistrement (mesure sur une copie : 1967 Mo -> 1087 Mo, projet rouvert sans erreur).
-L'allegement est donc toujours PERMANENT : il n'y a pas de corbeille possible. Essai fait : envoyer les
-dossiers a la corbeille AVANT, puis laisser l'API nettoyer, echoue (`chunk.remove` relit le nuage dense et
-leve « Can't open file dense_cloud.zip », le projet garde des nuages denses fantomes).
+Lightening (`lighten`) removes, at the user's choice, the dense cloud, the depth maps and the orthophotos (the rectified
+images of the orthomosaic, `Orthomosaic.removeOrthophotos()`), keeping the alignment, the markers, the DEMs and the
+mosaics. So that the project stays consistent (Metashape keeps the list of its
+dense clouds in the project file), the Metashape API is used, which deletes its own
+files on save (measured on a copy: 1967 MB -> 1087 MB, project reopened without error).
+Lightening is therefore always PERMANENT: no recycle bin is possible. Tried: sending the
+folders to the recycle bin BEFORE, then letting the API clean up, fails (`chunk.remove` reads the dense cloud again and
+raises "Can't open file dense_cloud.zip", the project keeps phantom dense clouds).
 
-  1. lecture seule : on note les chunks, cameras, marqueurs ;
-  2. l'API retire ce qui a ete choisi dans chaque chunk et enregistre ;
-  3. les dossiers et fichiers qui resteraient sont supprimes ;
-  4. verification : le projet se rouvre, memes cameras et marqueurs, plus rien de ce qui a ete choisi.
+  1. read-only: the chunks, cameras, markers are noted;
+  2. the API removes what was chosen in each chunk and saves;
+  3. the folders and files that would remain are deleted;
+  4. check: the project reopens, same cameras and markers, nothing left of what was chosen.
 
-Supprimer le projet (`delete_project`) retire le .psx et son dossier .files, et rien d'autre : les fichiers
-exportes a cote (ortho, MNT, nuages, rapports) ne sont pas touches.
+Deleting the project (`delete_project`) removes the .psx and its .files folder, and nothing else: the files
+exported next to it (orthomosaic, DEM, clouds, reports) are not touched.
 
-Jamais sur un projet ouvert (fichier `lock` tenu par un Metashape) ni sur celui qui est ouvert ici.
-Chaque action est ecrite dans un journal CSV (`<reglages>\\fastspace\\log.csv`).
+Never on an open project (`lock` file held by a Metashape) nor on the one that is open here.
+Each action is written to a CSV journal (`<settings>\\fastspace\\log.csv`).
 """
 
 import csv
@@ -47,20 +47,20 @@ RETRIES = 5
 
 
 class SpaceError(Exception):
-    """Echec lisible : le message s'affiche tel quel."""
+    """Readable failure: the message is shown as it is."""
 
 
 # --------------------------------------------------------------------------
-# Garde-fous
+# Safeguards
 # --------------------------------------------------------------------------
 
 def confirmed(text):
-    """Le mot de confirmation a-t-il ete tape ? (sans tenir compte des majuscules ni des espaces)"""
+    """Has the confirmation word been typed? (ignoring case and spaces)"""
     return str(text).strip().lower() == CONFIRM_WORD.lower()
 
 
 def current_document_path():
-    """Chemin du projet ouvert dans ce Metashape ("" si aucun)."""
+    """Path of the project open in this Metashape ("" if none)."""
     try:
         import Metashape
         return Metashape.app.document.path or ""
@@ -73,27 +73,27 @@ def same_path(a, b):
 
 
 def refusal(project):
-    """Raison pour laquelle on ne touche pas a ce projet ("" si on peut)."""
+    """Reason why this project is left alone ("" if it can be touched)."""
     if project.in_use:
-        return "ouvert dans un Metashape (fichier lock tenu)"
+        return "open in a Metashape (lock file held)"
     if not project.orphan and same_path(project.path, current_document_path()):
-        return "ouvert dans ce Metashape"
+        return "open in this Metashape"
     return ""
 
 
 def delete_refusal(project):
-    """Raison absolue de ne pas supprimer ("" si on peut) : le projet ouvert ici ne part jamais.
+    """Absolute reason not to delete ("" if it can be): the project open here is never deleted.
 
-    Un verrou tenu par un autre Metashape se contourne (ecran « Confirm delete ») : c'est `refusal` qui le dit."""
+    A lock held by another Metashape can be overridden ("Confirm delete" screen): it is `refusal` that reports it."""
     if not project.orphan and same_path(project.path, current_document_path()):
-        return "ouvert dans ce Metashape"
+        return "open in this Metashape"
     return ""
 
 
 def reveal(path):
-    """Ouvre l'Explorateur sur le projet (fichier selectionne) ou, a defaut, sur son dossier.
+    """Open Explorer on the project (file selected) or, failing that, on its folder.
 
-    Renvoie True si l'Explorateur a ete lance."""
+    Returns True if Explorer was launched."""
     path = os.path.normpath(path)
     try:
         if os.name == "nt" and os.path.exists(path):
@@ -119,24 +119,24 @@ def is_network(path):
 
 
 def recycle_available(path):
-    """La corbeille existe-t-elle pour ce chemin ? (Windows, disque local)"""
+    """Does the recycle bin exist for this path? (Windows, local disk)"""
     return os.name == "nt" and not is_network(path)
 
 
 # --------------------------------------------------------------------------
-# Corbeille et suppression
+# Recycle bin and deletion
 # --------------------------------------------------------------------------
 
 def recycle(paths):
-    """Envoie des fichiers ou dossiers a la corbeille Windows. Renvoie (ok, message).
+    """Send files or folders to the Windows recycle bin. Returns (ok, message).
 
-    Si un element depasse la taille de la corbeille, Windows pose la question (on n'ecrase pas sa
-    confirmation) : un refus donne ok=False et rien n'est supprime."""
+    If an item exceeds the size of the bin, Windows asks the question (its confirmation is not
+    overridden): a refusal gives ok=False and nothing is deleted."""
     paths = [os.path.abspath(p) for p in paths if os.path.exists(p)]
     if not paths:
         return True, ""
     if os.name != "nt":
-        return False, "corbeille indisponible hors Windows"
+        return False, "recycle bin unavailable outside Windows"
     from ctypes import wintypes
 
     class SHFILEOPSTRUCTW(ctypes.Structure):
@@ -152,10 +152,10 @@ def recycle(paths):
     operation.fFlags = FOF_ALLOWUNDO | FOF_NOERRORUI
     code = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(operation))
     if code != 0 or operation.fAnyOperationsAborted:
-        return False, "corbeille refusee (code {})".format(code)
+        return False, "recycle bin refused (code {})".format(code)
     leftover = [p for p in paths if os.path.exists(p)]
     if leftover:
-        return False, "pas tout a la corbeille : {}".format(leftover[0])
+        return False, "not everything went to the recycle bin: {}".format(leftover[0])
     return True, ""
 
 
@@ -165,7 +165,7 @@ def _unlock(function, path, _info):
 
 
 def remove_path(path):
-    """Supprime definitivement un fichier ou un dossier (leve OSError si impossible)."""
+    """Permanently delete a file or a folder (raises OSError if impossible)."""
     if os.path.isdir(path) and not os.path.islink(path):
         for attempt in range(RETRIES):
             try:
@@ -192,7 +192,7 @@ def log_path():
 
 
 def log_action(action, mode, project, ok, message="", size=0):
-    """Ajoute une ligne au journal CSV. Ne leve jamais."""
+    """Append a line to the CSV journal. Never raises."""
     try:
         path = log_path()
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -200,19 +200,19 @@ def log_action(action, mode, project, ok, message="", size=0):
         with open(path, "a", encoding="utf-8-sig", newline="") as handle:
             writer = csv.writer(handle, delimiter=";")
             if new:
-                writer.writerow(["date", "action", "mode", "projet", "octets", "ok", "message"])
+                writer.writerow(["date", "action", "mode", "project", "bytes", "ok", "message"])
             writer.writerow([datetime.datetime.now().isoformat(timespec="seconds"), action, mode, project.path,
-                             int(size), "oui" if ok else "non", message])
+                             int(size), "yes" if ok else "no", message])
     except Exception as exc:
-        journal.write("Fast Space : journal non ecrit : {!r}".format(exc))
+        journal.write("Fast Space: journal not written: {!r}".format(exc))
 
 
 # --------------------------------------------------------------------------
-# Allegement
+# Lightening
 # --------------------------------------------------------------------------
 
 def removable_paths(project, items=scanner.DEFAULT_ITEMS):
-    """Dossiers (dense_cloud*, depth_maps*) et fichiers (orthomosaic*/images*.zip) du projet qui font partie de `items`."""
+    """Folders (dense_cloud*, depth_maps*) and files (orthomosaic*/images*.zip) of the project that belong to `items`."""
     found = []
     try:
         chunks = list(os.scandir(project.files_dir))
@@ -260,7 +260,7 @@ def _depth_list(chunk):
 
 
 def snapshot(document):
-    """Etat d'un projet pour la verification : une ligne par chunk."""
+    """State of a project for the check: one row per chunk."""
     rows = []
     for chunk in document.chunks:
         rows.append({"label": chunk.label, "cameras": len(chunk.cameras), "markers": len(chunk.markers),
@@ -277,7 +277,7 @@ def _orthomosaics(chunk):
 
 
 def strip_chunk(chunk, items=scanner.DEFAULT_ITEMS):
-    """Retire d'un chunk ce que `items` demande (dense, depth, ortho). Renvoie ce qui a ete retire."""
+    """Remove from a chunk what `items` asks for (dense, depth, ortho). Returns what was removed."""
     removed = []
     if "dense" in items:
         _name, dense = _dense_list(chunk)
@@ -300,23 +300,23 @@ def strip_chunk(chunk, items=scanner.DEFAULT_ITEMS):
 
 
 def check_snapshots(before, after, items=scanner.DEFAULT_ITEMS):
-    """None si le projet est comme avant (sauf ce que `items` retire), sinon le texte du probleme."""
+    """None if the project is as before (except what `items` removes), otherwise the text of the problem."""
     if len(before) != len(after):
-        return "nombre de chunks different ({} -> {})".format(len(before), len(after))
+        return "different number of chunks ({} -> {})".format(len(before), len(after))
     for old, new in zip(before, after):
         for key in ("cameras", "markers"):
             if old[key] != new[key]:
-                return "chunk {} : {} different ({} -> {})".format(old["label"], key, old[key], new[key])
+                return "chunk {}: {} different ({} -> {})".format(old["label"], key, old[key], new[key])
         if ("dense" in items and new["dense"]) or ("depth" in items and new["depth"]):
-            return "chunk {} : il reste du dense ou des cartes de profondeur".format(old["label"])
+            return "chunk {}: dense cloud or depth maps remain".format(old["label"])
     return None
 
 
 def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
-    """Allege un projet : retire ce que `items` demande (dense, depth, ortho). Renvoie {ok, freed, in_bin, error, steps}.
+    """Lighten a project: removes what `items` asks for (dense, depth, ortho). Returns {ok, freed, in_bin, error, steps}.
 
-    A lancer dans le fil principal de Metashape (l'API ne sait pas travailler ailleurs).
-    `progress(texte)` annonce chaque etape."""
+    To be run in Metashape's main thread (the API cannot work elsewhere).
+    `progress(text)` announces each step."""
     items = tuple(item for item in scanner.ITEMS if item in items)
     progress = progress or (lambda text: None)
     result = {"ok": False, "freed": 0, "in_bin": 0, "error": "", "steps": []}
@@ -330,30 +330,30 @@ def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
         result["error"] = reason
         return result
     if project.orphan:
-        result["error"] = "pas de .psx : rien a alleger (supprimer le dossier)"
+        result["error"] = "no .psx: nothing to lighten (delete the folder)"
         return result
     if mode != PERMANENT:
-        result["error"] = "l'allegement passe par Metashape, qui efface lui-meme ses fichiers : pas de corbeille"
+        result["error"] = "lightening goes through Metashape, which deletes its own files: no recycle bin"
         return result
     if not items:
-        result["error"] = "rien a retirer : aucune case cochee"
+        result["error"] = "nothing to remove: no box ticked"
         return result
     before = project.removable(items)
     try:
         if project.lock == scanner.STALE:
-            # Un verrou laisse par une session morte (souvent un autre PC) force Metashape a ouvrir en lecture seule.
-            step("verrou perime")
+            # A lock left by a dead session (often another PC) forces Metashape to open read-only.
+            step("stale lock")
             try:
                 os.remove(os.path.join(project.files_dir, "lock"))
             except OSError as exc:
                 raise SpaceError(i18n.t("space.err_lock_remove", error=exc))
             project.lock = scanner.FREE
-        step("lecture")
+        step("reading")
         document = _open(project.path, True)
         snap_before = snapshot(document)
         document = None
         gc.collect()
-        step("nettoyage du projet")
+        step("cleaning the project")
         document = _open(project.path, False)
         for chunk in document.chunks:
             strip_chunk(chunk, items)
@@ -362,16 +362,16 @@ def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
         gc.collect()
         left = removable_paths(project, items)
         if left:
-            step("dossiers restants")
+            step("remaining folders")
             for path in left:
                 remove_path(path)
-        step("verification")
+        step("checking")
         document = _open(project.path, True)
         problem = check_snapshots(snap_before, snapshot(document), items)
         document = None
         gc.collect()
         if problem:
-            raise SpaceError("verification : " + problem)
+            raise SpaceError("check: " + problem)
         after = scanner.measure_project(project.path)
         result["freed"] = max(0, before - after.removable(items))
         result["ok"] = True
@@ -385,14 +385,14 @@ def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
 
 
 # --------------------------------------------------------------------------
-# Suppression du projet
+# Deleting the project
 # --------------------------------------------------------------------------
 
 def delete_project(project, mode, force=False):
-    """Supprime le projet (.psx et .files seulement), ou le dossier orphelin. Renvoie {ok, freed, in_bin, error}.
+    """Delete the project (.psx and .files only), or the orphan folder. Returns {ok, freed, in_bin, error}.
 
-    `force` : l'utilisateur a confirme malgre un verrou tenu par un autre Metashape ; seul le projet
-    ouvert dans ce Metashape reste refuse."""
+    `force`: the user confirmed despite a lock held by another Metashape; only the project
+    open in this Metashape is still refused."""
     result = {"ok": False, "freed": 0, "in_bin": 0, "error": ""}
     reason = delete_refusal(project) if force else refusal(project)
     if reason:
@@ -403,14 +403,14 @@ def delete_project(project, mode, force=False):
     try:
         for target in targets:
             if len(os.path.abspath(target)) < 8:
-                raise SpaceError("chemin trop court pour etre un projet : " + target)
+                raise SpaceError("path too short to be a project: " + target)
         if mode == RECYCLE:
             ok, message = recycle(targets)
             if not ok:
                 raise SpaceError(message)
             result["in_bin"] = size
         else:
-            for target in targets:                          # le .psx d'abord : un reste = un orphelin visible
+            for target in targets:                          # the .psx first: a leftover = a visible orphan
                 remove_path(target)
             result["freed"] = size
         result["ok"] = True

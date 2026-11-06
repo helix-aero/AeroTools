@@ -15,16 +15,16 @@ def _clean():
 
 def test_circular_buffer():
     for i in range(journal.MAX_LINES + 25):
-        journal.write("ligne {}".format(i))
+        journal.write("line {}".format(i))
     lines = journal.lines()
     assert len(lines) == journal.MAX_LINES
-    assert lines[-1].endswith("ligne {}".format(journal.MAX_LINES + 24))
-    assert lines[0].endswith("ligne 25")
+    assert lines[-1].endswith("line {}".format(journal.MAX_LINES + 24))
+    assert lines[0].endswith("line 25")
 
 
 def test_lines_returns_a_copy():
     journal.write("a")
-    journal.lines().append("intrus")
+    journal.lines().append("intruder")
     assert len(journal.lines()) == 1
 
 
@@ -32,10 +32,10 @@ def test_subscribe_is_idempotent_and_receives():
     got = []
     journal.subscribe(got.append)
     journal.subscribe(got.append)
-    journal.write("bonjour")
-    assert len(got) == 1 and got[0].endswith("bonjour")
+    journal.write("hello")
+    assert len(got) == 1 and got[0].endswith("hello")
     journal.unsubscribe(got.append)
-    journal.write("encore")
+    journal.write("again")
     assert len(got) == 1
 
 
@@ -43,14 +43,14 @@ def test_failing_subscriber_is_dropped_others_still_called():
     good = []
 
     def bad(_line):
-        raise RuntimeError("panneau detruit")
+        raise RuntimeError("panel destroyed")
 
     journal.subscribe(bad)
     journal.subscribe(good.append)
-    journal.write("un")
+    journal.write("one")
     assert bad not in journal._subscribers
     assert len(good) == 1
-    journal.write("deux")
+    journal.write("two")
     assert len(good) == 2
     assert len(journal.lines()) == 2
 

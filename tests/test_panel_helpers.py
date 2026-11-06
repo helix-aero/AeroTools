@@ -1,6 +1,6 @@
-"""Petites fonctions du panneau qui ne demandent pas Qt."""
+"""Small panel functions that do not need Qt."""
 
-from aerotools import svgpath  # noqa: F401  (le module doit s'importer avec le faux Qt)
+from aerotools import svgpath  # noqa: F401  (the module must import with the fake Qt)
 from aerotools.tools.fastgcp import panel
 
 

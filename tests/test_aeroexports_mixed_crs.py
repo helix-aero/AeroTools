@@ -14,7 +14,7 @@ def context(tmp_path, **kw):
 
 
 def jobs(tmp_path, kinds):
-    return plan.build_jobs("EDF", DAY, dict.fromkeys(kinds, 0.5), "full", str(tmp_path), lang="en", version=1)
+    return plan.build_jobs("EDF", DAY, dict.fromkeys(kinds, 0.5), "full", str(tmp_path), version=1)
 
 
 def test_each_box_is_converted_from_the_system_of_its_own_raster(tmp_path):

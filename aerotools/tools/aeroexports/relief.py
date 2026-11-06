@@ -139,9 +139,6 @@ def nodata_mask(z, nodata=None):
     return bad if nodata is None else bad | (z == nodata)
 
 
-_nodata_mask = nodata_mask                       # older name, still used by footprint.py
-
-
 def declared_nodata(tiff):
     """The "no data" value written in the TIFF (GDAL tag), or None."""
     try:

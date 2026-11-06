@@ -37,14 +37,14 @@ def test_snap_stays_on_center():
 
 def test_snap_works_with_white_black_and_origin_offset():
     rows = _checker(a=(240, 240, 240), b=(20, 20, 20))
-    # La zone commence en (1000, 500) dans l'image : le croisement est en (1040, 540).
+    # The area starts at (1000, 500) in the image: the crossing is at (1040, 540).
     hit = snap.refine_in_rows(rows, 1000, 500, 1042.0, 538.0)
     assert hit is not None
     assert abs(hit[0] - 1040) <= 0.75 and abs(hit[1] - 540) <= 0.75
 
 
 def test_snap_refuses_when_crossing_is_too_far():
-    # Croisement a 10 px du clic : on ne le suit pas.
+    # Crossing 10 px from the click: it is not followed.
     assert snap.refine_in_rows(_checker(), 0, 0, 50.0, 40.0) is None
 
 
@@ -81,13 +81,16 @@ def _write_stored(data):
 
 @pytest.mark.parametrize("stored, expected", [
     ({}, 0.0),
-    ({"recalage_max_px": 0}, 0.0),
-    ({"recalage_max_px": 3.5}, 3.5),
-    ({"recalage_max_px": 6}, 6.0),
-    ({"recalage_max_px": True}, 0.0),
-    ({"recalage_max_px": "beaucoup"}, 0.0),
-    ({"recalage_max_px": -2}, 0.0),
-    ({"recalage_max_px": 500}, 0.0),
+    ({"snap_max_px": 0}, 0.0),
+    ({"snap_max_px": 3.5}, 3.5),
+    ({"snap_max_px": 6}, 6.0),
+    ({"snap_max_px": True}, 0.0),
+    ({"snap_max_px": "lots"}, 0.0),
+    ({"snap_max_px": -2}, 0.0),
+    ({"snap_max_px": 500}, 0.0),
+    ({"recalage_max_px": 3.5}, 3.5),                       # older spelling of the same setting, still read
+    ({"recalage_max_px": 2, "snap_max_px": 5}, 5.0),       # the current spelling wins
+    ({"snap_max_px": "lots", "recalage_max_px": 4}, 4.0),  # an unusable value falls through to the older key
 ])
 def test_snap_setting(local_appdata, stored, expected):
     session_mod.reset()

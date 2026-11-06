@@ -1,11 +1,11 @@
-"""Pop-up « Residual check » (Qt) : tous les marqueurs avec leur etat, les plus urgents d'abord.
+"""Residual check pop-up (Qt): all markers with their status, most urgent first.
 
-Le tableau montre, pour chaque marqueur : le nombre de photos pointees, l'erreur en X, Y, Z et en 3D
-(en cm, comme le tableau Reference de Metashape), son role (controle ou verification, d'apres la case
-cochee dans Reference) et son etat (OK, residu eleve, trop peu de photos, pas de calcul). Les trois
-cases du haut resument : l'erreur des points de controle, celle des points de verification, et le
-nombre de marqueurs a surveiller. Un double-clic ouvre le marqueur (et sa pire photo en cas de residu).
-Fenetre non modale : on la laisse ouverte, on corrige, puis « Actualiser ».
+For each marker the table shows: the number of pinned photos, the error in X, Y, Z and in 3D
+(in cm, like Metashape's Reference table), its role (control or check, from the box
+ticked in Reference) and its status (OK, high residual, too few photos, cannot be computed). The three
+tiles at the top summarise: the error of the control points, that of the check points, and the
+number of markers to watch. A double-click opens the marker (and its worst photo in case of a residual).
+Non-modal window: leave it open, fix things, then "Refresh".
 """
 
 from ... import i18n, theme, ui
@@ -37,7 +37,7 @@ def role_text(role):
 
 
 class _Item(QtWidgets.QTableWidgetItem):
-    """Cellule triee sur sa valeur (nombre) et non sur son texte."""
+    """Cell sorted on its value (number) rather than on its text."""
 
     def __lt__(self, other):
         mine, theirs = self.data(ROLE + 1), other.data(ROLE + 1)
@@ -49,11 +49,10 @@ class _Item(QtWidgets.QTableWidgetItem):
 
 class QcDialog(QtWidgets.QDialog):
     def __init__(self, compute, opener, diagnostic, parent=None):
-        """`compute()` rend {"items", "groups", "limit"} ; `opener(item)` ouvre le marqueur ; `diagnostic()` le diagnostic complet."""
+        """`compute()` returns {"items", "groups", "limit"}; `opener(item)` opens the marker; `diagnostic()` the full diagnostic."""
         super(QcDialog, self).__init__(parent)
         self._compute = compute
         self._opener = opener
-        self._lang = i18n.lang()
         self.setWindowTitle(i18n.t("qc.title"))
         self.setModal(False)
         self.resize(WIDTH, HEIGHT)
@@ -174,14 +173,11 @@ class QcDialog(QtWidgets.QDialog):
 
 
 def show(panel, compute, opener, diagnostic, existing=None):
-    """Ouvre (ou rafraichit) la fenetre. Renvoie l'instance, a garder."""
+    """Opens (or refreshes) the window. Returns the instance, to be kept."""
     dialog = existing
     try:
         if dialog is not None:
             dialog.objectName()
-            if dialog._lang != i18n.lang():
-                dialog.deleteLater()
-                dialog = None
     except RuntimeError:
         dialog = None
     if dialog is None:

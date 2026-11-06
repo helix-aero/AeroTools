@@ -1,4 +1,4 @@
-"""Le runner de detection : decodage des sorties ONNX, lots, photos illisibles, de bout en bout (moteur factice)."""
+"""The detection runner: ONNX output decoding, batches, unreadable photos, end to end (fake engine)."""
 
 import json
 import os
@@ -13,7 +13,7 @@ from aerotools.tools.fastgcp import aigcp_runner as runner, training
 
 
 class FakeDetector(object):
-    """Detecte une tache claire : renvoie son centre et une confiance qui depend de sa luminosite."""
+    """Detects a bright spot: returns its centre and a confidence that depends on its brightness."""
 
     device = "fake"
 
@@ -37,7 +37,7 @@ class FakeDetector(object):
 
 
 def photo(path, spots, size=(1200, 900)):
-    """Image sombre avec des taches claires de 20 x 20 aux positions `spots`."""
+    """Dark image with bright 20 x 20 spots at the `spots` positions."""
     image = np.full((size[1], size[0], 3), 40, np.uint8)
     for x, y in spots:
         image[y - 10:y + 10, x - 10:x + 10] = 255
@@ -50,18 +50,18 @@ def item(name, path, x, y, rescue=True):
 
 
 def test_nms_keeps_the_best_of_overlapping_boxes():
-    boxes = np.array([[0, 0, 10, 10], [0.5, 0.5, 10.5, 10.5], [50, 50, 60, 60]], np.float32)   # IoU des deux premières ≈ 0,82
+    boxes = np.array([[0, 0, 10, 10], [0.5, 0.5, 10.5, 10.5], [50, 50, 60, 60]], np.float32)   # IoU of the first two ≈ 0.82
     scores = np.array([0.6, 0.9, 0.5], np.float32)
     assert runner.nms(boxes, scores, 0.7, 10) == [1, 2]
     assert runner.nms(boxes, scores, 0.7, 1) == [1]                     # max_det
 
 
 def test_decode_output_applies_the_floor_and_nms():
-    # sortie brute d'un modele a une classe : (4 + 1, ancres) ; deux ancres sur le meme objet, une faible
+    # raw output of a one-class model: (4 + 1, anchors); two anchors on the same object, one weak
     raw = np.zeros((5, 4), np.float32)
     raw[:, 0] = (80.0, 80.0, 20.0, 20.0, 0.80)
     raw[:, 1] = (82.0, 81.0, 20.0, 20.0, 0.70)
-    raw[:, 2] = (30.0, 30.0, 10.0, 10.0, 0.04)                          # sous le seuil de 0,05
+    raw[:, 2] = (30.0, 30.0, 10.0, 10.0, 0.04)                          # below the 0.05 floor
     raw[:, 3] = (120.0, 40.0, 10.0, 10.0, 0.30)
     out = runner.decode_output(raw)
     assert out.shape == (2, 5)
@@ -95,13 +95,13 @@ def test_batching_makes_far_fewer_model_calls(tmp_path):
     runner.detect_items(batched, image, items, (0.3, 0.5, 0.8), 0.25)
     for one in items:
         runner.detect_items(one_by_one, image, [one], (0.3, 0.5, 0.8), 0.25)
-    assert batched.tiles == one_by_one.tiles                             # meme travail...
-    assert batched.calls <= 3 and one_by_one.calls >= 12                 # ...en bien moins d'appels
+    assert batched.tiles == one_by_one.tiles                             # same work...
+    assert batched.calls <= 3 and one_by_one.calls >= 12                 # ...with far fewer calls
 
 
 def run_work(tmp_path, monkeypatch, items, crops=False):
     monkeypatch.setattr(runner, "make_detector", lambda weights, device, engine="auto": FakeDetector())
-    work = {"version": 1, "type": "damier", "weights": "unused.pt", "conf": 0.25, "scales_m": [0.3, 0.5, 0.8],
+    work = {"version": 1, "type": "checker", "weights": "unused.pt", "conf": 0.25, "scales_m": [0.3, 0.5, 0.8],
             "device": "auto", "items": items}
     if crops:
         work["crops_dir"] = str(tmp_path / "crops")
@@ -120,9 +120,9 @@ def test_run_end_to_end_with_review_crops(tmp_path, monkeypatch):
     items = [item("a/1", first, 302, 298), item("b/1", second, 598, 402), item("a/2", first, 900, 700)]
     result = run_work(tmp_path, monkeypatch, items, crops=True)
     assert result["errors"] == [] and result["device"] == "fake"
-    assert [row["id"] for row in result["hits"]] == ["a/1", "b/1", "a/2"]          # l'ordre des items est gardé
+    assert [row["id"] for row in result["hits"]] == ["a/1", "b/1", "a/2"]          # the order of the items is kept
     assert [row["found"] for row in result["hits"]] == [True, True, False]
-    assert os.path.isfile(str(tmp_path / "crops" / "a_1.jpg"))                      # vignette de revue
+    assert os.path.isfile(str(tmp_path / "crops" / "a_1.jpg"))                      # review thumbnail
     with open(str(tmp_path / "progress.json"), encoding="utf-8") as handle:
         assert json.load(handle) == {"done": 3, "total": 3}
 
@@ -131,7 +131,7 @@ def test_an_unreadable_photo_does_not_stop_the_others(tmp_path, monkeypatch):
     good, broken = str(tmp_path / "good.jpg"), str(tmp_path / "broken.jpg")
     photo(good, [(300, 300)])
     with open(broken, "wb") as handle:
-        handle.write(b"ce n'est pas une image")
+        handle.write(b"this is not an image")
     items = [item("ok", good, 300, 300), item("bad", broken, 300, 300), item("missing", str(tmp_path / "nope.jpg"), 1, 1),
              item("ok2", good, 301, 299)]
     result = run_work(tmp_path, monkeypatch, items)
@@ -153,10 +153,10 @@ def test_a_marker_outside_the_photo_is_not_found_and_not_an_error(tmp_path, monk
 
 
 def test_the_onnx_file_is_found_next_to_the_weights():
-    assert runner.onnx_path(os.path.join("a", "models", "bombe.pt")) == os.path.join("a", "models", "bombe.onnx")
+    assert runner.onnx_path(os.path.join("a", "models", "spray.pt")) == os.path.join("a", "models", "spray.onnx")
 
 
-# -- outils d'entrainement ----------------------------------------------------------
+# -- training tools -----------------------------------------------------------------
 
 def test_missing_tools_reads_the_list_from_the_python(tmp_path, monkeypatch):
     fake = tmp_path / "python.exe"

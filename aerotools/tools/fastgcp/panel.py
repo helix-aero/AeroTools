@@ -1,25 +1,23 @@
-"""Panneau Qt de FastGCP : un dock a droite de Metashape.
+"""FastGCP Qt panel: a dock at the right of Metashape.
 
-Vue principale : titre, bouton Annuler, selecteur de langue et bouton de theme,
-Play / Pause avec l'etat de l'outil, marqueur courant (deux compteurs), recherche, tableau des
-marqueurs (ID, erreurs X / Y / Z, nombre de projections, colonnes triables).
-Le pied porte le statut, le menu Exporter et le credit HELIX (lien du site et
-GitHub). L'engrenage ouvre la fenetre Parametres (settings_dialog.py) : options,
-journal, modeles IA et reentrainement.
+Main view: title, Undo button, Play / Pause with the state of the tool, current marker (two counters),
+search, marker table (ID, X / Y / Z errors, number of projections, sortable columns).
+The footer carries the status, the Export menu and the HELIX credit (site link and
+GitHub). The gear opens the Settings window (settings_dialog.py): options,
+log, AI models and retraining.
 
-Le filtre des photos, la synchronisation avec le panneau Reference et le
-passage a la photo suivante sont automatiques : le panneau ne les propose pas.
+The photo filter, the synchronisation with the Reference pane and the
+move to the next photo are automatic: the panel does not offer them.
 
-Regles de ce module :
-  - aucun appel direct a Metashape : tout passe par `msapi` ;
-  - aucun style en dur : couleurs, marges et objectName viennent de `theme` ;
-  - aucune phrase d'aide, et aucune infobulle hors des deux pastilles-compteur
-    et de l'icone GitHub du credit ;
-  - aucun texte visible en dur : tout passe par `i18n.t(...)`, et `retranslate()`
-    remet le panneau dans la langue choisie sans le recreer ;
-  - jamais d'exception vers l'appelant : une reference de marqueur devient
-    invalide (RuntimeError) des que l'on change de chunk, le panneau doit
-    survivre et relire la liste.
+Rules of this module:
+  - no direct call to Metashape: everything goes through `msapi`;
+  - no hard-coded style: colours, margins and objectName come from `theme`;
+  - no help sentence, and no tooltip other than the two counter pills
+    and the GitHub icon of the credit;
+  - no hard-coded visible text: everything goes through `i18n.t(...)`;
+  - never an exception towards the caller: a marker reference becomes
+    invalid (RuntimeError) as soon as the chunk changes, the panel must
+    survive and reread the list.
 """
 
 import functools
@@ -35,22 +33,21 @@ from . import aigcp, history, qc
 SITE_URL = "https://helix.aero"
 SITE_NAME = "helix.aero"
 GITHUB_URL = "https://github.com/helix-aero/AeroTools"
-SETTLE_MS = (500, 2000)               # relectures du tableau apres une modification en masse
-HEADER_BUTTON = 26                    # boutons ronds du haut : Annuler, Retablir, parametres
+SETTLE_MS = (500, 2000)               # rereads of the table after a bulk modification
+HEADER_BUTTON = 26                    # round buttons at the top: Undo, Redo, settings
 HEADER_ICON = 14
-LANG_WIDTH = 80                       # liste des langues : le drapeau seul
-LOGO_SCALE = 2                        # le logo est dessine en double resolution
-LOGO_WIDTH = 96                       # largeur affichee du logo AERO (le kit demande 64 px au minimum)
+LOGO_SCALE = 2                        # the logo is drawn at double resolution
+LOGO_WIDTH = 96                       # displayed width of the AERO logo (the kit asks for 64 px at least)
 LOGO_FILE = "helix-aero-AERO-degrade-512px.png"
-LABEL_MAX = 10                        # longueur maxi du nom du marqueur courant dans sa carte
+LABEL_MAX = 10                        # maximum length of the current marker name in its card
 
-# Lignes visibles dans le journal deplie.
+# Lines visible in the unfolded log.
 LOG_VISIBLE_LINES = 6
 
-# Largeur mini du dock : le tableau des marqueurs a besoin de place.
+# Minimum width of the dock: the marker table needs room.
 MIN_PANEL_WIDTH = 420
 
-# Meme hauteur pour tous les boutons et listes du panneau ; Run est un petit bouton.
+# Same height for all the buttons and lists of the panel; Run is a small button.
 CONTROL_HEIGHT = 30
 RUN_WIDTH = 124
 RUN_HEIGHT = 40
@@ -59,19 +56,19 @@ QC_WIDTH = 140
 ADJUST_WIDTH = 96
 EXPORT_WIDTH = 112
 CANCEL_WIDTH = 84
-PROGRESS_HEIGHT = 22                  # barre de detection (texte dedans) et bouton Annuler a sa droite
+PROGRESS_HEIGHT = 22                  # detection bar (text inside) and Cancel button at its right
 
-# Texte de chaque case de la carte Parametres (cle de l'option : cle de texte).
+# Text of each check box of the Settings card (option key: text key).
 CHECK_TEXTS = {
     "collect_dataset": "panel.save_picks",
     "ai_auto_review": "aigcp.auto_review",
 }
 
-# Texte de chaque choix des listes deroulantes de la detection IA (cle de texte litterale,
-# pour que le test des textes inutilises la voie).
+# Text of each choice of the AI detection drop-downs (literal text key,
+# so that the unused-texts test sees it).
 AIGCP_CHOICE_TEXTS = {
-    ("type", "damier"): "aigcp.type_damier",
-    ("type", "bombe"): "aigcp.type_bombe",
+    ("type", "checker"): "aigcp.type_checker",
+    ("type", "spray"): "aigcp.type_spray",
     ("scope", "marker"): "aigcp.scope_marker",
     ("scope", "all"): "aigcp.scope_all",
     ("ignore", "both"): "aigcp.ignore_both",
@@ -80,13 +77,11 @@ AIGCP_CHOICE_TEXTS = {
     ("ignore", "none"): "aigcp.ignore_none",
 }
 
-# Largeur d'un bouton du selecteur de langue (code a deux lettres).
-
-# Hauteur mini du tableau des marqueurs (il prend tout le reste du dock).
+# Minimum height of the marker table (it takes all the rest of the dock).
 LIST_MIN_HEIGHT = 120
 
-# Colonnes du tableau : (cle de texte de l'intitule, cle de tri, largeur en pixels ;
-# 0 = s'elargit). L'intitule se lit avec `i18n.t`, voir `column_titles()`.
+# Table columns: (title text key, sort key, width in pixels;
+# 0 = stretches). The title is read with `i18n.t`, see `column_titles()`.
 COLUMNS = (
     ("panel.col.id", "id", 0),
     ("panel.col.x", "x", 76),
@@ -98,30 +93,30 @@ HEADER_HEIGHT = 30
 HEADER_FONT_PX = 12
 NO_VALUE = "–"
 
-# Entrees du menu Exporter : (cle, cle de texte). Les fonctions sont dans report.py.
+# Entries of the Export menu: (key, text key). The functions are in report.py.
 EXPORTS = (
     ("pdf", "panel.export.pdf"),
     ("csv", "panel.export.csv"),
 )
 
-# Largeur maximale du texte du bouton Exporter : au-dela, il est elide.
+# Maximum width of the Export button text: beyond it, it is elided.
 EXPORT_TEXT_MAX_PX = 150
 
-# Qt ignore `letter-spacing` dans les feuilles de style : on l'applique sur la
-# police des intitules (en pixels, comme la valeur du theme).
+# Qt ignores `letter-spacing` in style sheets: it is applied on the
+# font of the titles (in pixels, like the theme value).
 EYEBROW_SPACING = 1.4
 
-# Un clic sur un nouvel item declenche currentItemChanged puis itemClicked :
-# on ne traite qu'une fois le meme marqueur dans cette fenetre.
+# A click on a new item triggers currentItemChanged then itemClicked:
+# the same marker is only handled once within this window.
 PICK_DEBOUNCE_S = 0.2
 
-DOT_SIZE = 10    # diametre de la pastille de la liste, en pixels
-ROW_HEIGHT = 28  # hauteur d'une ligne de la liste
+DOT_SIZE = 10    # diameter of the list dot, in pixels
+ROW_HEIGHT = 28  # height of a list row
 _DOT_ICONS = {}
 _ICONS = {}
 
-# Les icones sont peintes a deux fois la taille puis marquees comme telles :
-# nettes sur ecran normal et sur ecran a forte densite.
+# The icons are painted at twice the size then marked as such:
+# sharp on a normal screen and on a high-density screen.
 ICON_SCALE = 2
 
 ROLE_MARKER = QtCore.Qt.UserRole
@@ -129,11 +124,11 @@ ROLE_LABEL = QtCore.Qt.UserRole + 1
 
 
 # ----------------------------------------------------------------------
-# Tableau : formats et tris (sans Qt, testables seuls)
+# Table: formats and sorts (no Qt, testable on their own)
 # ----------------------------------------------------------------------
 
 def format_error(value):
-    """Erreur en metres, format court (0.012). Sans valeur : un tiret."""
+    """Error in metres, short format (0.012). Without a value: a dash."""
     if value is None:
         return NO_VALUE
     try:
@@ -149,23 +144,23 @@ def format_error(value):
         text = "{:.2f}".format(number)
     else:
         text = "{:.3f}".format(number)
-    # -0.000 n'apprend rien : on l'ecrit 0.000.
+    # -0.000 tells nothing: it is written 0.000.
     return text[1:] if text.startswith("-") and float(text) == 0 else text
 
 
 def natural_key(label):
-    """Cle de tri naturel : GCP2 avant GCP10, sans tenir compte de la casse."""
+    """Natural sort key: GCP2 before GCP10, case-insensitive."""
     parts = re.split(r"(\d+)", str(label).lower())
     return tuple((0, int(part)) if part.isdigit() else (1, part) for part in parts if part)
 
 
 def sort_rows(rows, key, descending=False):
-    """Trie les lignes du tableau. `key` : "id", "x", "y", "z", "proj" ou None.
+    """Sort the table rows. `key`: "id", "x", "y", "z", "proj" or None.
 
-    None (ou une cle inconnue) garde l'ordre du projet. L'ID se trie en ordre
-    naturel ; les erreurs et le nombre de projections se trient en valeur
-    absolue, les lignes sans valeur restent toujours a la fin, quel que soit
-    le sens. A egalite, l'ordre du projet est conserve.
+    None (or an unknown key) keeps the project order. The ID is sorted in natural
+    order; the errors and the number of projections are sorted by absolute
+    value, rows without a value always stay at the end, whatever the
+    direction. On a tie, the project order is kept.
     """
     rows = list(rows)
     if key == "id":
@@ -179,7 +174,7 @@ def sort_rows(rows, key, descending=False):
 
 
 def _qcolor(css):
-    """QColor depuis une couleur du theme, y compris au format rgba(r, g, b, a)."""
+    """QColor from a theme colour, including the rgba(r, g, b, a) format."""
     if css.startswith("rgba"):
         numbers = [float(part) for part in re.findall(r"[\d.]+", css)]
         red, green, blue = [int(n) for n in numbers[:3]]
@@ -188,19 +183,19 @@ def _qcolor(css):
 
 
 def _text_width(metrics, text):
-    """Largeur d'un texte en pixels (Qt 5.11+ et Qt 6)."""
+    """Width of a text in pixels (Qt 5.11+ and Qt 6)."""
     if hasattr(metrics, "horizontalAdvance"):
         return metrics.horizontalAdvance(text)
     return metrics.width(text)
 
 
 def column_titles():
-    """Intitules du tableau dans la langue courante."""
+    """Table titles."""
     return [i18n.t(key) for key, _sort, _width in COLUMNS]
 
 
 def _repolish(widget):
-    """Reapplique la feuille de style apres un changement d'objectName."""
+    """Apply the style sheet again after an objectName change."""
     try:
         style = widget.style()
         style.unpolish(widget)
@@ -211,10 +206,10 @@ def _repolish(widget):
 
 
 def _eyebrow(text):
-    """Intitule du theme (capitales espacees), elide s'il est trop long.
+    """Theme title (spaced capitals), elided if it is too long.
 
-    Meme objectName que `theme.eyebrow`, avec l'espacement de lettres que le
-    QSS ne sait pas faire.
+    Same objectName as `theme.eyebrow`, with the letter spacing that the
+    QSS cannot do.
     """
     label = _ElidedLabel("aeroEyebrow")
     font = label.font()
@@ -225,11 +220,11 @@ def _eyebrow(text):
 
 
 # ----------------------------------------------------------------------
-# Icones peintes (QPainter -> QPixmap -> QIcon), jamais de caractere unicode
+# Painted icons (QPainter -> QPixmap -> QIcon), never a unicode character
 # ----------------------------------------------------------------------
 
 def _paint(width, height, draw):
-    """Pixmap transparent `width` x `height` (px logiques), dessine par `draw(painter)`."""
+    """Transparent `width` x `height` pixmap (logical px), drawn by `draw(painter)`."""
     pixmap = QtGui.QPixmap(width * ICON_SCALE, height * ICON_SCALE)
     pixmap.fill(QtCore.Qt.transparent)
     pixmap.setDevicePixelRatio(ICON_SCALE)
@@ -257,7 +252,7 @@ def _cached(key, build):
     return pixmap
 
 
-# Bouton rond Play / Pause : une seule icone, sans texte.
+# Round Play / Pause button: a single icon, no text.
 PLAY_BUTTON = 36
 PLAY_ICON = 16
 
@@ -267,12 +262,12 @@ def _play_pixmap(running, color):
         def draw(painter):
             painter.setBrush(QtGui.QColor(color))
             if running:
-                # PAUSE : deux barres.
+                # PAUSE: two bars.
                 painter.setPen(QtCore.Qt.NoPen)
                 painter.drawRoundedRect(QtCore.QRectF(3.2, 2.2, 3.2, 11.6), 1.2, 1.2)
                 painter.drawRoundedRect(QtCore.QRectF(9.6, 2.2, 3.2, 11.6), 1.2, 1.2)
             else:
-                # PLAY : triangle, decale a droite pour paraitre centre.
+                # PLAY: triangle, shifted to the right to look centred.
                 painter.setPen(_pen(color, 1.4))
                 painter.drawPolygon(QtGui.QPolygonF([
                     QtCore.QPointF(4.6, 2.6),
@@ -284,13 +279,13 @@ def _play_pixmap(running, color):
 
 
 def _play_icon(running):
-    """PAUSE quand l'outil tourne (sur le vert), PLAY quand il est coupe."""
+    """PAUSE when the tool runs (on the green), PLAY when it is stopped."""
     color = theme.GREEN_ON if running else theme.FG_1
     return QtGui.QIcon(_play_pixmap(running, color))
 
 
 def _run_pixmap(color):
-    """Triangle plein qui pointe vers la droite (le bouton Run)."""
+    """Filled triangle pointing to the right (the Run button)."""
     def build():
         def draw(painter):
             painter.setPen(QtCore.Qt.NoPen)
@@ -315,7 +310,7 @@ STATE_DOT = 10
 
 
 def _state_dot_pixmap(running):
-    """Petite pastille ronde : verte si l'outil tourne, grise sinon."""
+    """Small round dot: green if the tool runs, grey otherwise."""
     color = theme.GREEN if running else theme.FG_2
 
     def build():
@@ -362,7 +357,7 @@ def _counter_pixmap(kind, color):
 GEAR_ICON = 18
 GITHUB_ICON = 16
 
-# Marque GitHub (Octicons mark-github, 16 x 16), peinte sans fichier ni QtSvg.
+# GitHub mark (Octicons mark-github, 16 x 16), painted without a file or QtSvg.
 GITHUB_PATH = (
     "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49"
     "-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82"
@@ -384,7 +379,7 @@ def _github_pixmap(color):
 
 
 def short_label(label, limit=LABEL_MAX):
-    """Nom du marqueur tronque a `limit` caracteres, suivi de trois points."""
+    """Marker name truncated to `limit` characters, followed by three dots."""
     label = label or ""
     return label if len(label) <= limit else label[:limit] + "..."
 
@@ -422,46 +417,11 @@ def _gear_pixmap(color):
     return _cached(("gear", color), build)
 
 
-FLAG_W, FLAG_H = 24, 16
-
-
-def _flag_pixmap(code):
-    """Petit drapeau peint (aucune image a livrer) ; gris uni pour une langue sans drapeau."""
-    def build():
-        def draw(painter):
-            clip = QtGui.QPainterPath()
-            clip.addRoundedRect(QtCore.QRectF(0.5, 0.5, FLAG_W - 1.0, FLAG_H - 1.0), 2.5, 2.5)
-            painter.setClipPath(clip)
-            whole = QtCore.QRectF(0, 0, FLAG_W, FLAG_H)
-            if code == "fr":
-                for k, color in enumerate(("#0055a4", "#ffffff", "#ef4135")):
-                    painter.fillRect(QtCore.QRectF(k * FLAG_W / 3.0, 0, FLAG_W / 3.0 + 0.6, FLAG_H),
-                                     QtGui.QColor(color))
-            elif code == "en":
-                painter.fillRect(whole, QtGui.QColor("#012169"))
-                for color, width in (("#ffffff", 3.6), ("#c8102e", 1.4)):
-                    painter.setPen(_pen(color, width))
-                    painter.drawLine(QtCore.QPointF(0, 0), QtCore.QPointF(FLAG_W, FLAG_H))
-                    painter.drawLine(QtCore.QPointF(0, FLAG_H), QtCore.QPointF(FLAG_W, 0))
-                for color, width in (("#ffffff", 5.0), ("#c8102e", 3.0)):
-                    painter.setPen(_pen(color, width))
-                    painter.drawLine(QtCore.QPointF(FLAG_W / 2.0, 0), QtCore.QPointF(FLAG_W / 2.0, FLAG_H))
-                    painter.drawLine(QtCore.QPointF(0, FLAG_H / 2.0), QtCore.QPointF(FLAG_W, FLAG_H / 2.0))
-            else:
-                painter.fillRect(whole, QtGui.QColor("#777777"))
-            painter.setClipping(False)
-            painter.setBrush(QtCore.Qt.NoBrush)
-            painter.setPen(QtGui.QPen(QtGui.QColor(0, 0, 0, 110), 0.8))
-            painter.drawRoundedRect(QtCore.QRectF(0.5, 0.5, FLAG_W - 1.0, FLAG_H - 1.0), 2.5, 2.5)
-        return _paint(FLAG_W, FLAG_H, draw)
-    return _cached(("flag", code), build)
-
-
 UNDO_ICON = 18
 
 
 def _undo_pixmap(color, opacity=1.0):
-    """Fleche courbe qui revient en arriere (annuler)."""
+    """Curved arrow going back (undo)."""
     def build():
         def draw(painter):
             painter.setOpacity(opacity)
@@ -484,7 +444,7 @@ def _undo_pixmap(color, opacity=1.0):
 
 
 def _undo_icon(mirror=False):
-    """Icone du bouton Annuler (ou Retablir, en miroir), avec sa version grisee."""
+    """Icon of the Undo button (or Redo, mirrored), with its greyed version."""
     def pick(pixmap):
         return pixmap.transformed(QtGui.QTransform().scale(-1, 1)) if mirror else pixmap
 
@@ -498,7 +458,7 @@ EXPORT_ICON = 16
 
 
 def _export_pixmap(color):
-    """Fleche qui descend dans un bac (exporter)."""
+    """Arrow going down into a tray (export)."""
     def build():
         def draw(painter):
             painter.setPen(_pen(color, 1.5))
@@ -520,10 +480,10 @@ def _export_pixmap(color):
 
 
 def _dot_icon(done):
-    """Pastille ronde peinte : verte si le marqueur est pointe, grise sinon.
+    """Painted round dot: green if the marker is marked, grey otherwise.
 
-    On la dessine au lieu d'utiliser les caracteres ● ○ : leur presence depend
-    de la police et ils ne prennent pas la couleur du theme dans une liste QSS.
+    It is drawn instead of using the characters ● ○: their presence depends
+    on the font and they do not take the theme colour in a QSS list.
     """
     icon = _DOT_ICONS.get(done)
     if icon is not None:
@@ -547,11 +507,11 @@ def _dot_icon(done):
 
 
 # ----------------------------------------------------------------------
-# Petits widgets
+# Small widgets
 # ----------------------------------------------------------------------
 
 class _LinkFrame(QtWidgets.QFrame):
-    """Cadre cliquable : un clic ouvre l'adresse dans le navigateur."""
+    """Clickable frame: a click opens the address in the browser."""
 
     def __init__(self, url, parent=None):
         super(_LinkFrame, self).__init__(parent)
@@ -562,12 +522,12 @@ class _LinkFrame(QtWidgets.QFrame):
         try:
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(self._url))
         except Exception as exc:
-            journal.write("FastGCP : lien du bandeau : {!r}".format(exc))
+            journal.write("FastGCP: banner link: {!r}".format(exc))
         super(_LinkFrame, self).mousePressEvent(event)
 
 
 class _ElidedLabel(QtWidgets.QLabel):
-    """Etiquette sur une ligne, tronquee par « … » au lieu d'elargir le dock."""
+    """Single-line label, truncated by "…" instead of widening the dock."""
 
     def __init__(self, object_name, parent=None):
         super(_ElidedLabel, self).__init__(parent)
@@ -604,7 +564,7 @@ class _ElidedLabel(QtWidgets.QLabel):
 
 
 class _Switch(QtWidgets.QPushButton):
-    """Interrupteur rond ON / OFF : piste verte et pastille a droite quand l'outil tourne, grise sinon."""
+    """Round ON / OFF switch: green track and dot on the right when the tool runs, grey otherwise."""
 
     WIDTH, HEIGHT = 46, 26
 
@@ -633,7 +593,7 @@ class _Switch(QtWidgets.QPushButton):
 
 
 class _ElidedButton(QtWidgets.QPushButton):
-    """Bouton pleine largeur dont le texte est tronque par des points de suspension s'il ne tient pas."""
+    """Full-width button whose text is truncated by an ellipsis if it does not fit."""
 
     def __init__(self, text="", parent=None):
         super(_ElidedButton, self).__init__(parent)
@@ -665,9 +625,9 @@ class _ElidedButton(QtWidgets.QPushButton):
 
 
 class _ElidedCheck(QtWidgets.QCheckBox):
-    """Case a cocher dont le texte est tronque par des points de suspension s'il ne tient pas."""
+    """Check box whose text is truncated by an ellipsis if it does not fit."""
 
-    INDICATOR_ROOM = 14 + 8 + 6   # case, espace, marge
+    INDICATOR_ROOM = 14 + 8 + 6   # box, space, margin
 
     def __init__(self, text="", parent=None):
         super(_ElidedCheck, self).__init__(parent)
@@ -699,9 +659,9 @@ class _ElidedCheck(QtWidgets.QCheckBox):
 
 
 class _GridHeader(QtWidgets.QHeaderView):
-    """En-tete du tableau, peint a la main : fond du cadre, intitule discret,
-    filet dessous, fleche de tri dessinee aux couleurs du theme (le QSS ne sait
-    pas peindre la fleche sans image externe)."""
+    """Table header, painted by hand: frame background, discreet title,
+    rule below, sort arrow drawn in the theme colours (the QSS cannot
+    paint the arrow without an external image)."""
 
     PAD_X = 7
     ARROW_W = 7
@@ -731,7 +691,7 @@ class _GridHeader(QtWidgets.QHeaderView):
 
     def _paint(self, painter, rect, index):
         painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
-        # Filet sous l'en-tete.
+        # Rule under the header.
         painter.setPen(QtGui.QPen(_qcolor(theme.BORDER_SOFT), 1))
         painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
 
@@ -784,13 +744,13 @@ class _GridHeader(QtWidgets.QHeaderView):
 
 
 class _NumberDelegate(QtWidgets.QStyledItemDelegate):
-    """Colonnes de valeurs : texte aligne a droite, chiffres tabulaires.
+    """Value columns: right-aligned text, tabular digits.
 
-    Les polices du theme n'ont pas de chiffres a chasse fixe (le 1 est plus
-    etroit) et Qt 5 ne sait pas activer la fonction tnum : chaque chiffre est
-    donc pose dans une cellule de la largeur du plus large, ce qui aligne les
-    decimales d'une ligne a l'autre. Le fond, la selection et le survol restent
-    ceux du style (donc du QSS)."""
+    The theme fonts have no fixed-width digits (the 1 is narrower)
+    and Qt 5 cannot enable the tnum feature: each digit is therefore
+    placed in a cell as wide as the widest one, which aligns the
+    decimals from one row to the next. The background, the selection and the hover stay
+    those of the style (hence of the QSS)."""
 
     PAD_RIGHT = 8
 
@@ -841,11 +801,11 @@ class _NumberDelegate(QtWidgets.QStyledItemDelegate):
 
 
 class _Counter(QtWidgets.QFrame):
-    """Pastille-compteur : une petite icone peinte et un nombre, aucun mot.
+    """Counter pill: a small painted icon and a number, no word.
 
-    Seule partie du panneau qui porte une infobulle. Les enfants laissent
-    passer la souris : survoler l'icone ou le nombre revient a survoler la
-    pastille entiere.
+    The only part of the panel that carries a tooltip. The children let
+    the mouse through: hovering the icon or the number amounts to hovering the
+    whole pill.
     """
 
     def __init__(self, kind, tip, parent=None):
@@ -868,7 +828,7 @@ class _Counter(QtWidgets.QFrame):
         self.apply_theme()
 
     def apply_theme(self):
-        """Icone aux couleurs de la palette active, infobulle au style du theme."""
+        """Icon in the colours of the active palette, tooltip in the theme style."""
         self._icon.setPixmap(_counter_pixmap(self._kind, theme.FG_1))
         self.setStyleSheet(theme.tooltip_stylesheet())
 
@@ -880,10 +840,10 @@ class _Counter(QtWidgets.QFrame):
 
 
 class FastGcpPanel(QtWidgets.QDockWidget):
-    """Dock FastGCP. Contrat public : voir les methodes sans underscore."""
+    """FastGCP dock. Public contract: see the methods without an underscore."""
 
-    # Les lignes du journal peuvent venir d'un autre thread : un signal les
-    # remet dans le fil de l'interface.
+    # The journal lines may come from another thread: a signal puts them
+    # back in the interface thread.
     _line_added = QtCore.Signal(str)
 
     def __init__(self, state, parent=None):
@@ -894,19 +854,17 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._running = True
         self._last_pick = (None, 0.0)
         self._checks = {}
-        self._lang_combo = None
         self._aigcp_combos = {}
         self._review_dialog = None
-        self._lang_cb = None
-        # Tri du tableau : (cle, decroissant) ou None = ordre du projet.
+        # Table sort: (key, descending) or None = project order.
         self._sort = None
-        self._signature = None            # instantane du tableau, pour voir ce que Metashape a change
+        self._signature = None            # snapshot of the table, to see what Metashape changed
         self.poll_cost = 0.0
-        # Nom du chunk affiche a la suite de la progression (pose par tool.py).
+        # Chunk name displayed after the progress (set by tool.py).
         self._chunk_name = ""
 
         self.setObjectName("AeroFastGcpDock")
-        # L'en-tete maison fait office de barre : la barre native disparait.
+        # The custom header acts as the bar: the native bar disappears.
         self.setTitleBarWidget(QtWidgets.QWidget())
         self._root = self._build_root()
         self.setWidget(self._root)
@@ -915,9 +873,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._refresh_icons()
         self._subscribe_journal()
         history.subscribe(self._on_history_changed)
-        self._lang_cb = self.retranslate
-        i18n.subscribe(self._lang_cb)
-        self._refresh_lang_buttons()
         self._update_undo_button()
         self.update_active_card()
         self.set_status("")
@@ -944,7 +899,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
         body = QtWidgets.QWidget()
         scroll.setWidget(body)
-        # QScrollArea peint son contenu : on laisse voir le fond du panneau.
+        # QScrollArea paints its content: the panel background is left visible.
         body.setAutoFillBackground(False)
         scroll.viewport().setAutoFillBackground(False)
 
@@ -964,16 +919,16 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.addWidget(self._build_active_card())
         layout.addWidget(self._build_search())
         layout.addWidget(self._build_list(), 1)
-        self._build_more()                # ouverte dans la fenetre Parametres, jamais dans la colonne
+        self._build_more()                # opened in the Settings window, never in the column
         layout.addLayout(self._build_footer())
         layout.addLayout(self._build_credit())
         column.addWidget(content, 1)
         return root
 
     def _build_banner(self):
-        """Tout en haut : filet vert, logo HELIX (blanc sur le gris) et une ligne de presentation.
+        """At the very top: green rule, HELIX logo (white on the grey) and a presentation line.
 
-        Tout le bandeau est un lien vers le site.
+        The whole banner is a link to the site.
         """
         holder = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(holder)
@@ -995,7 +950,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             logo.setText("AERO")
             logo.setObjectName("aeroTitle")
         else:
-            # Logo texte AERO, version degrade du kit valide le 31/10/2026.
+            # AERO text logo, gradient version of the kit approved on 2026-10-31.
             pixmap = pixmap.scaledToWidth(LOGO_WIDTH * LOGO_SCALE, QtCore.Qt.SmoothTransformation)
             pixmap.setDevicePixelRatio(LOGO_SCALE)
             logo.setPixmap(pixmap)
@@ -1010,7 +965,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return holder
 
     def _build_header(self):
-        """Titre a gauche, a droite : Annuler, Retablir, langue (drapeau), parametres (engrenage)."""
+        """Title on the left, on the right: Undo, Redo, settings (gear)."""
         header = QtWidgets.QWidget()
         header.setObjectName("aeroHeader")
         layout = QtWidgets.QHBoxLayout(header)
@@ -1025,8 +980,6 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.addWidget(self.undo_button, 0)
         layout.addWidget(self.redo_button, 0)
 
-        layout.addWidget(self._build_lang_combo(), 0)
-
         self.more_button = self._round_button(self._open_settings)
         self.more_button.setEnabled(True)
         layout.addWidget(self.more_button, 0)
@@ -1034,7 +987,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
     @staticmethod
     def _round_button(handler):
-        """Petit bouton rond du bandeau d'en-tete (Annuler, Retablir, parametres)."""
+        """Small round button of the header banner (Undo, Redo, settings)."""
         button = QtWidgets.QPushButton()
         button.setObjectName("aeroGhost")
         button.setProperty("round", True)
@@ -1045,22 +998,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         button.clicked.connect(handler)
         return button
 
-    def _build_lang_combo(self):
-        """Liste deroulante des langues de `i18n.LANGUES`, un drapeau devant chaque nom."""
-        combo = QtWidgets.QComboBox()
-        combo.setObjectName("aeroCombo")
-        combo.setCursor(QtCore.Qt.PointingHandCursor)
-        combo.setFocusPolicy(QtCore.Qt.NoFocus)
-        combo.setIconSize(QtCore.QSize(FLAG_W, FLAG_H))
-        combo.setFixedWidth(LANG_WIDTH)
-        for code, _name in i18n.LANGUES:
-            combo.addItem(QtGui.QIcon(_flag_pixmap(code)), "", code)
-        combo.activated.connect(self._on_lang_activated)
-        self._lang_combo = combo
-        return combo
-
     def _build_play(self):
-        """Bouton rond Play / Pause, puis pastille et texte d'etat."""
+        """Round Play / Pause button, then dot and state text."""
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD + theme.PAD_S)
@@ -1069,7 +1008,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.toggle.clicked.connect(self._on_toggle_clicked)
         row.addWidget(self.toggle, 0)
 
-        # La pastille d'etat est remplacee par l'interrupteur ; elle reste pour les appelants existants.
+        # The state dot is replaced by the switch; it stays for the existing callers.
         self.state_dot = QtWidgets.QLabel()
         self.state_dot.setFixedSize(STATE_DOT, STATE_DOT)
         self.state_dot.setVisible(False)
@@ -1081,7 +1020,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return row
 
     def _build_aigcp_card(self):
-        """Detection IA, en haut : type de cible, portee (marqueur actif ou tous), lancer."""
+        """AI detection, at the top: target type, scope (active marker or all), run."""
         card = QtWidgets.QFrame()
         card.setObjectName("aeroCardAccent")
         layout = QtWidgets.QVBoxLayout(card)
@@ -1108,7 +1047,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         actions.addWidget(self.aigcp_review_button, 1, QtCore.Qt.AlignVCenter)
         layout.addLayout(actions)
 
-        # Deux lignes de listes : type et portee, puis les photos a laisser tranquilles.
+        # Two rows of lists: type and scope, then the photos to leave alone.
         choices = QtWidgets.QGridLayout()
         choices.setContentsMargins(0, 0, 0, 0)
         choices.setHorizontalSpacing(theme.PAD)
@@ -1120,7 +1059,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         choices.setColumnStretch(1, 3)
         layout.addLayout(choices)
 
-        # Barre de progression avec son texte dedans, et Annuler a droite ; visibles pendant un calcul.
+        # Progress bar with its text inside, and Cancel at the right; visible during a computation.
         self.aigcp_bar_row = QtWidgets.QWidget()
         bar_layout = QtWidgets.QHBoxLayout(self.aigcp_bar_row)
         bar_layout.setContentsMargins(0, 0, 0, 0)
@@ -1137,11 +1076,11 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         bar_layout.addWidget(self.aigcp_cancel_button, 0)
         self.aigcp_bar_row.setVisible(False)
         layout.addWidget(self.aigcp_bar_row)
-        self._retranslate_aigcp()
+        self._set_aigcp_texts()
         return card
 
     def _build_combo(self, key, values):
-        """Liste deroulante d'un choix de la detection IA ; les textes sont poses par la traduction."""
+        """Drop-down list of an AI detection choice; the texts are set by `_set_aigcp_texts`."""
         combo = QtWidgets.QComboBox()
         combo.setObjectName("aeroCombo")
         combo.setCursor(QtCore.Qt.PointingHandCursor)
@@ -1162,7 +1101,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         layout.setContentsMargins(theme.PAD + theme.PAD_S, theme.PAD_S + 2, theme.PAD + theme.PAD_S, theme.PAD_S + 2)
         layout.setSpacing(theme.PAD_S)
 
-        # Une seule ligne : intitule, identifiant (tronque a 10 caracteres), compteurs.
+        # A single line: title, identifier (truncated to 10 characters), counters.
         line = QtWidgets.QHBoxLayout()
         line.setContentsMargins(0, 0, 0, 0)
         line.setSpacing(theme.PAD)
@@ -1173,8 +1112,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.active_value.set_full_text("—")
         line.addWidget(self.active_value, 1)
 
-        # Les pastilles gardent leur place quand elles sont masquees : la carte
-        # ne change pas de hauteur d'un marqueur a l'autre.
+        # The pills keep their place when they are hidden: the card
+        # does not change height from one marker to the next.
         self.counters = QtWidgets.QWidget()
         policy = self.counters.sizePolicy()
         policy.setRetainSizeWhenHidden(True)
@@ -1198,7 +1137,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return self.search
 
     def _build_list(self):
-        """Tableau des marqueurs : ID, erreurs X / Y / Z, nombre de projections."""
+        """Marker table: ID, X / Y / Z errors, number of projections."""
         box = QtWidgets.QFrame()
         box.setObjectName("aeroGridBox")
         box.setMinimumHeight(LIST_MIN_HEIGHT)
@@ -1206,7 +1145,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
         )
         inner = QtWidgets.QVBoxLayout(box)
-        # Les coins carres de la grille restent a l'abri du cadre arrondi.
+        # The square corners of the grid stay clear of the rounded frame.
         inner.setContentsMargins(3, 3, 3, 3)
         inner.setSpacing(0)
 
@@ -1225,8 +1164,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         grid.setTextElideMode(QtCore.Qt.ElideRight)
         grid.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         grid.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
-        # Maj+clic / Ctrl+clic : plusieurs marqueurs pour la detection IA. Le dernier
-        # clique reste le marqueur courant.
+        # Shift+click / Ctrl+click: several markers for the AI detection. The last
+        # one clicked stays the current marker.
         grid.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         grid.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
         grid.setIconSize(QtCore.QSize(DOT_SIZE + 2, DOT_SIZE + 2))
@@ -1235,7 +1174,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         )
 
         header = self._header
-        # QTreeView.setHeader remet ces reglages a zero : on les repose apres.
+        # QTreeView.setHeader resets these settings: they are set again afterwards.
         header.setSectionsClickable(True)
         header.setSectionsMovable(False)
         header.setSortIndicatorShown(True)
@@ -1258,7 +1197,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         grid.customContextMenuRequested.connect(self._on_grid_menu)
         inner.addWidget(grid)
         self.grid = grid
-        # Ancien nom du widget, garde pour les appelants existants.
+        # Former name of the widget, kept for the existing callers.
         self.list = grid
         return box
 
@@ -1272,7 +1211,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return button
 
     def _build_more(self):
-        """Carte « Plus » : enregistrement des pointages et journal. Repliee au depart."""
+        """"More" card: recording of the markings and log. Folded at the start."""
         self.more = QtWidgets.QFrame()
         self.more.setObjectName("aeroCard")
         layout = QtWidgets.QVBoxLayout(self.more)
@@ -1307,7 +1246,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return box
 
     def _build_footer(self):
-        """Une ligne : controle des residus (contour vert) a gauche, Exporter (plein vert) a droite."""
+        """One row: residual check (green outline) on the left, Export (solid green) on the right."""
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD)
@@ -1323,7 +1262,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         row.addWidget(self.adjust_button, 0)
         row.addStretch(1)
 
-        # Le statut (« 7/18 marques ») n'est plus affiche ; le widget reste pour les appelants existants.
+        # The status ("7/18 marked") is no longer displayed; the widget stays for the existing callers.
         self.status = _ElidedLabel("aeroStatus")
         self.status.setVisible(False)
         row.addWidget(self.status, 0)
@@ -1347,7 +1286,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return row
 
     def _build_credit(self):
-        """Tout en bas : « Outil cree par helix.aero » (lien) et l'icone GitHub (lien)."""
+        """At the very bottom: "Tool created by helix.aero" (link) and the GitHub icon (link)."""
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.PAD_S)
@@ -1379,14 +1318,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         try:
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(GITHUB_URL))
         except Exception as exc:
-            journal.write("FastGCP : lien GitHub : {!r}".format(exc))
+            journal.write("FastGCP: GitHub link: {!r}".format(exc))
 
     # ------------------------------------------------------------------
     # Theme
     # ------------------------------------------------------------------
 
     def _refresh_icons(self):
-        """Repeint toutes les icones aux couleurs de la palette active."""
+        """Repaint all the icons in the colours of the active palette."""
         try:
             self._apply_toggle(self._running)
             self.more_button.setIcon(QtGui.QIcon(_gear_pixmap(theme.FG_2)))
@@ -1402,8 +1341,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             pass
 
     def _paint_placeholder(self):
-        """Texte indicatif de la recherche en FG_2 (le QSS le laisse trop pale
-        sur certaines versions de Qt)."""
+        """Search placeholder text in FG_2 (the QSS leaves it too pale
+        on some Qt versions)."""
         palette = self.search.palette()
         role = getattr(QtGui.QPalette, "PlaceholderText", None)
         if role is None:
@@ -1411,109 +1350,15 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         palette.setColor(role, _qcolor(theme.FG_2))
         self.search.setPalette(palette)
 
-    # ------------------------------------------------------------------
-    # Langue
-    # ------------------------------------------------------------------
-
-    def _on_lang_activated(self, index):
-        self._on_lang_clicked(self._lang_combo.itemData(index))
-
-    def _on_lang_clicked(self, code, _checked=False):
-        """Choix d'une langue dans la liste : change la langue, `retranslate` suit par abonnement."""
-        # Abonnement (re)pose a chaque clic : un abonnement perdu ne doit pas
-        # rendre le selecteur muet jusqu'au prochain redemarrage de l'outil.
-        if self._lang_cb is not None:
-            i18n.subscribe(self._lang_cb)
-        if code == i18n.lang():
-            self.retranslate()
-            return
-        if not i18n.set_lang(code):
-            return
-        journal.write("Langue : {}".format(code))
-
-    def _refresh_lang_buttons(self):
-        """Montre la langue active dans la liste."""
-        combo = self._lang_combo
-        if combo is None:
-            return
-        try:
-            index = combo.findData(i18n.lang())
-            if index >= 0 and combo.currentIndex() != index:
-                combo.blockSignals(True)
-                combo.setCurrentIndex(index)
-                combo.blockSignals(False)
-        except RuntimeError:
-            pass
-
     def _set_export_text(self):
-        """Texte du bouton Exporter, elide s'il est trop long dans la langue choisie."""
+        """Text of the Export button, elided if it is too long."""
         text = i18n.t("panel.export")
         metrics = self.export_button.fontMetrics()
         self.export_button.setText(
             metrics.elidedText(text, QtCore.Qt.ElideRight, EXPORT_TEXT_MAX_PX))
 
-    def retranslate(self):
-        """Remet tout le panneau dans la langue courante, sans le recreer.
-
-        Appele par l'abonnement i18n. Les textes vivants (statut, carte du
-        marqueur, grille) sont relus ; le statut revient au nombre de marqueurs.
-        """
-        try:
-            self.objectName()
-        except RuntimeError:
-            # Panneau deja detruit par Qt : plus rien a traduire.
-            i18n.unsubscribe(self._lang_cb)
-            return
-        # Le surlignage FR / EN d'abord : il suit la langue meme si une etape
-        # plus bas echoue. Chaque etape est isolee, et une erreur (Metashape
-        # leve des RuntimeError pour des objets perimes) ne coupe ni les etapes
-        # suivantes ni l'abonnement : sinon le selecteur resterait muet.
-        for name, step in (
-            ("lang_buttons", self._refresh_lang_buttons),
-            ("eyebrow", self._retranslate_eyebrow),
-            ("search", self._retranslate_search),
-            ("grid", self._retranslate_grid),
-            ("checks", self._retranslate_checks),
-            ("bottom_buttons", self._retranslate_buttons),
-            ("aigcp", self._retranslate_aigcp),
-            ("export", self._retranslate_export),
-            ("credit", self._retranslate_credit),
-            ("state", lambda: self._apply_toggle(self._running)),
-            ("markers", self.refresh_markers),
-            ("card", self.update_active_card),
-        ):
-            try:
-                step()
-            except Exception as exc:
-                try:
-                    journal.write("Langue : etape {} en erreur : {!r}".format(name, exc))
-                except Exception:
-                    pass
-
-    def _retranslate_eyebrow(self):
-        self._eyebrow_active.set_full_text(i18n.t("panel.active_marker").upper())
-
-    def _retranslate_search(self):
-        self.search.setPlaceholderText(i18n.t("panel.search"))
-
-    def _retranslate_grid(self):
-        head = self.grid.headerItem()
-        for column, title in enumerate(column_titles()):
-            head.setText(column, title)
-        self._header.viewport().update()
-
-    def _retranslate_checks(self):
-        for key, box in self._checks.items():
-            box.set_full_text(i18n.t(CHECK_TEXTS[key]))
-
-    def _retranslate_buttons(self):
-        self.log_button.set_full_text(i18n.t("panel.log"))
-        self.qc_button.set_full_text(i18n.t("panel.qc"))
-        self.count_pointed.set_tip(i18n.t("panel.tip_pointed"))
-        self.count_photos.set_tip(i18n.t("panel.tip_seen"))
-
-    def _retranslate_aigcp(self):
-        """Textes de la carte Detection IA, choix affiches, etat des boutons."""
+    def _set_aigcp_texts(self):
+        """Texts of the AI Detection card, displayed choices, button state."""
         self._eyebrow_aigcp.set_full_text(i18n.t("panel.aigcp").upper())
         for key, combo in self._aigcp_combos.items():
             for index in range(combo.count()):
@@ -1524,24 +1369,12 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.aigcp_cancel_button.set_full_text(i18n.t("aigcp.cancel"))
         self.update_aigcp()
 
-    def _retranslate_credit(self):
-        self.ad.set_full_text(i18n.t("panel.ad", site=SITE_NAME))
-        self._set_credit_text()
-        self.github_button.setToolTip(i18n.t("panel.github_tip"))
-
-    def _retranslate_export(self):
-        self._set_export_text()
-        for kind, text_key in EXPORTS:
-            action = self._export_actions.get(kind)
-            if action is not None:
-                action.setText(i18n.t(text_key))
-
     # ------------------------------------------------------------------
     # Options
     # ------------------------------------------------------------------
 
     def _load_options(self):
-        """Pose les widgets depuis `state` sans declencher les signaux."""
+        """Set the widgets from `state` without triggering the signals."""
         state = self._state
         if state is None:
             return
@@ -1555,7 +1388,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
             self._set_log_open(bool(state.option("show_log")), persist=False)
         except Exception as exc:
-            journal.write("FastGCP : lecture des reglages : {!r}".format(exc))
+            journal.write("FastGCP: reading the settings: {!r}".format(exc))
 
     def _set_option(self, key, value):
         state = self._state
@@ -1564,18 +1397,18 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         try:
             state.set_option(key, value)
         except Exception as exc:
-            journal.write("FastGCP : reglage {} non enregistre : {!r}".format(key, exc))
+            journal.write("FastGCP: setting {} not saved: {!r}".format(key, exc))
 
     def _on_check(self, key, checked):
         self._set_option(key, bool(checked))
-        journal.write("Reglage {} : {}".format(key, "oui" if checked else "non"))
+        journal.write("Setting {}: {}".format(key, "yes" if checked else "no"))
 
     # ------------------------------------------------------------------
     # Play / Pause
     # ------------------------------------------------------------------
 
     def _apply_toggle(self, running):
-        """Aligne bouton, pastille et texte d'etat sur `running`."""
+        """Align the button, dot and state text with `running`."""
         self._running = bool(running)
         self.toggle.set_on(running)
         self.state_dot.setPixmap(_state_dot_pixmap(running))
@@ -1592,16 +1425,16 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         running = not bool(state.enabled)
         state.enabled = running
         self._apply_toggle(running)
-        # Le raccourci Ctrl+Z (tool.py) suit l'etat de l'outil.
+        # The Ctrl+Z shortcut (tool.py) follows the state of the tool.
         history.notify()
-        journal.write("FastGCP {}".format("actif" if running else "en pause"))
+        journal.write("FastGCP {}".format("active" if running else "paused"))
 
     # ------------------------------------------------------------------
-    # Fenetre Parametres (l'engrenage)
+    # Settings window (the gear)
     # ------------------------------------------------------------------
 
     def _open_settings(self, _checked=False):
-        """Ouvre la fenetre Parametres (une seule instance, reutilisee)."""
+        """Open the Settings window (a single instance, reused)."""
         try:
             from . import settings_dialog
             self._settings_dialog = settings_dialog.show(self, getattr(self, "_settings_dialog", None))
@@ -1609,14 +1442,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 self._fit_log_height()
                 self._scroll_log_to_end()
         except Exception as exc:
-            journal.write("FastGCP : fenetre Parametres : {!r}".format(exc))
+            journal.write("FastGCP: Settings window: {!r}".format(exc))
 
     # ------------------------------------------------------------------
-    # Marqueur courant
+    # Current marker
     # ------------------------------------------------------------------
 
     def update_active_card(self):
-        """Relit le marqueur courant depuis `state` et redessine la carte."""
+        """Reread the current marker from `state` and redraw the card."""
         state = self._state
         if state is None:
             return
@@ -1652,26 +1485,26 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             return 0
 
     def set_active_marker_by_label(self, label, from_sync=False):
-        """Rend courant le marqueur de ce nom (selection du panneau Reference)."""
+        """Make the marker of this name the current one (selection of the Reference pane)."""
         state = self._state
         if state is None:
             return False
         try:
             marker = self._find_marker(label)
             if marker is None:
-                journal.write("Marqueur introuvable dans le chunk : {}".format(label))
+                journal.write("Marker not found in the chunk: {}".format(label))
                 return False
             state.active_marker = marker
             self._select_row(label)
             self.update_active_card()
-            journal.write("Marqueur courant : {}{}".format(
-                label, " (selection Reference)" if from_sync else ""
+            journal.write("Current marker: {}{}".format(
+                label, " (Reference selection)" if from_sync else ""
             ))
             if not from_sync:
                 self._filter_photos(marker)
             return True
         except Exception as exc:
-            journal.write("FastGCP : marqueur {} non active : {!r}".format(label, exc))
+            journal.write("FastGCP: marker {} not activated: {!r}".format(label, exc))
             return False
 
     @staticmethod
@@ -1685,7 +1518,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return None
 
     def _select_row(self, label):
-        """Selectionne la ligne sans declencher _pick (pas de boucle)."""
+        """Select the row without triggering _pick (no loop)."""
         self.grid.blockSignals(True)
         try:
             item = self._item_for(label)
@@ -1707,7 +1540,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return None
 
     def _refresh_row(self, label):
-        """Remet a jour la ligne du marqueur (pastille, projections, erreurs)."""
+        """Update the marker row (dot, projections, errors)."""
         item = self._item_for(label)
         if item is None:
             return
@@ -1716,11 +1549,11 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self._style_item(item, marker, label)
 
     def refresh_errors(self):
-        """Apres un pointage ou une annulation : erreurs et projections du marqueur courant.
+        """After a marking or an undo: errors and projections of the current marker.
 
-        Les erreurs d'un marqueur ne dependent que de ses propres projections :
-        une seule ligne change. Si le tableau est trie sur une colonne de
-        valeurs, on relit tout pour que l'ordre reste juste.
+        The errors of a marker only depend on its own projections:
+        a single row changes. If the table is sorted on a value
+        column, everything is reread so that the order stays right.
         """
         state = self._state
         if state is None:
@@ -1732,14 +1565,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 self._refresh_row(state.active_label())
             self._update_undo_button()
         except Exception as exc:
-            journal.write("FastGCP : erreurs non rafraichies : {!r}".format(exc))
+            journal.write("FastGCP: errors not refreshed: {!r}".format(exc))
 
     def refresh_rows(self, labels=None, settle=False):
-        """Relit les lignes de ces marqueurs (erreurs X/Y/Z, projections) ; None = tout le tableau.
+        """Reread the rows of these markers (X/Y/Z errors, projections); None = the whole table.
 
-        Apres une validation ou un affinage, plusieurs marqueurs ont change : les relire
-        tous. `settle=True` : Metashape recalcule la position des marqueurs apres coup, donc
-        on relit encore deux fois, un peu plus tard. Ne leve jamais.
+        After a validation or a refinement, several markers changed: reread them
+        all. `settle=True`: Metashape recomputes the marker positions afterwards, so
+        the rows are reread twice more, a little later. Never raises.
         """
         state = self._state
         if state is None:
@@ -1755,36 +1588,36 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                     self._refresh_row(label)
                 self._update_undo_button()
         except Exception as exc:
-            journal.write("FastGCP : lignes non rafraichies : {!r}".format(exc))
+            journal.write("FastGCP: rows not refreshed: {!r}".format(exc))
 
     def _filter_photos(self, marker):
         state = self._state
         if state is None:
             return
         try:
-            # Metashape se recentre sur son marqueur selectionne quand on change de
-            # photo : on lui donne le meme marqueur qu'a FastGCP.
+            # Metashape recentres on its selected marker when the photo
+            # changes: it is given the same marker as FastGCP.
             if msapi.select_marker(msapi.chunk(), marker):
                 state.last_selected_label = msapi.marker_label(marker)
         except Exception as exc:
-            journal.write("FastGCP : selection Reference : {!r}".format(exc))
+            journal.write("FastGCP: Reference selection: {!r}".format(exc))
         try:
             from . import photos
             photos.filter_for_marker(state, marker, force=True)
         except Exception as exc:
-            journal.write("FastGCP : filtre photos : {!r}".format(exc))
+            journal.write("FastGCP: photos filter: {!r}".format(exc))
         self.update_active_card()
 
     # ------------------------------------------------------------------
-    # Liste des marqueurs
+    # Marker list
     # ------------------------------------------------------------------
 
     def poll_rows(self):
-        """Relit le tableau s'il a change dans Metashape : marqueur ajoute ou retire, projection posee
-        ou retiree ailleurs, erreurs recalculees. Compare un instantane leger au precedent.
+        """Reread the table if it changed in Metashape: marker added or removed, projection placed
+        or removed elsewhere, errors recomputed. Compares a light snapshot with the previous one.
 
-        Appele par le battement, toutes les deux secondes. Ne leve jamais. `poll_cost` (secondes) dit
-        combien coute la lecture : le battement espace les relectures si le projet est gros.
+        Called by the tick, every two seconds. Never raises. `poll_cost` (seconds) says
+        how much the read costs: the tick spaces out the rereads if the project is big.
         """
         if self._state is None:
             return
@@ -1806,18 +1639,18 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 bar = self.grid.verticalScrollBar()
                 position = bar.value()
                 self.refresh_markers()
-                bar.setValue(position)             # on ne fait pas sauter le tableau pendant qu'on le lit
+                bar.setValue(position)             # the table is not made to jump while it is being read
         except Exception as exc:
-            journal.write("FastGCP : suivi du tableau : {!r}".format(exc))
+            journal.write("FastGCP: table follow-up: {!r}".format(exc))
 
     def refresh_markers(self):
-        """Relit les marqueurs du chunk courant. Ne leve jamais."""
+        """Reread the markers of the current chunk. Never raises."""
         if self._state is None:
             return
         try:
             self._rebuild_list()
         except Exception as exc:
-            journal.write("FastGCP : relecture des marqueurs : {!r}".format(exc))
+            journal.write("FastGCP: marker reread: {!r}".format(exc))
             try:
                 self.set_status(i18n.t("panel.status.reread_failed"))
             except Exception:
@@ -1865,13 +1698,13 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self.grid.setUpdatesEnabled(True)
             self.grid.blockSignals(False)
 
-        # Le statut ne dit que le nombre : « 14 », ou « 3/14 » pendant une recherche.
+        # The status only gives the number: "14", or "3/14" during a search.
         if chunk is None:
             self.set_status("\u2014")
         elif needle:
             self.set_status("{}/{}".format(len(rows), total))
         else:
-            # Avancement : marqueurs avec au moins 3 photos pointees.
+            # Progress: markers with at least 3 photos marked.
             done, count = qc.progress(rows)
             if self._chunk_name:
                 self.set_status(i18n.t("panel.status.progress_chunk", done=done,
@@ -1882,7 +1715,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
     @staticmethod
     def _row_data(chunk, marker, label):
-        """Valeurs d'une ligne : nom, projections, erreurs en metres (ou None)."""
+        """Values of a row: name, projections, errors in metres (or None)."""
         errors = msapi.marker_errors(chunk, marker)
         return {
             "label": label,
@@ -1917,7 +1750,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             value = row.get(key)
             if key == "proj":
                 item.setText(column, str(int(value)))
-                # Moins de 3 photos pointees : a completer, en couleur d'alerte.
+                # Fewer than 3 photos marked: to be completed, in the alert colour.
                 item.setForeground(column, warn if qc.is_few(row) else normal)
             else:
                 item.setText(column, format_error(value))
@@ -1929,17 +1762,17 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
     @staticmethod
     def _marker_of(item):
-        """Marqueur d'une ligne, ou None si la reference est devenue invalide."""
+        """Marker of a row, or None if the reference became invalid."""
         try:
             marker = item.data(0, ROLE_MARKER)
             if marker is None:
                 return None
-            marker.label  # leve RuntimeError si le marqueur n'existe plus
+            marker.label  # raises RuntimeError if the marker no longer exists
             return marker
         except Exception:
             return None
 
-    # -- clic droit : supprimer les projections ou les marqueurs choisis ------
+    # -- right click: delete the projections or the chosen markers ---------
 
     def _on_grid_menu(self, pos):
         item = self.grid.itemAt(pos)
@@ -1988,9 +1821,9 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self.refresh_rows(labels, settle=True)
             self.update_active_card()
             self.set_status(i18n.t("panel.removed_projections", n=total, k=len(found)))
-            journal.write("FastGCP : {} projection(s) supprimee(s) sur {} marqueur(s)".format(total, len(found)))
+            journal.write("FastGCP: {} projection(s) removed on {} marker(s)".format(total, len(found)))
         except Exception as exc:
-            journal.write("FastGCP : suppression des projections : {!r}".format(exc))
+            journal.write("FastGCP: removal of the projections: {!r}".format(exc))
         finally:
             busy.close()
 
@@ -2005,14 +1838,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 label = msapi.marker_label(marker)
                 if msapi.remove_marker(chunk, marker)[0]:
                     gone.append(label)
-            state.active_label()          # remet le marqueur courant a zero s'il vient d'etre supprime
+            state.active_label()          # resets the current marker if it was just deleted
             aigcp.forget_markers(state, gone)
             self.refresh_markers()
             self.update_active_card()
             self.set_status(i18n.t("panel.removed_markers", n=len(gone)))
-            journal.write("FastGCP : {} marqueur(s) supprime(s) : {}".format(len(gone), ", ".join(gone)))
+            journal.write("FastGCP: {} marker(s) removed: {}".format(len(gone), ", ".join(gone)))
         except Exception as exc:
-            journal.write("FastGCP : suppression des marqueurs : {!r}".format(exc))
+            journal.write("FastGCP: removal of the markers: {!r}".format(exc))
 
     def _on_search(self, _text):
         self.refresh_markers()
@@ -2025,14 +1858,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         if item is not None:
             self._pick(item)
 
-    # -- tri par clic sur un en-tete --------------------------------------
+    # -- sort by clicking a header ---------------------------------------
 
     def sort_state(self):
-        """(cle, decroissant) du tri en cours, ou None pour l'ordre du projet."""
+        """(key, descending) of the current sort, or None for the project order."""
         return self._sort
 
     def set_sort(self, key, descending=False):
-        """Pose le tri (cle de COLUMNS, ou None) et relit le tableau."""
+        """Set the sort (COLUMNS key, or None) and reread the table."""
         valid = [column_key for _title, column_key, _width in COLUMNS]
         if key not in valid:
             key = None
@@ -2053,7 +1886,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.refresh_markers()
 
     def _on_header_clicked(self, column):
-        """Clics successifs sur un en-tete : croissant, decroissant, ordre du projet."""
+        """Successive clicks on a header: ascending, descending, project order."""
         try:
             key = COLUMNS[column][1]
         except IndexError:
@@ -2066,7 +1899,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self.set_sort(None)
 
     def _pick(self, item):
-        """Un clic (ou une fleche) dans la liste : marqueur courant + filtre."""
+        """A click (or an arrow) in the list: current marker + filter."""
         state = self._state
         if state is None:
             return
@@ -2085,13 +1918,13 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 return
             state.active_marker = marker
             self.update_active_card()
-            journal.write("Marqueur courant : {}".format(label))
+            journal.write("Current marker: {}".format(label))
             self._filter_photos(marker)
         except Exception as exc:
-            journal.write("FastGCP : choix du marqueur : {!r}".format(exc))
+            journal.write("FastGCP: marker choice: {!r}".format(exc))
 
     # ------------------------------------------------------------------
-    # Annuler
+    # Undo
     # ------------------------------------------------------------------
 
     def _on_history_changed(self):
@@ -2101,7 +1934,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             history.unsubscribe(self._on_history_changed)
 
     def _update_undo_button(self):
-        """Annuler / Retablir : actifs seulement quand l'outil tourne et qu'il y a de quoi defaire / refaire."""
+        """Undo / Redo: active only when the tool runs and there is something to undo / redo."""
         state = self._state
         running = state is not None and bool(state.enabled)
         self.undo_button.setEnabled(bool(running and history.can_undo()))
@@ -2115,7 +1948,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             from . import marking
             marking.redo_last(state)
         except Exception as exc:
-            journal.write("FastGCP : retablir : {!r}".format(exc))
+            journal.write("FastGCP: redo: {!r}".format(exc))
         self._update_undo_button()
 
     def _on_undo_clicked(self):
@@ -2126,15 +1959,15 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             from . import marking
             marking.undo_last(state)
         except Exception as exc:
-            journal.write("FastGCP : annulation : {!r}".format(exc))
+            journal.write("FastGCP: undo: {!r}".format(exc))
         self._update_undo_button()
 
     # ------------------------------------------------------------------
-    # Controle des residus et marqueurs a surveiller
+    # Residual check and markers to watch
     # ------------------------------------------------------------------
 
     def _all_rows(self):
-        """Lignes de tous les marqueurs du chunk (pas seulement ceux de la recherche)."""
+        """Rows of all the markers of the chunk (not only those of the search)."""
         chunk = msapi.chunk()
         rows = []
         for marker in msapi.markers(chunk):
@@ -2144,27 +1977,27 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return rows
 
     def _qc_data(self):
-        """Ce que montre la fenetre Residual check : tous les marqueurs, l'erreur de controle et de verification."""
+        """What the Residual check window shows: all the markers, the control and check error."""
         rows = self._all_rows()
         enabled = {row["label"]: msapi.marker_enabled(row["marker"]) for row in rows}
         items = qc.table(rows, enabled)
         return {"items": items, "groups": qc.group_rms(items), "limit": qc.residual_limit(rows)}
 
     def _open_qc(self, _checked=False):
-        """Fenetre « Residual check » : tous les marqueurs et leur etat (voir qc_dialog.py)."""
+        """"Residual check" window: all the markers and their state (see qc_dialog.py)."""
         try:
             from . import qc_dialog
             self._qc_dialog = qc_dialog.show(self, self._qc_data, self._on_qc_open, self._open_diagnostic,
                                              getattr(self, "_qc_dialog", None))
         except Exception as exc:
-            journal.write("FastGCP : controle des residus : {!r}".format(exc))
+            journal.write("FastGCP: residual check: {!r}".format(exc))
 
     def _on_qc_open(self, item):
-        """Double-clic dans la fenetre : le marqueur, et sa pire photo quand c'est un residu eleve."""
+        """Double-click in the window: the marker, and its worst photo when it is a high residual."""
         self._on_qc_pick(item["label"], item["status"] == qc.RESIDUAL)
 
     def _adjust_collect(self):
-        """Lecture des marqueurs pour « Ajuster » (fil principal) : points, cases cochees, PPK ou non."""
+        """Read of the markers for "Adjust" (main thread): points, ticked boxes, PPK or not."""
         chk = msapi.chunk()
         points, why = msapi.marker_frame_points(chk)
         used, total = msapi.cameras_georeferenced(chk)
@@ -2172,7 +2005,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 "enabled": {p["label"]: bool(msapi.marker_enabled(p["marker"])) for p in points}}
 
     def _adjust_apply(self, labels):
-        """Coche ces marqueurs comme points de controle et decoche les autres. Renvoie (nombre coche, erreur)."""
+        """Tick these markers as check points and untick the others. Returns (number ticked, error)."""
         try:
             chk = msapi.chunk()
             points, why = msapi.marker_frame_points(chk)
@@ -2186,24 +2019,24 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 if msapi.set_marker_enabled(point["marker"], on):
                     count += 1 if on else 0
             msapi.refresh()
-            journal.write("FastGCP : marqueurs de controle coches : {} (avant : {})".format(
+            journal.write("FastGCP: check markers ticked: {} (before: {})".format(
                 ", ".join(sorted(wanted)), ", ".join(before)))
             return count, ""
         except Exception as exc:
-            journal.write("FastGCP : cocher les marqueurs de controle : {!r}".format(exc))
+            journal.write("FastGCP: ticking the check markers: {!r}".format(exc))
             return 0, repr(exc)
 
     def _open_adjust(self, _checked=False):
-        """Fenetre « Ajuster » : quels marqueurs cocher comme points de controle (voir gcp_select_dialog.py)."""
+        """"Adjust" window: which markers to tick as check points (see gcp_select_dialog.py)."""
         try:
             from . import gcp_select_dialog
             self._adjust_dialog = gcp_select_dialog.show(self, self._adjust_collect, self._adjust_apply,
                                                          getattr(self, "_adjust_dialog", None))
         except Exception as exc:
-            journal.write("FastGCP : ajustement des marqueurs de controle : {!r}".format(exc))
+            journal.write("FastGCP: adjustment of the check markers: {!r}".format(exc))
 
     def _open_diagnostic(self, _checked=False):
-        """Fenetre du diagnostic complet du pointage (voir diagnostic.py)."""
+        """Window of the full marking diagnostic (see diagnostic.py)."""
         try:
             from . import diagnostic, diagnostic_dialog
 
@@ -2213,10 +2046,10 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self._diag_dialog = diagnostic_dialog.show(
                 self, compute, self._on_diag_open, getattr(self, "_diag_dialog", None))
         except Exception as exc:
-            journal.write("FastGCP : diagnostic du pointage : {!r}".format(exc))
+            journal.write("FastGCP: marking diagnostic: {!r}".format(exc))
 
     def _on_diag_open(self, item):
-        """Un element du diagnostic : marqueur courant, puis la photo concernee si on la connait."""
+        """A diagnostic item: current marker, then the photo concerned if it is known."""
         try:
             label, camera = item.get("label"), item.get("camera")
             if label and not self.set_active_marker_by_label(label):
@@ -2229,10 +2062,10 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 from . import photos
                 photos.zoom_on_marker(self._state, marker, camera, force=True)
         except Exception as exc:
-            journal.write("FastGCP : ouverture depuis le diagnostic : {!r}".format(exc))
+            journal.write("FastGCP: opening from the diagnostic: {!r}".format(exc))
 
     def _on_qc_pick(self, label, open_worst, _checked=False):
-        """Un clic dans le menu : marqueur courant ; pour un residu, ouvre la pire photo."""
+        """A click in the menu: current marker; for a residual, opens the worst photo."""
         try:
             if not self.set_active_marker_by_label(label) or not open_worst:
                 return
@@ -2247,14 +2080,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 photos.zoom_on_marker(state, marker, worst[0], force=True)
                 self.set_status(i18n.t("qc.opened", label=label))
         except Exception as exc:
-            journal.write("FastGCP : choix dans le controle : {!r}".format(exc))
+            journal.write("FastGCP: choice in the check: {!r}".format(exc))
 
     # ------------------------------------------------------------------
-    # Detection IA
+    # AI detection
     # ------------------------------------------------------------------
 
     def update_aigcp(self):
-        """Montre les choix memorises ; grise Lancer pendant un calcul ; barre de progression."""
+        """Show the stored choices; grey out Run during a computation; progress bar."""
         state = self._state
         chosen = {"type": aigcp.selected_type(), "scope": aigcp.selected_scope(),
                   "ignore": aigcp.selected_ignore()}
@@ -2271,15 +2104,15 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         proposals = state is not None and bool(getattr(state, "aigcp_applied", None))
         self.aigcp_button.setEnabled(not running)
         self.aigcp_clear_button.setEnabled(proposals and not running)
-        self.aigcp_review_button.setEnabled(state is not None)       # toujours cliquable : sans detection, il le dit
-        # Barre : pleine largeur et en va-et-vient tant que le runner charge son modele,
-        # puis au prorata des photos traitees.
+        self.aigcp_review_button.setEnabled(state is not None)       # always clickable: without a detection, it says so
+        # Bar: full width and back and forth while the runner loads its model,
+        # then in proportion to the photos processed.
         progress = aigcp.progress_of(state) if running else None
         if progress is not None and progress[1] > 0:
             self.aigcp_progress.setRange(0, progress[1])
             self.aigcp_progress.setValue(min(progress[0], progress[1]))
         else:
-            self.aigcp_progress.setRange(0, 100)         # plage vide = le texte ne s'afficherait pas
+            self.aigcp_progress.setRange(0, 100)         # empty range = the text would not be displayed
             self.aigcp_progress.setValue(0)
         self.aigcp_progress.setFormat(aigcp.bar_text(state) if running else "")
         self.aigcp_bar_row.setVisible(bool(running))
@@ -2293,8 +2126,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.open_review()
 
     def show_ai_setup(self, text, target=None):
-        """Explique ce qu'il manque pour la detection IA. Avec `target` (moteur que l'installeur sait
-        poser), la boite propose de l'installer tout de suite ; sans, elle dit comment faire."""
+        """Explain what is missing for the AI detection. With `target` (an engine the installer can
+        install), the box offers to install it right away; without, it says what to do."""
         try:
             from . import dialogs
             if target is None:
@@ -2305,26 +2138,26 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 install_ui.run(self, target, confirm=False)
                 self.update_aigcp()
         except Exception as exc:
-            journal.write("FastGCP : message d'installation de l'IA : {!r}".format(exc))
+            journal.write("FastGCP: AI setup message: {!r}".format(exc))
 
     def open_review(self):
-        """Ouvre la fenetre de revue des pointes de la derniere detection. Ne leve jamais."""
+        """Open the review window of the points of the last detection. Never raises."""
         try:
             from . import review_dialog
             self._review_dialog = review_dialog.show(self._state, self, self._review_dialog)
         except Exception as exc:
-            journal.write("FastGCP : revue des pointes IA : {!r}".format(exc))
+            journal.write("FastGCP: AI points review: {!r}".format(exc))
 
     def close_review(self):
         try:
             from . import review_dialog
             review_dialog.close(self._review_dialog)
         except Exception as exc:
-            journal.write("FastGCP : fermeture de la revue IA : {!r}".format(exc))
+            journal.write("FastGCP: closing the AI review: {!r}".format(exc))
         self._review_dialog = None
 
     def selected_labels(self):
-        """Etiquettes des lignes selectionnees (Maj+clic), dans l'ordre du tableau."""
+        """Labels of the selected rows (Shift+click), in table order."""
         out = []
         for row in range(self.grid.topLevelItemCount()):
             item = self.grid.topLevelItem(row)
@@ -2336,29 +2169,29 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         try:
             aigcp.start(self._state, labels=self.selected_labels())
         except Exception as exc:
-            journal.write("FastGCP : detection IA : {!r}".format(exc))
+            journal.write("FastGCP: AI detection: {!r}".format(exc))
         self.update_aigcp()
 
     def _on_aigcp_cancel(self, _checked=False):
         try:
             aigcp.abort(self._state)
         except Exception as exc:
-            journal.write("FastGCP : annulation de la detection : {!r}".format(exc))
+            journal.write("FastGCP: cancelling the detection: {!r}".format(exc))
         self.update_aigcp()
 
     def _on_aigcp_clear(self, _checked=False):
         try:
             aigcp.clear(self._state)
         except Exception as exc:
-            journal.write("FastGCP : effacement des propositions : {!r}".format(exc))
+            journal.write("FastGCP: clearing the proposals: {!r}".format(exc))
         self.update_aigcp()
 
     # ------------------------------------------------------------------
-    # Exporter
+    # Export
     # ------------------------------------------------------------------
 
     def _show_export_menu(self):
-        """Ouvre le menu au-dessus du bouton, aligne sur son bord droit."""
+        """Open the menu above the button, aligned on its right edge."""
         button = self.export_button
         menu = self.export_menu
         size = menu.sizeHint()
@@ -2368,34 +2201,34 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         menu.popup(origin)
 
     def _on_export(self, kind, _checked=False):
-        """Lance l'export demande. L'import de report.py se fait ici, au clic."""
+        """Run the requested export. report.py is imported here, at click time."""
         name = str(kind).upper()
         try:
             from . import report
             function = getattr(report, "export_" + kind)
         except Exception as exc:
             self.set_status(i18n.t("panel.status.export_unavailable"))
-            journal.write("Export {} indisponible : {!r}".format(name, exc))
+            journal.write("Export {} unavailable: {!r}".format(name, exc))
             return
-        journal.write("Export : {}".format(name))
+        journal.write("Export: {}".format(name))
         try:
             function(self._state, self)
         except Exception as exc:
             self.set_status(i18n.t("panel.status.export_failed"))
-            journal.write("Export {} impossible : {!r}".format(name, exc))
+            journal.write("Export {} failed: {!r}".format(name, exc))
 
     # ------------------------------------------------------------------
-    # Statut
+    # Status
     # ------------------------------------------------------------------
 
     def set_chunk_name(self, name):
-        """Nom du chunk courant, repris dans le statut au prochain rafraichissement."""
+        """Name of the current chunk, used in the status at the next refresh."""
         self._chunk_name = str(name or "")
 
-    def set_status(self, texte):
-        """Ligne de statut du pied du panneau."""
+    def set_status(self, text):
+        """Status line of the panel footer."""
         try:
-            self.status.set_full_text(texte or "")
+            self.status.set_full_text(text or "")
         except RuntimeError:
             pass
 
@@ -2446,11 +2279,11 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self._set_option("show_log", self._log_open)
 
     # ------------------------------------------------------------------
-    # Fermeture
+    # Closing
     # ------------------------------------------------------------------
 
     def detach(self):
-        """Coupe les liens avec le reste du programme. Ne leve jamais."""
+        """Cut the links with the rest of the program. Never raises."""
         try:
             self.close_review()
         except Exception:
@@ -2465,10 +2298,4 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             history.unsubscribe(self._on_history_changed)
         except Exception:
             pass
-        try:
-            if self._lang_cb is not None:
-                i18n.unsubscribe(self._lang_cb)
-        except Exception:
-            pass
-        self._lang_cb = None
         self._state = None

@@ -1,14 +1,14 @@
-"""Reglages d'affichage des vignettes (exposition, contraste, saturation, nettete).
+"""Thumbnail display adjustments (exposure, contrast, saturation, sharpness).
 
-Uniquement une aide a l'oeil de l'operateur : les reglages s'appliquent aux images
-montrees dans le Review panel et dans la fenetre d'affinage, jamais aux photos du projet
-ni aux recadrages enregistres par la detection. Les points restent en coordonnees photo,
-un reglage ne les deplace pas.
+Only an aid for the operator's eye: the adjustments apply to the images
+shown in the Review panel and in the refinement window, never to the project photos
+nor to the crops recorded by the detection. The points stay in photo coordinates,
+an adjustment does not move them.
 
-Deux couches :
-  - `Adjustments` : les quatre valeurs, leurs bornes, la sauvegarde. Sans Qt, testable.
-  - `apply_image` : applique les valeurs a une QImage avec numpy (livre avec Metashape).
-    Sans numpy, l'image revient telle quelle et `available()` renvoie False.
+Two layers:
+  - `Adjustments`: the four values, their bounds, saving. Without Qt, testable.
+  - `apply_image`: applies the values to a QImage with numpy (shipped with Metashape).
+    Without numpy, the image comes back unchanged and `available()` returns False.
 """
 
 from ... import config
@@ -30,7 +30,7 @@ def _clamp(key, value):
 
 
 class Adjustments(object):
-    """Les quatre reglages, partages entre le Review panel et la fenetre d'affinage."""
+    """The four adjustments, shared between the Review panel and the refinement window."""
 
     def __init__(self, values=None):
         self.values = {key: 0 for key in KEYS}
@@ -43,7 +43,7 @@ class Adjustments(object):
         return self.values[key]
 
     def set(self, key, value):
-        """Change un reglage. Renvoie True s'il a bouge ; previent les abonnes."""
+        """Change one adjustment. Returns True if it moved; notifies the subscribers."""
         value = _clamp(key, value)
         if self.values[key] == value:
             return False
@@ -86,7 +86,7 @@ class Adjustments(object):
 
 
 def load():
-    """Reglages memorises (ou neutres)."""
+    """Stored adjustments (or neutral ones)."""
     values = {}
     for key in KEYS:
         stored = config.get(SECTION, CONFIG_KEYS[key])
@@ -96,26 +96,26 @@ def load():
 
 
 # --------------------------------------------------------------------------
-# Facteurs de chaque reglage
+# Factor of each adjustment
 # --------------------------------------------------------------------------
 
 def exposure_gain(value):
-    """Gain lineaire : -100 -> /4, 0 -> x1, +100 -> x4 (deux diaphragmes)."""
+    """Linear gain: -100 -> /4, 0 -> x1, +100 -> x4 (two stops)."""
     return 2.0 ** (value / 50.0)
 
 
 def contrast_factor(value):
-    """Pente autour du gris moyen : -100 -> 0, 0 -> 1, +100 -> 3."""
+    """Slope around mid grey: -100 -> 0, 0 -> 1, +100 -> 3."""
     return 1.0 + value / 100.0 if value < 0 else 1.0 + value / 50.0
 
 
 def saturation_factor(value):
-    """Melange avec la luminance : -100 -> gris, 0 -> inchange, +100 -> x3."""
+    """Mix with the luminance: -100 -> grey, 0 -> unchanged, +100 -> x3."""
     return 1.0 + value / 100.0 if value < 0 else 1.0 + value / 50.0
 
 
 def sharpness_amount(value):
-    """Force du masque flou : 0 -> rien, 100 -> 2."""
+    """Unsharp mask strength: 0 -> nothing, 100 -> 2."""
     return value / 50.0
 
 
@@ -132,7 +132,7 @@ def available():
 
 
 def _blur(x):
-    """Flou binomial 5x5 separable, bords repetes. x : (H, W, 3) float."""
+    """Separable 5x5 binomial blur, repeated edges. x: (H, W, 3) float."""
     import numpy as np
     kernel = (1.0, 4.0, 6.0, 4.0, 1.0)
     h, w = x.shape[0], x.shape[1]
@@ -143,7 +143,7 @@ def _blur(x):
 
 
 def adjust_array(rgb, values):
-    """Applique les reglages a un tableau (H, W, 3) uint8 ; renvoie un tableau uint8 neuf."""
+    """Apply the adjustments to a (H, W, 3) uint8 array; returns a new uint8 array."""
     import numpy as np
     exposure, contrast = values.get("exposure", 0), values.get("contrast", 0)
     saturation, sharpness = values.get("saturation", 0), values.get("sharpness", 0)
@@ -163,7 +163,7 @@ def adjust_array(rgb, values):
 
 
 def apply_image(image, adjustments):
-    """QImage reglee d'apres `adjustments` (Adjustments ou dict) ; l'entree n'est jamais modifiee."""
+    """QImage adjusted according to `adjustments` (Adjustments or dict); the input is never modified."""
     values = adjustments.values if isinstance(adjustments, Adjustments) else dict(adjustments or {})
     if not any(values.values()) or image is None or image.isNull() or not available():
         return image
@@ -175,4 +175,4 @@ def apply_image(image, adjustments):
     rgb = raw.reshape(height, stride)[:, :width * 3].reshape(height, width, 3)
     out = np.ascontiguousarray(adjust_array(rgb, values))
     result = QtGui.QImage(out.data, width, height, width * 3, QtGui.QImage.Format_RGB888)
-    return result.copy()       # copie : `out` disparait a la sortie de la fonction
+    return result.copy()       # copy: `out` disappears when the function returns

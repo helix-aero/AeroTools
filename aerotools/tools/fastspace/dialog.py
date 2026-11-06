@@ -1,19 +1,19 @@
-"""Fenetre Fast Space (Qt) : on choisit un disque, on scanne, on allege ou on supprime.
+"""Fast Space window (Qt): pick a drive, scan, lighten or delete.
 
-Le tableau montre, pour chaque projet Metashape : le fichier .psx, ses 3 dossiers parents (pour
-reconnaitre le chantier), ce que pese « nuage dense + cartes de profondeur » (ce que l'allegement libere),
-ce que pese le projet en entier (pour voir si cela vaut la peine de le supprimer), la date et l'etat
-(ouvert, verrou oublie, dossier orphelin). Le tri se fait en cliquant un en-tete.
+The table shows, for each Metashape project: the .psx file, its 3 parent folders (to
+recognise the site), what "dense cloud + depth maps" weigh (what lightening frees),
+what the whole project weighs (to see whether deleting it is worthwhile), the date and the state
+(open, stale lock, orphan folder). Sorting is done by clicking a header.
 
-La colonne « Gardes » dit ce qui reste a cote du projet quand on le supprime (un point d'exclamation
-signale un MNT ou une ortho internes sans export trouve).
+The "Kept" column says what stays next to the project when it is deleted (an exclamation mark
+flags an internal DEM or orthomosaic with no export found).
 
-Deux boutons :
-  - Alleger             retire le nuage dense et les cartes de profondeur, garde tout le reste ;
-  - Supprimer le projet retire le .psx et son .files, jamais les fichiers a cote.
-Chaque action demande de choisir corbeille ou suppression definitive ; la suppression definitive
-demande de taper DELETE. Le scan et les suppressions ne bloquent pas la fenetre ; l'allegement passe
-par l'API de Metashape, qui travaille dans le fil principal : la fenetre se fige un instant par projet.
+Two buttons:
+  - Lighten           removes the dense cloud and the depth maps, keeps everything else;
+  - Delete the project  removes the .psx and its .files, never the files next to it.
+Each action asks to choose recycle bin or permanent deletion; permanent deletion
+asks to type DELETE. The scan and the deletions do not block the window; lightening goes through
+Metashape's API, which works in the main thread: the window freezes for a moment per project.
 """
 
 import os
@@ -28,18 +28,18 @@ from . import actions, scanner
 
 POLL_MS = 150
 WIDTH, HEIGHT = 1500, 780
-SCREEN_MARGIN = 60                                         # la fenetre ne depasse jamais l'ecran
+SCREEN_MARGIN = 60                                         # the window never exceeds the screen
 ROLE_PROJECT = QtCore.Qt.UserRole
 ROLE_SORT = QtCore.Qt.UserRole + 1
 SECTION = "fastspace"
 COLUMNS = ("space.col_project", "space.col_folder", "space.col_dense", "space.col_depth", "space.col_ortho",
            "space.col_total", "space.col_kept", "space.col_modified", "space.col_state")
-COLUMN_WIDTHS = (250, 210, 105, 105, 110, 110, 100, 90)    # la derniere colonne prend le reste
+COLUMN_WIDTHS = (250, 210, 105, 105, 110, 110, 100, 90)    # the last column takes the rest
 COL_TOTAL = 5
 ITEM_TEXT = {"dense": ("space.item_dense", "space.hint_dense"), "depth": ("space.item_depth", "space.hint_depth"),
              "ortho": ("space.item_ortho", "space.hint_ortho")}
 ELLIPSIS = "\u2026"
-CHECKBOX_ZONE = 30                                         # pixels depuis le bord gauche de la cellule : la case
+CHECKBOX_ZONE = 30                                         # pixels from the left edge of the cell: the check box
 WARNING = "\u26a0"
 TABLE_STYLE = """
     QTableWidget {{
@@ -56,7 +56,7 @@ TABLE_STYLE = """
 
 
 class _Item(QtWidgets.QTableWidgetItem):
-    """Cellule qui se trie sur une valeur numerique ou textuelle choisie, pas sur le texte affiche."""
+    """Cell that sorts on a chosen numeric or text value, not on the displayed text."""
 
     def __lt__(self, other):
         mine, theirs = self.data(ROLE_SORT), other.data(ROLE_SORT)
@@ -67,7 +67,7 @@ class _Item(QtWidgets.QTableWidgetItem):
 
 
 class _Worker(threading.Thread):
-    """Execute `job(worker)` hors du fil Qt."""
+    """Run `job(worker)` outside the Qt thread."""
 
     def __init__(self, job):
         super(_Worker, self).__init__(daemon=True)
@@ -86,7 +86,7 @@ class _Worker(threading.Thread):
 
 
 class _Option(QtWidgets.QFrame):
-    """Une option a choisir : une carte avec son bouton radio, cliquable partout, verte une fois choisie."""
+    """An option to choose: a card with its radio button, clickable anywhere, green once chosen."""
 
     def __init__(self, radio, danger=False, toggle=False, side=None, note=None):
         super(_Option, self).__init__()
@@ -94,17 +94,17 @@ class _Option(QtWidgets.QFrame):
         self.setProperty("on", False)
         self.setProperty("danger", bool(danger))
         self.radio = radio
-        self.toggle = toggle                               # une case se coche et se decoche ; un rond ne fait que se cocher
+        self.toggle = toggle                               # a box ticks and unticks; a radio button can only be ticked
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(4)
         top = QtWidgets.QHBoxLayout()
         top.addWidget(radio)
-        if side is not None:                               # texte a droite du bouton (la taille)
+        if side is not None:                               # text to the right of the button (the size)
             top.addStretch(1)
             top.addWidget(side)
         layout.addLayout(top)
-        if note is not None:                               # explication sous le bouton
+        if note is not None:                               # explanation under the button
             layout.addWidget(note)
         radio.toggled.connect(self.sync)
 
@@ -120,7 +120,7 @@ class _Option(QtWidgets.QFrame):
 
 
 class ForceDialog(QtWidgets.QDialog):
-    """Ecran en plus avant de supprimer un projet qui semble ouvert ailleurs (fichier lock tenu)."""
+    """Extra screen before deleting a project that seems to be open elsewhere (lock file held)."""
 
     def __init__(self, parent, text):
         super(ForceDialog, self).__init__(parent)
@@ -141,16 +141,16 @@ class ForceDialog(QtWidgets.QDialog):
 
 
 class ConfirmDialog(QtWidgets.QDialog):
-    """Choix du sort (corbeille ou definitif) ; le definitif demande de taper DELETE."""
+    """Choice of fate (recycle bin or permanent); permanent asks to type DELETE."""
 
     def __init__(self, parent, text, recycle_ok, na_key="space.mode_recycle_na", choices=None):
-        """`choices` : [(cle, texte, explication, octets, projets, coche)] des cases a cocher (alleger : quoi retirer)."""
+        """`choices`: [(key, text, explanation, bytes, projects, ticked)] of the check boxes (lighten: what to remove)."""
         super(ConfirmDialog, self).__init__(parent)
         self.setWindowTitle(i18n.t("space.title"))
         self.setModal(True)
         self.setMinimumWidth(680 if choices else 560)
         self.mode = None
-        self.items = []                                     # cles des cases cochees a la validation
+        self.items = []                                     # keys of the boxes ticked on validation
         self._boxes = {}
         self._sizes = {}
         root = ui.styled_root(self)
@@ -167,7 +167,7 @@ class ConfirmDialog(QtWidgets.QDialog):
             box.setChecked(bool(checked))
             amount = ui.label(i18n.t("space.item_size", size=scanner.gb(size), n=count), "aeroSection", wrap=False)
             note = ui.label(hint, "aeroMeta")
-            note.setContentsMargins(28, 0, 0, 0)               # sous le texte de la case, pas sous la case
+            note.setContentsMargins(28, 0, 0, 0)               # under the text of the box, not under the box
             card = _Option(box, toggle=True, side=amount, note=note)
             card.sync()
             box.setEnabled(size > 0)
@@ -183,7 +183,7 @@ class ConfirmDialog(QtWidgets.QDialog):
         self.recycle = QtWidgets.QRadioButton(i18n.t("space.mode_recycle" if recycle_ok else na_key))
         self.recycle.setEnabled(recycle_ok)
         self.permanent = QtWidgets.QRadioButton(i18n.t("space.mode_permanent"))
-        self._group = QtWidgets.QButtonGroup(self)          # les deux ronds sont dans des cartes separees
+        self._group = QtWidgets.QButtonGroup(self)          # the two radio buttons are in separate cards
         self._group.addButton(self.recycle)
         self._group.addButton(self.permanent)
         self._options = [_Option(self.recycle), _Option(self.permanent, danger=True)]
@@ -211,7 +211,7 @@ class ConfirmDialog(QtWidgets.QDialog):
         self._fit()
 
     def _fit(self):
-        """Les textes qui passent a la ligne demandent plus de hauteur que ce que Qt prevoit : on la leur donne."""
+        """Texts that wrap need more height than Qt foresees: they are given it."""
         grown = 0
         for label in self.findChildren(QtWidgets.QLabel):
             if label.wordWrap() and label.width() > 0:
@@ -252,7 +252,7 @@ class ConfirmDialog(QtWidgets.QDialog):
 
 
 def drives():
-    """Lecteurs presents : [(racine, texte)] avec l'espace libre quand c'est rapide a lire."""
+    """Drives present: [(root, text)] with the free space when it is quick to read."""
     found = []
     for letter in string.ascii_uppercase:
         root = letter + ":\\"
@@ -278,7 +278,6 @@ class SpaceDialog(QtWidgets.QDialog):
         self.projects = []
         self._worker = None
         self._batch = None
-        self._lang = i18n.lang()
         self._stepping = False
         root = ui.styled_root(self)
         layout = QtWidgets.QVBoxLayout(root)
@@ -366,14 +365,14 @@ class SpaceDialog(QtWidgets.QDialog):
 
     @staticmethod
     def _size():
-        """Grande fenetre, mais jamais plus grande que l'ecran."""
+        """Large window, but never larger than the screen."""
         try:
             area = QtWidgets.QApplication.primaryScreen().availableGeometry()
             return min(WIDTH, area.width() - SCREEN_MARGIN), min(HEIGHT, area.height() - SCREEN_MARGIN)
         except Exception:
             return WIDTH, HEIGHT
 
-    # -- disque a scanner ----------------------------------------------------------
+    # -- drive to scan -------------------------------------------------------------
 
     def _fill_drives(self):
         saved = config.get(SECTION, "root")
@@ -445,7 +444,7 @@ class SpaceDialog(QtWidgets.QDialog):
             dense=scanner.gb(sum(p.dense for p in self.projects)), depth=scanner.gb(sum(p.depth for p in self.projects)),
             ortho=scanner.gb(sum(p.ortho_photos for p in self.projects)), seconds="{:.0f}".format(result["seconds"])))
 
-    # -- tableau --------------------------------------------------------------------
+    # -- table ----------------------------------------------------------------------
 
     def _fill_table(self):
         here = actions.current_document_path()
@@ -575,7 +574,7 @@ class SpaceDialog(QtWidgets.QDialog):
             item = self.table.item(row, 0)
             if item is not None and not self.table.isRowHidden(row) and item.flags() & QtCore.Qt.ItemIsUserCheckable:
                 if value and item.data(ROLE_PROJECT).in_use:
-                    continue                    # un projet ouvert ailleurs ne se coche pas en bloc
+                    continue                    # a project open elsewhere is not ticked in bulk
                 item.setCheckState(QtCore.Qt.Checked if value else QtCore.Qt.Unchecked)
         self.table.blockSignals(False)
         self._refresh_summary()
@@ -593,7 +592,7 @@ class SpaceDialog(QtWidgets.QDialog):
         return found
 
     def eventFilter(self, source, event):
-        """Un clic sur la case d'une ligne surlignee coche ou decoche toutes les lignes surlignees."""
+        """A click on the box of a highlighted row ticks or unticks all the highlighted rows."""
         if (source is self.table.viewport() and event.type() == QtCore.QEvent.MouseButtonPress
                 and event.button() == QtCore.Qt.LeftButton
                 and not event.modifiers() & (QtCore.Qt.ShiftModifier | QtCore.Qt.ControlModifier)):
@@ -603,7 +602,7 @@ class SpaceDialog(QtWidgets.QDialog):
         return super(SpaceDialog, self).eventFilter(source, event)
 
     def _toggle_highlighted(self, pos, index):
-        """True si le clic etait sur la case d'une ligne parmi plusieurs surlignees (et a ete traite ici)."""
+        """True if the click was on the box of one row among several highlighted ones (and was handled here)."""
         if pos.x() - self.table.visualRect(index).left() > CHECKBOX_ZONE:
             return False
         rows = {item.row() for item in self.table.selectedItems() if not self.table.isRowHidden(item.row())}
@@ -623,7 +622,7 @@ class SpaceDialog(QtWidgets.QDialog):
         return True
 
     def _highlighted(self):
-        """Projets des lignes surlignees (clic, Maj ou Ctrl) : sert a la somme, pas aux boutons."""
+        """Projects of the highlighted rows (click, Shift or Ctrl): used for the sum, not for the buttons."""
         rows = sorted({item.row() for item in self.table.selectedItems()})
         found = [self._project_at(row) for row in rows if not self.table.isRowHidden(row)]
         return [project for project in found if project is not None]
@@ -659,12 +658,12 @@ class SpaceDialog(QtWidgets.QDialog):
             target = path if os.path.exists(path) else folder
             QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(target))
         except Exception as exc:
-            journal.write("Fast Space : ouverture du journal : {!r}".format(exc))
+            journal.write("Fast Space: opening the journal: {!r}".format(exc))
 
     # -- actions --------------------------------------------------------------------
 
     def _on_context_menu(self, pos):
-        """Clic droit : alleger / supprimer les lignes surlignees ; un seul projet : l'afficher dans l'Explorateur."""
+        """Right click: lighten / delete the highlighted rows; a single project: show it in Explorer."""
         index = self.table.indexAt(pos)
         if not index.isValid():
             return
@@ -695,7 +694,7 @@ class SpaceDialog(QtWidgets.QDialog):
     @staticmethod
     def _reveal(project):
         if not actions.reveal(project.path):
-            journal.write("Fast Space : impossible d'ouvrir l'Explorateur sur {}".format(project.path))
+            journal.write("Fast Space: cannot open Explorer on {}".format(project.path))
 
     def _on_lighten(self, projects=None):
         picked = [p for p in (self._checked() if projects is None else projects) if not p.orphan and not actions.refusal(p)]
@@ -720,7 +719,7 @@ class SpaceDialog(QtWidgets.QDialog):
         if not picked:
             return
         busy = [p for p in picked if p.in_use]
-        if busy:                                    # verrou tenu ailleurs : on ne continue que sur confirmation expresse
+        if busy:                                    # lock held elsewhere: only continue on explicit confirmation
             names = ", ".join(p.name for p in busy[:5]) + (ELLIPSIS if len(busy) > 5 else "")
             owners = ", ".join(sorted({p.lock_owner for p in busy if p.lock_owner})) or "?"
             force = ForceDialog(self, i18n.t("space.force_text", n=len(busy), names=names) + "\n\n"
@@ -740,7 +739,7 @@ class SpaceDialog(QtWidgets.QDialog):
 
     def _confirm_and_run(self, kind, picked, text, choices=None):
         if kind == "lighten":
-            # Metashape efface lui-meme ses fichiers quand il enregistre : pas de corbeille possible.
+            # Metashape deletes its own files when it saves: no recycle bin possible.
             dialog = ConfirmDialog(self, text, False, "space.mode_recycle_none", choices)
         else:
             dialog = ConfirmDialog(self, text, all(actions.recycle_available(p.path) for p in picked))
@@ -750,7 +749,7 @@ class SpaceDialog(QtWidgets.QDialog):
         items = list(dialog.items)
         if kind == "lighten":
             config.put(SECTION, "items", items)
-        journal.write("Fast Space : {} de {} projet(s), mode {}{}".format(
+        journal.write("Fast Space: {} of {} project(s), mode {}{}".format(
             kind, len(picked), dialog.mode, ", " + "+".join(items) if kind == "lighten" else ""))
         self._batch = {"kind": kind, "mode": dialog.mode, "todo": list(picked), "total": len(picked), "done": 0,
                        "freed": 0, "bin": 0, "ok": 0, "failed": [], "thread": None, "current": None, "sizes": {},
@@ -762,7 +761,7 @@ class SpaceDialog(QtWidgets.QDialog):
         self._clock.start()
 
     def _step_batch(self):
-        """Un pas du lot : lance le projet suivant ou recueille le resultat du fil de suppression."""
+        """One step of the batch: starts the next project or collects the result of the deletion thread."""
         batch = self._batch
         thread = batch["thread"]
         if thread is not None:
@@ -775,7 +774,7 @@ class SpaceDialog(QtWidgets.QDialog):
             return
         project = batch["todo"].pop(0)
         batch["current"] = project
-        # Taille concernee AVANT l'action (l'allegement met le projet a jour) : c'est elle qu'on journalise.
+        # Size concerned BEFORE the action (lightening updates the project): this is the one that is journalled.
         batch["sizes"][id(project)] = (project.removable(batch["items"]) if batch["kind"] == "lighten"
                                        else project.total)
         action = i18n.t("space.act_lighten" if batch["kind"] == "lighten" else "space.act_delete")
@@ -783,7 +782,7 @@ class SpaceDialog(QtWidgets.QDialog):
                                    name=project.name))
         self.bar.setValue(batch["done"])
         if batch["kind"] == "lighten":
-            # L'API de Metashape ne travaille que dans le fil principal.
+            # Metashape's API only works in the main thread.
             QtWidgets.QApplication.processEvents()
             outcome = actions.lighten(project, batch["mode"],
                                       progress=lambda text: QtWidgets.QApplication.processEvents(),
@@ -842,17 +841,17 @@ class SpaceDialog(QtWidgets.QDialog):
             lines = [i18n.t("space.failed_line", name=name, error=error) for name, error in batch["failed"][:15]]
             dialogs.inform(self, i18n.t("space.failed_title"), "\n".join(lines))
 
-    # -- minuterie ------------------------------------------------------------------
+    # -- timer ----------------------------------------------------------------------
 
     def _poll(self):
         if self._batch is not None:
             if self._stepping:
-                return                  # un projet est en cours : processEvents ne doit pas relancer un pas
+                return                  # a project is in progress: processEvents must not start another step
             self._stepping = True
             try:
                 self._step_batch()
             except Exception as exc:
-                journal.write("Fast Space : lot interrompu : {!r}".format(exc))
+                journal.write("Fast Space: batch interrupted: {!r}".format(exc))
                 self._batch = None
                 self.bar.setVisible(False)
                 self.status.setText(repr(exc))
@@ -878,7 +877,7 @@ class SpaceDialog(QtWidgets.QDialog):
         try:
             self._scan_finished(worker.result)
         except Exception as exc:
-            journal.write("Fast Space : affichage du scan : {!r}".format(exc))
+            journal.write("Fast Space: showing the scan: {!r}".format(exc))
         self._refresh_buttons()
 
     def closeEvent(self, event):
@@ -891,14 +890,11 @@ class SpaceDialog(QtWidgets.QDialog):
 
 
 def show(parent=None, existing=None):
-    """Ouvre la fenetre (non modale). Renvoie l'instance, a garder."""
+    """Open the window (non-modal). Returns the instance, to be kept."""
     dialog = existing
     try:
         if dialog is not None:
             dialog.objectName()
-            if dialog._lang != i18n.lang():
-                dialog.deleteLater()
-                dialog = None
     except RuntimeError:
         dialog = None
     if dialog is None:

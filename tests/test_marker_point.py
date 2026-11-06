@@ -1,4 +1,4 @@
-"""Position d'un marqueur jamais pointe : elle part de sa reference, dans le repere des marqueurs."""
+"""Position of a marker that was never marked: it starts from its reference, in the markers frame."""
 
 from types import SimpleNamespace
 
@@ -18,7 +18,7 @@ class _Matrix(object):
         return self
 
     def mulp(self, point):
-        return ("interne", point)
+        return ("internal", point)
 
 
 def _chunk(marker_crs):
@@ -29,15 +29,15 @@ def _marker(position=None):
     return SimpleNamespace(position=position, reference=SimpleNamespace(location=(1.0, 2.0, 3.0)))
 
 
-def test_an_unpointed_marker_is_placed_with_the_marker_crs():
-    point = msapi.marker_point(_chunk(_Crs("marqueurs")), _marker())
-    assert point == ("interne", ("ecef", "marqueurs", (1.0, 2.0, 3.0)))
+def test_an_unmarked_marker_is_placed_with_the_marker_crs():
+    point = msapi.marker_point(_chunk(_Crs("markers")), _marker())
+    assert point == ("internal", ("ecef", "markers", (1.0, 2.0, 3.0)))
 
 
 def test_without_a_marker_crs_the_chunk_crs_is_used():
     point = msapi.marker_point(_chunk(None), _marker())
-    assert point == ("interne", ("ecef", "chunk", (1.0, 2.0, 3.0)))
+    assert point == ("internal", ("ecef", "chunk", (1.0, 2.0, 3.0)))
 
 
 def test_a_triangulated_marker_keeps_its_own_position():
-    assert msapi.marker_point(_chunk(_Crs("marqueurs")), _marker(position="P")) == "P"
+    assert msapi.marker_point(_chunk(_Crs("markers")), _marker(position="P")) == "P"

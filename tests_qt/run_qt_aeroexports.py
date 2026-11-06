@@ -31,7 +31,7 @@ FAKE.app = types.SimpleNamespace(version="2.2.1-selftest", document=types.Simple
                                  addMenuItem=lambda *a, **k: None, messageBox=lambda text: None, update=lambda: None)
 sys.modules["Metashape"] = FAKE
 
-from aerotools import config, i18n, journal, qt  # noqa: E402
+from aerotools import config, journal, qt  # noqa: E402
 GUARD.pin(config)
 from aerotools.qt import QtCore, QtGui, QtWidgets  # noqa: E402
 from aerotools import ui  # noqa: E402
@@ -44,7 +44,6 @@ except ImportError:                                                  # pragma: n
     np = None
 
 journal.print = lambda *args, **kwargs: None
-i18n.set_lang("en", persist=False)
 APP = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 FAILURES, SKIPPED = [], []
 

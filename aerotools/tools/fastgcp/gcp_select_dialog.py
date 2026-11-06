@@ -1,10 +1,10 @@
-"""Pop-up « Ajuster » (Qt) : quels marqueurs cocher comme points de controle (voir gcp_select.py).
+"""Control markers pop-up (Qt): which markers to tick as control points (see gcp_select.py).
 
-Le calcul tourne dans un fil a part (quelques secondes au plus) ; la lecture des marqueurs dans
-Metashape se fait avant, dans le fil principal. Le tableau donne, pour 3, 4, 5... marqueurs de
-controle, le meilleur jeu et l'erreur mesuree sur les marqueurs laisses de cote ; la ligne conseillee
-est preselectionnee. « Cocher ces marqueurs » coche ce jeu dans Metashape (Reference) et decoche les
-autres : ensuite c'est a l'utilisateur d'enregistrer, d'optimiser les cameras et de verifier.
+The computation runs in a separate thread (a few seconds at most); the markers are read from
+Metashape beforehand, in the main thread. For 3, 4, 5... control markers the table gives the best
+set and the error measured on the markers left aside; the recommended row is preselected.
+"Tick these markers" ticks that set in Metashape (Reference) and unticks the others: it is then up
+to the user to save, optimise the cameras and check.
 """
 
 import threading
@@ -45,7 +45,7 @@ def _cell(text, right=False, color=None, bold=False, data=None):
 
 
 def _error_texts(stats):
-    """Err X, Y, Z, 2D, 3D, max en cm (tirets si rien a mesurer)."""
+    """Err X, Y, Z, 2D, 3D, max in cm (dashes if there is nothing to measure)."""
     if not stats:
         return ["-"] * len(ERR_COLUMNS)
     return [cm(stats[key]) for key in ("x", "y", "z", "xy", "total", "max")]
@@ -68,12 +68,11 @@ class _Worker(threading.Thread):
 
 class GcpSelectDialog(QtWidgets.QDialog):
     def __init__(self, collect, apply, parent=None):
-        """`collect()` lit les marqueurs (fil principal) : {"points", "enabled", "ppk", "why"} ;
-        `apply(labels)` coche ces marqueurs dans Metashape et rend (nombre coche, message d'erreur)."""
+        """`collect()` reads the markers (main thread): {"points", "enabled", "ppk", "why"};
+        `apply(labels)` ticks these markers in Metashape and returns (number ticked, error message)."""
         super(GcpSelectDialog, self).__init__(parent)
         self._collect = collect
         self._apply = apply
-        self._lang = i18n.lang()
         self._worker = None
         self._result = None
         self.setWindowTitle(i18n.t("gcp.title"))
@@ -165,7 +164,7 @@ class GcpSelectDialog(QtWidgets.QDialog):
         return table
 
     def _fill_now(self, control, check, total):
-        """Les deux lignes « actuel » : GCP (cochés) et CTRL (non cochés), comme Metashape les mesure."""
+        """The two "current" rows: GCP (ticked) and CTRL (not ticked), as Metashape measures them."""
         for row, ((name, color), stats) in enumerate(zip(ROWS_NOW, (control, check))):
             count = "{}/{}".format(stats["n"] if stats else 0, total) if total else "-"
             texts = [name, count] + _error_texts(stats) + [""]
@@ -173,7 +172,7 @@ class GcpSelectDialog(QtWidgets.QDialog):
                 self.now.setItem(row, column, _cell(text, right=column >= 2, color=color if column == 0 else None,
                                                     bold=column == 0))
 
-    # -- calcul ---------------------------------------------------------------------
+    # -- computation ----------------------------------------------------------------
 
     def refresh(self, keep_mode=False):
         if self._worker is not None:
@@ -223,7 +222,7 @@ class GcpSelectDialog(QtWidgets.QDialog):
         self._result = None
         self._update()
 
-    # -- affichage ------------------------------------------------------------------
+    # -- display --------------------------------------------------------------------
 
     def _show(self, result):
         self._result = result
@@ -268,7 +267,7 @@ class GcpSelectDialog(QtWidgets.QDialog):
     def _update(self):
         self.apply_button.setEnabled(self._worker is None and self._chosen() is not None)
 
-    # -- cocher dans Metashape ------------------------------------------------------
+    # -- ticking in Metashape -------------------------------------------------------
 
     def _on_apply(self):
         item = self._chosen()
@@ -289,14 +288,11 @@ class GcpSelectDialog(QtWidgets.QDialog):
 
 
 def show(panel, collect, apply, existing=None):
-    """Ouvre (ou recalcule) la fenetre. Renvoie l'instance, a garder."""
+    """Opens (or recomputes) the window. Returns the instance, to be kept."""
     dialog = existing
     try:
         if dialog is not None:
             dialog.objectName()
-            if dialog._lang != i18n.lang():
-                dialog.deleteLater()
-                dialog = None
     except RuntimeError:
         dialog = None
     if dialog is None:

@@ -18,7 +18,7 @@ def test_next_unpinned_skips_pinned_photos_after_current():
 def test_next_unpinned_none_left_after_current():
     cams = _cams(0, 1, 2)
     cam, remaining = photos.next_unpinned(cams, 2, {2})
-    assert cam is None and remaining is True  # la 0 et la 1 restent avant
+    assert cam is None and remaining is True  # 0 and 1 remain before it
     cam, remaining = photos.next_unpinned(cams, 2, {0, 1, 2})
     assert cam is None and remaining is False
 
@@ -36,7 +36,7 @@ def test_advance_delay_is_300_ms():
 
 
 def test_same_marker_compares_labels_not_objects(monkeypatch):
-    """La synchro Reference recree l'objet marqueur : l'identite ne suffit pas."""
+    """The Reference sync recreates the marker object: identity is not enough."""
     from aerotools import msapi
 
     monkeypatch.setattr(msapi, "marker_label", lambda m: m.label)

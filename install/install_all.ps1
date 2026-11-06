@@ -1,26 +1,26 @@
-# AeroTools : installation complete en un seul passage.
+# AeroTools: complete installation in a single pass.
 #
-#   1. ajoute le menu Aero a Metashape (petit lanceur dans le dossier scripts de Metashape)
-#   2. cherche un Python 3.10 a 3.13, ou installe Python 3.12 avec winget
-#   3. cree l'environnement %USERPROFILE%\AIGCP\_env (c'est la que Aero-GCP le cherche)
-#   4. installe le(s) moteur(s) de detection au choix :
-#        leger   (onnxruntime, numpy, opencv : environ 100 Mo, rapide, tout PC)  [conseille]
-#        precis  (torch + ultralytics : environ 3 Go, le moteur d'origine, carte graphique si presente)
-#        les deux
-#   5. en option, les outils de reentrainement (package onnx, plus torch s'il manque)
-#   6. verifie que tout s'importe et que les modeles models\*.pt et models\*.onnx sont la
+#   1. adds the Aero menu to Metashape (a small launcher in Metashape's scripts folder)
+#   2. looks for a Python 3.10 to 3.13, or installs Python 3.12 with winget
+#   3. creates the %USERPROFILE%\AIGCP\_env environment (this is where Aero-GCP looks for it)
+#   4. installs the detection engine(s) of your choice:
+#        light    (onnxruntime, numpy, opencv: about 100 MB, fast, any PC)  [recommended]
+#        precise  (torch + ultralytics: about 3 GB, the original engine, uses the graphics card if present)
+#        both
+#   5. optionally, the retraining tools (onnx package, plus torch if missing)
+#   6. checks that everything imports and that the models\*.pt and models\*.onnx files are there
 #
-# Sans option, la fenetre pose les questions (moteur ? reentrainement ?). Les memes choix se refont
-# plus tard depuis Aero > Aero-GCP > Parametres, qui lance cet installeur a la place de l'utilisateur.
-# Relancer ne refait que ce qui manque. Pendant les longues etapes la fenetre affiche
-# "Please wait..." (points animes), le temps ecoule et la derniere ligne de la commande.
+# Without options, the window asks the questions (engine? retraining?). The same choices can be made
+# again later from Aero > Aero-GCP > Settings, which runs this installer on the user's behalf.
+# Running it again only redoes what is missing. During the long steps the window shows
+# "Please wait..." (animated dots), the elapsed time and the last line of the command.
 #
-# Options : -Engine light|precise|both|none|ask (defaut ask), -Training (outils de reentrainement),
-#           -Yes (ne pose aucune question : moteur leger si rien d'autre n'est demande),
-#           -PauseOnError (attend une touche en cas d'echec : pour la fenetre lancee depuis Metashape),
-#           -NoAI (menu seulement, sans internet), -Check (dit ce qui manque, n'installe rien),
-#           -DryRun (montre les commandes sans les lancer).
-# Messages en ASCII : PowerShell 5.1 lit mal l'UTF-8 sans BOM.
+# Options: -Engine light|precise|both|none|ask (default ask), -Training (retraining tools),
+#          -Yes (asks no question: light engine unless something else is requested),
+#          -PauseOnError (waits for a key on failure: for the window launched from Metashape),
+#          -NoAI (menu only, no internet), -Check (reports what is missing, installs nothing),
+#          -DryRun (shows the commands without running them).
+# Messages are ASCII-only: PowerShell 5.1 misreads UTF-8 without a BOM.
 
 param(
     [string]$Root = (Split-Path -Parent $PSScriptRoot),
@@ -38,7 +38,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $EnvDir = Join-Path $env:USERPROFILE 'AIGCP\_env'
 $EnvPython = Join-Path $EnvDir 'Scripts\python.exe'
-$Models = @('damier', 'bombe')
+$Models = @('checker', 'spray')
 $TorchGpuIndex = 'https://download.pytorch.org/whl/cu128'
 $ScriptsDir = Join-Path $env:LOCALAPPDATA 'Agisoft\Metashape Pro\scripts'
 $Launcher = Join-Path $ScriptsDir 'aerotools_launcher.py'
@@ -46,8 +46,8 @@ $Template = Join-Path $Root 'install\aerotools_launcher.py.tpl'
 
 $script:TotalSteps = 2
 $script:StepNo = 0
-# Quand ensurepip ne marche pas sur ce poste, l'environnement n'a pas de pip : on installe alors ses paquets avec le pip
-# du Python systeme (pip --python <env>). Le fichier repere dit que c'est voulu (sinon on le croirait casse a chaque fois).
+# When ensurepip does not work on this computer, the environment has no pip: its packages are then installed with the pip
+# of the system Python (pip --python <env>). The marker file says this is intentional (otherwise it would look broken every time).
 $script:PipViaSystem = $null
 $NoPipMarker = Join-Path $EnvDir '.pip_from_system_python'
 
@@ -62,7 +62,7 @@ function Show-Step($title) {
     $done = [int]$script:StepNo - 1
     $bar = ('#' * $done) + '>' + ('.' * [Math]::Max(0, $script:TotalSteps - $done - 1))
     Say ''
-    Say ("  [{0}]  Step {1} of {2} : {3}" -f $bar, $script:StepNo, $script:TotalSteps, $title) 'Green'
+    Say ("  [{0}]  Step {1} of {2}: {3}" -f $bar, $script:StepNo, $script:TotalSteps, $title) 'Green'
 }
 
 
@@ -73,7 +73,7 @@ function Quote-Arg($value) {
 
 
 function Read-LastLine($path) {
-    # Derniere ligne non vide d'un fichier que la commande est encore en train d'ecrire.
+    # Last non-empty line of a file the command is still writing.
     try {
         $stream = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite')
         try {
@@ -88,13 +88,13 @@ function Read-LastLine($path) {
 
 
 function Run-Long($label, $exe, [string[]]$arguments) {
-    # Lance une commande longue en arriere-plan et anime "Please wait..." tant qu'elle tourne.
+    # Runs a long command in the background and animates "Please wait..." while it runs.
     Say ("  > " + $exe + " " + ($arguments -join ' ')) 'DarkGray'
     if ($DryRun) { return }
     $log = Join-Path $env:TEMP ('aerotools_install_{0}.log' -f [guid]::NewGuid().ToString('N').Substring(0, 8))
     $process = Start-Process -FilePath $exe -ArgumentList (($arguments | ForEach-Object { Quote-Arg $_ }) -join ' ') `
         -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError ($log + '.err')
-    $null = $process.Handle        # sans cela PowerShell 5.1 ne garde pas le code de retour
+    $null = $process.Handle        # without this PowerShell 5.1 does not keep the exit code
     $frames = @('   ', '.  ', '.. ', '...')
     $tick = 0
     $started = Get-Date
@@ -115,18 +115,18 @@ function Run-Long($label, $exe, [string[]]$arguments) {
     if ($process.ExitCode -ne 0) {
         $tail = (Read-LastLine ($log + '.err'))
         if (-not $tail) { $tail = Read-LastLine $log }
-        throw ("{0} failed (code {1}). {2}`n  Details : {3}" -f $label, $process.ExitCode, $tail, $log)
+        throw ("{0} failed (code {1}). {2}`n  Details: {3}" -f $label, $process.ExitCode, $tail, $log)
     }
-    Say ("  Done : {0}" -f $label) 'DarkGreen'
+    Say ("  Done: {0}" -f $label) 'DarkGreen'
 }
 
 
 function Test-PythonHealthy($path) {
-    # Un Python dont ensurepip retrouve son paquet pip. Un Python mis a jour a moitie (fichiers de deux versions) echoue ici.
+    # A Python whose ensurepip finds its pip package. A half-updated Python (files from two versions) fails here.
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        # `ensurepip --version` ne suffit pas : il affiche la version attendue sans verifier que le .whl correspondant est la.
+        # `ensurepip --version` is not enough: it prints the expected version without checking that the matching .whl is there.
         $check = 'import ensurepip, os; v = getattr(ensurepip, ''_PIP_VERSION'', None); d = os.path.join(os.path.dirname(ensurepip.__file__), ''_bundled''); ok = (v is None) or any(n.startswith(''pip-'' + v + ''-'') for n in os.listdir(d)); raise SystemExit(0 if ok else 1)'
         & $path -c $check 2>$null | Out-Null
         return ($LASTEXITCODE -eq 0)
@@ -139,8 +139,8 @@ function Test-PythonHealthy($path) {
 
 
 function Find-SystemPython {
-    # Chemin d'un python.exe 3.10 a 3.13, ou $null. On prefere un Python en bon etat ; a defaut, le premier trouve
-    # (les secours de l'installeur savent alors s'en accommoder).
+    # Path of a python.exe 3.10 to 3.13, or $null. A healthy Python is preferred; failing that, the first one found
+    # (the installer's fallbacks can then cope with it).
     $candidates = @(@('py', '-3.12'), @('py', '-3.11'), @('py', '-3.13'), @('py', '-3.10'), @('python'))
     $fallback = $null
     foreach ($candidate in $candidates) {
@@ -159,7 +159,7 @@ function Find-SystemPython {
 
 
 function Get-PythonProblem($path) {
-    # Une phrase courte si ce Python pose probleme (incomplet, mis a jour a moitie, ancien), sinon ''.
+    # A short sentence if this Python has a problem (incomplete, half-updated, old), otherwise ''.
     if (-not (Test-PythonHealthy $path)) {
         return 'it looks incomplete or half-updated (the file that installs pip does not match its version)'
     }
@@ -176,9 +176,9 @@ function Get-PythonProblem($path) {
 
 
 function Offer-NewPython($path, $reason) {
-    # Un Python incomplet ou ancien : on propose d'en installer un propre a cote (sans toucher a l'autre) et on le dit clairement.
-    # Sans question possible (-Yes, fenetre non interactive) ou si l'utilisateur refuse, on garde celui-ci : les secours de
-    # l'installeur savent s'en accommoder dans la plupart des cas.
+    # An incomplete or old Python: we offer to install a clean one next to it (leaving the other untouched) and say so clearly.
+    # When no question can be asked (-Yes, non-interactive window) or if the user declines, we keep this one: the installer's
+    # fallbacks can cope with it in most cases.
     Say ''
     Say ("  The Python found on this computer has a problem: " + $reason + ".") 'Yellow'
     Say ("  ($path)") 'DarkGray'
@@ -194,7 +194,7 @@ function Offer-NewPython($path, $reason) {
     }
     Say '  I can install a clean, up-to-date Python 3.12 next to it (about 100 MB). The other Python is not changed or removed.' 'Cyan'
     $answer = (Read-Host '  Install Python 3.12 now? [Y/n]').Trim().ToLower()
-    if ($answer -and $answer -ne 'y' -and $answer -ne 'yes' -and $answer -ne 'o' -and $answer -ne 'oui') {
+    if ($answer -and $answer -ne 'y' -and $answer -ne 'yes') {
         Say '  OK, the installer will try to work around the problem.' 'Yellow'
         return $path
     }
@@ -215,8 +215,8 @@ function Offer-NewPython($path, $reason) {
 
 function Test-Imports($modules) {
     if (-not (Test-Path -LiteralPath $EnvPython)) { return $false }
-    # PowerShell 5.1 transforme le stderr d'un programme natif en erreur fatale sous 'Stop' : un module
-    # absent (torch, par exemple) est ici une reponse normale, pas une panne.
+    # PowerShell 5.1 turns the stderr of a native program into a fatal error under 'Stop': a missing
+    # module (torch, for example) is a normal answer here, not a failure.
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
@@ -229,8 +229,8 @@ function Test-Imports($modules) {
 
 
 function Test-EnvPip {
-    # Vrai si l'environnement existe ET que pip y fonctionne. Un dossier _env dont python.exe existe mais sans pip
-    # (creation interrompue, ou environnement fait par un outil qui n'installe pas pip) n'est pas un environnement utilisable.
+    # True if the environment exists AND pip works in it. An _env folder whose python.exe exists but without pip
+    # (interrupted creation, or an environment made by a tool that does not install pip) is not a usable environment.
     if (-not (Test-Path -LiteralPath $EnvPython)) { return $false }
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -246,9 +246,9 @@ function Test-EnvPip {
 
 
 function Install-PipFromWheel {
-    # ensurepip echoue si le Python de base est incoherent (mise a jour partielle : il cherche une version du .whl qui n'est
-    # pas celle du dossier). On installe alors pip dans l'environnement depuis le .whl present (sans reseau), quelle que
-    # soit sa version. Idee d'un rapport d'un utilisateur dont le Python 3.13 etait a moitie mis a jour.
+    # ensurepip fails if the base Python is inconsistent (partial update: it looks for a .whl version that is not the one
+    # in the folder). pip is then installed into the environment from the .whl that is present (no network), whatever
+    # its version. Idea taken from a user report where Python 3.13 was half-updated.
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
@@ -278,8 +278,8 @@ function Install-PipFromWheel {
 
 
 function Repair-EnvPip {
-    # Environnement present mais sans pip : on essaie ensurepip ; sinon on met le dossier de cote (rien n'est efface)
-    # pour que l'etape suivante le recree proprement.
+    # Environment present but without pip: we try ensurepip; otherwise the folder is set aside (nothing is deleted)
+    # so that the next step recreates it cleanly.
     Say '  The environment exists but pip is missing: repairing it.' 'Yellow'
     if ($DryRun) { return }
     try {
@@ -296,7 +296,7 @@ function Repair-EnvPip {
 
 
 function Test-EnvPython {
-    # Vrai si le python.exe de l'environnement demarre vraiment (un lanceur dont le Python de base a disparu ne demarre pas).
+    # True if the environment's python.exe really starts (a launcher whose base Python has disappeared does not start).
     if (-not (Test-Path -LiteralPath $EnvPython)) { return $false }
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -312,7 +312,7 @@ function Test-EnvPython {
 
 
 function Enable-SystemPip($systemPython) {
-    # Le pip du Python systeme peut installer dans l'environnement (pip --python) : il ne faut alors aucun pip dedans.
+    # The system Python's pip can install into the environment (pip --python): no pip is then needed inside it.
     if (-not $systemPython -or -not (Test-Path -LiteralPath $systemPython)) { return $false }
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -330,14 +330,14 @@ function Enable-SystemPip($systemPython) {
 
 
 function Test-EnvReady {
-    # Environnement utilisable : python.exe demarre et pip marche dedans, ou bien il a ete prepare pour le pip du Python systeme.
+    # Usable environment: python.exe starts and pip works in it, or it was prepared for the system Python's pip.
     if (Test-EnvPip) { return $true }
     return ((Test-Path -LiteralPath $NoPipMarker) -and (Test-EnvPython))
 }
 
 
 function Run-Pip($label, [string[]]$pipArguments) {
-    # pip dans l'environnement ; sinon (pas de pip dedans) le pip du Python systeme, qui vise l'environnement.
+    # pip inside the environment; otherwise (no pip inside) the system Python's pip, targeting the environment.
     if ($script:PipViaSystem) {
         Run-Long $label $script:PipViaSystem (@('-m', 'pip', '--python', $EnvPython) + $pipArguments)
     } else {
@@ -347,7 +347,7 @@ function Run-Pip($label, [string[]]$pipArguments) {
 
 
 function Update-Pip {
-    # La mise a jour de pip est un confort, pas une necessite : un echec ici ne doit pas arreter l'installation.
+    # Updating pip is a convenience, not a necessity: a failure here must not stop the installation.
     if ($script:PipViaSystem) { return }
     try {
         Run-Pip 'pip update' @('install', '--upgrade', 'pip', '--progress-bar', 'off', '--disable-pip-version-check')
@@ -375,26 +375,26 @@ function Test-LauncherCurrent {
 
 function Install-Launcher {
     if (-not (Test-Path -LiteralPath (Join-Path $Root 'aerotools\bootstrap.py'))) {
-        throw "aerotools\bootstrap.py not found in $Root : run the installer from the unzipped AeroTools folder."
+        throw "aerotools\bootstrap.py not found in ${Root}: run the installer from the unzipped AeroTools folder."
     }
-    if (-not (Test-Path -LiteralPath $Template)) { throw "Template not found : $Template" }
+    if (-not (Test-Path -LiteralPath $Template)) { throw "Template not found: $Template" }
     if (Test-LauncherCurrent) { Say '  The Aero menu is already installed and up to date.'; return }
     Say "  Writing $Launcher"
     if ($DryRun) { return }
     New-Item -ItemType Directory -Force -Path $ScriptsDir | Out-Null
     if (Test-Path -LiteralPath $Launcher) { Copy-Item -LiteralPath $Launcher -Destination ($Launcher + '.bak') -Force }
     [IO.File]::WriteAllText($Launcher, (Get-LauncherText), (New-Object Text.UTF8Encoding($false)))
-    Say '  Done : the Aero menu is installed (restart Metashape to see it).' 'DarkGreen'
+    Say '  Done: the Aero menu is installed (restart Metashape to see it).' 'DarkGreen'
     foreach ($old in @('active_marker_loader.py', 'metashape_active_marker')) {
         if (Test-Path -LiteralPath (Join-Path $ScriptsDir $old)) {
-            Say "  Note : the old script '$old' is still in the Metashape scripts folder. It can stay, but removing it avoids two docks." 'Yellow'
+            Say "  Note: the old script '$old' is still in the Metashape scripts folder. It can stay, but removing it avoids two docks." 'Yellow'
         }
     }
 }
 
 
 function Install-PipFromGetPip {
-    # Dernier recours quand ensurepip ne marche pas : get-pip.py (le programme d'installation officiel de pip, pypa.io).
+    # Last resort when ensurepip does not work: get-pip.py (the official pip installer, pypa.io).
     $target = Join-Path $env:TEMP 'aerotools_get-pip.py'
     try {
         try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
@@ -414,10 +414,10 @@ function Install-PipFromGetPip {
 }
 
 
-# ---- rapport de diagnostic : debug.txt quand l'installation echoue (a envoyer au support)
+# ---- diagnostic report: install_debug.txt when the installation fails (to send to support)
 
 function Capture($label, $exe, [string[]]$arguments) {
-    # Lance une commande et rend son texte ; ne leve jamais.
+    # Runs a command and returns its text; never raises.
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
@@ -442,43 +442,42 @@ function Tail-File($path, $count) {
 
 
 function Write-DebugReport($problem) {
-    # Ecrit install_debug.txt (a cote de l'installeur, sinon dans TEMP) avec de quoi comprendre la panne sans avoir le poste.
+    # Writes install_debug.txt (next to the installer, otherwise in TEMP) with enough to understand the failure without having the computer.
     $out = New-Object System.Collections.Generic.List[string]
     $out.Add('AeroTools installer debug report')
-    $out.Add(('Date : ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')))
-    $out.Add(('Problem : ' + $problem))
+    $out.Add(('Date: ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')))
+    $out.Add(('Problem: ' + $problem))
     try {
         $manifest = Get-Content -Raw -LiteralPath (Join-Path $Root 'manifest.json') | ConvertFrom-Json
-        $out.Add(('AeroTools version : {0} (built {1})' -f $manifest.version, $manifest.built))
-    } catch { $out.Add('AeroTools version : manifest.json unreadable') }
-    $out.Add(('Installer folder : ' + $Root))
+        $out.Add(('AeroTools version: {0} (built {1})' -f $manifest.version, $manifest.built))
+    } catch { $out.Add('AeroTools version: manifest.json unreadable') }
+    $out.Add(('Installer folder: ' + $Root))
     $out.Add('')
     $out.Add('== Computer')
     try {
         $os = Get-CimInstance Win32_OperatingSystem
-        $out.Add(('Windows : {0} {1} {2}' -f $os.Caption, $os.Version, $os.OSArchitecture))
-    } catch { $out.Add('Windows : unknown') }
-    $out.Add(('Language : ' + [Globalization.CultureInfo]::CurrentUICulture.Name))
-    $out.Add(('PowerShell : ' + $PSVersionTable.PSVersion + ' (64-bit process: ' + [Environment]::Is64BitProcess + ')'))
+        $out.Add(('Windows: {0} {1} {2}' -f $os.Caption, $os.Version, $os.OSArchitecture))
+    } catch { $out.Add('Windows: unknown') }
+    $out.Add(('PowerShell: ' + $PSVersionTable.PSVersion + ' (64-bit process: ' + [Environment]::Is64BitProcess + ')'))
     try {
         $admin = (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-        $out.Add(('Administrator : ' + $admin))
+        $out.Add(('Administrator: ' + $admin))
     } catch { }
-    $out.Add(('User profile : ' + $env:USERPROFILE + '   (non-ASCII characters: ' + ($env:USERPROFILE -match '[^\x00-\x7F]') + ')'))
-    $out.Add(('TEMP : ' + $env:TEMP))
+    $out.Add(('User profile: ' + $env:USERPROFILE + '   (non-ASCII characters: ' + ($env:USERPROFILE -match '[^\x00-\x7F]') + ')'))
+    $out.Add(('TEMP: ' + $env:TEMP))
     try {
         $drive = Get-PSDrive -Name ($env:USERPROFILE.Substring(0, 1)) -ErrorAction Stop
-        $out.Add(('Free space on the profile drive : {0:N1} GB' -f ($drive.Free / 1GB)))
+        $out.Add(('Free space on the profile drive: {0:N1} GB' -f ($drive.Free / 1GB)))
     } catch { }
-    try { $out.Add(('Execution policy : ' + ((Get-ExecutionPolicy -List | ForEach-Object { $_.Scope.ToString() + '=' + $_.ExecutionPolicy }) -join ', '))) } catch { }
+    try { $out.Add(('Execution policy: ' + ((Get-ExecutionPolicy -List | ForEach-Object { $_.Scope.ToString() + '=' + $_.ExecutionPolicy }) -join ', '))) } catch { }
     foreach ($name in @('HTTP_PROXY', 'HTTPS_PROXY', 'PIP_INDEX_URL', 'PIP_REQUIRE_VIRTUALENV', 'PYTHONHOME', 'PYTHONPATH', 'VIRTUAL_ENV')) {
         $value = [Environment]::GetEnvironmentVariable($name)
         if ($value) { $out.Add(('Environment variable {0} = {1}' -f $name, $value)) }
     }
     try {
         $av = @(Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName AntiVirusProduct -ErrorAction Stop | ForEach-Object { $_.displayName })
-        $out.Add(('Antivirus : ' + ($av -join ', ')))
-    } catch { $out.Add('Antivirus : unknown') }
+        $out.Add(('Antivirus: ' + ($av -join ', ')))
+    } catch { $out.Add('Antivirus: unknown') }
     $out.Add('')
     $out.Add('== Pythons on this computer')
     $out.Add((Capture 'py -0p (Python launcher list)' 'py' @('-0p')))
@@ -497,10 +496,10 @@ function Write-DebugReport($problem) {
     }
     $out.Add('')
     $out.Add('== AI environment')
-    $out.Add(('Folder : ' + $EnvDir + '   exists: ' + (Test-Path -LiteralPath $EnvDir)))
+    $out.Add(('Folder: ' + $EnvDir + '   exists: ' + (Test-Path -LiteralPath $EnvDir)))
     if (Test-Path -LiteralPath $EnvDir) {
-        try { $out.Add('Content : ' + ((Get-ChildItem -LiteralPath $EnvDir -Force | ForEach-Object { $_.Name }) -join ', ')) } catch { }
-        try { $out.Add('Scripts : ' + ((Get-ChildItem -LiteralPath (Join-Path $EnvDir 'Scripts') -Force | ForEach-Object { $_.Name }) -join ', ')) } catch { }
+        try { $out.Add('Content: ' + ((Get-ChildItem -LiteralPath $EnvDir -Force | ForEach-Object { $_.Name }) -join ', ')) } catch { }
+        try { $out.Add('Scripts: ' + ((Get-ChildItem -LiteralPath (Join-Path $EnvDir 'Scripts') -Force | ForEach-Object { $_.Name }) -join ', ')) } catch { }
         $cfg = Join-Path $EnvDir 'pyvenv.cfg'
         if (Test-Path -LiteralPath $cfg) { $out.Add('pyvenv.cfg :'); $out.Add((Tail-File $cfg 20)) }
         if (Test-Path -LiteralPath $EnvPython) {
@@ -509,15 +508,15 @@ function Write-DebugReport($problem) {
         }
     }
     $broken = @(Get-ChildItem -LiteralPath (Split-Path -Parent $EnvDir) -Filter '_env_broken_*' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
-    if ($broken.Count) { $out.Add('Broken environments set aside : ' + ($broken -join ', ')) }
+    if ($broken.Count) { $out.Add('Broken environments set aside: ' + ($broken -join ', ')) }
     $out.Add('')
     $out.Add('== Network')
     foreach ($url in @('https://pypi.org/simple/pip/', 'https://bootstrap.pypa.io/get-pip.py')) {
         try {
             try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
             $response = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $url -TimeoutSec 20
-            $out.Add(('{0} : HTTP {1}' -f $url, $response.StatusCode))
-        } catch { $out.Add(('{0} : {1}' -f $url, $_.Exception.Message.Split("`n")[0])) }
+            $out.Add(('{0}: HTTP {1}' -f $url, $response.StatusCode))
+        } catch { $out.Add(('{0}: {1}' -f $url, $_.Exception.Message.Split("`n")[0])) }
     }
     $out.Add('')
     $out.Add('== Last installer command logs (TEMP)')
@@ -543,7 +542,7 @@ function Write-DebugReport($problem) {
 
 
 function Exit-With($code) {
-    # En cas d'echec, garde la fenetre ouverte si on la lance depuis Metashape : on y lit l'erreur.
+    # On failure, keeps the window open when launched from Metashape: the error can be read there.
     if ($PauseOnError -and $code -ne 0) {
         Say ''
         Read-Host '  Press Enter to close this window' | Out-Null
@@ -558,7 +557,7 @@ function Test-Interactive {
 
 
 function Ask-Engine {
-    # Renvoie light, precise ou both.
+    # Returns light, precise or both.
     $tag = @{ light = ''; precise = ''; both = '' }
     if (Test-EngineInstalled) { $tag.light = '  (already installed)' }
     if (Test-PreciseInstalled) { $tag.precise = '  (already installed)' }
@@ -588,7 +587,7 @@ function Ask-Training($willHaveTorch) {
     }
     if (Test-TrainingInstalled) { Say '    (already installed)' }
     $answer = (Read-Host '  Install them? [y/N]').Trim().ToLower()
-    return ($answer -eq 'y' -or $answer -eq 'yes' -or $answer -eq 'o' -or $answer -eq 'oui')
+    return ($answer -eq 'y' -or $answer -eq 'yes')
 }
 
 
@@ -615,7 +614,7 @@ function Show-Status {
         foreach ($name in $Models) {
             foreach ($ext in @('pt', 'onnx')) {
                 $path = Join-Path $Root ("models\$name.$ext")
-                if (Test-Path -LiteralPath $path) { Say ("Model {0}.{1} : present" -f $name, $ext) } else { Say ("Model {0}.{1} : MISSING ({2})" -f $name, $ext, $path); $ok = $false }
+                if (Test-Path -LiteralPath $path) { Say ("Model {0}.{1}: present" -f $name, $ext) } else { Say ("Model {0}.{1}: MISSING ({2})" -f $name, $ext, $path); $ok = $false }
             }
         }
     }
@@ -623,7 +622,7 @@ function Show-Status {
 }
 
 
-# ---- ce qu'il faut installer
+# ---- what has to be installed
 $script:WantLight = $false
 $script:WantTorch = $false
 $wantTraining = [bool]$Training
@@ -632,7 +631,7 @@ if (-not $NoAI) {
     $choice = $Engine
     if ($choice -eq 'ask') {
         if ($Check -or -not (Test-Interactive)) {
-            # Sans question possible : le moteur leger, sauf si seul le reentrainement est demande.
+            # When no question can be asked: the light engine, unless only retraining is requested.
             $choice = if ($Training -and -not $Check) { 'none' } elseif ((Test-EngineInstalled) -or (Test-PreciseInstalled)) { 'none' } else { 'light' }
         } else {
             $choice = Ask-Engine
@@ -647,7 +646,7 @@ if (-not $NoAI) {
     $Training = [switch]$wantTraining
 }
 
-# Nombre d'etapes affichees : menu, [python, environnement, moteurs...], controle final.
+# Number of steps shown: menu, [python, environment, engines...], final check.
 $script:TotalSteps = 2
 if (-not $NoAI) {
     $script:TotalSteps += 2
@@ -708,7 +707,7 @@ try {
         if (Test-EnvPip) {
             Say '  Already created.'
         } elseif ((Test-Path -LiteralPath $NoPipMarker) -and (Test-EnvPython)) {
-            # Fait lors d'une installation precedente : pas de pip dans l'environnement, on passe par celui du Python systeme.
+            # Set up by a previous installation: no pip in the environment, the system Python's pip is used.
             $systemPython = if ($python) { $python } else { Find-SystemPython }
             if (Enable-SystemPip $systemPython) {
                 Say '  Already created (its packages are installed with the pip of the system Python).'
@@ -721,25 +720,25 @@ try {
                 try {
                     Run-Long 'Environment creation' $python @('-m', 'venv', $EnvDir)
                 } catch {
-                    # Typiquement : ensurepip echoue dans l'environnement tout neuf. On le refait sans pip, le pip du systeme suffira.
+                    # Typically: ensurepip fails in the brand-new environment. It is redone without pip, the system pip will do.
                     Say ("  Environment creation with pip failed: " + $_.Exception.Message.Split("`n")[0]) 'Yellow'
                     if (Test-Path -LiteralPath $EnvDir) {
-                        # Le dossier que cette tentative vient de creer (vide de tout travail de l'utilisateur) : on le retire.
+                        # The folder this attempt just created (holding none of the user's work): remove it.
                         Remove-Item -LiteralPath $EnvDir -Recurse -Force -ErrorAction SilentlyContinue
                     }
                     Run-Long 'Environment creation (without pip)' $python @('-m', 'venv', '--without-pip', $EnvDir)
                 }
             }
             if (-not $DryRun -and -not (Test-EnvPip) -and (Test-EnvPython)) {
-                # Dernier recours 1 : le .whl de pip qui accompagne Python (sans reseau).
+                # Last resort 1: the pip .whl that ships with Python (no network).
                 if (Install-PipFromWheel) { Say '  pip was installed in the environment from the wheel that comes with Python.' 'DarkGreen' }
             }
             if (-not $DryRun -and -not (Test-EnvPip) -and (Test-EnvPython)) {
-                # Dernier recours 2 : get-pip.py installe pip dans l'environnement.
+                # Last resort 2: get-pip.py installs pip into the environment.
                 if (Install-PipFromGetPip) { Say '  pip was installed in the environment with get-pip.py.' 'DarkGreen' }
             }
             if (-not $DryRun -and -not (Test-EnvPip)) {
-                # Dernier recours 3 : le pip du Python systeme installera dans l'environnement.
+                # Last resort 3: the system Python's pip will install into the environment.
                 $systemPython = if ($python) { $python } else { Find-SystemPython }
                 if ((Test-EnvPython) -and (Enable-SystemPip $systemPython)) {
                     Say '  The environment has no pip on this computer: the pip of the system Python will be used.' 'Yellow'
@@ -756,7 +755,7 @@ try {
                 Say '  Already installed.'
             } else {
                 Update-Pip
-                # opencv-python-headless a cote d'un opencv deja la (celui d'ultralytics) les ferait se marcher dessus.
+                # opencv-python-headless next to an already installed opencv (the one from ultralytics) would make them clash.
                 $packages = @('numpy', 'onnxruntime')
                 if (-not (Test-Imports @('cv2'))) { $packages += 'opencv-python-headless' }
                 Run-Pip 'Light engine installation' (@('install') + $packages + @('--progress-bar', 'off', '--disable-pip-version-check'))
@@ -802,14 +801,14 @@ try {
         exit 0
     }
     Say '  Something is still missing (see above).' 'Yellow'
-    # Un rapport seulement si quelque chose qu'on a demande a installer manque (pas quand aucun moteur n'etait voulu).
+    # A report only if something we were asked to install is missing (not when no engine was wanted).
     if ($script:WantLight -or $script:WantTorch -or $Training) {
         Write-DebugReport 'Something is still missing after the installation (see the final check above).'
     }
     Exit-With 2
 } catch {
     Say ''
-    Say ('  ERROR : ' + $_.Exception.Message) 'Red'
+    Say ('  ERROR: ' + $_.Exception.Message) 'Red'
     Say '  Nothing is lost: run this installer again, it only redoes what is missing.' 'Yellow'
     try { Write-DebugReport $_.Exception.Message } catch { }
     Exit-With 1

@@ -1,4 +1,4 @@
-"""Choix des marqueurs de controle : donnees simulees dont on connait la bonne reponse."""
+"""Choice of control markers: simulated data whose right answer is known."""
 import math
 import random
 
@@ -25,7 +25,7 @@ def rz_(angle):
 
 
 def make_points(count=14, seed=3, noise=0.01, similarity=True, bias=(0.05, -0.03, 0.08)):
-    """Points de reference dans un site de 500 x 300 m ; `est` = ce que Metashape estime avant calage."""
+    """Reference points in a 500 x 300 m site; `est` = what Metashape estimates before the fit."""
     rng = random.Random(seed)
     refs = [(rng.uniform(0, 500), rng.uniform(0, 300), rng.uniform(0, 30)) for _ in range(count)]
     points = []

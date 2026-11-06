@@ -1,4 +1,4 @@
-"""Diagnostic du pointage : la validation croisee retrouve le pointage decale (cameras synthetiques)."""
+"""Pinning diagnostic: cross-validation finds the offset pin (synthetic cameras)."""
 
 import math
 
@@ -24,7 +24,7 @@ def dot(a, b):
 
 
 class Camera(object):
-    """Camera sans distorsion, au-dessus du sol, qui regarde le point (0, 0, 0)."""
+    """Distortion-free camera, above the ground, looking at the point (0, 0, 0)."""
 
     def __init__(self, name, center):
         self.name, self.center = name, center
@@ -79,7 +79,7 @@ def test_leave_one_out_gives_the_true_point_for_perfect_picks():
     rays = [cam.ray(*cam.project(POINT)) for cam in CAMERAS]
     for point in diagnostic.leave_one_out_points(rays):
         assert point == pytest.approx(POINT, abs=1e-6)
-    assert diagnostic.leave_one_out_points(rays[:2]) == [None, None]            # rien pour recouper
+    assert diagnostic.leave_one_out_points(rays[:2]) == [None, None]            # nothing to cross-check against
 
 
 def test_perfect_picks_give_a_clean_diagnostic(fake_project):
@@ -95,9 +95,9 @@ def test_a_shifted_pick_is_found_and_is_the_worst(fake_project):
     result = diagnostic.analyze(diagnostic.collect(good + [bad]))
     first = result["projections"][0]
     assert (first["label"], first["camera_label"]) == ("BAD", "IMG_2")
-    # La validation croisee retrouve le decalage : sqrt(25^2 + 10^2) = 26,9 px.
+    # Cross-validation finds the offset: sqrt(25^2 + 10^2) = 26.9 px.
     assert first["px"] == pytest.approx(math.hypot(25, 10), rel=0.01)
-    assert [p["label"] for p in result["projections"]] == ["BAD"]            # les bons pointages du meme marqueur ne sont pas accuses
+    assert [p["label"] for p in result["projections"]] == ["BAD"]            # the good pins of the same marker are not accused
 
 
 def test_a_badly_aligned_photo_is_flagged_over_several_markers(fake_project):
@@ -117,7 +117,7 @@ def test_few_picks_and_pending_proposals_are_reported(fake_project, monkeypatch)
 
 
 def test_a_noisy_project_does_not_flag_everything(fake_project):
-    # Bruit de 2 a 3 px partout : le seuil suit la mediane du projet, mais jamais sous 3 px.
+    # Noise of 2 to 3 px everywhere: the threshold follows the project's median, but never goes below 3 px.
     noisy = []
     for i in range(6):
         p = picks(point=(i, 1, 0))
@@ -136,7 +136,7 @@ def test_the_review_lists_the_weakest_markers_and_photos_first():
     from aerotools.tools.fastgcp import review
     entries = [{"label": "A", "conf": 0.9}, {"label": "B", "conf": 0.4}, {"label": "A", "conf": 0.8},
                {"label": "C", "conf": 0.6}, {"label": "B", "conf": 0.95}]
-    rev = review.Review("damier", "r", entries)
+    rev = review.Review("checker", "r", entries)
     assert rev.labels() == ["B", "C", "A"]
     assert [e["conf"] for e in rev.entries_for("B")] == [0.4, 0.95]
     assert rev.weakest("A") == 0.8 and rev.weakest("none") == 1.0

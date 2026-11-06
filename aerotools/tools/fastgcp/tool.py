@@ -1,9 +1,9 @@
-"""Demarrage et arret de FastGCP. C'est le point d'entree appele par le menu Aero.
+"""Start and stop of FastGCP. This is the entry point called by the Aero menu.
 
-`install()` est idempotent : relance depuis le menu = on ferme proprement
-l'instance precedente (filtre d'evenements, timer, raccourci, dock) avant d'en
-ouvrir une neuve. Sans cela, chaque relance empilerait un filtre de clics de
-plus sur l'application Qt.
+`install()` is idempotent: relaunching from the menu closes the previous
+instance cleanly (event filter, timer, shortcut, dock) before opening a new
+one. Without this, each relaunch would stack one more click filter on the
+Qt application.
 """
 
 from ... import i18n, journal, msapi, qt, theme
@@ -11,15 +11,15 @@ from ...qt import QShortcut, QtCore, QtGui, QtWidgets
 from . import aigcp, history, marking, photos, session as session_mod
 
 TICK_MS = 400
-POLL_TICKS = 5                        # le tableau du panneau est compare a Metashape tous les 5 battements (2 s)
-SLOW_POLL_S = 0.15                    # lecture plus lente que ca : on espace les comparaisons par 5
+POLL_TICKS = 5                        # the panel table is compared with Metashape every 5 ticks (2 s)
+SLOW_POLL_S = 0.15                    # a read slower than this: the comparisons are spaced out by 5
 HOTKEY = "Ctrl+Shift+M"
 UNDO_KEY = "Ctrl+Z"
 REDO_KEYS = ("Ctrl+Y", "Ctrl+Shift+Z")
 
 
 def install():
-    """Ouvre (ou rouvre) FastGCP."""
+    """Open (or reopen) FastGCP."""
     uninstall()
 
     state = session_mod.current()
@@ -53,17 +53,17 @@ def install():
     timer.start()
     state.timer = timer
 
-    aigcp.set_choice("scope", aigcp.DEFAULT_SCOPE)      # on repart toujours sur « Selected markers »
+    aigcp.set_choice("scope", aigcp.DEFAULT_SCOPE)      # always start again from "Selected markers"
     panel.update_aigcp()
     panel.refresh_markers()
-    trigger = "clic" if marking.PLAIN_CLICK_PLACES else "Maj + clic"
-    journal.write("FastGCP demarre : Qt {}, Metashape {} ; {} dans la vue photo, ou {}".format(
-        qt.BINDING, msapi.app_version() or "version inconnue", trigger, HOTKEY
+    trigger = "click" if marking.PLAIN_CLICK_PLACES else "Shift + click"
+    journal.write("FastGCP started: Qt {}, Metashape {}; {} in the photo view, or {}".format(
+        qt.BINDING, msapi.app_version() or "unknown version", trigger, HOTKEY
     ))
 
 
 def uninstall():
-    """Ferme FastGCP et libere tout ce qui tourne en fond."""
+    """Close FastGCP and release everything that runs in the background."""
     state = session_mod.current()
 
     marking.remove_filter(state)
@@ -126,11 +126,11 @@ def uninstall():
 
 
 def _install_undo_shortcut(state, window):
-    """Ctrl+Z defait le dernier pointage, mais seulement quand il y en a un.
+    """Ctrl+Z undoes the last marking, but only when there is one.
 
-    Le raccourci n'est actif que si l'outil tourne et que l'historique n'est pas
-    vide : sinon Ctrl+Z reste a Metashape. Les champs texte du panneau gardent
-    le leur (Qt leur laisse la touche avant tout raccourci).
+    The shortcut is only active if the tool is running and the history is not
+    empty: otherwise Ctrl+Z stays with Metashape. The text fields of the panel keep
+    their own (Qt gives them the key before any shortcut).
     """
     shortcut = QShortcut(QtGui.QKeySequence(UNDO_KEY), window)
     shortcut.setContext(QtCore.Qt.ApplicationShortcut)
@@ -139,8 +139,8 @@ def _install_undo_shortcut(state, window):
         marking.undo_last(state)
 
     shortcut.activated.connect(fire)
-    # Si Metashape avait deja un Ctrl+Z, Qt le signale comme ambigu : on agit
-    # quand meme, puisque le raccourci n'est actif que lorsqu'il y a de quoi defaire.
+    # If Metashape already had a Ctrl+Z, Qt reports it as ambiguous: we act
+    # anyway, since the shortcut is only active when there is something to undo.
     try:
         shortcut.activatedAmbiguously.connect(fire)
     except Exception:
@@ -173,11 +173,11 @@ def panel():
 
 
 # --------------------------------------------------------------------------
-# Battement : suit l'etat de Metashape
+# Tick: follows the state of Metashape
 # --------------------------------------------------------------------------
 
 def _poll_table(state):
-    """Le tableau du panneau suit Metashape sans qu'on clique : relu quand il a change ailleurs."""
+    """The panel table follows Metashape without any click: reread when it changed elsewhere."""
     panel = state.panel
     if not hasattr(panel, "poll_rows"):
         return
@@ -188,12 +188,12 @@ def _poll_table(state):
 
 
 def _tick(state):
-    """Detecte un changement de chunk et un changement de selection.
+    """Detect a chunk change and a selection change.
 
-    Metashape ne previent pas quand l'utilisateur clique un marqueur dans le
-    panneau Reference ou change de chunk : on relit l'etat quatre fois par
-    seconde, ce qui est insensible a l'usage et evite d'accrocher des signaux
-    internes non documentes.
+    Metashape does not notify when the user clicks a marker in the
+    Reference pane or changes chunk: the state is reread four times per
+    second, which is unnoticeable in use and avoids hooking undocumented
+    internal signals.
     """
     if state.panel is None:
         return
@@ -207,12 +207,12 @@ def _tick(state):
         state.forget_chunk()
         photos.panel_call(state, "close_review")
         try:
-            # Le nom du chunk suit la progression dans le statut du panneau.
+            # The chunk name follows the progress in the panel status.
             state.panel.set_chunk_name(
                 msapi.chunk_label(chunk) or i18n.t("tool.chunk_unnamed"))
             state.panel.refresh_markers()
         except Exception as exc:
-            journal.write("relecture apres changement de chunk : {!r}".format(exc))
+            journal.write("reread after chunk change: {!r}".format(exc))
         return
 
     if chunk is None:
@@ -226,9 +226,9 @@ def _tick(state):
         return
     state.last_selected_label = label
 
-    # Suivi de la selection Reference et filtre Photos : toujours actifs.
+    # Following of the Reference selection and Photos filter: always on.
     try:
         state.panel.set_active_marker_by_label(label, from_sync=True)
     except Exception as exc:
-        journal.write("synchronisation de la selection : {!r}".format(exc))
+        journal.write("selection synchronisation: {!r}".format(exc))
     photos.filter_for_marker(state, selected[0])

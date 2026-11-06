@@ -1,44 +1,44 @@
-"""Executeur externe de la detection AIGCP (damier ou bombe).
+"""External runner of the AIGCP detection (checker or spray).
 
-Lance par FastGCP dans un Python a part, jamais dans celui de Metashape :
+Launched by FastGCP in a separate Python, never in the Metashape one:
 
     python aigcp_runner.py --work work.json --out hits.json
 
-Deux moteurs, choisis d'apres les poids demandes (`weights`, un fichier .pt) :
-  - ONNX Runtime, s'il existe un fichier .onnx a cote du .pt et que onnxruntime est installe :
-    leger (une dizaine de Mo en tout, sans torch), demarre en une fraction de seconde ;
-  - ultralytics (torch), sinon : le moteur d'origine, aussi utilise par l'entrainement.
-Les deux donnent les memes detections (a 0,2 px et 0,01 de confiance pres).
+Two engines, chosen from the requested weights (`weights`, a .pt file):
+  - ONNX Runtime, if there is a .onnx file next to the .pt and onnxruntime is installed:
+    light (about ten MB in all, no torch), starts in a fraction of a second;
+  - ultralytics (torch) otherwise: the original engine, also used by the training.
+Both give the same detections (within 0.2 px and 0.01 of confidence).
 
-`work.json` (ecrit par aigcp.py) :
-    {"version": 1, "type": "damier", "weights": "...pt", "conf": 0.25,
+`work.json` (written by aigcp.py):
+    {"version": 1, "type": "checker", "weights": "...pt", "conf": 0.25,
      "scales_m": [0.3, 0.5, 0.8], "device": "auto",
-     "engine": "onnx" (leger) | "torch" (precis) | "auto",
+     "engine": "onnx" (light) | "torch" (precise) | "auto",
      "items": [{"id": "...", "image_path": "...", "x_est": 123.4,
                 "y_est": 456.7, "px_per_m": 210.0, "rescue": true}, ...],
-     "crops_dir": "dossier des vignettes de revue (facultatif)"}
-`rescue` (defaut vrai) : permet la recherche elargie si rien n'est trouve au centre ;
-faux quand la position attendue est connue a quelques centimetres.
+     "crops_dir": "folder of the review thumbnails (optional)"}
+`rescue` (default true): allows the wider search when nothing is found at the centre;
+false when the expected position is known to within a few centimetres.
 
-`hits.json` (ecrit ici, en fin de travail) :
+`hits.json` (written here, at the end of the work):
     {"version": 1, "seconds": 3.2, "device": "cpu",
      "hits": [{"id": "...", "found": true, "x": 130.1, "y": 450.2,
                "conf": 0.91, "crop_px": 214,
                "crop": {"big": "0_12.jpg", "win": 214, "x0": 23, "y0": 343}}, ...],
-     "errors": ["id : message", ...]}
+     "errors": ["id: message", ...]}
 
-Methode, celle qui a ete mesuree sur le jeu d'apprentissage (modeles\\evaluer.py) :
-recadrage carre de 4 x S x px_par_metre pixels (borne a 96-640) autour de la
-position estimee du marqueur, ramene a 160 x 160 (gris hors image), modele
-YOLO11n, detection la plus proche du centre ponderee par la confiance. S est
-inconnue : trois tailles de cible (0,3 / 0,5 / 0,8 m). Si rien n'est trouve,
-on cherche dans 4 recadrages decales de 0,4 fois la taille du recadrage. Une
-seconde passe recentre le recadrage sur la detection pour affiner la position.
+Method, the one measured on the training set (its evaluation script):
+square crop of 4 x S x px_per_metre pixels (bounded to 96-640) around the
+estimated position of the marker, resized to 160 x 160 (grey outside the image), YOLO11n
+model, detection closest to the centre weighted by the confidence. S is
+unknown: three target sizes (0.3 / 0.5 / 0.8 m). If nothing is found,
+4 crops shifted by 0.4 times the crop size are searched. A second
+pass recentres the crop on the detection to refine the position.
 
-Vitesse : les photos sont decodees en avance par plusieurs fils (le decodage JPEG de
-21 Mpixels prend ~100 ms et dominait), et toutes les tuiles des marqueurs d'une meme photo
-passent au modele en un seul lot par etape (premiere passe, recherche elargie, affinage)
-au lieu d'un appel par marqueur. Le resultat est identique a celui de l'ancienne boucle.
+Speed: the photos are decoded ahead of time by several threads (the JPEG decoding of
+21 Mpixels takes ~100 ms and used to dominate), and all the tiles of the markers of one photo
+go through the model in a single batch per step (first pass, wider search, refinement)
+instead of one call per marker. The result is identical to that of the former loop.
 """
 
 import argparse
@@ -56,8 +56,8 @@ GRID_OFFSET = 0.4
 GRID_STEPS = ((1, 0), (-1, 0), (0, 1), (0, -1))
 NMS_IOU = 0.7
 MAX_DET = 10
-BATCH = 64                    # tuiles par appel du modele
-MAX_WORKERS = 6               # fils de decodage
+BATCH = 64                    # tiles per model call
+MAX_WORKERS = 6               # decoding threads
 
 
 def read_image(path):
@@ -72,9 +72,9 @@ def crop_size(ppm, scale_m):
 
 
 def crop(image, cx, cy, size, out=OUT):
-    """Carre de `size` px centre en (cx, cy), gris hors image, ramene a `out` x `out`.
+    """Square of `size` px centred on (cx, cy), grey outside the image, resized to `out` x `out`.
 
-    Renvoie (tuile, x0, y0) ou None si le carre est entierement hors image.
+    Returns (tile, x0, y0) or None if the square is entirely outside the image.
     """
     import cv2
     import numpy as np
@@ -96,24 +96,24 @@ def crop(image, cx, cy, size, out=OUT):
 
 
 # --------------------------------------------------------------------------
-# Moteurs
+# Engines
 # --------------------------------------------------------------------------
 
 class Detector(object):
-    """Moteur ultralytics (torch) : celui d'origine, aussi utilise par l'entrainement."""
+    """ultralytics (torch) engine: the original one, also used by the training."""
 
     def __init__(self, weights, device):
         try:
             from ultralytics import YOLO
         except ImportError:
-            raise RuntimeError("pas de fichier {} et ultralytics n'est pas installe : relance l'entrainement "
-                               "(installeur d'entrainement) ou remets le modele de base".format(
+            raise RuntimeError("no file {} and ultralytics is not installed: run the training again "
+                               "(training installer) or restore the base model".format(
                                    os.path.basename(onnx_path(weights))))
         self.model = YOLO(weights)
         self.device = device
 
     def predict(self, tiles):
-        """Une liste de tableaux (N, 5) = cx, cy, w, h, conf (px de la tuile), par tuile."""
+        """A list of arrays (N, 5) = cx, cy, w, h, conf (tile px), one per tile."""
         import numpy as np
         out = []
         for start in range(0, len(tiles), BATCH):
@@ -130,7 +130,7 @@ class Detector(object):
 
 
 def nms(boxes, scores, iou, limit):
-    """Suppression des non-maxima (gloutonne, boxes en x1 y1 x2 y2). Renvoie les indices gardes."""
+    """Non-maximum suppression (greedy, boxes as x1 y1 x2 y2). Returns the kept indices."""
     import numpy as np
     order = np.argsort(-scores)
     keep = []
@@ -153,9 +153,9 @@ def nms(boxes, scores, iou, limit):
 
 
 def decode_output(row, floor=FLOOR_CONF, iou=NMS_IOU, limit=MAX_DET):
-    """Sortie brute d'un modele YOLO exporte (4 + classes, ancres) -> (N, 5) cx, cy, w, h, conf."""
+    """Raw output of an exported YOLO model (4 + classes, anchors) -> (N, 5) cx, cy, w, h, conf."""
     import numpy as np
-    pred = np.asarray(row, np.float32).T                # (ancres, 4 + classes)
+    pred = np.asarray(row, np.float32).T                # (anchors, 4 + classes)
     scores = pred[:, 4:].max(1)
     mask = scores > floor
     if not mask.any():
@@ -169,11 +169,11 @@ def decode_output(row, floor=FLOOR_CONF, iou=NMS_IOU, limit=MAX_DET):
 
 
 class OnnxDetector(object):
-    """Moteur ONNX Runtime sur processeur : sans torch ni ultralytics.
+    """ONNX Runtime engine on the CPU: no torch or ultralytics.
 
-    Mesure sur un vrai run (1171 marqueurs, 182 photos de 21 Mpixels) : plus rapide que torch
-    sur une RTX 4070 (24 s contre 47 s avec l'ancienne boucle). DirectML (carte graphique) a ete
-    essaye : 38 s, plus lent, car ces tuiles de 160 x 160 sont trop petites pour amortir chaque appel.
+    Measured on a real run (1171 markers, 182 photos of 21 Mpixels): faster than torch
+    on an RTX 4070 (24 s against 47 s with the former loop). DirectML (graphics card) was
+    tried: 38 s, slower, because these 160 x 160 tiles are too small to amortise each call.
     """
 
     def __init__(self, path, threads=None):
@@ -201,15 +201,15 @@ def onnx_path(weights):
 
 
 def make_detector(weights, device, engine="auto"):
-    """Le moteur demande : "onnx" (ONNX Runtime, leger), "torch" (ultralytics, le precis, carte graphique
-    si presente) ou "auto" (ONNX si possible et sur processeur, sinon ultralytics).
+    """The requested engine: "onnx" (ONNX Runtime, light), "torch" (ultralytics, the precise one, graphics card
+    if present) or "auto" (ONNX if possible and on the CPU, otherwise ultralytics).
 
-    Un moteur choisi expressement n'est jamais remplace en silence : s'il manque, l'erreur le dit."""
+    An explicitly chosen engine is never silently replaced: if it is missing, the error says so."""
     path = onnx_path(weights)
     if engine == "onnx":
         if not os.path.isfile(path):
-            raise RuntimeError("le moteur leger demande le fichier {} (absent) : reinstalle le modele ou "
-                               "choisis le moteur precis".format(os.path.basename(path)))
+            raise RuntimeError("the light engine needs the file {} (missing): reinstall the model or "
+                               "choose the precise engine".format(os.path.basename(path)))
         return OnnxDetector(path)
     if engine == "torch":
         return Detector(weights, pick_device(device))
@@ -217,7 +217,7 @@ def make_detector(weights, device, engine="auto"):
         try:
             return OnnxDetector(path)
         except Exception as exc:
-            sys.stderr.write("aigcp_runner : ONNX indisponible ({!r}), repli sur ultralytics\n".format(exc))
+            sys.stderr.write("aigcp_runner: ONNX unavailable ({!r}), falling back to ultralytics\n".format(exc))
     return Detector(weights, pick_device(device))
 
 
@@ -226,10 +226,10 @@ def make_detector(weights, device, engine="auto"):
 # --------------------------------------------------------------------------
 
 def best_of(preds, metas, nearest):
-    """Meilleure detection parmi des tuiles : (x, y, conf, taille) en px photo, ou None.
+    """Best detection among tiles: (x, y, conf, size) in photo px, or None.
 
-    `nearest` : score = confiance x exp(-(d / 40 px)^2 / 2), d = distance au centre
-    de la tuile (donc a l'estimation) ; sinon, la plus forte confiance.
+    `nearest`: score = confidence x exp(-(d / 40 px)^2 / 2), d = distance to the centre
+    of the tile (hence to the estimate); otherwise, the highest confidence.
     """
     import numpy as np
     best, best_score = None, -1.0
@@ -250,9 +250,9 @@ def best_of(preds, metas, nearest):
 
 
 def batch_best(detector, image, requests):
-    """Une etape pour plusieurs marqueurs : toutes les tuiles passent au modele en un seul lot.
+    """One step for several markers: all the tiles go through the model in a single batch.
 
-    `requests` : liste de (cle, centres [(x, y, taille)], nearest). Renvoie {cle: meilleur ou None}.
+    `requests`: list of (key, centres [(x, y, size)], nearest). Returns {key: best or None}.
     """
     tiles, metas, spans = [], [], []
     for key, centres, nearest in requests:
@@ -281,9 +281,9 @@ def _row(found, conf):
 
 
 def detect_items(detector, image, items, scales, conf):
-    """Resultats de tous les marqueurs d'une photo : liste de dicts {found, x, y, conf, crop_px}.
+    """Results of all the markers of a photo: list of dicts {found, x, y, conf, crop_px}.
 
-    Meme methode que `detect_item`, mais chaque etape est groupee pour toute la photo.
+    Same method as `detect_item`, but each step is grouped for the whole photo.
     """
     count = len(items)
     plans = []
@@ -292,12 +292,12 @@ def detect_items(detector, image, items, scales, conf):
         cx, cy = float(item["x_est"]), float(item["y_est"])
         plans.append((cx, cy, sorted(set(crop_size(ppm, s) for s in scales)), bool(item.get("rescue", True))))
 
-    # 1. premiere passe : les tailles de cible autour de l'estimation
+    # 1. first pass: the target sizes around the estimate
     first = batch_best(detector, image, [
         (i, [(cx, cy, s) for s in sizes], True) for i, (cx, cy, sizes, _r) in enumerate(plans)])
     found = [first[i] for i in range(count)]
 
-    # 2. recherche elargie pour ceux qui n'ont rien de sur
+    # 2. wider search for those with nothing reliable
     requests = []
     for i, (cx, cy, sizes, rescue) in enumerate(plans):
         if rescue and (found[i] is None or found[i][2] < conf):
@@ -312,7 +312,7 @@ def detect_items(detector, image, items, scales, conf):
             if wider[i] is not None and (found[i] is None or wider[i][2] > found[i][2]):
                 found[i] = wider[i]
 
-    # 3. affinage : on recentre le recadrage sur la detection
+    # 3. refinement: the crop is recentred on the detection
     requests = [(i, [(found[i][0], found[i][1], found[i][3])], True)
                 for i in range(count) if found[i] is not None and found[i][2] >= conf]
     if requests:
@@ -325,7 +325,7 @@ def detect_items(detector, image, items, scales, conf):
 
 
 def detect_item(detector, image, item, scales, conf):
-    """Resultat d'une photo : dict {found, x, y, conf, crop_px}."""
+    """Result for one photo: dict {found, x, y, conf, crop_px}."""
     return detect_items(detector, image, [item], scales, conf)[0]
 
 
@@ -333,12 +333,12 @@ BIG = 960
 
 
 def save_review_crops(image, row, crops_dir, name):
-    """Recadrage autour du point trouve, pour le Review panel de FastGCP.
+    """Crop around the point found, for the FastGCP Review panel.
 
-    La fenetre est celle du modele (`crop_px`, au moins 96 px) : l'interface en decoupe
-    la moitie centrale a zoom normal, et le curseur de zoom montre plus ou moins de
-    contexte. Renvoie {big, win, x0, y0} (nom du fichier dans `crops_dir`, win = cote
-    de la fenetre en pixels de la photo, x0 y0 = son coin), ou None.
+    The window is the model one (`crop_px`, at least 96 px): the interface cuts the
+    central half out of it at normal zoom, and the zoom slider shows more or less
+    context. Returns {big, win, x0, y0} (file name in `crops_dir`, win = side
+    of the window in photo pixels, x0 y0 = its corner), or None.
     """
     import cv2
     side = max(CROP_MIN, int(round(row["crop_px"])))
@@ -363,18 +363,18 @@ def pick_device(wanted):
 
 
 def write_progress(out_path, done, total):
-    """progress.json a cote de hits.json : la barre de progression de FastGCP le relit."""
+    """progress.json next to hits.json: the FastGCP progress bar re-reads it."""
     path = os.path.join(os.path.dirname(os.path.abspath(out_path)), "progress.json")
     try:
         with open(path + ".tmp", "w", encoding="utf-8") as handle:
             json.dump({"done": done, "total": total}, handle)
         os.replace(path + ".tmp", path)
     except OSError:
-        pass            # lecture en cours cote FastGCP : la prochaine ecriture passera
+        pass            # being read on the FastGCP side: the next write will go through
 
 
 def photo_groups(items):
-    """[(chemin, [indices des items])] : les items d'une meme photo se suivent, un seul decodage."""
+    """[(path, [item indices])]: the items of one photo follow each other, a single decoding."""
     groups = []
     for index, item in enumerate(items):
         if groups and groups[-1][0] == item["image_path"]:
@@ -409,7 +409,7 @@ def run(work_path, out_path):
     workers = max(2, min(MAX_WORKERS, (os.cpu_count() or 4) - 1))
     try:
         import cv2
-        cv2.setNumThreads(1)           # le parallelisme vient des fils de decodage
+        cv2.setNumThreads(1)           # the parallelism comes from the decoding threads
     except Exception:
         pass
     pending = deque()
@@ -431,7 +431,7 @@ def run(work_path, out_path):
             group_items = [items[i] for i in indices]
             try:
                 if image is None:
-                    raise ValueError(problem or "image illisible")
+                    raise ValueError(problem or "unreadable image")
                 results = detect_items(detector, image, group_items, scales, conf)
                 for index, item, row in zip(indices, group_items, results):
                     row["id"] = item["id"]
@@ -440,7 +440,7 @@ def run(work_path, out_path):
                     rows[index] = row
             except Exception as exc:
                 for item in group_items:
-                    errors.append("{} : {!r}".format(item.get("id"), exc))
+                    errors.append("{}: {!r}".format(item.get("id"), exc))
             done += len(indices)
             if time.time() - last_write >= 0.25:
                 write_progress(out_path, done, len(items))
@@ -456,23 +456,23 @@ def run(work_path, out_path):
 
 
 def _decode(path):
-    """(image, probleme) : ne leve jamais, pour qu'un fichier illisible ne coupe pas la detection."""
+    """(image, problem): never raises, so that an unreadable file does not stop the detection."""
     try:
         image = read_image(path)
-        return (image, None) if image is not None else (None, "image illisible")
+        return (image, None) if image is not None else (None, "unreadable image")
     except Exception as exc:
-        return None, "image illisible ({!r})".format(exc)
+        return None, "unreadable image ({!r})".format(exc)
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Detection AIGCP pour FastGCP")
+    parser = argparse.ArgumentParser(description="AIGCP detection for FastGCP")
     parser.add_argument("--work", required=True)
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
     try:
         run(args.work, args.out)
     except Exception as exc:
-        sys.stderr.write("aigcp_runner : {!r}\n".format(exc))
+        sys.stderr.write("aigcp_runner: {!r}\n".format(exc))
         return 1
     return 0
 

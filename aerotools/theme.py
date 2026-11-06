@@ -1,28 +1,28 @@
-"""Theme HELIX AERO pour les panneaux Qt d'AeroTools.
+"""HELIX AERO theme for the AeroTools Qt panels.
 
-Les valeurs viennent du design system HELIX (tokens.css, releve le 03/11/2026)
-et des couleurs du logo HELIX AERO. Une couleur existe ici une fois : les
-panneaux ne font que de la mise en page.
+The values come from the HELIX design system (tokens.css, taken on 2026-11-03)
+and from the colors of the HELIX AERO logo. A color exists once here: the
+panels only do layout.
 
-Fonds (le gris de Metashape, un seul theme) :
-  ground-0 #282828 (fenetre), ground-1 #404040 (fond), ground-2 #484848 (carte),
-  ground-3 #353535 (releve : champs, listes), ground-4 #555555 (survol).
-Textes : fg-0 blanc, fg-1 #eeeeee (texte courant), fg-2 #b9b9b9 (secondaire).
-Accent : vert de marque #1eca59 (survol #34d56b, texte dessus #06241a) — un
-remplissage, jamais du texte sur fond clair.
-Alerte : orange #ff5210 (outil a l'arret).
-Degrade du logo : #163056 -> #139168 -> #03a132, du bas gauche vers le haut droit.
+Backgrounds (the Metashape grey, a single theme):
+  ground-0 #282828 (window), ground-1 #404040 (background), ground-2 #484848 (card),
+  ground-3 #353535 (raised: fields, lists), ground-4 #555555 (hover).
+Text: fg-0 white, fg-1 #eeeeee (body text), fg-2 #b9b9b9 (secondary).
+Accent: brand green #1eca59 (hover #34d56b, text on top #06241a) - a
+fill, never text on a light background.
+Alert: orange #ff5210 (tool stopped).
+Logo gradient: #163056 -> #139168 -> #03a132, from bottom left to top right.
 """
 
 import os
 
 # --------------------------------------------------------------------------
-# Jetons
+# Tokens
 # --------------------------------------------------------------------------
 
-# Une seule palette : le gris de Metashape (Window #282828, Base #404040, Text #eeeeee),
-# pour que le panneau et les fenetres d'AeroTools se fondent dans l'interface.
-# Le vert de marque est le seul accent ; l'orange et le degrade du logo sont communs.
+# A single palette: the Metashape grey (Window #282828, Base #404040, Text #eeeeee),
+# so that the panel and the AeroTools windows blend into the interface.
+# Brand green is the only accent; orange and the logo gradient are shared.
 GROUND_0 = "#282828"
 GROUND_1 = "#404040"
 GROUND_2 = "#484848"
@@ -45,7 +45,7 @@ GREEN_SOFT = "rgba(30, 202, 89, 0.18)"
 
 GREEN_DEEP = "#03a132"
 
-# Fenetre Parametres : fond sombre, sections presque noires (comme les volets de Metashape).
+# Settings window: dark background, near-black sections (like the Metashape panes).
 WINDOW = "#303030"
 PANE = "#1b1b1b"
 PANE_HEAD = "#262626"
@@ -63,7 +63,7 @@ LOGO_2 = "#03a132"
 
 
 
-# Pas de 8 px (et demi-pas de 4), comme le design system.
+# 8 px step (and half-step of 4), like the design system.
 PAD = 8
 PAD_S = 4
 PAD_L = 16
@@ -82,12 +82,12 @@ _TEXT_FAMILY = "Segoe UI"
 
 
 # --------------------------------------------------------------------------
-# Polices
+# Fonts
 # --------------------------------------------------------------------------
 
 def load_fonts(QtGui):
-    """Police du panneau : celle de Metashape (Segoe UI), plus lisible que
-    Rubik et Manrope aux petites tailles. Rien a charger."""
+    """Panel font: the Metashape one (Segoe UI), more legible than
+    Rubik and Manrope at small sizes. Nothing to load."""
     global _FONTS_LOADED
     _FONTS_LOADED = True
     return _TITLE_FAMILY, _TEXT_FAMILY
@@ -102,12 +102,12 @@ def text_family():
 
 
 # --------------------------------------------------------------------------
-# Feuille de style
+# Style sheet
 # --------------------------------------------------------------------------
 
 def tooltip_stylesheet():
-    """Style des infobulles. Un QToolTip est une fenetre a part : il ne lit pas
-    la feuille du panneau, on pose donc cette regle sur le widget survole."""
+    """Tooltip style. A QToolTip is a separate window: it does not read
+    the panel style sheet, so this rule is set on the hovered widget."""
     return """
     QToolTip {{
         background: {ground_2};
@@ -128,8 +128,8 @@ def tooltip_stylesheet():
 
 
 def menu_stylesheet():
-    """Style du menu d'export. Un menu deroulant est une fenetre a part : comme
-    pour l'infobulle, on pose la regle sur le menu lui-meme."""
+    """Export menu style. A drop-down menu is a separate window: as
+    for the tooltip, the rule is set on the menu itself."""
     return """
     QMenu {{
         background: {ground_2};
@@ -170,30 +170,30 @@ def menu_stylesheet():
 
 
 def stylesheet():
-    """Feuille de style Qt du panneau. Les objectName cibles :
+    """Qt style sheet of the panel. The targeted objectNames:
 
-      #aeroPanel      racine du panneau
-      #aeroHeader     bandeau de titre
-      #aeroRule       filet degrade du logo (2 px)
-      #aeroEyebrow    intitule en capitales espacees
-      #aeroTitle      titre d'outil
-      #aeroValue      valeur mise en avant (marqueur courant)
-      #aeroMeta       ligne secondaire
-      #aeroBanner     bandeau du haut (logo AERO sur le fond clair #F3F4F1 du kit, pub) ; #aeroBannerTop : son filet vert
-      #aeroCard       bloc de reglages ; #aeroCardAccent : bloc mis en avant (cadre vert)
-      #aeroSection    titre de section d'une fenetre (parametres)
-      #aeroProgress   barre de progression fine (parametres, affinage) ; #aeroProgressText : celle de la detection IA, avec son texte
-      #aeroCombo      liste deroulante (choix de la detection IA)
-      #aeroThumbs     listes de la fenetre de revue ; #aeroSlider : curseur de taille
-      #aeroPlayOn / #aeroPlayOff  bouton rond Pause / Play
-      #aeroState / #aeroStateOff  texte « Tool actif » / « Tool inactif »
-      #aeroCounter    pastille-compteur
-      #aeroRun        bouton d'action vert (Run, Valider quand tout est fait)
-      #aeroYes / #aeroNo  Oui (liseré vert) et Non (liseré rouge) des boites de dialogue
-      #aeroGhost      bouton secondaire discret ([round="true"] : rond,
-                      [pill="true"] : gelule avec texte)
-      #aeroZoomButton boutons +/- de la fenetre de revue
-      #aeroGridBox    cadre du tableau des marqueurs ; #aeroGrid : la grille
+      #aeroPanel      panel root
+      #aeroHeader     title banner
+      #aeroRule       logo gradient rule (2 px)
+      #aeroEyebrow    spaced-capitals heading
+      #aeroTitle      tool title
+      #aeroValue      highlighted value (current marker)
+      #aeroMeta       secondary line
+      #aeroBanner     top banner (AERO logo on the kit's light #F3F4F1 background, advert) ; #aeroBannerTop : its green rule
+      #aeroCard       settings block ; #aeroCardAccent : highlighted block (green frame)
+      #aeroSection    section title of a window (settings)
+      #aeroProgress   thin progress bar (settings, refinement) ; #aeroProgressText : the AI detection one, with its text
+      #aeroCombo      drop-down list (AI detection choice)
+      #aeroThumbs     lists of the review window ; #aeroSlider : size slider
+      #aeroPlayOn / #aeroPlayOff  round Pause / Play button
+      #aeroState / #aeroStateOff  "Tool active" / "Tool inactive" text
+      #aeroCounter    counter pill
+      #aeroRun        green action button (Run, Validate when everything is done)
+      #aeroYes / #aeroNo  Yes (green edge) and No (red edge) of the dialog boxes
+      #aeroGhost      discreet secondary button ([round="true"] : round,
+                      [pill="true"] : pill with text)
+      #aeroZoomButton +/- buttons of the review window
+      #aeroGridBox    frame of the marker table ; #aeroGrid : the grid
     """
     return """
     #aeroPanel {{
@@ -346,7 +346,7 @@ def stylesheet():
         background: {green};
         border-radius: 3px;
     }}
-    /* Barre de la detection IA : le texte est dedans (vert du logo, lisible sur le fond comme sur le remplissage) */
+    /* AI detection bar: the text is inside it (logo green, legible on the background as on the fill) */
     #aeroPanel QProgressBar#aeroProgressText {{
         background: {ground_3};
         border: none;
@@ -361,7 +361,7 @@ def stylesheet():
         border-radius: 4px;
     }}
 
-    /* Play / Pause : bouton rond (l'icone est peinte) + etat en clair */
+    /* Play / Pause: round button (the icon is painted) + plain state text */
     #aeroPanel QPushButton#aeroPlayOn {{
         background: {green};
         border: none;
@@ -393,7 +393,7 @@ def stylesheet():
         font-weight: 600;
     }}
 
-    /* Compteurs du marqueur actif */
+    /* Counters of the active marker */
     #aeroPanel #aeroCounter {{
         background: {ground_3};
         border: 1px solid {border_faint};
@@ -406,7 +406,7 @@ def stylesheet():
         font-weight: 600;
     }}
 
-    /* Boutons secondaires */
+    /* Secondary buttons */
     #aeroPanel QPushButton {{
         background: {ground_3};
         color: {fg_1};
@@ -481,7 +481,7 @@ def stylesheet():
         border-color: {border_strong};
     }}
 
-    /* Bouton d'action : meme vert que le Play */
+    /* Action button: same green as Play */
     #aeroPanel QPushButton#aeroRun {{
         background: {green};
         border: none;
@@ -499,7 +499,7 @@ def stylesheet():
         color: {fg_4};
     }}
 
-    /* Boutons +/- du zoom de la fenetre de revue */
+    /* Zoom +/- buttons of the review window */
     #aeroPanel QToolButton#aeroZoomButton {{
         background: {ground_3};
         border: 1px solid {border_soft};
@@ -514,7 +514,7 @@ def stylesheet():
         color: {fg_0};
     }}
 
-    /* Champs */
+    /* Fields */
     #aeroPanel QLineEdit {{
         background: {field_bg};
         border: 1px solid {border_faint};
@@ -528,7 +528,7 @@ def stylesheet():
         border-color: {green};
     }}
 
-    /* Cases a cocher */
+    /* Checkboxes */
     #aeroPanel QCheckBox {{
         color: {fg_1};
         spacing: 8px;
@@ -557,7 +557,7 @@ def stylesheet():
         border-color: {fg_4};
     }}
 
-    /* Choix exclusif : un rond vide ou plein, dans une carte qui passe au vert une fois choisie */
+    /* Exclusive choice: an empty or filled circle, in a card that turns green once chosen */
     #aeroPanel QRadioButton {{
         color: {fg_0};
         spacing: 12px;
@@ -588,7 +588,7 @@ def stylesheet():
         border: 1px solid {orange_bright};
     }}
 
-    /* Tableau des marqueurs : un cadre arrondi, la grille dedans sans bordure */
+    /* Marker table: a rounded frame, the grid inside without borders */
     #aeroPanel #aeroGridBox {{
         background: {ground_2};
         border: 1px solid {border_faint};
@@ -630,7 +630,7 @@ def stylesheet():
         font-size: 9pt;
     }}
 
-    /* Fenetre Parametres : fond sombre, sections noires, gros boutons au texte centre */
+    /* Settings window: dark background, black sections, big buttons with centered text */
     #aeroPanel[settings="true"] {{
         background: {window};
     }}
@@ -772,7 +772,7 @@ def stylesheet():
         font-size: 9pt;
     }}
 
-    /* Barres de defilement */
+    /* Scroll bars */
     #aeroPanel QScrollBar:vertical {{
         background: transparent;
         width: 8px;
@@ -833,18 +833,18 @@ def stylesheet():
 
 
 # --------------------------------------------------------------------------
-# Petits composants communs
+# Small shared components
 # --------------------------------------------------------------------------
 
 def eyebrow(QtWidgets, text):
-    """Intitule en capitales espacees, au-dessus d'un bloc."""
+    """Spaced-capitals heading above a block."""
     label = QtWidgets.QLabel(text.upper())
     label.setObjectName("aeroEyebrow")
     return label
 
 
 def gradient_rule(QtWidgets, height=2):
-    """Filet degrade du logo : la signature visuelle du panneau."""
+    """Logo gradient rule: the visual signature of the panel."""
     rule = QtWidgets.QFrame()
     rule.setObjectName("aeroRule")
     rule.setFixedHeight(height)

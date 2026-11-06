@@ -1,29 +1,29 @@
-"""Enregistrement optionnel des pointages manuels (jeu d'apprentissage AIGCP).
+"""Optional recording of the manual pins (AIGCP training set).
 
-Actif seulement si l'option `collect_dataset` de la session est cochee. Chaque
-pointage manuel reussi ajoute une ligne JSON au fichier :
+Active only if the session option `collect_dataset` is ticked. Each successful
+manual pin appends a JSON line to the file:
 
     <config.settings_dir()>/dataset/pins.jsonl
 
-Format : un objet JSON par ligne, UTF-8, ajout en fin de fichier. On ne copie
-aucune image et on ne recadre rien : on garde des references vers les photos.
+Format: one JSON object per line, UTF-8, appended at the end of the file. No image
+is copied and nothing is cropped: only references to the photos are kept.
 
-Cles d'une ligne (schema 1) :
-    schema      int    version du format (1)
-    ts          str    date locale ISO 8601, a la seconde
-    chunk       str    etiquette du chunk
-    marker      str    etiquette du marqueur (GCP)
-    camera      str    etiquette de la photo
-    image_path  str    chemin de l'image source tel que Metashape le connait
-    image_w     int    largeur du capteur en pixels (0 si inconnue)
-    image_h     int    hauteur du capteur en pixels (0 si inconnue)
-    x, y        float  position posee, en pixels, origine en haut a gauche
-                       (apres recalage sur le centre de la cible, voir snap.py)
-    x_click, y_click  float  clic brut de l'operateur, avant recalage (facultatif)
-    source      str    "manual" pour un pointage a la souris
+Keys of a line (schema 1):
+    schema      int    format version (1)
+    ts          str    local ISO 8601 date, to the second
+    chunk       str    chunk label
+    marker      str    marker (GCP) label
+    camera      str    photo label
+    image_path  str    path of the source image as Metashape knows it
+    image_w     int    sensor width in pixels (0 if unknown)
+    image_h     int    sensor height in pixels (0 if unknown)
+    x, y        float  placed position, in pixels, origin at the top left
+                       (after snapping to the target centre, see snap.py)
+    x_click, y_click  float  raw click of the operator, before snapping (optional)
+    source      str    "manual" for a mouse pin
 
-Un script d'entrainement relit le fichier ligne par ligne (json.loads), ignore
-les lignes dont `schema` est inconnu, et rouvre l'image via `image_path`.
+A training script reads the file line by line (json.loads), ignores
+the lines whose `schema` is unknown, and reopens the image through `image_path`.
 """
 
 import datetime
@@ -45,7 +45,7 @@ def dataset_path():
 
 
 def count():
-    """Nombre de pointages enregistres (0 si le fichier n'existe pas)."""
+    """Number of recorded pins (0 if the file does not exist)."""
     try:
         total = 0
         with open(dataset_path(), "rb") as handle:
@@ -58,11 +58,11 @@ def count():
 
 
 def record_pin(state, record):
-    """Ajoute un pointage au jeu d'apprentissage.
+    """Adds a pin to the training set.
 
-    `record` : dict avec chunk, marker, camera, image_path, image_w, image_h,
-    x, y et eventuellement source. Renvoie le dict ecrit (avec schema et ts),
-    ou None si l'option est coupee ou si l'ecriture echoue. Ne leve jamais.
+    `record`: dict with chunk, marker, camera, image_path, image_w, image_h,
+    x, y and possibly source. Returns the dict written (with schema and ts),
+    or None if the option is off or if the write fails. Never raises.
     """
     try:
         if not state.option("collect_dataset"):
@@ -80,7 +80,7 @@ def record_pin(state, record):
             "y": round(float(record["y"]), 2),
             "source": record.get("source", "manual"),
         }
-        # Clic brut de l'operateur, avant recalage sur la cible (facultatif).
+        # Raw click of the operator, before snapping to the target (optional).
         if record.get("x_click") is not None and record.get("y_click") is not None:
             row["x_click"] = round(float(record["x_click"]), 2)
             row["y_click"] = round(float(record["y_click"]), 2)
@@ -90,7 +90,7 @@ def record_pin(state, record):
         return row
     except Exception as exc:
         try:
-            journal.write("jeu d'apprentissage : ecriture impossible ({!r})".format(exc))
+            journal.write("training set: write failed ({!r})".format(exc))
         except Exception:
             pass
         return None

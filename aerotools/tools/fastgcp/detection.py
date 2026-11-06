@@ -1,64 +1,64 @@
-"""Point d'accroche de la detection automatique des cibles (AIGCP).
+"""Hook point of the automatic target detection (AIGCP).
 
-Ce module ne contient aucune IA : il fixe les types par lesquels un detecteur
-se branche. Le detecteur AIGCP (damier, bombe) est dans aigcp.py ; le panneau le
-pilote directement (bouton « Detection IA »), de facon asynchrone.
+This module contains no AI: it defines the types through which a detector
+plugs in. The AIGCP detector (checker, spray) is in aigcp.py; the panel
+drives it directly ("AI detection" button), asynchronously.
 
-Contrat fichier d'AIGCP (voir aigcp.py et aigcp_runner.py) :
-  - FastGCP ecrit un `work.json` : poids du modele, seuil de confiance, et une
-    liste d'items {id, image_path, x_est, y_est, px_per_m}.
-  - Un executable separe, dans un environnement Python externe, lit ce fichier
-    et ecrit `hits.json` : liste de {id, found, x, y, conf, crop_px}.
-  - torch, ultralytics et CUDA ne sont JAMAIS importes dans le Python de
-    Metashape : tout le calcul passe par cet executable et ces deux fichiers.
-  - Une projection posee par l'IA l'est avec `pinned=False`, une projection
-    manuelle avec `pinned=True` (msapi.set_projection).
+AIGCP file contract (see aigcp.py and aigcp_runner.py):
+  - FastGCP writes a `work.json`: model weights, confidence threshold, and a
+    list of items {id, image_path, x_est, y_est, px_per_m}.
+  - A separate executable, in an external Python environment, reads this file
+    and writes `hits.json`: a list of {id, found, x, y, conf, crop_px}.
+  - torch, ultralytics and CUDA are NEVER imported in the Metashape
+    Python: all the computation goes through this executable and these two files.
+  - A projection placed by the AI is placed with `pinned=False`, a manual
+    projection with `pinned=True` (msapi.set_projection).
 
-Un detecteur se branche ainsi :
+A detector plugs in like this:
     from aerotools.tools.fastgcp import detection
-    detection.register(MonDetecteur())
+    detection.register(MyDetector())
 """
 
 import collections
 
 from ... import journal
 
-# Une proposition de pointage faite par un detecteur.
-#   marker_label : etiquette du marqueur concerne
-#   camera_key   : cle (camera.key) de la photo
-#   x, y         : pixels capteur
-#   confidence   : 0.0 a 1.0
-#   source       : nom du detecteur qui l'a produite
+# A pin proposal made by a detector.
+#   marker_label : label of the marker concerned
+#   camera_key   : key (camera.key) of the photo
+#   x, y         : sensor pixels
+#   confidence   : 0.0 to 1.0
+#   source       : name of the detector that produced it
 Proposal = collections.namedtuple(
     "Proposal", ["marker_label", "camera_key", "x", "y", "confidence", "source"]
 )
 
 
 class Detector(object):
-    """Base d'un detecteur de cibles. Ne fait rien par defaut."""
+    """Base of a target detector. Does nothing by default."""
 
-    name = "detecteur"
+    name = "detector"
 
     def status(self):
-        """(ok, message) : le detecteur est-il pret a servir ?"""
+        """(ok, message): is the detector ready to serve?"""
         return True, ""
 
     def propose(self, chunk, marker, cameras):
-        """Liste de `Proposal` pour ce marqueur sur ces photos (vide ici)."""
+        """List of `Proposal` for this marker on these photos (empty here)."""
         return []
 
     def on_pin_placed(self, record):
-        """Appele apres chaque pointage manuel. `record` : dict, voir dataset.py."""
+        """Called after each manual pin. `record`: dict, see dataset.py."""
         return None
 
 
 class NullDetector(Detector):
-    """Detecteur par defaut : aucun, tant qu'AIGCP n'est pas installe."""
+    """Default detector: none, as long as AIGCP is not installed."""
 
-    name = "aucun"
+    name = "none"
 
     def status(self):
-        return False, "Aucun detecteur installe (AIGCP a venir)"
+        return False, "No detector installed (AIGCP coming)"
 
 
 _NULL = NullDetector()
@@ -66,20 +66,20 @@ _active = _NULL
 
 
 def register(detector):
-    """Installe `detector` comme detecteur courant. `None` revient au NullDetector."""
+    """Installs `detector` as the current detector. `None` goes back to the NullDetector."""
     global _active
     _active = detector if detector is not None else _NULL
     return _active
 
 
 def active():
-    """Detecteur courant (NullDetector si aucun n'est enregistre)."""
+    """Current detector (NullDetector if none is registered)."""
     return _active
 
 
 def notify_pin(record):
-    """Previent le detecteur courant d'un pointage manuel. Ne leve jamais."""
+    """Notifies the current detector of a manual pin. Never raises."""
     try:
         active().on_pin_placed(record)
     except Exception as exc:
-        journal.write("detecteur : {!r}".format(exc))
+        journal.write("detector: {!r}".format(exc))

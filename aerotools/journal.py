@@ -1,8 +1,8 @@
-"""Journal d'AeroTools : tampon circulaire + abonnes.
+"""AeroTools journal: ring buffer + subscribers.
 
-Le journal sert aux deux sorties : la console de Metashape (print) et la zone
-depliable du panneau. Les panneaux s'abonnent, se desabonnent a la fermeture,
-et une exception chez un abonne n'empeche jamais d'ecrire la ligne.
+The journal feeds two outputs: the Metashape console (print) and the collapsible
+area of the panel. Panels subscribe, unsubscribe on close,
+and an exception in a subscriber never prevents the line from being written.
 """
 
 import os
@@ -17,7 +17,7 @@ _subscribers = []
 
 
 def write(message, tag="AeroTools"):
-    """Ajoute une ligne horodatee au journal et la pousse aux abonnes."""
+    """Append a timestamped line to the journal and push it to the subscribers."""
     line = "{} {}".format(time.strftime("%H:%M:%S"), message)
     _lines.append(line)
     if len(_lines) > MAX_LINES:
@@ -33,13 +33,13 @@ def write(message, tag="AeroTools"):
 
 
 def log_path():
-    """aerotools.log, a cote des reglages : la meme trace que la console, lisible apres coup (support, diagnostic)."""
+    """aerotools.log, next to the settings: the same trace as the console, readable afterwards (support, diagnostics)."""
     from . import config
     return os.path.join(config.settings_dir(), LOG_NAME)
 
 
 def _to_file(text):
-    """Ajoute une ligne au fichier ; jamais d'erreur. Au-dela de 1 Mo, l'ancien fichier devient .old."""
+    """Append a line to the file; never raises. Beyond 1 MB, the old file becomes .old."""
     try:
         path = log_path()
         os.makedirs(os.path.dirname(path), exist_ok=True)

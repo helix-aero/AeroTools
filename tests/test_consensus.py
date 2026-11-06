@@ -26,7 +26,7 @@ def test_rays_to_one_point_are_all_inliers_and_find_the_point():
 
 def test_off_target_detections_are_flagged():
     rays = [ray_to(origin, TARGET) for origin in ring(8)]
-    rays[2] = ray_to(ring(8)[2], (6.0, 0.0, 0.0))     # une toiture a cote
+    rays[2] = ray_to(ring(8)[2], (6.0, 0.0, 0.0))     # a roof next to it
     rays[5] = ray_to(ring(8)[5], (0.0, -7.0, 3.0))
     flags, point = consensus.consensus(rays, 0.1)
     assert [i for i, ok in enumerate(flags) if not ok] == [2, 5]
@@ -70,12 +70,12 @@ def test_a_missing_ray_is_never_an_inlier():
 
 def test_a_point_behind_the_camera_is_not_an_inlier():
     flags, point = consensus.consensus([ray_to(origin, TARGET) for origin in ring(5)], 0.1)
-    behind = ((0.0, 0.0, 10.0), (0.0, 0.0, 1.0))       # regarde vers +Z, la cible est derriere
+    behind = ((0.0, 0.0, 10.0), (0.0, 0.0, 1.0))       # looks towards +Z, the target is behind
     distance, depth = consensus.distance_to_ray(point, behind)
     assert distance == pytest.approx(0.0, abs=1e-6) and depth < 0
 
 
 def test_triangulate_two_skew_rays_gives_the_midpoint():
-    a = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0))        # la droite y = 0, z = 0
-    b = ((1.0, 2.0, -1.0), (0.0, 0.0, 1.0))       # la droite x = 1, y = 2
+    a = ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0))        # the line y = 0, z = 0
+    b = ((1.0, 2.0, -1.0), (0.0, 0.0, 1.0))       # the line x = 1, y = 2
     assert consensus.triangulate([a, b]) == pytest.approx((1.0, 1.0, 0.0), abs=1e-9)

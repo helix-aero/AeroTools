@@ -42,12 +42,12 @@ def shading_name(shading):
 def summary(look):
     """One line for the card: "Metashape, Sun"."""
     look = looks.normalized(look)
-    return i18n.t("export.look_summary", palette=looks.label(looks.palette(look.palette), i18n.lang()),
+    return i18n.t("export.look_summary", palette=looks.label(looks.palette(look.palette)),
                   shading=shading_name(look.shading))
 
 
 def compass(azimuth):
-    """Compass name of a direction in degrees (N, NE, E...), in the language of the interface."""
+    """Compass name of a direction in degrees (N, NE, E...)."""
     names = i18n.t("export.look_compass").split("|")
     return names[int(((azimuth % 360.0) + 22.5) // 45.0) % 8]
 
@@ -149,9 +149,8 @@ class PreviewWindow(QtWidgets.QDialog):
         grid.setVerticalSpacing(theme.PAD)
         grid.setColumnStretch(1, 1)
         self.palette_box, self.palette_reset = self._combo(grid, 0, "export.look_palette", self._reset_palette)
-        lang = i18n.lang()
         for ident, entry in looks.palettes().items():
-            self.palette_box.addItem(QtGui.QIcon(self._swatch(entry)), looks.label(entry, lang), ident)
+            self.palette_box.addItem(QtGui.QIcon(self._swatch(entry)), looks.label(entry), ident)
         self.shading_box, self.shading_reset = self._combo(grid, 1, "export.look_shading", self._reset_shading)
         for shading in looks.SHADINGS:
             self.shading_box.addItem(shading_name(shading), shading)

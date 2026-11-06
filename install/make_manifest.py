@@ -1,11 +1,11 @@
-"""Ecrit manifest.json : la liste des fichiers publies, avec empreinte et taille.
+"""Write manifest.json: the list of published files, with hash and size.
 
-A lancer avant chaque publication (la suite de tests le rappelle si on l'oublie) :
+Run before each publication (the test suite reminds you if you forget):
 
     python install/make_manifest.py
 
-La mise a jour dans Metashape (aerotools/updater.py) compare les fichiers du disque a ce manifeste.
-Seuls les fichiers utiles a l'utilisateur sont listes : code, modeles, installeur, ressources, docs.
+The update inside Metashape (aerotools/updater.py) compares the files on disk with this manifest.
+Only the files useful to the user are listed: code, models, installer, assets, docs.
 """
 
 import datetime
@@ -23,15 +23,15 @@ from aerotools import updater  # noqa: E402
 FOLDERS = ("aerotools", "install", "models", "assets")
 DOC_FOLDER = "docs"
 DOC_EXTENSIONS = (".md", ".py")
-TOP_FILES = ("README.md", "README.fr.md", "LICENSE", "CLICK HERE TO INSTALL.bat")
-MODELS = {"damier.pt", "damier.onnx", "bombe.pt", "bombe.onnx"}
+TOP_FILES = ("README.md", "LICENSE", "CLICK HERE TO INSTALL.bat")
+MODELS = {"checker.pt", "checker.onnx", "spray.pt", "spray.onnx"}
 SKIP_FOLDERS = {"__pycache__", ".git", ".pytest_cache"}
 SKIP_SUFFIXES = (".pyc", ".pyo", ".bak", ".tmp", ".aeroupd", ".log")
 SKIP_NAMES = {"manifest.json", "Thumbs.db", ".DS_Store"}
 
 
 def wanted(relative):
-    """Ce fichier (chemin relatif en /) est-il publie ?"""
+    """Is this file (relative path with /) published?"""
     parts = relative.split("/")
     name = parts[-1]
     if name in SKIP_NAMES or name.endswith(SKIP_SUFFIXES) or SKIP_FOLDERS.intersection(parts):
@@ -44,7 +44,7 @@ def wanted(relative):
 
 
 def listing(root=ROOT):
-    """Chemins relatifs (avec /) de tous les fichiers publies, tries."""
+    """Relative paths (with /) of all published files, sorted."""
     found = []
     for folder in FOLDERS + (DOC_FOLDER,):
         for base, dirs, names in os.walk(os.path.join(root, folder)):
@@ -67,7 +67,7 @@ def version(root=ROOT):
 
 
 def build(root=ROOT):
-    """Contenu du manifeste (dict)."""
+    """Manifest content (dict)."""
     files = {}
     for relative in listing(root):
         digest, size = updater.digest_file(os.path.join(root, *relative.split("/")), relative)
@@ -88,5 +88,5 @@ def write(root=ROOT):
 if __name__ == "__main__":
     result = write()
     total = sum(info["size"] for info in result["files"].values())
-    print("manifest.json : {} fichiers, {:.1f} Mo, version {}".format(
+    print("manifest.json: {} files, {:.1f} MB, version {}".format(
         len(result["files"]), total / 1048576.0, result["version"]))

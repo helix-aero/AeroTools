@@ -1,17 +1,17 @@
-"""Fenetre Parametres de FastGCP (Qt) : l'engrenage du panneau.
+"""FastGCP Settings window (Qt): the gear of the panel.
 
-Quatre etapes numerotees, dans l'ordre ou l'outil se construit, puis les options :
-  1 Detection    le moteur qui calcule (leger ou precis) et son etat d'installation ;
-  2 Modele       le modele d'IA utilise pour detecter les cibles ;
-  3 Donnees      le dossier ou sont gardes les pointages corriges, les modeles et les essais ;
-  4 Entrainement corrections -> « Entrainer » -> nouveau modele (le modele d'origine n'est jamais modifie).
-Options : les cases a cocher et le journal (la carte `panel.more`, construite par le panneau).
-En bas : « Verifier les mises a jour » et « Fermer ».
+Four numbered steps, in the order in which the tool is built, then the options:
+  1 Detection   the engine that computes (light or precise) and its installation state;
+  2 Model       the AI model used to detect the targets;
+  3 Data        the folder where the corrected markings, the models and the trials are kept;
+  4 Training    corrections -> "Train" -> new model (the original model is never modified).
+Options: the check boxes and the log (the `panel.more` card, built by the panel).
+At the bottom: "Check for updates" and "Close".
 
-L'entrainement (training.py) tourne dans un Python a part et bloque l'ordinateur un moment
-(carte graphique) : un avertissement le dit avant de commencer, la fenetre suit l'avancement et
-permet d'annuler. Les modeles produits s'appellent « Local 1.1 », « Local 1.2 »... et on peut
-revenir au modele d'origine.
+The training (training.py) runs in a separate Python and ties up the computer for a while
+(graphics card): a warning says so before starting, the window follows the progress and
+allows cancelling. The models produced are called "Local 1.1", "Local 1.2"... and one can
+go back to the original model.
 """
 
 import datetime
@@ -30,7 +30,7 @@ BUTTON_HEIGHT = 40
 
 
 def _btn(text_key, handler, kind="aeroBtn", width=0):
-    """Gros bouton : texte centre, 40 px de haut. `aeroGo` = vert (l'action), `aeroBtn` = gris."""
+    """Big button: centred text, 40 px high. `aeroGo` = green (the action), `aeroBtn` = grey."""
     button = QtWidgets.QPushButton(i18n.t(text_key))
     button.setObjectName(kind)
     button.setCursor(QtCore.Qt.PointingHandCursor)
@@ -43,7 +43,7 @@ def _btn(text_key, handler, kind="aeroBtn", width=0):
 
 
 def _pane(title_key, number=None):
-    """Section noire avec un bandeau de titre : (cadre, mise en page du corps, mise en page du bandeau)."""
+    """Black section with a title strip: (frame, body layout, strip layout)."""
     pane = QtWidgets.QFrame()
     pane.setObjectName("aeroPane")
     outer = QtWidgets.QVBoxLayout(pane)
@@ -75,7 +75,7 @@ def _pane(title_key, number=None):
 
 
 def _tile(label_key):
-    """Petite case chiffree : (cadre, etiquette du chiffre)."""
+    """Small numbered tile: (frame, number label)."""
     tile = QtWidgets.QFrame()
     tile.setObjectName("aeroStat")
     layout = QtWidgets.QVBoxLayout(tile)
@@ -109,18 +109,18 @@ def _warn():
 
 
 def model_text(model):
-    """Nom affiche d'un modele : « Aero V1.0 » ou « Local 1.2 (04/11/2026) »."""
+    """Displayed name of a model: "Aero V1.0" or "Local 1.2 (2026-11-04)"."""
     if model.get("base") or not model.get("created"):
         return model["name"]
     try:
-        day = datetime.datetime.fromisoformat(model["created"]).strftime("%d/%m/%Y")
+        day = datetime.datetime.fromisoformat(model["created"]).strftime("%Y-%m-%d")
     except (TypeError, ValueError):
         return model["name"]
     return "{} ({})".format(model["name"], day)
 
 
 class ManageDialog(QtWidgets.QDialog):
-    """Liste des modeles : on supprime les locaux, jamais le modele d'origine."""
+    """List of the models: local ones can be deleted, never the original model."""
 
     def __init__(self, parent=None):
         super(ManageDialog, self).__init__(parent)
@@ -170,7 +170,7 @@ class ManageDialog(QtWidgets.QDialog):
         try:
             training.delete_model(item.data(QtCore.Qt.UserRole))
         except Exception as exc:
-            journal.write("Modeles IA : suppression impossible : {!r}".format(exc))
+            journal.write("AI models: cannot delete: {!r}".format(exc))
         self._fill()
 
 
@@ -179,7 +179,6 @@ class SettingsDialog(QtWidgets.QDialog):
         super(SettingsDialog, self).__init__(parent)
         self.panel = panel
         self._job = None
-        self._lang = i18n.lang()
         self.setWindowTitle(i18n.t("settings.title"))
         self.resize(WIDTH, HEIGHT)
         root = _styled_root(self)
@@ -196,7 +195,7 @@ class SettingsDialog(QtWidgets.QDialog):
         outer.addWidget(scroll, 1)
         body = QtWidgets.QWidget()
         scroll.setWidget(body)
-        # setWidget remet le remplissage du fond : on le coupe apres, pour voir le fond de la fenetre.
+        # setWidget turns the background fill back on: it is turned off afterwards, to show the window background.
         body.setAutoFillBackground(False)
         layout = QtWidgets.QVBoxLayout(body)
         pad = theme.PAD_L
@@ -246,7 +245,7 @@ class SettingsDialog(QtWidgets.QDialog):
         return pane
 
     def _engine_row(self, key):
-        """Une ligne : nom du moteur, puis « Installe » ou le bouton Installer."""
+        """One row: engine name, then "Installed" or the Install button."""
         row = QtWidgets.QHBoxLayout()
         row.setSpacing(theme.PAD)
         name = QtWidgets.QLabel(i18n.t(engines.NAME_TEXT[key]))
@@ -262,7 +261,7 @@ class SettingsDialog(QtWidgets.QDialog):
         return row
 
     def refresh_engines(self):
-        """Etat des moteurs installes (une courte interrogation du Python externe)."""
+        """State of the installed engines (a short query of the external Python)."""
         state = engines.status()
         busy = self._job is not None
         index = self.engine_combo.findData(engines.selected())
@@ -296,7 +295,7 @@ class SettingsDialog(QtWidgets.QDialog):
     def _on_engine(self, index):
         choice = self.engine_combo.itemData(index)
         engines.set_selected(choice)
-        journal.write("Moteur de detection : {}".format(choice))
+        journal.write("Detection engine: {}".format(choice))
         wanted = engines.missing(choice)
         if wanted is not None and engines.can_install():
             what = i18n.t(engines.WHAT_TEXT[wanted])
@@ -313,7 +312,7 @@ class SettingsDialog(QtWidgets.QDialog):
             install_ui.run(self, key)
         self.refresh()
 
-    # -- 2. Modele ---------------------------------------------------------------------
+    # -- 2. Model ----------------------------------------------------------------------
 
     def _build_model(self):
         pane, layout, _head = _pane("settings.sec_model", 2)
@@ -326,7 +325,7 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addLayout(row)
         return pane
 
-    # -- 3. Donnees --------------------------------------------------------------------
+    # -- 3. Data -----------------------------------------------------------------------
 
     def _build_data(self):
         pane, layout, _head = _pane("settings.sec_data", 3)
@@ -353,7 +352,7 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addWidget(self.use_refine)
         return pane
 
-    # -- 4. Entrainement ---------------------------------------------------------------
+    # -- 4. Training -------------------------------------------------------------------
 
     def _build_training(self):
         pane, layout, _head = _pane("settings.sec_train", 4)
@@ -423,10 +422,10 @@ class SettingsDialog(QtWidgets.QDialog):
         self.panel.more.show()
         return pane
 
-    # -- etat --------------------------------------------------------------------------
+    # -- state -------------------------------------------------------------------------
 
     def refresh(self):
-        """Relit les reglages, les modeles et le nombre d'annotations."""
+        """Reread the settings, the models and the number of annotations."""
         training_on = self._job is not None
         self.use_refine.blockSignals(True)
         self.use_refine.setChecked(training.collect_enabled())
@@ -463,11 +462,11 @@ class SettingsDialog(QtWidgets.QDialog):
         self.use_refine.setEnabled(not training_on)
         self.refresh_engines()
 
-    # -- reglages ----------------------------------------------------------------------
+    # -- settings ----------------------------------------------------------------------
 
     def _on_use_refine(self, checked):
         training.set_collect(bool(checked))
-        journal.write("Modeles IA : affinages manuels {}".format("enregistres" if checked else "non enregistres"))
+        journal.write("AI models: manual refinements {}".format("recorded" if checked else "not recorded"))
 
     def _open_folder(self):
         folder = training.storage_dir()
@@ -475,7 +474,7 @@ class SettingsDialog(QtWidgets.QDialog):
             os.makedirs(folder, exist_ok=True)
             QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(folder))
         except Exception as exc:
-            journal.write("Modeles IA : ouverture du dossier impossible : {!r}".format(exc))
+            journal.write("AI models: cannot open the folder: {!r}".format(exc))
 
     def _browse(self):
         old = training.storage_dir()
@@ -486,11 +485,11 @@ class SettingsDialog(QtWidgets.QDialog):
         if chosen != os.path.normpath(old):
             self._offer_copy(old, chosen)
         training.set_storage_dir(chosen)
-        journal.write("Modeles IA : dossier de stockage : {}".format(chosen))
+        journal.write("AI models: storage folder: {}".format(chosen))
         self.refresh()
 
     def _offer_copy(self, old, new):
-        """Nouveau dossier vide et ancien dossier plein : propose de copier les donnees (rien n'est efface)."""
+        """New folder empty and old folder full: offers to copy the data (nothing is deleted)."""
         before, after = training.storage_summary(old), training.storage_summary(new)
         if not (before["annotations"] or before["models"]) or after["annotations"] or after["models"]:
             return
@@ -499,9 +498,9 @@ class SettingsDialog(QtWidgets.QDialog):
             return
         try:
             training.copy_storage(old, new)
-            journal.write("Modeles IA : donnees copiees vers {}".format(new))
+            journal.write("AI models: data copied to {}".format(new))
         except Exception as exc:
-            journal.write("Modeles IA : copie impossible : {!r}".format(exc))
+            journal.write("AI models: cannot copy: {!r}".format(exc))
             self._say(i18n.t("settings.copy_failed", message=str(exc)))
 
     def _on_model(self, index):
@@ -517,7 +516,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self._status(i18n.t("settings.reverted"))
         self.refresh()
 
-    # -- reentrainement ----------------------------------------------------------------
+    # -- retraining --------------------------------------------------------------------
 
     def _say(self, text):
         dialogs.inform(self, i18n.t("settings.train_title"), text)
@@ -548,7 +547,7 @@ class SettingsDialog(QtWidgets.QDialog):
         except Exception as exc:
             self._job = None
             self._status(i18n.t("settings.train_failed", message=str(exc)))
-            journal.write("Modeles IA : lancement impossible : {!r}".format(exc))
+            journal.write("AI models: cannot start: {!r}".format(exc))
             self.refresh()
             return
         self.progress.setRange(0, 0)
@@ -560,7 +559,7 @@ class SettingsDialog(QtWidgets.QDialog):
 
     @staticmethod
     def _failure_text(result):
-        """Message d'un echec dans la langue courante, d'apres son code ; repli : le texte du module."""
+        """Message of a failure, according to its code; fallback: the text of the module."""
         code, text = result.get("code"), result.get("message", "")
         detail = text.split(": ", 1)[1] if ": " in text else text
         if code == "busy":
@@ -610,11 +609,11 @@ class SettingsDialog(QtWidgets.QDialog):
         else:
             message = i18n.t("settings.train_failed", message=self._failure_text(result))
         self._status(message)
-        journal.write("Modeles IA : {}".format(message))
+        journal.write("AI models: {}".format(message))
         self.refresh()
         self._say(message)
 
-    # -- vie de la fenetre -------------------------------------------------------------
+    # -- window life -------------------------------------------------------------------
 
     def closeEvent(self, event):
         if self._job is not None:
@@ -624,25 +623,17 @@ class SettingsDialog(QtWidgets.QDialog):
         super(SettingsDialog, self).closeEvent(event)
 
     def release(self):
-        """Rend au panneau la carte des options avant que la fenetre disparaisse."""
+        """Give the options card back to the panel before the window disappears."""
         _restyle(self.panel.more, "aeroCard")
         self.panel.more.setParent(None)
 
 
 def show(panel, existing=None):
-    """Ouvre la fenetre Parametres (modale). Reutilise l'instance deja construite.
-
-    Les textes sont fixes a la construction : apres un changement de langue la fenetre
-    est refaite.
-    """
+    """Open the Settings window (modal). Reuses the instance already built."""
     dialog = existing
     try:
         if dialog is not None:
             dialog.objectName()
-            if dialog._lang != i18n.lang():
-                dialog.release()
-                dialog.deleteLater()
-                dialog = None
     except RuntimeError:
         dialog = None
     if dialog is None:

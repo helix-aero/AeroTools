@@ -1,18 +1,18 @@
-"""FastGCP - pointage GCP assiste dans la vue photo de Metashape.
+"""FastGCP - assisted GCP marking in the Metashape photo view.
 
-Principe : un marqueur est « courant », un clic dans la vue photo (ou Maj+clic)
-lui pose une projection, et le panneau Photos se filtre tout seul sur les photos qui
-voient ce marqueur — y compris celles d'un GCP jamais pointe, calculees depuis
-ses coordonnees de reference.
+Principle: one marker is "current"; a click in the photo view (or Shift+click)
+places a projection for it, and the Photos pane filters itself to the photos that
+see this marker, including those of a GCP that was never marked, computed from
+its reference coordinates.
 
-Modules :
-  session.py    etat de la session (marqueur courant, options, references Qt)
-  tool.py       install() / uninstall(), appeles par le menu Aero
-  panel.py      le dock Qt
-  marking.py    filtre d'evenements et pose de la projection
-  photos.py     filtre du panneau Photos et passage a la photo suivante
-  dataset.py    enregistrement des pointages pour l'apprentissage (optionnel)
-  detection.py  point d'accroche de la detection automatique
-  aigcp.py      detection IA damier / bombe : propositions de pointage (hors Metashape)
-  aigcp_runner.py  executeur lance dans un Python externe (onnxruntime ; torch en repli)
+Modules:
+  session.py    session state (current marker, options, Qt references)
+  tool.py       install() / uninstall(), called by the Aero menu
+  panel.py      the Qt dock
+  marking.py    event filter and projection placement
+  photos.py     Photos pane filter and move to the next photo
+  dataset.py    recording of the markings for training (optional)
+  detection.py  hook for the automatic detection
+  aigcp.py      AI detection of checker / spray targets: marking proposals (outside Metashape)
+  aigcp_runner.py  runner started in an external Python (onnxruntime; torch as a fallback)
 """

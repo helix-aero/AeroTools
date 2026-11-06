@@ -1,6 +1,6 @@
 """Keep the Qt harnesses away from the real settings of the machine.
 
-The harnesses open real windows that save choices (format, DEM look, language...) through `aerotools.config`. Run on a workstation
+The harnesses open real windows that save choices (format, DEM look...) through `aerotools.config`. Run on a workstation
 they must never touch its `%LOCALAPPDATA%\\HELIX\\AeroTools\\settings.json`: `Guard` sends LOCALAPPDATA to a throw-away folder before
 AeroTools is imported, `pin(config)` makes `config.settings_dir` return that folder whatever happens to the environment later, and
 `check()` compares the real settings file with its state at the start (content and modification time).

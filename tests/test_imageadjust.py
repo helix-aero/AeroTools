@@ -1,4 +1,4 @@
-"""Reglages d'affichage des vignettes : bornes, memorisation, calcul des pixels."""
+"""Thumbnail display adjustments: bounds, persistence, pixel computation."""
 
 import pytest
 
@@ -57,7 +57,7 @@ def test_values_are_remembered_between_openings():
 
 def test_a_corrupt_stored_value_falls_back_to_neutral():
     from aerotools import config
-    config.put("aigcp", "adj_exposure", "beaucoup")
+    config.put("aigcp", "adj_exposure", "lots")
     config.put("aigcp", "adj_contrast", 9999)
     model = imageadjust.load()
     assert model.get("exposure") == 0 and model.get("contrast") == 100
@@ -101,7 +101,7 @@ def test_sharpness_raises_local_contrast_and_keeps_flat_areas():
     edge = np.zeros((16, 16, 3), np.uint8)
     edge[:, 8:] = 120
     out = imageadjust.adjust_array(edge, {"sharpness": 100})
-    assert out[:, 7, 0].max() == 0 and out[:, 8, 0].min() > 120      # depassement de part et d'autre du bord
+    assert out[:, 7, 0].max() == 0 and out[:, 8, 0].min() > 120      # overshoot on both sides of the edge
     assert out.shape == edge.shape and out.dtype == np.uint8
 
 
