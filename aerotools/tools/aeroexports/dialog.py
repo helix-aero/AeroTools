@@ -532,7 +532,7 @@ class ExportDialog(QtWidgets.QDialog):
         return i18n.t("export.look_summary", palette=palette, shading=shading)
 
     def _void(self):
-        """What the preview paints where the DEM has no data: nothing when the drawing crops the white borders, else white."""
+        """What the preview paints where the DEM has no data: nothing when the drawing crops the white background, else white."""
         return "transparent" if self.preset.currentData() == plan.CAD and self.cad_clip.isChecked() else "white"
 
     def _on_picture(self, *_args):
@@ -1177,7 +1177,7 @@ class ExportDialog(QtWidgets.QDialog):
             self._previous_preset = config.get(SECTION, "preset")
             config.put(SECTION, "preset", key)
         self.cad_box.setVisible(key == plan.CAD)
-        self.cad_clip.setVisible(key == plan.CAD)               # "Crop the white borders" only concerns the drawings
+        self.cad_clip.setVisible(key == plan.CAD)               # "Crop white background" only concerns the drawings
         self._check_tools()
         self._refresh_names()
 
