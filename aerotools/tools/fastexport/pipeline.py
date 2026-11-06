@@ -41,6 +41,7 @@ class Context(object):
         self.native = False
         self.vertical, self.proj, self.epsg = vertical, proj, epsg   # grille d'altitude (id), moteur PROJ, EPSG du SCR de sortie
         self.look = looks.normalized(look if look is not None else looks.DEFAULT)   # palette / ombrage de l'image du MNT
+        self.failed = ""                                  # nom du fichier en cours d'ecriture : celui qui a echoue si `run` leve
 
 
 class Result(object):
@@ -338,12 +339,14 @@ def run(ctx, jobs, progress):
     total = len(jobs)
     try:
         for index, job in enumerate(jobs):
+            ctx.failed = job.name
             progress(index / float(total), job.name)
             run_job(ctx, job, work, lambda part, index=index: progress((index + part) / float(total), job.name), result,
                     images)
         progress(1.0, "")
         if ctx.preset == plan.CAD:
             _write_cad(ctx, jobs, images, result)
+        ctx.failed = ""
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return result
@@ -355,6 +358,7 @@ def _write_cad(ctx, jobs, images, result):
         raise Failure("Aucune image a placer dans le dessin")
     version = jobs[0].version
     dxf = os.path.join(ctx.folder, plan.cad_dxf_name(version, "dxf"))
+    ctx.failed = os.path.basename(dxf)
     entries = []
     for item in images:
         entries.append({"layer": item["layer"], "file": dxfout.relative_path(item["path"], dxf), "size_px": item["size_px"],
@@ -369,6 +373,7 @@ def _write_cad(ctx, jobs, images, result):
         if not core:
             raise Failure("DWG : AutoCAD est introuvable")
         dwg = os.path.join(ctx.folder, plan.cad_dxf_name(version, "dwg"))
+        ctx.failed = os.path.basename(dwg)
         ok, message = external.dxf_to_dwg(core, dxf, dwg, tick=ctx.tick)
         if not ok:
             raise Failure(message)

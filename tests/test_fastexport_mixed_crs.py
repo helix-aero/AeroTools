@@ -39,3 +39,23 @@ def test_a_box_that_converts_to_nan_is_a_failure_not_a_crash(tmp_path):
     ctx.transform = lambda box, source, target: (float("nan"), 2.0, 3.0, 4.0)
     with pytest.raises(pipeline.Failure, match="converted"):
         pipeline.run(ctx, jobs(tmp_path, ["dem"]), lambda f, t: None)
+
+
+def test_the_failing_file_is_named_not_the_first_one(tmp_path):
+    """Ortho fine, DEM refused: the error line must name the DEM file."""
+    ctx = context(tmp_path, crs="L93")
+    ctx.info["geographic_ortho"] = False
+    all_jobs = jobs(tmp_path, ["ortho", "dem"])
+    real_export = ctx.export
+
+    def export(chunk, kind, spec, path, *args, **kw):
+        if kind == "dem":
+            return False, "Empty raster"
+        return real_export(chunk, kind, spec, path, *args, **kw)
+
+    ctx.export = export
+    ctx.transform = lambda box, source, target: (1.0, 2.0, 3.0, 4.0)
+    with pytest.raises(pipeline.Failure, match="Empty raster"):
+        pipeline.run(ctx, all_jobs, lambda f, t: None)
+    assert ctx.failed == [j for j in all_jobs if j.kind == "dem"][0].name
+    assert ctx.failed != all_jobs[0].name

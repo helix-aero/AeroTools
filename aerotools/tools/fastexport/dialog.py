@@ -991,10 +991,10 @@ class ExportDialog(QtWidgets.QDialog):
         try:
             result = pipeline.run(ctx, jobs, progress)
         except pipeline.Failure as exc:
-            problem = i18n.t("export.failed", name=jobs[0].name, error=exc)
-            journal.write("Fast Export : {}".format(exc))
+            problem = i18n.t("export.failed", name=ctx.failed or jobs[0].name, error=exc)
+            journal.write("Fast Export : {}: {}".format(ctx.failed, exc))
         except Exception as exc:
-            problem = i18n.t("export.failed", name=jobs[0].name, error=repr(exc))
+            problem = i18n.t("export.failed", name=ctx.failed or jobs[0].name, error=repr(exc))
             journal.write("Fast Export : {!r}".format(exc))
             journal.write("Fast Export : {}".format(traceback.format_exc().strip().replace("\n", " | ")))
         self._busy = False
