@@ -147,6 +147,50 @@ function Test-Imports($modules) {
 }
 
 
+function Test-EnvPip {
+    # Vrai si l'environnement existe ET que pip y fonctionne. Un dossier _env dont python.exe existe mais sans pip
+    # (creation interrompue, ou environnement fait par un outil qui n'installe pas pip) n'est pas un environnement utilisable.
+    if (-not (Test-Path -LiteralPath $EnvPython)) { return $false }
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $EnvPython -m pip --version 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+
+function Repair-EnvPip {
+    # Environnement present mais sans pip : on essaie ensurepip ; sinon on met le dossier de cote (rien n'est efface)
+    # pour que l'etape suivante le recree proprement.
+    Say '  The environment exists but pip is missing: repairing it.' 'Yellow'
+    if ($DryRun) { return }
+    try {
+        Run-Long 'pip repair' $EnvPython @('-m', 'ensurepip', '--upgrade', '--default-pip')
+    } catch {
+        Say ("  ensurepip did not work: " + $_.Exception.Message.Split("`n")[0]) 'Yellow'
+    }
+    if (Test-EnvPip) { return }
+    $aside = $EnvDir + '_broken_' + (Get-Date -Format 'yyyyMMdd_HHmmss')
+    Say "  Setting the broken environment aside: $aside" 'Yellow'
+    Move-Item -LiteralPath $EnvDir -Destination $aside -Force
+}
+
+
+function Update-Pip {
+    # La mise a jour de pip est un confort, pas une necessite : un echec ici ne doit pas arreter l'installation.
+    try {
+        Run-Long 'pip update' $EnvPython @('-m', 'pip', 'install', '--upgrade', 'pip', '--progress-bar', 'off', '--disable-pip-version-check')
+    } catch {
+        Say ("  pip could not be updated (the installation goes on): " + $_.Exception.Message.Split("`n")[0]) 'Yellow'
+    }
+}
+
+
 function Test-EngineInstalled { return (Test-Imports @('onnxruntime', 'cv2', 'numpy')) }
 function Test-PreciseInstalled { return (Test-Imports @('torch', 'ultralytics')) }
 function Test-TrainingInstalled { return (Test-Imports @('torch', 'ultralytics', 'onnx')) }
@@ -237,7 +281,9 @@ function Show-Status {
     $ok = $true
     if (Test-LauncherCurrent) { Say 'Aero menu              : installed' } else { Say 'Aero menu              : NOT installed'; $ok = $false }
     if (-not $NoAI) {
-        if (Test-Path -LiteralPath $EnvPython) { Say "Python environment    : $EnvPython" } else { Say "Python environment    : MISSING ($EnvPython)"; $ok = $false }
+        if (Test-EnvPip) { Say "Python environment    : $EnvPython" }
+        elseif (Test-Path -LiteralPath $EnvPython) { Say "Python environment    : BROKEN (pip is missing in $EnvPython): run the installer again to repair it"; $ok = $false }
+        else { Say "Python environment    : MISSING ($EnvPython)"; $ok = $false }
         $light = Test-EngineInstalled
         $precise = Test-PreciseInstalled
         $training = Test-TrainingInstalled
@@ -317,7 +363,7 @@ try {
 
     if (-not $NoAI) {
         $python = $null
-        $envReady = (Test-Path -LiteralPath $EnvPython) -and -not $DryRun
+        $envReady = (Test-EnvPip) -and -not $DryRun
         Show-Step 'Python for the AI detection'
         if ($envReady) {
             Say '  Already installed.'
@@ -340,10 +386,16 @@ try {
         }
 
         Show-Step 'AI environment'
-        if (Test-Path -LiteralPath $EnvPython) {
+        if (Test-EnvPip) {
             Say '  Already created.'
-        } elseif ($python) {
-            Run-Long 'Environment creation' $python @('-m', 'venv', $EnvDir)
+        } else {
+            if (Test-Path -LiteralPath $EnvPython) { Repair-EnvPip }
+            if (-not (Test-Path -LiteralPath $EnvPython) -and $python) {
+                Run-Long 'Environment creation' $python @('-m', 'venv', $EnvDir)
+            }
+            if (-not $DryRun -and -not (Test-EnvPip)) {
+                throw "The Python environment has no working pip ($EnvPython). Install Python 3.12 from https://www.python.org/downloads/ (the standard installer, with pip) and run this installer again."
+            }
         }
 
         if ($script:WantLight) {
@@ -351,7 +403,7 @@ try {
             if ((Test-EngineInstalled) -and -not $DryRun) {
                 Say '  Already installed.'
             } else {
-                Run-Long 'pip update' $EnvPython @('-m', 'pip', 'install', '--upgrade', 'pip', '--progress-bar', 'off', '--disable-pip-version-check')
+                Update-Pip
                 # opencv-python-headless a cote d'un opencv deja la (celui d'ultralytics) les ferait se marcher dessus.
                 $packages = @('numpy', 'onnxruntime')
                 if (-not (Test-Imports @('cv2'))) { $packages += 'opencv-python-headless' }
@@ -364,7 +416,7 @@ try {
             if ((Test-PreciseInstalled) -and -not $DryRun) {
                 Say '  Already installed.'
             } else {
-                Run-Long 'pip update' $EnvPython @('-m', 'pip', 'install', '--upgrade', 'pip', '--progress-bar', 'off', '--disable-pip-version-check')
+                Update-Pip
                 if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
                     Say '  NVIDIA graphics card found: torch with CUDA.'
                     Run-Long 'torch installation' $EnvPython @('-m', 'pip', 'install', 'torch', 'torchvision', '--index-url', $TorchGpuIndex, '--progress-bar', 'off', '--disable-pip-version-check')
