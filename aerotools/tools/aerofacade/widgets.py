@@ -90,8 +90,6 @@ def polygon_problem(points):
     points = [(float(x), float(y)) for x, y in points]
     if len(points) < 3:
         return "few"
-    if polygon_area(points) <= MIN_AREA:
-        return "flat"
     count = len(points)
     for i in range(count):
         for j in range(i + 1, count):
@@ -99,6 +97,8 @@ def polygon_problem(points):
                 continue                                             # edges that share a corner
             if segments_cross(points[i], points[(i + 1) % count], points[j], points[(j + 1) % count]):
                 return "crossing"
+    if polygon_area(points) <= MIN_AREA:
+        return "flat"
     return ""
 
 

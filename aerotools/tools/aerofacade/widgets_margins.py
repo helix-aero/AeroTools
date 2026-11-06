@@ -531,16 +531,16 @@ class MethodPicker(QtWidgets.QWidget):
         self._group.addButton(radio)
         card = ui.OptionCard(radio)
         card.grid.setColumnStretch(0, 1)
-        if option.quality:
+        if option.quality and option.ok:                      # "best quality" is not said of a method that cannot be used
             tag = ui.label(option.quality, "aeroMeta", wrap=False)
             tag.setStyleSheet("color: {}; font-weight: 700;".format(theme.GREEN_BRIGHT if option.ok and rank == 0 else theme.FG_2))
             card.grid.addWidget(tag, 0, 1, QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        text = ui.label(option.explain)
-        text.setContentsMargins(32, 0, 0, 0)
-        if not option.ok:
-            text.setStyleSheet("color: {};".format(theme.FG_3))
-        card.grid.addWidget(text, 1, 0, 1, 2)
-        row = 2
+        row = 1
+        if option.ok:                                         # the explanation is only true when the method is available
+            text = ui.label(option.explain)
+            text.setContentsMargins(32, 0, 0, 0)
+            card.grid.addWidget(text, row, 0, 1, 2)
+            row += 1
         if not option.ok:
             reason = ui.label(tr("facade.ui.not_available", reason=option.reason or tr("facade.ui.not_available_default")), "aeroWarn")
             reason.setContentsMargins(32, 0, 0, 0)

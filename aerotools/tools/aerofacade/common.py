@@ -5,7 +5,7 @@ from ...qt import QtCore, QtGui
 
 
 def tr(key, **fields):
-    """Text of the interface for a full key ("facade.ui.something")."""
+    """Text of the interface for a full key (the whole key, with its prefix)."""
     return i18n.t(key, **fields)
 
 

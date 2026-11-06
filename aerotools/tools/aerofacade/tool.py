@@ -12,9 +12,15 @@ _STATE = {"window": None}
 
 
 def make_backend():
-    """Le `Backend` de Metashape. Leve ImportError si l'adaptateur n'est pas installe, RuntimeError s'il n'y a pas de projet."""
+    """Le `Backend` de Metashape. Leve ImportError si l'adaptateur n'est pas installe, RuntimeError s'il n'y a pas de projet.
+
+    Modele de fil de l'adaptateur : tous ses calculs tournent dans le fil PRINCIPAL et le bloquent ; entre deux appels il appelle
+    `pump()`, qui laisse Qt travailler (la fenetre se met a jour par son minuteur). La fenetre le sait par `backend.threaded = False`."""
     from . import msfacade                                   # le seul import de Metashape de tout le paquet : paresseux, ici
-    return msfacade.MetashapeBackend()
+    from ...qt import QtWidgets
+    backend = msfacade.MetashapeBackend(pump=QtWidgets.QApplication.processEvents)
+    backend.threaded = False
+    return backend
 
 
 def open_window(backend, parent=None, existing=None):

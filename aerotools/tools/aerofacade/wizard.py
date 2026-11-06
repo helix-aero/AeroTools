@@ -252,8 +252,8 @@ class FacadeWizard(QtWidgets.QDialog):
         self._task, self._on_progress, self._on_done = task, on_progress, on_done
         self.refresh_buttons()
         threaded = getattr(self.backend, "threaded", True)
+        self._timer.start()                                 # before the call: a backend on the main thread lets Qt run while it works
         task.start(threaded=bool(threaded))
-        self._timer.start()
         if not threaded:
             self._poll()
         return True
