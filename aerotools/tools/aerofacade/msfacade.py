@@ -513,9 +513,20 @@ class MetashapeBackend(Backend):
 
     def _new_work(self, label, items=None):
         chunk = self._src()
-        work = chunk.copy(items=items or [Metashape.DataSource.TiePointsData], keypoints=False)
+        work = self._copy(chunk, items or [Metashape.DataSource.TiePointsData])
         work.label = label
         _meta_set(work, "aerofacade.source", chunk.key)
+        return work
+
+    def _copy(self, chunk, items):
+        """`chunk.copy`, which makes the copy the ACTIVE chunk of the project: put the user's active chunk back."""
+        active = self.doc.chunk
+        work = chunk.copy(items=items, keypoints=False)
+        try:
+            if active is not None:
+                self.doc.chunk = active
+        except Exception:
+            pass
         return work
 
     def _remove(self, work):
@@ -669,7 +680,7 @@ class MetashapeBackend(Backend):
         if method == Method.DEPTH_MAPS and self.depth_maps_exist():
             items.append(Metashape.DataSource.DepthMapsData)
         t0 = time.time()
-        work = src.copy(items=items, keypoints=False)
+        work = self._copy(src, items)
         work.label = work_label(self._site or self.project_info()["site"], facade.letter)
         _meta_set(work, "aerofacade.source", src.key)
         _meta_set(work, META_SIG, sig)
