@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T15:58:49",
+ "built": "2026-11-06T16:04:36",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -450,8 +450,8 @@
    "size": 658
   },
   "install/install_all.ps1": {
-   "sha256": "de4fc71b4f95c64814641846ac1e1d8926e184baf069239e8f43297a0b5abb90",
-   "size": 24441
+   "sha256": "711d47f116515cc9d05c0c34de2e1c82b7623595680d411c992ee64422834e13",
+   "size": 33362
   },
   "install/installer_aerotools.bat": {
    "sha256": "204a1395633a20550d9cd3d1ee9b2cdf4799048cd8b8ba735e55624c3ae72d13",

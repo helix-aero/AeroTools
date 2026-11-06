@@ -14,3 +14,5 @@ diag_*.txt
 docs/2026-11-03_pistes-amelioration.html
 *.psx
 *.log
+
+install_debug.txt

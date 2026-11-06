@@ -283,6 +283,155 @@ function Install-Launcher {
 }
 
 
+function Install-PipFromGetPip {
+    # Dernier recours quand ensurepip ne marche pas : get-pip.py (le programme d'installation officiel de pip, pypa.io).
+    $target = Join-Path $env:TEMP 'aerotools_get-pip.py'
+    try {
+        try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+        Say '  Downloading get-pip.py (the official pip installer).'
+        Invoke-WebRequest -UseBasicParsing -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $target
+    } catch {
+        Say ('  get-pip.py could not be downloaded: ' + $_.Exception.Message.Split("`n")[0]) 'Yellow'
+        return $false
+    }
+    try {
+        Run-Long 'pip installation (get-pip.py)' $EnvPython @($target, '--no-warn-script-location')
+    } catch {
+        Say ('  get-pip.py did not work: ' + $_.Exception.Message.Split("`n")[0]) 'Yellow'
+        return $false
+    }
+    return (Test-EnvPip)
+}
+
+
+# ---- rapport de diagnostic : debug.txt quand l'installation echoue (a envoyer au support)
+
+function Capture($label, $exe, [string[]]$arguments) {
+    # Lance une commande et rend son texte ; ne leve jamais.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = (& $exe @arguments 2>&1 | ForEach-Object { '' + $_ } | Out-String).Trim()
+        $code = $LASTEXITCODE
+        $indented = ($out -split "`r?`n" | ForEach-Object { '    ' + $_ }) -join "`r`n"
+        return ("  {0}`r`n    exit code {1}`r`n{2}" -f $label, $code, $indented)
+    } catch {
+        return ("  {0}`r`n    could not run: {1}" -f $label, $_.Exception.Message)
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+
+function Tail-File($path, $count) {
+    try {
+        $lines = @(Get-Content -LiteralPath $path -Tail $count -ErrorAction Stop)
+        return (($lines | ForEach-Object { '    ' + $_ }) -join "`r`n")
+    } catch { return '    (unreadable)' }
+}
+
+
+function Write-DebugReport($problem) {
+    # Ecrit install_debug.txt (a cote de l'installeur, sinon dans TEMP) avec de quoi comprendre la panne sans avoir le poste.
+    $out = New-Object System.Collections.Generic.List[string]
+    $out.Add('AeroTools installer debug report')
+    $out.Add(('Date : ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')))
+    $out.Add(('Problem : ' + $problem))
+    try {
+        $manifest = Get-Content -Raw -LiteralPath (Join-Path $Root 'manifest.json') | ConvertFrom-Json
+        $out.Add(('AeroTools version : {0} (built {1})' -f $manifest.version, $manifest.built))
+    } catch { $out.Add('AeroTools version : manifest.json unreadable') }
+    $out.Add(('Installer folder : ' + $Root))
+    $out.Add('')
+    $out.Add('== Computer')
+    try {
+        $os = Get-CimInstance Win32_OperatingSystem
+        $out.Add(('Windows : {0} {1} {2}' -f $os.Caption, $os.Version, $os.OSArchitecture))
+    } catch { $out.Add('Windows : unknown') }
+    $out.Add(('Language : ' + [Globalization.CultureInfo]::CurrentUICulture.Name))
+    $out.Add(('PowerShell : ' + $PSVersionTable.PSVersion + ' (64-bit process: ' + [Environment]::Is64BitProcess + ')'))
+    try {
+        $admin = (New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        $out.Add(('Administrator : ' + $admin))
+    } catch { }
+    $out.Add(('User profile : ' + $env:USERPROFILE + '   (non-ASCII characters: ' + ($env:USERPROFILE -match '[^\x00-\x7F]') + ')'))
+    $out.Add(('TEMP : ' + $env:TEMP))
+    try {
+        $drive = Get-PSDrive -Name ($env:USERPROFILE.Substring(0, 1)) -ErrorAction Stop
+        $out.Add(('Free space on the profile drive : {0:N1} GB' -f ($drive.Free / 1GB)))
+    } catch { }
+    try { $out.Add(('Execution policy : ' + ((Get-ExecutionPolicy -List | ForEach-Object { $_.Scope.ToString() + '=' + $_.ExecutionPolicy }) -join ', '))) } catch { }
+    foreach ($name in @('HTTP_PROXY', 'HTTPS_PROXY', 'PIP_INDEX_URL', 'PIP_REQUIRE_VIRTUALENV', 'PYTHONHOME', 'PYTHONPATH', 'VIRTUAL_ENV')) {
+        $value = [Environment]::GetEnvironmentVariable($name)
+        if ($value) { $out.Add(('Environment variable {0} = {1}' -f $name, $value)) }
+    }
+    try {
+        $av = @(Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName AntiVirusProduct -ErrorAction Stop | ForEach-Object { $_.displayName })
+        $out.Add(('Antivirus : ' + ($av -join ', ')))
+    } catch { $out.Add('Antivirus : unknown') }
+    $out.Add('')
+    $out.Add('== Pythons on this computer')
+    $out.Add((Capture 'py -0p (Python launcher list)' 'py' @('-0p')))
+    $out.Add((Capture 'where python' 'where.exe' @('python')))
+    $candidates = New-Object System.Collections.Generic.List[string]
+    try { $found = Find-SystemPython; if ($found) { $candidates.Add($found) } } catch { }
+    if ($python -and -not $candidates.Contains($python)) { $candidates.Add($python) }
+    foreach ($exe in $candidates) {
+        $out.Add('')
+        $out.Add(('-- ' + $exe))
+        $out.Add((Capture 'version and ssl' $exe @('-c', 'import sys, ssl; print(sys.version); print(sys.executable); print(ssl.OPENSSL_VERSION)')))
+        $out.Add((Capture 'pip' $exe @('-m', 'pip', '--version')))
+        $out.Add((Capture 'ensurepip' $exe @('-m', 'ensurepip', '--version')))
+        $out.Add((Capture 'ensurepip bundled wheels' $exe @('-c', 'import ensurepip, os; d = os.path.join(os.path.dirname(ensurepip.__file__), ''_bundled''); print(d); print(os.listdir(d))')))
+        $out.Add((Capture 'venv module' $exe @('-c', 'import venv; print(''venv ok'')')))
+    }
+    $out.Add('')
+    $out.Add('== AI environment')
+    $out.Add(('Folder : ' + $EnvDir + '   exists: ' + (Test-Path -LiteralPath $EnvDir)))
+    if (Test-Path -LiteralPath $EnvDir) {
+        try { $out.Add('Content : ' + ((Get-ChildItem -LiteralPath $EnvDir -Force | ForEach-Object { $_.Name }) -join ', ')) } catch { }
+        try { $out.Add('Scripts : ' + ((Get-ChildItem -LiteralPath (Join-Path $EnvDir 'Scripts') -Force | ForEach-Object { $_.Name }) -join ', ')) } catch { }
+        $cfg = Join-Path $EnvDir 'pyvenv.cfg'
+        if (Test-Path -LiteralPath $cfg) { $out.Add('pyvenv.cfg :'); $out.Add((Tail-File $cfg 20)) }
+        if (Test-Path -LiteralPath $EnvPython) {
+            $out.Add((Capture 'environment python' $EnvPython @('-c', 'import sys; print(sys.version)')))
+            $out.Add((Capture 'environment pip' $EnvPython @('-m', 'pip', '--version')))
+        }
+    }
+    $broken = @(Get-ChildItem -LiteralPath (Split-Path -Parent $EnvDir) -Filter '_env_broken_*' -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+    if ($broken.Count) { $out.Add('Broken environments set aside : ' + ($broken -join ', ')) }
+    $out.Add('')
+    $out.Add('== Network')
+    foreach ($url in @('https://pypi.org/simple/pip/', 'https://bootstrap.pypa.io/get-pip.py')) {
+        try {
+            try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+            $response = Invoke-WebRequest -UseBasicParsing -Method Head -Uri $url -TimeoutSec 20
+            $out.Add(('{0} : HTTP {1}' -f $url, $response.StatusCode))
+        } catch { $out.Add(('{0} : {1}' -f $url, $_.Exception.Message.Split("`n")[0])) }
+    }
+    $out.Add('')
+    $out.Add('== Last installer command logs (TEMP)')
+    try {
+        $logs = @(Get-ChildItem -LiteralPath $env:TEMP -Filter 'aerotools_install_*' -ErrorAction Stop | Sort-Object LastWriteTime -Descending | Select-Object -First 6)
+        foreach ($log in $logs) {
+            $out.Add(('-- {0} ({1})' -f $log.Name, $log.LastWriteTime.ToString('HH:mm:ss')))
+            $out.Add((Tail-File $log.FullName 25))
+        }
+    } catch { $out.Add('(none)') }
+    $text = ($out -join "`r`n")
+    foreach ($folder in @($Root, $env:TEMP)) {
+        try {
+            $path = Join-Path $folder 'install_debug.txt'
+            [IO.File]::WriteAllText($path, $text, (New-Object Text.UTF8Encoding($true)))
+            Say ''
+            Say ('  A debug file was written: ' + $path) 'Yellow'
+            Say '  Please send it to the AeroTools team: it tells what is different on this computer.' 'Yellow'
+            return
+        } catch { }
+    }
+}
+
+
 function Exit-With($code) {
     # En cas d'echec, garde la fenetre ouverte si on la lance depuis Metashape : on y lit l'erreur.
     if ($PauseOnError -and $code -ne 0) {
@@ -466,8 +615,12 @@ try {
                     Run-Long 'Environment creation (without pip)' $python @('-m', 'venv', '--without-pip', $EnvDir)
                 }
             }
+            if (-not $DryRun -and -not (Test-EnvPip) -and (Test-EnvPython)) {
+                # Dernier recours 1 : get-pip.py installe pip dans l'environnement.
+                if (Install-PipFromGetPip) { Say '  pip was installed in the environment with get-pip.py.' 'DarkGreen' }
+            }
             if (-not $DryRun -and -not (Test-EnvPip)) {
-                # Pas de pip dans l'environnement : le pip du Python systeme installera dedans.
+                # Dernier recours 2 : le pip du Python systeme installera dans l'environnement.
                 $systemPython = if ($python) { $python } else { Find-SystemPython }
                 if ((Test-EnvPython) -and (Enable-SystemPip $systemPython)) {
                     Say '  The environment has no pip on this computer: the pip of the system Python will be used.' 'Yellow'
@@ -530,10 +683,15 @@ try {
         exit 0
     }
     Say '  Something is still missing (see above).' 'Yellow'
+    # Un rapport seulement si quelque chose qu'on a demande a installer manque (pas quand aucun moteur n'etait voulu).
+    if ($script:WantLight -or $script:WantTorch -or $Training) {
+        Write-DebugReport 'Something is still missing after the installation (see the final check above).'
+    }
     Exit-With 2
 } catch {
     Say ''
     Say ('  ERROR : ' + $_.Exception.Message) 'Red'
     Say '  Nothing is lost: run this installer again, it only redoes what is missing.' 'Yellow'
+    try { Write-DebugReport $_.Exception.Message } catch { }
     Exit-With 1
 }
