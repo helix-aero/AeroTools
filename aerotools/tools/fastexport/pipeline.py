@@ -14,7 +14,7 @@ import os
 import shutil
 import tempfile
 
-from . import crs, dxfout, external, footprint, geotiff, naming, plan, projtool, relief, tiling, vertical
+from . import crs, dxfout, external, footprint, geotiff, look as looks, naming, plan, projtool, relief, tiling, vertical
 
 TMP_NAME = ".fastexport_tmp"
 
@@ -27,7 +27,8 @@ class Context(object):
     """Tout ce dont un export a besoin ; la fenetre le remplit, les tests le remplacent par des faux."""
 
     def __init__(self, chunk, info, folder, site, date, preset, export, tools=None, crs=None, tile_m=None, cad=None,
-                 lang="fr", date_style="short", snap=None, transform=None, tick=None, vertical=None, proj=None, epsg=None):
+                 lang="fr", date_style="short", snap=None, transform=None, tick=None, vertical=None, proj=None, epsg=None,
+                 look=None):
         self.chunk, self.info, self.folder = chunk, info, folder
         self.site, self.date, self.preset, self.cad = site, date, preset, cad or {}
         self.export = export                              # msapi.export_raster ou un faux
@@ -38,6 +39,7 @@ class Context(object):
         self.tick = tick or (lambda: None)
         self.native = False
         self.vertical, self.proj, self.epsg = vertical, proj, epsg   # grille d'altitude (id), moteur PROJ, EPSG du SCR de sortie
+        self.look = looks.normalized(look if look is not None else looks.DEFAULT)   # palette / ombrage de l'image du MNT
 
 
 class Result(object):
@@ -159,7 +161,7 @@ def run_job(ctx, job, work, report, result, images):
     folder = os.path.dirname(job.path)
     os.makedirs(folder, exist_ok=True)
     extra = job.extra or {}
-    if is_cad and job.kind == plan.DEM:
+    if job.kind == plan.DEM and extra.get("view_path"):
         os.makedirs(os.path.dirname(extra["view_path"]), exist_ok=True)
     date_text = naming.format_date(ctx.date, ctx.date_style)
     pixel_text = "%g" % round(float(job.pixel_m), 4)
@@ -214,8 +216,8 @@ def run_job(ctx, job, work, report, result, images):
             record = _record(ctx, source, dxfout.layer_name(date_text, pixel_text, "ortho"), final)
             _clip_ortho(ctx, source, work, record, result)
             images.append(record)
-        if is_cad and job.kind == plan.DEM:
-            _dem_image(ctx, job, raw, token, work, date_text, pixel_text, result, images)
+        if job.kind == plan.DEM and extra.get("view_path"):       # CAD, or the coloured picture asked next to a JP2 / ECW export
+            _dem_image(ctx, job, raw, token, work, date_text, pixel_text, result, images if is_cad else None)
         if post and raw != final and os.path.isfile(raw):
             os.remove(raw)
 
@@ -281,11 +283,22 @@ def _clip_dem(ctx, dem_tif, view_tif, record, result):
         _clip_warning(result)
 
 
+def _look_for(ctx, result):
+    """Look of the DEM image. A custom colour range is written in the heights of the project, which the export may have changed
+    (height system): then the full range is used, and the report says so."""
+    if ctx.vertical and ctx.look.stretch == looks.CUSTOM:
+        if "stretch" not in result.warnings:
+            result.warnings.append("stretch")
+        return ctx.look._replace(stretch=looks.FULL, low=None, high=None)
+    return ctx.look
+
+
 def _dem_image(ctx, job, dem_tif, token, work, date_text, pixel_text, result, images):
-    """Image de visualisation du MNT (relief colore) pour le DXF."""
+    """Image de visualisation du MNT (relief colore) : pour le DXF (`images` : liste des images a placer), ou seule a cote du MNT
+    (`images` est None)."""
     extra = job.extra
     view_tif = os.path.join(work, os.path.splitext(os.path.basename(dem_tif))[0] + "_view.tif")
-    ok, message = relief.render(dem_tif, view_tif, tick=ctx.tick)
+    ok, message = relief.render(dem_tif, view_tif, look=_look_for(ctx, result), tick=ctx.tick)
     _drop_sidecar(dem_tif)
     if not ok:
         raise Failure(message)
@@ -293,9 +306,10 @@ def _dem_image(ctx, job, dem_tif, token, work, date_text, pixel_text, result, im
     # le relief colore est un GeoTIFF RVB : il suit le meme chemin que l'ortho (GDAL en priorite ou Global Mapper)
     _convert(ctx, extra["view_ext"], view_tif, view_final)
     result.files.append((view_final, os.path.getsize(view_final)))
-    record = _record(ctx, view_tif, dxfout.layer_name(date_text, pixel_text, "dem"), view_final)
-    _clip_dem(ctx, dem_tif, view_tif, record, result)
-    images.append(record)
+    if images is not None:
+        record = _record(ctx, view_tif, dxfout.layer_name(date_text, pixel_text, "dem"), view_final)
+        _clip_dem(ctx, dem_tif, view_tif, record, result)
+        images.append(record)
     os.remove(view_tif)
 
 

@@ -57,4 +57,4 @@ def test_render_refuses_a_dem_without_any_data(tmp_path):
     dem = str(tmp_path / "empty.tif")
     make_dem(dem, np.full((10, 10), -32767.0, dtype="<f4"), 0.0, 0.0, 0.5)
     ok, message = relief.render(dem, str(tmp_path / "view.tif"))
-    assert not ok and "donnee" in message
+    assert not ok and "without data" in message

@@ -49,6 +49,17 @@ def big_button(text_key, handler, kind="aeroBtn", width=0, **fields):
     return widget
 
 
+def combo(parent=None):
+    """Drop-down list in the style of the dark windows."""
+    box = QtWidgets.QComboBox(parent)
+    box.setObjectName("aeroCombo")
+    box.setProperty("arrow", True)
+    box.setCursor(QtCore.Qt.PointingHandCursor)
+    box.setFocusPolicy(QtCore.Qt.NoFocus)
+    box.setMinimumHeight(36)
+    return box
+
+
 def dark_root(dialog):
     """Comme `styled_root`, avec le fond sombre des fenetres Parametres."""
     root = styled_root(dialog)

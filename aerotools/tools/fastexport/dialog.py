@@ -17,11 +17,13 @@ fenetre reste vivante grace a processEvents pendant les rappels de progression.
 
 import datetime
 import os
+import shutil
+import tempfile
 import threading
 
 from ... import config, i18n, journal, msapi, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from . import crs, external, naming, pipeline, plan, projdb, projtool, tiling, vertical
+from . import crs, external, look as looks, naming, pipeline, plan, preview, projdb, projtool, tiling, vertical
 
 SECTION = "fastexport"
 WIDTH, HEIGHT = 840, 920
@@ -40,14 +42,20 @@ def size_text(nbytes):
     return "{:.0f} KB".format(nbytes / 1024.0)
 
 
-def combo(parent=None):
-    box = QtWidgets.QComboBox(parent)
-    box.setObjectName("aeroCombo")
-    box.setProperty("arrow", True)
-    box.setCursor(QtCore.Qt.PointingHandCursor)
-    box.setFocusPolicy(QtCore.Qt.NoFocus)
-    box.setMinimumHeight(36)
-    return box
+combo = ui.combo
+
+
+class ClickLabel(QtWidgets.QLabel):
+    """A label that calls `handler` when clicked (and keeps the click: it does not tick the card around it)."""
+
+    def __init__(self, handler):
+        super(ClickLabel, self).__init__()
+        self._handler = handler
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        event.accept()
+        self._handler()
 
 
 class ExistsDialog(QtWidgets.QDialog):
@@ -98,6 +106,9 @@ class ExportDialog(QtWidgets.QDialog):
         self._geoid_ids = []                                # ids proposes au telechargement (la grille choisie, ou celles de la zone)
         self._previous_preset = None
         self._tile_pixels = None
+        self._preview = None                                # preview.Preview of the DEM (made when the user opens the look window)
+        self._preview_key = None
+        self._preview_ok = False
         self.tools = {}
         self.setWindowTitle(i18n.t("export.title"))
         self.setModal(False)
@@ -139,6 +150,7 @@ class ExportDialog(QtWidgets.QDialog):
             field.textChanged.connect(self._refresh_names)
             layout.addWidget(card)
             self.cards[kind], self.fields[kind], self.native_labels[kind] = card, field, native
+        self._build_look_row()
 
         # -- coordonnees ----------------------------------------------------------------------
         layout.addWidget(ui.label(i18n.t("export.crs_section"), "aeroSection"))
@@ -331,6 +343,144 @@ class ExportDialog(QtWidgets.QDialog):
         grid.addLayout(holder, row, 1)
         return group
 
+    def _build_look_row(self):
+        """Second line of the DEM card: the look of the DEM picture (button, small picture, one-line summary) and the option to
+        write that picture next to a JPEG 2000 / ECW export."""
+        card = self.cards[plan.DEM]
+        self.look_row = QtWidgets.QWidget()
+        row = QtWidgets.QHBoxLayout(self.look_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(theme.PAD)
+        self.look_thumb = ClickLabel(self._open_look)
+        self.look_thumb.setFixedSize(112, 76)
+        self.look_thumb.setVisible(False)
+        row.addWidget(self.look_thumb)
+        column = QtWidgets.QVBoxLayout()
+        column.setSpacing(theme.PAD_S)
+        self.look_text = ui.label("", "aeroMeta")
+        column.addWidget(self.look_text)
+        line = QtWidgets.QHBoxLayout()
+        line.setSpacing(theme.PAD)
+        self.look_button = ui.button("export.look_open", self._open_look, width=210)
+        line.addWidget(self.look_button)
+        self.picture_check = QtWidgets.QCheckBox(i18n.t("export.dem_picture", fmt="JP2"))
+        self.picture_check.setToolTip(i18n.t("export.dem_picture_tip"))
+        self.picture_check.setCursor(QtCore.Qt.PointingHandCursor)
+        self.picture_check.setChecked(bool(config.get(SECTION, "dem_picture")))
+        self.picture_check.toggled.connect(self._on_picture)
+        line.addWidget(self.picture_check)
+        line.addStretch(1)
+        column.addLayout(line)
+        row.addLayout(column, 1)
+        card.grid.addWidget(self.look_row, 1, 0, 1, 5)
+        try:
+            from . import previewwin  # noqa: F401  (needs numpy)
+            self._preview_ok = True
+        except ImportError:
+            self.look_button.setEnabled(False)
+            self.look_button.setToolTip(i18n.t("export.look_no_numpy"))
+
+    def _picture_wanted(self):
+        """True when the coloured DEM picture is asked next to a JPEG 2000 / ECW export."""
+        return self.preset.currentData() in plan.PICTURE_PRESETS and self.picture_check.isChecked()
+
+    def _refresh_look_row(self):
+        """Show the look line when the DEM is ticked and the format has a coloured DEM picture (drawing, JPEG 2000, ECW)."""
+        key = self.preset.currentData()
+        self.look_row.setVisible(self.cards[plan.DEM].button.isChecked() and (key == plan.CAD or key in plan.PICTURE_PRESETS))
+        self.picture_check.setVisible(key in plan.PICTURE_PRESETS)
+        if key in plan.PICTURE_PRESETS:
+            self.picture_check.setText(i18n.t("export.dem_picture", fmt=plan.PICTURE_PRESETS[key].upper()))
+        self._refresh_look_text()
+
+    def _refresh_look_text(self):
+        """One-line summary of the saved look; and the small picture once the preview exists."""
+        look = looks.load()
+        self.look_text.setText(i18n.t("export.look_now", look=self._look_summary(look)))
+        model = self._preview_model_cached() if self._preview_ok else None
+        if model is not None:
+            from . import previewwin
+            self.look_thumb.setPixmap(previewwin.thumbnail(model.render(look, self._void())))
+        self.look_thumb.setVisible(model is not None)
+
+    @staticmethod
+    def _look_summary(look):
+        palette = looks.label(looks.palette(look.palette), i18n.lang())
+        shading = i18n.t({looks.NONE: "export.shade_none", looks.SUN: "export.shade_sun", looks.LIGHTS4: "export.shade_lights4",
+                          looks.SLOPE: "export.shade_slope"}[look.shading])
+        return i18n.t("export.look_summary", palette=palette, shading=shading)
+
+    def _void(self):
+        """What the preview paints where the DEM has no data: nothing when the drawing hides the empty border, else white."""
+        return "transparent" if self.preset.currentData() == plan.CAD and self.cad_clip.isChecked() else "white"
+
+    def _on_picture(self, *_args):
+        config.put(SECTION, "dem_picture", bool(self.picture_check.isChecked()))
+        self._check_tools()
+        self._refresh_names()
+
+    def _preview_signature(self):
+        """What the small DEM was made from: the project file (and when it was saved), the DEM extent and size. A change makes a new one."""
+        try:
+            saved = os.path.getmtime(self._psx) if self._psx else 0
+        except OSError:
+            saved = 0
+        return (self._psx, saved, tuple(self._info.get("box_dem") or ()), tuple(self._info.get(plan.DEM) or ()))
+
+    def _preview_model_cached(self):
+        return self._preview if self._preview is not None and self._preview_key == self._preview_signature() else None
+
+    def _preview_model(self):
+        """The small DEM of the preview: the DEM already exported next to the project if it is still current, else a small export
+        by Metashape (a few seconds at most; no progress callback into Metashape). None, with the reason shown, if it fails."""
+        cached = self._preview_model_cached()
+        if cached is not None:
+            return cached
+        chunk = msapi.chunk()
+        if chunk is None or not self._info.get(plan.DEM):
+            self._finish(i18n.t("export.no_chunk"), "error")
+            return None
+        self.mark.show_kind(None)
+        self.status.setText(i18n.t("export.look_loading"))
+        QtWidgets.QApplication.processEvents()              # before the call into Metashape, never inside it
+        work, model, problem = None, None, ""
+        try:
+            path = preview.usable_export([job.path for job in self._jobs if job.kind == plan.DEM], self._psx)
+            if path is None:
+                work = tempfile.mkdtemp(prefix="aero_preview_")
+                path = preview.fetch_small(msapi.export_raster, chunk, self._info.get("box_dem"), work)
+            model = preview.Preview.from_tiff(path, exact=msapi.dem_range(chunk))
+            if not model.valid:
+                problem = i18n.t("export.look_empty")
+        except (ValueError, OSError, MemoryError) as exc:
+            problem = i18n.t("export.look_failed", error=exc)
+            journal.write("Fast Export : apercu du MNT : {!r}".format(exc))
+        finally:
+            if work:
+                shutil.rmtree(work, ignore_errors=True)
+        self.status.setText("")
+        if problem:
+            self._finish(problem, "error")
+            return None
+        self._preview, self._preview_key = model, self._preview_signature()
+        return model
+
+    def _open_look(self):
+        """Open the window where the colours and the shading are chosen; keep (and save) the look if the user accepts it."""
+        if self._busy or not self._preview_ok:
+            return
+        from . import previewwin
+        model = self._preview_model()
+        if model is None:
+            return
+        converted = bool(self._vertical_choice())
+        note = i18n.t("export.look_height_note") if converted else ""
+        window = previewwin.PreviewWindow(self, model, looks.load(), void=self._void(), note=note, custom_allowed=not converted)
+        ui.run(window)
+        if window.result_look is not None:
+            looks.save(window.result_look)
+        self._refresh_look_text()
+
     @staticmethod
     def _value(group):
         button = group.checkedButton()
@@ -418,6 +568,8 @@ class ExportDialog(QtWidgets.QDialog):
         key = self.preset.currentData()
         if key == "ecw" and not self.tools["gm"]:
             return "gm", "export.need_ecw"
+        if key == "jp2" and self._picture_wanted() and not (self.tools["gdal"] or self.tools["gm"]):
+            return "gdal", "export.need_jp2"                # the coloured DEM picture needs an encoder (the ortho can use Metashape's)
         if key == plan.CAD:
             if self._value(self.cad_images) == "ecw" and not self.tools["gm"]:
                 return "gm", "export.need_ecw"
@@ -714,7 +866,7 @@ class ExportDialog(QtWidgets.QDialog):
         wanted = self._wanted()
         return plan.build_jobs(self.site.text().strip(), self._date, wanted, self.preset.currentData(), self._folder(),
                                lang=self._lang, native={k for k in wanted if self._is_native(k)}, cad=self._cad(),
-                               version=version)
+                               version=version, dem_picture=self._picture_wanted())
 
     def _existing(self, jobs):
         return [path for path in plan.planned_files(jobs, self.preset.currentData(), self._cad()) if os.path.exists(path)]
@@ -722,6 +874,8 @@ class ExportDialog(QtWidgets.QDialog):
     def _refresh_names(self, *_args):
         for kind in plan.KINDS:
             self.fields[kind].setEnabled(self.cards[kind].button.isChecked() and bool(self._info.get(kind)))
+        if hasattr(self, "look_row"):
+            self._refresh_look_row()
         if hasattr(self, "tile_box"):
             self._fill_tiles()
         self._jobs, text = [], ""
@@ -814,7 +968,7 @@ class ExportDialog(QtWidgets.QDialog):
                                lang=self._lang, snap=msapi.snapped_box, transform=msapi.transform_box,
                                tick=QtWidgets.QApplication.processEvents, vertical=self._vertical_choice(),
                                proj=projtool.Proj(geoid_dir=crs.own_dir()),
-                               epsg=int(self.crs_box.currentData()) if target is not None else None)
+                               epsg=int(self.crs_box.currentData()) if target is not None else None, look=looks.load())
         self._busy = True
         self.bar.setRange(0, 1000)
         self.bar.setValue(0)
@@ -860,6 +1014,8 @@ class ExportDialog(QtWidgets.QDialog):
                 lines.append(i18n.t("export.check_ok", n=result.check["images"]))
         if "clip" in result.warnings:
             lines.append(i18n.t("export.warn_clip"))
+        if "stretch" in result.warnings:
+            lines.append(i18n.t("export.warn_stretch"))
         return ("\n" + "\n".join(lines)) if lines else ""
 
     def _finish(self, text, kind):

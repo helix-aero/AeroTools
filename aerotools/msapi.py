@@ -1672,6 +1672,17 @@ def raster_info(chk=None):
     return info
 
 
+def dem_range(chk=None):
+    """(minimum, maximum) height of the chunk's DEM from Metashape's own statistics (`Elevation.min` / `.max`), or None.
+    Used for the legend of the DEM preview; the caller checks it against the data (preview.Preview), so a surprise here is harmless."""
+    chk = chk if chk is not None else chunk()
+    try:
+        elevation = chk.elevation
+        return float(elevation.min), float(elevation.max)
+    except Exception:
+        return None
+
+
 def _center_lonlat(crs, box):
     """(longitude, latitude) du centre de l'emprise, en degres, ou None."""
     if crs is None or not box:
