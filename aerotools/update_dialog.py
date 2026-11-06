@@ -146,7 +146,7 @@ class UpdateDialog(QtWidgets.QDialog):
         self.channel.setProperty("arrow", True)
         self.channel.setCursor(QtCore.Qt.PointingHandCursor)
         self.channel.setFocusPolicy(QtCore.Qt.NoFocus)
-        self.channel.setMinimumWidth(130)
+        self.channel.setMinimumWidth(150)
         self.channel.setToolTip(i18n.t("update.channel_tip"))
         for value, key in CHANNELS:
             self.channel.addItem(i18n.t(key), value)
@@ -212,7 +212,7 @@ class UpdateDialog(QtWidgets.QDialog):
     # -- verification ------------------------------------------------------------
 
     def _on_channel(self):
-        """Stable ou Test : on retient le choix puis on verifie tout de suite sur cette branche."""
+        """Branche stable ou dev : on retient le choix puis on verifie tout de suite sur cette branche."""
         value = self.channel.currentData()
         if self._busy() or not value or value == updater.channel():
             return
