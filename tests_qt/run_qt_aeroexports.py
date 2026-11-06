@@ -790,7 +790,7 @@ def open_chunk_dialog(label=None, scale=1.0, size=(1080, 740)):
     ACTIVE["chunk"] = JULY
     JULY.label = label or "July"
     MAY.elevation = MAY.elevations[0]
-    config.put("aeroexports", "clip_boundary", None)
+    config.put("aeroexports", "clip_to_boundary_shapes", None)
     msapi.document_path = lambda: path
     msapi.chunk = lambda: ACTIVE["chunk"]
     msapi.raster_info = fake_info
@@ -901,27 +901,27 @@ def _():
     return not bad, "problems: {}".format(bad)
 
 
-@case("boundary: the tick box shows only for a chunk with boundary shapes, is on by default, and is saved")
+@case("boundary: the tick box shows only for a chunk with boundary shapes, is off by default, and is saved")
 def _():
     box = open_chunk_dialog()
     shown_july = not box.boundary_row.isHidden()
-    default_on = box.boundary_check.isChecked()
-    note_on = box.boundary_note.text()
-    box.boundary_check.setChecked(False)
-    saved_off = config.get("aeroexports", "clip_boundary")
+    default_off = not box.boundary_check.isChecked()
     note_off = box.boundary_note.text()
+    box.boundary_check.setChecked(True)
+    saved_on = config.get("aeroexports", "clip_to_boundary_shapes")
+    note_on = box.boundary_note.text()
     ACTIVE["chunk"] = MAY                                   # 5 shapes, none of them a boundary: nothing to clip
     box._follow_chunk()
     hidden_may = box.boundary_row.isHidden()
     clip_may = box._boundary_clip()
     ACTIVE["chunk"] = JULY
     box._follow_chunk()
-    still_off = not box.boundary_check.isChecked()
+    still_on = box.boundary_check.isChecked()
     box.close()
-    return (shown_july and default_on and "1 boundary shape" in note_on and saved_off is False and "whole area" in note_off
-            and hidden_may and clip_may is True and still_off), \
-        "july={} on={} note={!r} saved={} off_note={!r} may_hidden={} may_clip={} remembered={}".format(
-            shown_july, default_on, note_on, saved_off, note_off, hidden_may, clip_may, still_off)
+    return (shown_july and default_off and "1 boundary shape" in note_on and saved_on is True and "whole area" in note_off
+            and hidden_may and clip_may is True and still_on), \
+        "july={} off={} note={!r} saved={} off_note={!r} may_hidden={} may_clip={} remembered={}".format(
+            shown_july, default_off, note_on, saved_on, note_off, hidden_may, clip_may, still_on)
 
 
 @case("boundary: the setting reaches the preview export, every raster export and the journal lines")

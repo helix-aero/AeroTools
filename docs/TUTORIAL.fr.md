@@ -380,7 +380,7 @@ Si le même export existe déjà, tu choisis entre l'écraser et une nouvelle ve
   pixel) et prévient quand le MNT par défaut est bien plus grossier que l'ortho. La fenêtre suit le chunk actif toute seule, et sa
   première ligne nomme le chunk.
 - **Formes de limite.** Metashape découpe un export aux formes de limite du chunk. Quand le chunk en a, une case **Découper aux formes de
-  limite du chunk** apparaît (cochée par défaut, comme Metashape) ; décoche-la pour exporter toute la surface du raster.
+  limite du chunk** apparaît (décochée par défaut : toute la surface du MNT est exportée, comme tu la vois dans Metashape) ; coche-la pour découper l'export aux formes.
 - **Dalles.** **Découper en dalles** coupe l'export en dalles carrées d'une taille choisie, un fichier chacune ; les dalles vides
   sont ignorées.
 

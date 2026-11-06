@@ -365,7 +365,7 @@ choose between overwriting it and a new version (`_v2`).
   font in the Workspace pane; double-click another to make it the default). Each card says which one it is (size and pixel), and warns
   when the default DEM is much coarser than the ortho. The window follows the active chunk by itself, and its first line names the chunk.
 - **Boundary shapes.** Metashape cuts an export to the chunk's boundary shapes. When the chunk has some, a tick box **Clip to the chunk's
-  boundary shapes** appears (on by default, like Metashape); untick it to export the whole area of the raster.
+  boundary shapes** appears (off by default: the whole area of the DEM is exported, as you see it in Metashape); tick it to cut the export to the shapes.
 - **Tiles.** **Split into tiles** cuts the export into square tiles of a chosen size, one file each; empty tiles are skipped.
 
 Not checked by hand yet: the clip and the speed of very large images in the AutoCAD window itself. They were tested with
