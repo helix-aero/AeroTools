@@ -423,9 +423,9 @@ TEXTES = {
     "update.update": "Mettre à jour",
     "update.update_all": "Tout mettre à jour",
     "update.close": "Fermer",
-    "update.channel_stable": "Stable",
-    "update.channel_test": "Test",
-    "update.channel_tip": "Stable : la version validée. Test : les dernières modifications, pas encore validées.",
+    "update.channel_stable": "Branche stable",
+    "update.channel_test": "Branche dev",
+    "update.channel_tip": "Branche stable : la version validée. Branche dev : la version stable plus les dernières modifications, pas encore validées. Chaque modification passe d'abord par la branche dev, puis par la branche stable une fois testée.",
     "settings.update_open": "Vérifier les mises à jour",
 
     # -- Diagnostic du pointage --------------------------------------------

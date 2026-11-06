@@ -417,9 +417,9 @@ TEXTES = {
     "update.update": "Update",
     "update.update_all": "Update all",
     "update.close": "Close",
-    "update.channel_stable": "Stable",
-    "update.channel_test": "Test",
-    "update.channel_tip": "Stable: the validated version. Test: the latest changes, not yet validated.",
+    "update.channel_stable": "Stable branch",
+    "update.channel_test": "Dev branch",
+    "update.channel_tip": "Stable branch: the validated version. Dev branch: the stable version plus the latest changes, not yet validated. Every change goes to the dev branch first, then to the stable branch once it is tested.",
     "settings.update_open": "Check for updates",
 
     # -- Diagnostic du pointage --------------------------------------------
