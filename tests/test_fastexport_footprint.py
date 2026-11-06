@@ -103,3 +103,14 @@ def test_the_dxf_writes_a_polygon_clip_only_when_there_is_one():
     entity = lines[lines.index("ENTITIES"):lines.index("OBJECTS")]
     codes = entity[1::2]
     assert codes.count("14") == 4 and codes.count("24") == 4
+
+
+def test_an_open_clip_polygon_is_closed_because_autocad_rejects_the_whole_dxf_otherwise():
+    base = {"layer": "l", "file": "a.jp2", "size_px": (1000, 1000), "insert": (0.0, 0.0), "pixel": (0.1, 0.1)}
+    open_polygon = [(100.0, 100.0), (900.0, 100.0), (500.0, 900.0)]
+    text = "\n".join(dxfout.build_dxf([dict(base, clip=open_polygon)]).splitlines())
+    assert "\n91\n4\n" in text                                                          # three vertices + the first one again
+    assert dxfout.closed_polygon(open_polygon + [open_polygon[0]]) == open_polygon + [open_polygon[0]]
+    assert dxfout.closed_polygon([(1.0, 1.0), (2.0, 2.0)]) is None and dxfout.closed_polygon(None) is None
+    plain = "\n".join(dxfout.build_dxf([dict(base, clip=[(1.0, 1.0), (2.0, 2.0)])]).splitlines())
+    assert "\n71\n1\n" in plain                                                         # a degenerate outline is no clip

@@ -728,6 +728,8 @@ TEXTES = {
     "export.warn_stretch": "L'étendue des couleurs saisie n'a pas servi, car les altitudes ont été converties. L'étendue complète a été utilisée.",
     "export.img_jp2": "JPEG 2000",
     "export.img_ecw": "ECW",
+    "export.img_jp2_tip": "Fonctionne sans Global Mapper. Une très grande image peut être lente à déplacer dans AutoCAD.",
+    "export.img_ecw_tip": "Demande Global Mapper. Dans nos essais AutoCAD 2023, une très grande ortho (640 mégapixels) s'est dessinée environ trois fois plus vite qu'en JPEG 2000. Pas encore vérifié à la main dans la fenêtre d'AutoCAD.",
     "export.need_ecw": "Pour exporter en ECW, Global Mapper doit être installé. Il n'a pas été trouvé sur cet ordinateur. Vous l'avez ? Indiquez où il se trouve. Sinon, achetez-le, ou choisissez JPEG 2000.",
     "export.need_dwg": "Pour exporter en DWG, AutoCAD doit être installé. Il n'a pas été trouvé sur cet ordinateur. Vous l'avez ? Indiquez où il se trouve. Sinon, achetez-le, ou restez en DXF.",
     "export.need_jp2": "Pour écrire des images JPEG 2000, QGIS (gratuit) ou Global Mapper doit être installé. Aucun des deux n'a été trouvé.",

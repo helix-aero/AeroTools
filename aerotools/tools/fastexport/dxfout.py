@@ -69,6 +69,15 @@ def _number(value):
     return repr(float(value))
 
 
+def closed_polygon(points):
+    """The clip polygon with its first vertex repeated at the end (or None). AutoCAD 2023 refuses the whole DXF ("Xdata wasn't
+    read", drawing discarded) when the outline of an IMAGE clip is not closed: measured with accoreconsole."""
+    if not points or len(points) < 3:
+        return None
+    points = [tuple(point) for point in points]
+    return points if points[0] == points[-1] else points + [points[0]]
+
+
 def build_dxf(images, units_m=True):
     """Texte d'un DXF R2000.
 
@@ -168,7 +177,7 @@ def build_dxf(images, units_m=True):
         w.add(11, _number(px)); w.add(21, 0.0); w.add(31, 0.0)
         w.add(12, 0.0); w.add(22, _number(py)); w.add(32, 0.0)
         w.add(13, _number(width)); w.add(23, _number(height))
-        clip = item.get("clip")
+        clip = closed_polygon(item.get("clip"))
         w.add(340, definition); w.add(70, 7 if clip else 3); w.add(280, 1 if clip else 0)
         w.add(281, 50); w.add(282, 50); w.add(283, 0)
         if clip:                                        # decoupe polygonale (sommets en pixels, polygone ferme)

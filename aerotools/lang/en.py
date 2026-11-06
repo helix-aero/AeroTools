@@ -722,6 +722,8 @@ TEXTES = {
     "export.warn_stretch": "The colour range you typed was not used, because the heights were converted. The full range was used.",
     "export.img_jp2": "JPEG 2000",
     "export.img_ecw": "ECW",
+    "export.img_jp2_tip": "Works without Global Mapper. Very large images can be slow to move around in AutoCAD.",
+    "export.img_ecw_tip": "Needs Global Mapper. In our AutoCAD 2023 tests, a very large ortho (640 megapixels) was drawn about three times faster than in JPEG 2000. Not yet checked by hand in the AutoCAD window.",
     "export.need_ecw": "To export ECW, Global Mapper must be installed. It was not found on this computer. Do you have it? Show us where it is. If not, buy it, or choose JPEG 2000.",
     "export.need_dwg": "To export DWG, AutoCAD must be installed. It was not found on this computer. Do you have it? Show us where it is. If not, buy it, or stay with DXF.",
     "export.need_jp2": "To write JPEG 2000 images, QGIS (free) or Global Mapper must be installed. Neither was found.",

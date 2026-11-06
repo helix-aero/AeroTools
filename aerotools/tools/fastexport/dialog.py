@@ -215,6 +215,9 @@ class ExportDialog(QtWidgets.QDialog):
                                        config.get(SECTION, "cad_format") or "dxf")
         self.cad_images = self._radios(cad, 1, "export.cad_images", (("jp2", "export.img_jp2"), ("ecw", "export.img_ecw")),
                                        config.get(SECTION, "cad_images") or "jp2")
+        tips = {"jp2": "export.img_jp2_tip", "ecw": "export.img_ecw_tip"}
+        for button in self.cad_images.buttons():
+            button.setToolTip(i18n.t(tips[button.property("value")]))
         self.cad_clip = QtWidgets.QCheckBox(i18n.t("export.cad_clip"))
         self.cad_clip.setToolTip(i18n.t("export.cad_clip_tip"))
         self.cad_clip.setCursor(QtCore.Qt.PointingHandCursor)
