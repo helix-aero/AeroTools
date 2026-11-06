@@ -1,6 +1,10 @@
 <p align="center">
   <br>
-  <a href="https://github.com/helix-aero/AeroTools/archive/refs/heads/main.zip"><img alt="Download latest version" src="https://img.shields.io/badge/%E2%AC%87%20Download-latest%20version-1eca59?style=for-the-badge&labelColor=06241a"></a>
+  <a href="https://github.com/helix-aero/AeroTools/archive/refs/heads/main.zip"><img alt="Download latest stable version" src="https://img.shields.io/badge/%E2%AC%87%20Download-latest%20stable%20version-1eca59?style=for-the-badge&labelColor=06241a"></a>
+  <br>
+  <a href="https://github.com/helix-aero/AeroTools/archive/refs/heads/dev.zip"><img alt="Download latest dev version" src="https://img.shields.io/badge/%F0%9F%A7%AA%20Download-latest%20dev%20version-ff4fa3?style=for-the-badge&labelColor=3a0a24"></a>
+  <br>
+  <sub>Dev = the newest changes, still being tested. Stable = the validated version.</sub>
 </p>
 
 <p align="center">
@@ -77,7 +81,7 @@ again. So we wrote a tool for ourselves. It saved us enough time that we decided
 
 You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 
-1. Click **Download latest version** at the top of this page (or clone this repository), and unzip it anywhere you like.
+1. Click **Download latest stable version** at the top of this page (or **Download latest dev version** to try the newest changes; or clone this repository), and unzip it anywhere you like.
 2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). One installer does everything: it adds the **Aero** menu to Metashape and sets up the AI detection (Python and a light detection engine, about 100 MB, a minute or two). A window shows "Please wait..." with the progress; do not close it.
 3. Restart Metashape. The **Aero** menu is there.
 
