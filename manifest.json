@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T17:51:53",
+ "built": "2026-11-06T17:56:02",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -177,9 +177,17 @@
    "sha256": "09b457ede902794bb9e899c370eaf1be77b04890f39ad1b396009328501793e0",
    "size": 91
   },
+  "aerotools/tools/aerofacade/backend.py": {
+   "sha256": "e15cddcc0da797c7b8b729ce0d9059e2b72b0bb325d83b10973e54ba64867e5e",
+   "size": 6017
+  },
   "aerotools/tools/aerofacade/detect.py": {
    "sha256": "710843c1abdc9b431a433791f02ed8cdb982e562143f46f978b2c8a0d879003b",
    "size": 22445
+  },
+  "aerotools/tools/aerofacade/model.py": {
+   "sha256": "a3671fe47e4a43884a99e116ea96e5bb6db1c71b7fd11a25e81413a3345e707b",
+   "size": 13086
   },
   "aerotools/tools/fastgcp/__init__.py": {
    "sha256": "3ec48fb90b08f38fc8369981be74f45024d55a3089b42e7ed4891ebc7c3c8f06",
@@ -432,6 +440,10 @@
   "assets/logo/helix-aero-AERO-degrade-512px.png": {
    "sha256": "e99e6cea7540801d67dcd7f3e533c0d54f0880761d39561f037e972aa0b3779b",
    "size": 15373
+  },
+  "docs/AERO_FACADE_SPEC.md": {
+   "sha256": "88f0bbfee683932d451f7f2fb9ae3f404233da0315593e77dc8af98a1f9538ac",
+   "size": 11360
   },
   "docs/AERO_FACADE_STUDY.md": {
    "sha256": "b4b888bc56fa60a4178f6d2ea68056bc50e7d711365f6b3a0b769db1dd723020",
