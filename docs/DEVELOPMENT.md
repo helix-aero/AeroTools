@@ -64,6 +64,7 @@ python -m pytest tests -q
 `tests/` uses fake `Metashape` and Qt modules, so it runs anywhere.
 `tests_qt/run_qt_selftest.py` sends real mouse events through the real click filter. Run it with Metashape's own Python
 (`python\python.exe` in the Metashape folder) and with a Python that has PySide6.
+`tests_qt/run_qt_fastexport.py` does the same for Fast Export (look window, DEM card, pixel field); it needs numpy for the preview cases.
 
 ## Languages
 
@@ -234,6 +235,81 @@ registry and the usual folders, or pointed at by the user):
   subtracting an ETRS89 grid from Bessel heights would be wrong by metres (a 3D datum transformation through PROJ would lift that).
   Checks: 111 grids under 1.5 MB downloaded and compared with PROJ: our reader differs by less than 0.001 mm; RAC09 matches Metashape's
   own heights to 0.3 mm on CITADELLE; GTG registration (PixelIsPoint, tie point = node) measured against PROJ (0.03 mm).
+
+### DEM look and preview window
+
+`look.py` (the setting), `palettes.json` (palettes as data), `preview.py` (model of a small DEM, numpy only), `previewwin.py` (the window).
+- A `Look` is `palette, shading (none | sun | lights4 | slope), azimuth, altitude, strength, stretch (auto | full | custom), low, high`. It is saved
+  in `settings.json` (section `fastexport`, key `dem_look`), and `relief.render` paints the DXF/DWG DEM image with that same look: what the
+  preview shows is what lands in AutoCAD. The default look is the one the export always had (Metashape palette, sun from 315 degrees at 45,
+  strength 0.8, full range), except along the data border (see below).
+- Palettes: the package file `palettes.json` (metashape, relief, rainbow, gray, viridis, terrain, hot), plus an optional `palettes.json` in the
+  settings folder (same format, same id replaces). A broken palette is skipped, never fatal. The Metashape ramp was read from the legend of
+  Metashape's Ortho tab; `Elevation.palette` exists in the API (2.2.1) and could be used to check it, see the open points below.
+- The preview works on a small DEM (about 1000 px on the long side): the DEM already exported next to the project when it is not older than
+  the `.psx`, otherwise `preview.fetch_small` asks Metashape for a low-resolution export (no progress callback: a Qt call inside Metashape's
+  export crashed it). `reduce` averages the valid pixels of each k x k square tile by tile. Legend labels come from `Elevation.min/.max`
+  (`msapi.dem_range`) when the small DEM stays within 1 % of them, else from the small DEM.
+- Repainting a 1000 x 1000 DEM takes 6 to 120 ms (measured on three real DEMs: sun 33 to 87 ms, four lights 54 to 122 ms, palette only 13 to
+  33 ms); one 35 ms timer keeps only the latest request, no thread. Without numpy the button is greyed out with an explanation.
+- A coloured DEM picture can also be written next to a JPEG 2000 or ECW export (`plan.PICTURE_PRESETS`, option on the DEM card).
+- No-data pixels are filled from their data neighbours before the slope is computed (`relief.fill_for_shading`). Filling them with the lowest
+  height drew a dark line along every border of the data (visible on the CITADELLE DEM); only the pixels touching no data changed.
+- Tests: `tests/test_fastexport_look*.py`, `test_fastexport_preview.py`; `python -B tests_qt\run_qt_fastexport.py` runs the window, the DEM
+  card and the pixel field with real Qt events, without Metashape (14 cases, PySide6 here, also meant for Metashape's PySide2).
+
+### AutoCAD speed: what was measured
+
+AutoCAD cannot be driven by hand here, so the images were compared through `accoreconsole` (AutoCAD 2023): a DXF with one IMAGE, then
+`-PLOT` to PDF, either of the whole image ("extents", zoomed out) or of a 20 x 15 m window at full resolution. This is a proxy: it exercises
+AutoCAD's own image reader and resolution selection, not the interactive display cache. Script (one blank line after the first `Y` keeps the
+layout name; the output path must not go through a shell that eats backslashes):
+
+```
+-PLOT / Y / (blank) / DWG To PDF.pc3 / ISO A1 (841.00 x 594.00 MM) / M / L / N / E (or W, then two corners) / F / C / Y / . / Y / A / out.pdf / N / Y
+```
+
+One ortho of CITADELLE (8148 x 8772 px, 71 Mpx) and the same picture enlarged to 24444 x 26316 px (643 Mpx), JPEG-compressed in each format,
+seconds for the whole plot (AutoCAD start included, about 0.2 to 1.3 s):
+
+| 643 Mpx image                                     | whole image | 20 x 15 m window | size   |
+|---------------------------------------------------|-------------|------------------|--------|
+| ECW 10:1 (Global Mapper)                          | 3.5         | 1.8              | 13 MB  |
+| JPEG 2000, GDAL q5, 1024 tiles (what we write)    | 12.4        | 3.7              | 32 MB  |
+| JPEG 2000, 4096 tiles                             | 11.4        | 3.1              | 36 MB  |
+| JPEG 2000 written by Global Mapper                | 10.4        | 3.5              | 11 MB  |
+| JPEG 2000, no GML box                             | 11.5        | 3.5              | 32 MB  |
+| JPEG 2000, RPCL + tile-parts + PLT/TLM            | 20.6        | 5.8              | 32 MB  |
+| JPEG 2000, 256 pixel tiles                        | over 300    | not run          | 31 MB  |
+| TIFF tiled 256, JPEG, with internal overviews     | 11.6        | 6.1              | 54 MB  |
+| TIFF tiled 256, JPEG, without overviews           | 11.5        | 6.9              | 35 MB  |
+
+On the 71 Mpx image: ECW 1.9 / 2.0 s, JPEG 2000 4.1 / 2.2 s, TIFF 1.4 to 1.7 / 2.3 s (whole / window).
+
+- ECW is the only format whose cost does not grow with the size of the image: 3.5x faster than our JPEG 2000 zoomed out and 2x in a window.
+- TIFF internal overviews are ignored by AutoCAD (11.6 s with, 11.5 s without); tiled TIFF is no better than JPEG 2000. So no TIFF option.
+- JPEG 2000 parameters give 10 to 15 % at best; small tiles are catastrophic (256 px: no answer after 300 s). Never write small JP2 tiles.
+- A polygon clip costs 0.6 to 0.7 s on the 643 Mpx JPEG 2000 and 0.1 s on the ECW. An open clip polygon makes AutoCAD reject the whole DXF
+  ("Xdata wasn't read", drawing discarded): `dxfout.closed_polygon` now closes any polygon.
+- What is not known: how it feels in the AutoCAD window (pan and zoom with the display cache), and what Global Mapper's own DXF contains.
+  The lag is not claimed to be fixed; ECW is the best candidate.
+
+5-minute protocol for François, in AutoCAD, on one real project (needs Global Mapper for ECW):
+1. Export the same project three times into three folders with the CAD preset: Images = ECW, Images = JPEG 2000, and (for reference) your
+   Global Mapper DXF of the same ortho.
+2. Open each `TOPO.dxf`, same machine, same AutoCAD window size. Type `ZOOM` `E` and note how long the picture takes to settle.
+3. Zoom to a street-sized window (about 100 m), then pan with the middle button for ten seconds: note if the picture trails the mouse.
+4. Type `REGEN` and count seconds. Optionally `-IMAGE` `?` shows the format and path of each image.
+5. Report for each file: zoom extents (s), regen (s), pan (smooth / trailing). If ECW is smooth and JPEG 2000 trails, make ECW the default.
+
+### Open points (not verified)
+
+- The preview window was run offscreen with PySide6 only; not yet opened inside Metashape (the screen could not be captured when this was written).
+- The time of the low-resolution DEM export by Metashape is not measured (the preview itself takes 6 to 120 ms once the DEM is read).
+- The Metashape palette ramp was not compared with Metashape's own colouring. It can be: `chunk.exportRaster(source_data=ElevationData,
+  raster_transform=RasterTransformPalette)` should give Metashape's coloured DEM, and `chunk.elevation.palette` its exact stops.
+- The white-border mask was checked on a real Metashape RGBA export (202 x 241 px, tiled, LZW, alpha 0 / 255; `tests/data/`), but the real
+  small mask export (`MASK_SPEC`, uncompressed strips) was not run in Metashape this time.
 
 ## Aero-Space
 
