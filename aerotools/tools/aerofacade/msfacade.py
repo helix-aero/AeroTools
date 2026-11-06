@@ -449,7 +449,7 @@ class MetashapeBackend(Backend):
                     pos += seen
                 else:
                     neg += seen
-            f.__dict__["_views"] = (pos, neg)
+            f.views = (pos, neg)                              # matches on the viewer's side / on the other side (informative)
             if neg > 2 * pos and neg > 50:
                 self._turn_round(f)
                 log("façade %s turned round: its photos stand on the other side (%d vs %d matches)" % (f.letter, neg, pos))
@@ -855,6 +855,8 @@ class MetashapeBackend(Backend):
             finished(prog, "Façade %s: orthophoto already built" % f.letter)
             return True, "Already built."
         w, h = geometry.image_size_px(f, m, pixel_m)
+        if w * h > geometry.TOO_BIG_MPIX * 1e6:
+            return False, "The picture would be %d x %d pixels (%.0f megapixels): use a bigger pixel size." % (w, h, w * h / 1e6)
         box = Metashape.BBox(Metashape.Vector(plane_box(f, m)[:2]), Metashape.Vector(plane_box(f, m)[2:]))
         self._call(prog, 0.0, 0.95, "Façade %s: building the orthophoto (%d x %d px)" % (f.letter, w, h), work.buildOrthomosaic,
                    surface_data=Metashape.DataSource.ElevationData, blending_mode=Metashape.MosaicBlending, fill_holes=True, region=box,

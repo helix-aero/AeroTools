@@ -241,5 +241,36 @@ Without a region `exportRaster` is still dangerous in a vertical projection; in 
 * Names: `<site>_<date>_facade_<A>.<ext>` in `Outputs` next to the project (site from `aeroexports.naming.guess_site`, date = flight date from EXIF `DateTimeOriginal`), plus
   `<same name>.txt` (engine's `georef_lines` + exact extent and size of the picture).
 
-### Not yet measured / still to do (updated as the work goes on)
-Depth-maps and dense-cloud DEMs through the backend, DXF with the vertical image, end-to-end timings of the whole chain with the wizard, `_preview_from_ortho` on a chunk with a real orthomosaic.
+### Methods, measured on CARRO (Metashape 2.2.1, RTX 4070, 724 photos of 5280 x 3956 px, no dense cloud and no depth maps in the project)
+All numbers are one run each, margins 1 m, depth 2 m, orthophoto 3 cm per pixel. A = south façade 65.7 m x 21.6 m (2255 x 786 px), C = east gable 12.0 m x 17.1 m.
+
+| Method | What it needs | DEM step | Orthophoto step | Look |
+|---|---|---|---|---|
+| tie points | nothing (always there) | 13.5 s, 7.0 cm per pixel (the spacing of the tie points: not settable) | 39 s (A) | clean walls, **wavy balconies and window reveals**, holes smeared: a quick look |
+| depth maps, computed for the façade (not in the project) | aligned photos | **162 s** for A with 40 photos at `downscale=4` (2.0 cm per pixel), 51 s with `downscale=8` (3.9 cm per pixel); 204 s for C (40 photos, ds 4) | 33 s (A) | crisp, balconies and windows right; ds 8 is almost as good (a little rougher balconies) |
+| depth maps already in the project | the chunk's own depth maps | measured through a chunk with 140 photos at ds 8: **53 s** for A (3.9 cm per pixel) | 40 s (A) | same as above |
+| dense cloud | an existing dense cloud (2.8 M points in the test chunk, built for the test) | **2.0 s** for A (4.6 cm per pixel) | 25 s (A) | the cleanest balconies and the best edges |
+
+* Depth maps cost about 4 s per photo at ds 4 and 1 s per photo at ds 8, whatever the façade: the adapter computes them for at most `depth_max_cameras` = 40 photos spread out in space
+  (farthest-point sampling among the photos that look at the façade from its viewer side), not for the 250 photos kept enabled for the orthophoto. `depth_downscale` = 4 by default.
+* Photos in a work chunk: only the ones that stand on the viewer's side of the plane, look toward it and see part of it stay enabled (at most 250). This is what keeps the orthophoto at 3 to 40 s;
+  without it, an orthophoto of a 12 m wide gable took minutes. Do not rely on `camera.project` alone: it also answers for points BEHIND the camera.
+* `buildDem(source_data=DepthMapsData)` is accepted by Metashape 2.2.1 although the reference says "point cloud or tie points" only. The DEM crop in depth is the work chunk's region (heights -2.00 .. +2.00 m for a 2 m depth).
+* The dense cloud is copied into each work chunk with `chunk.copy(items=[..., PointCloudData])`: 2.8 M points were no problem (1.6 s); a 100 M point cloud was NOT tried (memory and copy time unknown).
+* Failure modes met: a Python exception inside a Metashape callback opens a modal "Retry processing?" dialog; `chunk.copy` makes the copy the ACTIVE chunk (the adapter puts the user's chunk back);
+  a wall normal that points away from the photos gives a picture made from the wrong side (see `_orient`).
+
+### DXF with the picture
+`export(..., options={"dxf": True, "dxf_epsg": 3942})` writes `<picture>.dxf` next to the picture: one IMAGE entity standing in the façade plane (insertion point = bottom-left corner of the picture,
+pixel vectors along the wall and up), image path relative (same folder). `aeroexports/dxfout.py` got optional `insert_z` / `u_vec` / `v_vec` keys (flat images are written exactly as before).
+Coordinates: `dxf_epsg` if given, else the chunk's own coordinate system when it is projected, else WGS 84 / UTM of the site. **Checked in AutoCAD 2023 (accoreconsole): the image reloads
+("loaded and relinked"), `LIST` shows the insertion at Z 61.84 and the top at Z 87.31 (25.47 m = 849 px x 3 cm), width 67.43 m (= 2248 px x 3 cm), extrusion direction horizontal and pointing to the viewer.**
+
+### Live checks in Metashape of the finished tool
+Opening `tool.install()` in Metashape (through the console daemon): the wizard opens, builds the preview (30 s, Metashape's progress dialog shows meanwhile, the work chunk is removed afterwards)
+and shows it. See `facade_shots/20_*` to `30_*` (previews, façades per method, comparison with François's `facade_sud.jpg`, Metashape showing a work chunk).
+
+### Not verified
+`_preview_from_ortho` was checked on a chunk whose orthomosaic is in EPSG:3942 (aligned with the built preview), not on a chunk with a projected CRS that is a compound one or on a very large ortho.
+A dense cloud of tens of millions of points in `chunk.copy`; a chunk without georeference (`enu_matrix` falls back to the chunk axes, untested live); Cancel through the wizard's button during a Metashape job
+(the KeyboardInterrupt path is measured with a callback, not through the Qt button); a project saved with work chunks inside (`keep_work_chunks`).

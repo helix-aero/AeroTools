@@ -502,6 +502,13 @@ def test_orthos_and_export_write_named_files_with_a_georeferencing_text(world, t
     assert again["A"][1] == "Already built." and sum(1 for c in work.calls if c[0] == "buildOrthomosaic") == 1
 
 
+def test_a_picture_that_would_be_huge_is_refused(world):
+    be = msfacade.MetashapeBackend(world.chunk)
+    res = be.build_orthos([facade_a()], Margins(), Method.TIE_POINTS, 0.0005, None, lambda: False)   # 44000 x 20000 px
+    ok, message = res["A"]
+    assert ok is False and "bigger pixel size" in message
+
+
 def test_export_of_a_facade_without_orthophoto_says_so(world, tmp_path):
     be = msfacade.MetashapeBackend(world.chunk)
     out = be.export([facade_a()], str(tmp_path / "o"), "png", {}, None, lambda: False)
