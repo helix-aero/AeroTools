@@ -239,6 +239,7 @@ class MetashapeBackend(Backend):
     """The Backend that works on a Metashape chunk (pinned when the object is created). See the module docstring for the model."""
 
     threaded = False                 # the wizard must call every method on the main thread (see the module docstring)
+    preview_mode = "density"         # step 1 picture: "density" (tie points seen from above) or "ortho" (chunk orthomosaic, else a built one)
 
     def __init__(self, chunk=None, pump=None, max_cameras=MAX_CAMERAS_DEFAULT, depth_downscale=4, depth_max_cameras=40, keep_work_chunks=False):
         self.doc = Metashape.app.document
@@ -473,6 +474,10 @@ class MetashapeBackend(Backend):
         chunk = self._src()
         t0 = time.time()
         extent = self._preview_extent(points)
+        if self.preview_mode == "density":                   # always the same picture, whatever the chunk holds (no orthomosaic needed)
+            result = self._preview_density(points, extent, max_px)
+            log("preview: tie point density seen from above in %.1f s" % (time.time() - t0))
+            return result
         try:
             if chunk.orthomosaic is not None:
                 result = self._preview_from_ortho(chunk, extent, max_px)

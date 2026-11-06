@@ -364,6 +364,16 @@ def test_read_points_converts_chunk_to_enu_metres(world):
     assert cams.shape == (12, 3) and cams[:, 1].max() < -24
 
 
+def test_the_step_one_picture_is_the_tie_point_density_seen_from_above(world):
+    be = msfacade.MetashapeBackend(world.chunk)
+    world.chunk.orthomosaic = types.SimpleNamespace()          # a chunk with an orthomosaic of its own must not change the picture
+    rgb, extent = be.ortho_preview(max_px=400)
+    assert rgb.dtype == np.uint8 and rgb.ndim == 3 and rgb.shape[2] == 3 and max(rgb.shape[:2]) == 400
+    assert rgb.max() == 255 and (rgb.max(axis=2) > 0).mean() > 0.001          # points are drawn, not a blank picture
+    left, bottom, right, top = extent
+    assert right > left and top > bottom
+
+
 def test_detect_finds_the_wall_with_the_viewer_on_the_cameras_side(world):
     be = msfacade.MetashapeBackend(world.chunk, pump=lambda: None)
     seen = []
