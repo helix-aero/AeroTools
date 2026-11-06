@@ -9,27 +9,50 @@ image n'est pas modifie. Ce module fabrique ce polygone :
 Module pur (numpy) : aucune dependance a Metashape.
 """
 
+import zlib
+
 import numpy as np
 
 from . import relief, tiffio
+
+T_PLANAR = 284
+DECODERS = {1: lambda payload: payload, 8: zlib.decompress, 32946: zlib.decompress, 5: tiffio.lzw_decode}   # TIFF compression codes
 
 TARGET_PX = 800                  # le masque a environ 800 pixels sur son grand cote
 TOLERANCE_PX = 1.2               # simplification du contour : 1 pixel de masque au plus
 
 
 def alpha_mask(path):
-    """Masque (lignes x colonnes, True = donnees) de la bande alpha d'un GeoTIFF RVBA 8 bits sans compression."""
+    """Masque (lignes x colonnes, True = donnees) de la bande alpha d'un GeoTIFF RVBA 8 bits (bandes ou tuiles ; sans compression, Deflate ou LZW)."""
     tiff = tiffio.Tiff(path, strict=False)
     samples = tiff.ints(tiffio.T_SAMPLES, [1])[0]
-    if tiff.compression != 1 or tiff.ints(tiffio.T_BITS, [8])[0] != 8 or samples < 4 or tiff.tiled:
-        raise ValueError("alpha : RVBA 8 bits sans compression en bandes attendu")
-    rows = []
+    bits = tiff.ints(tiffio.T_BITS, [8])
+    if (any(b != 8 for b in bits) or samples < 4 or tiff.ints(T_PLANAR, [1])[0] != 1
+            or tiff.compression not in DECODERS or tiff.predictor not in (1, 2)):
+        raise ValueError("alpha : RVBA 8 bits entrelace (sans compression, Deflate ou LZW) attendu")
+    alpha = np.zeros((tiff.height, tiff.width), dtype=np.uint8)
     with open(path, "rb") as handle:
-        for offset, count in zip(tiff.offsets, tiff.counts):
+        for index, (offset, count) in enumerate(zip(tiff.offsets, tiff.counts)):
             handle.seek(offset)
-            data = np.frombuffer(handle.read(count), dtype=np.uint8)
-            rows.append(data.reshape(-1, tiff.width, samples)[:, :, 3])
-    alpha = np.concatenate(rows)[:tiff.height]
+            payload = handle.read(count)
+            if tiff.tiled:
+                row, col = divmod(index, tiff.across)
+                top, left, rows, cols = row * tiff.block_h, col * tiff.block_w, tiff.block_h, tiff.block_w
+            else:
+                top, left, rows, cols = index * tiff.block_h, 0, min(tiff.block_h, tiff.height - index * tiff.block_h), tiff.width
+            if top >= tiff.height or left >= tiff.width:
+                continue
+            try:
+                data = np.frombuffer(DECODERS[tiff.compression](payload), dtype=np.uint8)
+            except zlib.error:
+                raise ValueError("alpha : bloc Deflate abime")
+            if data.size < rows * cols * samples:
+                raise ValueError("alpha : bloc trop court")
+            block = data[:rows * cols * samples].reshape(rows, cols, samples)
+            if tiff.predictor == 2:                                  # each sample is stored as the difference to its left neighbour
+                block = np.cumsum(block, axis=1, dtype=np.uint8)
+            part = block[:tiff.height - top, :tiff.width - left, 3]
+            alpha[top:top + part.shape[0], left:left + part.shape[1]] = part
     return alpha > 0
 
 

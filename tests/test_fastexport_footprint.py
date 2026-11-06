@@ -1,6 +1,8 @@
 """Fast Export : emprise reelle des donnees et polygone de decoupe (clip) des images du DXF."""
 
+import os
 import struct
+import zlib
 
 import numpy as np
 import pytest
@@ -114,3 +116,101 @@ def test_an_open_clip_polygon_is_closed_because_autocad_rejects_the_whole_dxf_ot
     assert dxfout.closed_polygon([(1.0, 1.0), (2.0, 2.0)]) is None and dxfout.closed_polygon(None) is None
     plain = "\n".join(dxfout.build_dxf([dict(base, clip=[(1.0, 1.0), (2.0, 2.0)])]).splitlines())
     assert "\n71\n1\n" in plain                                                         # a degenerate outline is no clip
+
+
+REAL_RGBA = os.path.join(os.path.dirname(__file__), "data", "metashape_small_ortho_rgba_lzw.tif")
+
+
+def test_the_real_metashape_rgba_export_gives_its_mask():
+    """A 202 x 241 ortho exported by Metashape 2.2.1 (CITADELLE, 0.5 m): tiled 256 x 256, LZW, alpha band 0 / 255."""
+    mask = footprint.alpha_mask(REAL_RGBA)
+    assert mask.shape == (241, 202) and int(mask.sum()) == 9398 and mask.size - int(mask.sum()) == 39284
+    clip = footprint.clip_polygon(mask, (2175791.5, 1206680.0, 2175892.5, 1206800.5),
+                                  {"width": 202, "height": 241, "origin": (2175791.5, 1206800.5), "pixel": (0.5, 0.5)})
+    assert clip == [] or (clip[0] == clip[-1] and len(clip) >= 5)
+
+
+def test_the_real_export_mask_matches_gdal_when_it_is_installed():
+    rasterio = pytest.importorskip("rasterio")
+    with rasterio.open(REAL_RGBA) as source:
+        expected = source.read(4) > 0
+    assert np.array_equal(footprint.alpha_mask(REAL_RGBA), expected)
+
+
+def deflate_tiff(path, alpha, predictor, tile=None):
+    """RGBA 8-bit TIFF, Deflate, one strip or tiles, optional horizontal predictor: variants Metashape could write."""
+    height, width = alpha.shape
+    pixels = np.zeros((height, width, 4), dtype=np.uint8)
+    pixels[:, :, :3] = np.arange(width, dtype=np.uint8)[None, :, None]
+    pixels[:, :, 3] = np.where(alpha, 255, 0)
+    blocks = []
+    if tile:
+        for top in range(0, height, tile):
+            for left in range(0, width, tile):
+                block = np.zeros((tile, tile, 4), dtype=np.uint8)
+                part = pixels[top:top + tile, left:left + tile]
+                block[:part.shape[0], :part.shape[1]] = part
+                blocks.append(block)
+    else:
+        blocks.append(pixels)
+    payloads = []
+    for block in blocks:
+        if predictor == 2:
+            block = np.concatenate([block[:, :1], block[:, 1:] - block[:, :-1]], axis=1)       # uint8 arithmetic wraps, as in the format
+        payloads.append(zlib.compress(np.ascontiguousarray(block).tobytes()))
+    body = b"".join(payloads)
+    offsets = [8 + sum(len(p) for p in payloads[:i]) for i in range(len(payloads))]
+    ifd = 8 + len(body) + len(body) % 2
+    values = {256: (4, [width]), 257: (4, [height]), 258: (3, [8, 8, 8, 8]), 259: (3, [8]), 262: (3, [2]), 277: (3, [4]),
+              317: (3, [predictor])}
+    if tile:
+        values.update({322: (4, [tile]), 323: (4, [tile]), 324: (4, offsets), 325: (4, [len(p) for p in payloads])})
+    else:
+        values.update({273: (4, offsets), 278: (4, [height]), 279: (4, [len(payloads[0])])})
+    table_size = 2 + 12 * len(values) + 4
+    extra = bytearray()
+    rows = []
+    for tag in sorted(values):
+        kind, items = values[tag]
+        code = "<%d%s" % (len(items), "H" if kind == 3 else "I")
+        packed = struct.pack(code, *items)
+        if len(packed) <= 4:
+            slot = packed.ljust(4, b"\x00")
+        else:
+            slot = struct.pack("<I", ifd + table_size + len(extra))
+            extra += packed
+        rows.append(struct.pack("<HHI", tag, kind, len(items)) + slot)
+    with open(path, "wb") as out:
+        out.write(b"II" + struct.pack("<HI", 42, ifd) + body + b"\x00" * (len(body) % 2))
+        out.write(struct.pack("<H", len(rows)) + b"".join(rows) + struct.pack("<I", 0) + bytes(extra))
+
+
+@pytest.mark.parametrize("predictor,tile", [(1, None), (2, None), (1, 32), (2, 32)])
+def test_the_alpha_mask_reads_deflate_strips_and_tiles_with_or_without_predictor(tmp_path, predictor, tile):
+    mask = diamond(70)
+    path = str(tmp_path / "variant.tif")
+    deflate_tiff(path, mask, predictor, tile)
+    assert np.array_equal(footprint.alpha_mask(path), mask)
+
+
+def test_an_unreadable_mask_file_raises_value_error_so_the_export_only_warns(tmp_path):
+    path = str(tmp_path / "jpeg.tif")
+    mask = diamond(40)
+    rgba_tiff(path, mask)
+    data = bytearray(open(path, "rb").read())
+    # compression tag (259) value 1 -> 7 (JPEG): a variant we cannot read
+    index = data.index(struct.pack("<HHIHH", 259, 3, 1, 1, 0))
+    data[index + 8:index + 10] = struct.pack("<H", 7)
+    open(path, "wb").write(bytes(data))
+    with pytest.raises(ValueError):
+        footprint.alpha_mask(path)
+
+
+def test_a_damaged_deflate_block_is_a_value_error_not_a_crash(tmp_path):
+    path = str(tmp_path / "bad.tif")
+    deflate_tiff(path, diamond(40), 1)
+    data = bytearray(open(path, "rb").read())
+    data[20:30] = b"\xff" * 10                                                            # inside the compressed strip
+    open(path, "wb").write(bytes(data))
+    with pytest.raises(ValueError):
+        footprint.alpha_mask(path)

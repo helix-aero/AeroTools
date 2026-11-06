@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T11:46:58",
+ "built": "2026-11-06T11:50:32",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -106,8 +106,8 @@
    "size": 12253
   },
   "aerotools/tools/fastexport/footprint.py": {
-   "sha256": "c4851881037fa384c2552bc32f21006a621dbaf1a6bea2e648bf72cb7a5b71a1",
-   "size": 5962
+   "sha256": "70be42c05ec28d3f06fc16e6da20c7f1873133267f94a4b1a64faf44cceeef98",
+   "size": 7361
   },
   "aerotools/tools/fastexport/geotiff.py": {
    "sha256": "927b017f4a3eb88b101be68c6180665e4844df7e59dbc4bcb5e7d48293908e84",
@@ -154,8 +154,8 @@
    "size": 11939
   },
   "aerotools/tools/fastexport/tiffio.py": {
-   "sha256": "1ae311e051b3edab3f591c40ca47b0e8398d6a831e1fe5c36a4ba8adc1d40c86",
-   "size": 9836
+   "sha256": "55135742a6edb2aace39e19cbaa0e2f5445a806e8f550feb2efee6093b7f2ba4",
+   "size": 11296
   },
   "aerotools/tools/fastexport/tiling.py": {
    "sha256": "3b9d3e2d7941f17bc1746029427b2c96046795afcf50bafd42b5693767975a4a",
