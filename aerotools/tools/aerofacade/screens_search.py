@@ -248,8 +248,17 @@ class FacadesScreen(Screen):
         canvas.set_facades(self.list.kept())
         canvas.set_selected([])
         canvas.set_hint(tr("facade.ui.hint_facades"))
-        canvas.fit_all()
+        self._show_all_walls()
         self._after_change()
+
+    def _show_all_walls(self):
+        """The view shows the building and its walls, not the whole picture (the walls are small in it)."""
+        canvas = self.wizard.canvas
+        letters = [f.letter for f in self.list.kept()]
+        if letters:
+            canvas.zoom_to_facades(letters)
+        else:
+            canvas.fit_all()
 
     def _command(self, name):
         if self.wizard.current_step() != S.FACADES:
@@ -290,6 +299,8 @@ class FacadesScreen(Screen):
         canvas = self.wizard.canvas
         canvas.set_facades(self.list.kept())
         canvas.set_selected(self.list.selected_letters())
+        if not self.list.selected_letters():
+            self._show_all_walls()
         self._after_change()
 
     def _after_change(self):

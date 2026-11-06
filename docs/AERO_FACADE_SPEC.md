@@ -270,7 +270,7 @@ Coordinates: `dxf_epsg` if given, else the chunk's own coordinate system when it
 Preview 30 s (work chunk built then removed) -> polygon drawn around the building (1828 m2) -> detection **11 s**, 4 facades (A south 58.7 x 22.8 m, B north 66.8 x 17.0 m, C east gable, D west gable;
 A is shorter than the real 66 m because the polygon cut its east end: only data inside the polygon is used) -> C and D removed -> margins 1 m / depth 2 m / 3 cm -> method: depth maps (preselected) ->
 **surfaces: A 120 s, B 98 s** (40 photos each, `downscale` 4) -> **orthophotos: A 31 s, B 26 s** -> export PNG + georeferencing text + DXF in 1.5 s -> `Outputs` next to the project.
-About **4.5 minutes of computing** for two facades. Pictures: `facade_shots/31_*` to `38_*` (wizard screens) and `40_*`, `41_*` (outputs). B matches the reference `Face_nord.jpg`, A his `facade_sud.jpg`
+About **4.5 minutes of computing** for two facades. Pictures: `facade_shots/31_*` to `38_*` (wizard screens) and `40_*`, `41_*` (outputs). B matches the reference `Face_nord.jpg`, A the reference `facade_sud.jpg`
 (`27_compare_*`). The UI stayed alive (Metashape's own progress dialog shows on top, the wizard banner says "do not touch Metashape").
 Thumbnails: `exportRaster(width=, height=)` does NOT scale, it cuts a window of that many native pixels (the first wizard thumbnails showed only the top-left corner): the adapter uses `resolution=` instead.
 Reloading code in the console daemon: `from package import module` returns the stale module object after `del sys.modules[...]` unless the package itself is purged too (this wasted one test).

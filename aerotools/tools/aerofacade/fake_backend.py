@@ -413,13 +413,14 @@ class FakeBackend(Backend):
     strict: an orthophoto needs its DEM first, a thumbnail/export needs its orthophoto (like the real adapter)."""
 
     def __init__(self, delay=0.05, tie_points=True, depth_maps=True, dense_cloud=True, ortho=True, fail=None, fail_ortho=None,
-                 fail_export=None, existing=(), strict=True, seed=1, site="CARRO", date="261106", outputs=None, chunk="Chunk 1"):
+                 fail_export=None, existing=(), stop_at=(), strict=True, seed=1, site="CARRO", date="261106", outputs=None, chunk="Chunk 1"):
         self.delay = float(delay)
         self.flags = dict(tie_points=tie_points, depth_maps=depth_maps, dense_cloud=dense_cloud)
         self.has_ortho = ortho
         self.fail = dict(fail or {})
         self.fail_ortho = dict(fail_ortho or {})
         self.fail_export = dict(fail_export or {})
+        self.stop_at = set(stop_at)                    # walls at which the job is stopped from outside (Metashape's own Cancel button)
         self.existing = set(existing)
         self.strict = strict
         self.site, self.date, self.chunk = site, date, chunk
@@ -493,6 +494,9 @@ class FakeBackend(Backend):
         slow = {"dense_cloud": 1.0, "depth_maps": 2.0, "tie_points": 0.5}[Method.from_key(method).value]
         for i, f in enumerate(todo):
             if prog.is_cancelled():
+                break
+            if f.letter in self.stop_at:
+                self.stop_at.discard(f.letter)
                 break
             a, b = i / float(len(todo)), (i + 1) / float(len(todo))
             try:

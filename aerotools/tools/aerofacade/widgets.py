@@ -259,7 +259,7 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setRenderHint(QtGui.QPainter.Antialiasing, True)
         self.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
-        self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
+        self.setTransformationAnchor(QtWidgets.QGraphicsView.NoAnchor)
         self.setResizeAnchor(QtWidgets.QGraphicsView.NoAnchor)
         self.setFocusPolicy(QtCore.Qt.StrongFocus)
         self.setMouseTracking(True)
@@ -397,6 +397,9 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
         self._user_zoomed = False
 
     def zoom_by(self, factor, anchor=None):
+        """Zoom by `factor`, keeping the picture point under `anchor` (a point of the viewport; the middle of the view when None)
+        where it is. The anchor is kept by hand: Qt's own "under the mouse" anchor needs a mouse move event first and drifts to
+        the corner of the picture when the wheel is turned before the mouse has moved in the window."""
         if self._image_item is None:
             return
         current = self.scale_now()
@@ -406,16 +409,19 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
             return
         self._user_zoomed = True
         if anchor is None:
-            self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorViewCenter)
-            self.scale(factor, factor)
-            self.setTransformationAnchor(QtWidgets.QGraphicsView.AnchorUnderMouse)
-        else:
-            self.scale(factor, factor)
+            anchor = QtCore.QPointF(self.viewport().width() / 2.0, self.viewport().height() / 2.0)
+        anchor = QtCore.QPointF(anchor)
+        scene_point = self.mapToScene(anchor.toPoint())
+        self.scale(factor, factor)
+        moved = self.mapFromScene(scene_point)
+        bar_x, bar_y = self.horizontalScrollBar(), self.verticalScrollBar()
+        bar_x.setValue(bar_x.value() + int(round(moved.x() - anchor.x())))
+        bar_y.setValue(bar_y.value() + int(round(moved.y() - anchor.y())))
 
     def wheelEvent(self, event):
         steps = event.angleDelta().y() / 120.0
         if steps:
-            self.zoom_by(ZOOM_STEP ** steps, anchor=True)
+            self.zoom_by(ZOOM_STEP ** steps, anchor=event_pos(event))
         event.accept()
 
     def zoom_to_world(self, rect, pad=0.25):
@@ -946,7 +952,9 @@ class FacadeList(QtWidgets.QWidget):
 
     def _refresh_state(self):
         count = len(self.kept())
-        self.count_label.setText(tr("facade.ui.list_count", n=count))
+        total = len(self._all)
+        self.count_label.setText(tr("facade.ui.list_count_kept", n=count, total=total) if count < total
+                                 else tr("facade.ui.list_count", n=count))
         self.empty.setVisible(count == 0 and bool(self._all) or (count == 0 and not self._all))
         self.list.setVisible(count > 0)
         has_selection = bool(self.list.selectedItems())

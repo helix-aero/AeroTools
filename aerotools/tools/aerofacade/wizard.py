@@ -205,13 +205,13 @@ class FacadeWizard(QtWidgets.QDialog):
             self.info = dict(self.backend.project_info() or {})
         except Exception as exc:
             self.info = {}
-            journal.write("Aero-Facade : project_info: {!r}".format(exc))
+            journal.write("Aero-Facade: project_info: {!r}".format(exc))
         text = tr("facade.ui.chunk_line", chunk=self.info.get("chunk", ""), crs=self.info.get("crs", "")) if self.info else ""
         self.chunk_label.setFullText(text)
         try:
             self.state.availability = self.read_availability()
         except Exception as exc:
-            journal.write("Aero-Facade : availability: {!r}".format(exc))
+            journal.write("Aero-Facade: availability: {!r}".format(exc))
         self.canvas.set_empty_text(tr("facade.ui.canvas_loading"))
         QtCore.QTimer.singleShot(0, self._load_picture)
 
@@ -270,7 +270,8 @@ class FacadeWizard(QtWidgets.QDialog):
         self._task, self._on_progress, self._on_done = None, None, None
         self._timer.stop()
         if task.error is not None:
-            journal.write("Aero-Facade : {} failed: {!r}\n{}".format(task.name, task.error, task.trace))
+            journal.write("Aero-Facade: {} failed: {!r}\n{}".format(task.name, task.error, task.trace))
+        self.bring_to_front()
         try:
             if done is not None:
                 done(task)
@@ -278,6 +279,14 @@ class FacadeWizard(QtWidgets.QDialog):
             self.refresh_buttons()
             if self._closing:
                 self.close()
+
+    def bring_to_front(self):
+        """Put the window back above Metashape's main window. Metashape's own long operations (and its progress dialog) can leave
+        the main window on top, and the wizard would then look gone. Nothing happens when another application is in front."""
+        app = QtWidgets.QApplication.instance()
+        if self.isVisible() and not self._closing and app is not None and app.activeWindow() is not None:
+            self.raise_()
+            self.activateWindow()
 
     def cancel_task(self):
         if self._task is not None:

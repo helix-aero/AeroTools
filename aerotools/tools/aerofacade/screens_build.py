@@ -162,10 +162,8 @@ class BuildScreen(Screen):
         def call(facade, sub):
             result = backend.build_dems([facade], margins, method, sub, sub.cancelled)
             entry = result.get(facade.letter)
-            if entry is None:
-                if sub.is_cancelled():
-                    raise Cancelled()
-                return False, tr("facade.ui.failed_default")
+            if entry is None:                                 # a backend leaves a wall out only when the job was cancelled: our
+                raise Cancelled()                             # Cancel, or the Cancel button of Metashape's own progress window
             return bool(entry[0]), entry[1]
 
         work = batch_worker(todo, call, items)
@@ -418,10 +416,8 @@ class ExportScreen(Screen):
         def call(facade, sub):
             result = backend.build_orthos([facade], margins, method, pixel, sub, sub.cancelled)
             entry = result.get(facade.letter)
-            if entry is None:
-                if sub.is_cancelled():
-                    raise Cancelled()
-                return False, tr("facade.ui.failed_default")
+            if entry is None:                                 # a backend leaves a wall out only when the job was cancelled: our
+                raise Cancelled()                             # Cancel, or the Cancel button of Metashape's own progress window
             return bool(entry[0]), entry[1]
 
         def thumbnail(facade, store):

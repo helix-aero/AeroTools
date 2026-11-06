@@ -395,6 +395,28 @@ def _():
     return zoomed and panned and no_point and fitted, "zoomed={} panned={} no_point={} fitted={}".format(zoomed, panned, no_point, fitted)
 
 
+@case("canvas: the wheel zooms around the point under the cursor, even when the mouse never moved in the window")
+def _():
+    window, _backend = new_wizard()
+    show(window)
+    wait_picture(window)
+    canvas = window.canvas
+    viewport = canvas.viewport()
+    results = []
+    for at in (QtCore.QPointF(viewport.width() * 0.3, viewport.height() * 0.4),
+               QtCore.QPointF(viewport.width() * 0.7, viewport.height() * 0.6)):
+        canvas.fit_all()
+        before = canvas.mapToScene(at.toPoint())
+        wheel = QtGui.QWheelEvent(at, canvas.mapToGlobal(at.toPoint()), QtCore.QPoint(0, 0), QtCore.QPoint(0, 360),
+                                  QtCore.Qt.NoButton, QtCore.Qt.NoModifier, QtCore.Qt.NoScrollPhase, False)
+        APP.sendEvent(viewport, wheel)
+        after = canvas.mapToScene(at.toPoint())
+        results.append((abs(after.x() - before.x()) * canvas.scale_now(), abs(after.y() - before.y()) * canvas.scale_now()))
+    window.close()
+    ok = all(dx < 2.0 and dy < 2.0 for dx, dy in results)
+    return ok, "pixel drift of the anchor: {}".format([(round(a, 2), round(b, 2)) for a, b in results])
+
+
 @case("detection: Run finds the walls off the UI thread, goes to screen 2, each wall has a letter, colour and size in the list")
 def _():
     window, backend = new_wizard(delay=0.05)
@@ -760,6 +782,25 @@ def _():
     return failed and note and no_dialog and next_on and again and only_b and everything, (
         "failed={} note={} no_dialog={} next_on={} again={} only_b={} everything={} states={}".format(
             failed, note, no_dialog, next_on, again, only_b, everything, states))
+
+
+@case("build: Cancel in Metashape's own progress window stops the batch (the wall is not 'failed', the rest says cancelled)")
+def _():
+    window, backend = new_wizard(stop_at={"B"})
+    show(window)
+    prepare_to(window, S.BUILD)
+    asked = []
+    window.ask = lambda *a: asked.append(a) or None
+    screen = window.screens[S.BUILD]
+    screen.start_build()
+    window.wait_idle(60000)
+    pump(100)
+    states = screen.batch.states()
+    ok = states.get("A") == "done" and states.get("B") == "cancelled" and states.get("C") == "cancelled"
+    again = not screen.build_button.isHidden() and not asked
+    calls = [c[1] for c in backend.calls if c[0] == "build_dems"]
+    window.close()
+    return ok and again and calls == [["A"], ["B"]], "states={} again={} asked={} calls={}".format(states, again, asked, calls)
 
 
 @case("build: the banner shows while it runs, Cancel stops after the current wall, the rest says cancelled, Build resumes")
