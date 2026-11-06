@@ -8,7 +8,7 @@
 """
 
 from ... import i18n, theme, ui
-from ...qt import QtCore, QtWidgets
+from ...qt import QtCore, QtGui, QtWidgets
 
 RESET_SIZE = 28
 EDIT_WIDTH = 64
@@ -213,25 +213,136 @@ def reset_button(handler, tip=""):
     return widget
 
 
-def scroll_page(content):
-    """A scroll area around `content` for a window that may be too small for it: no frame, the bar is wide and easy to see
-    (the theme's own bar is thin and nearly invisible)."""
-    area = QtWidgets.QScrollArea()
-    area.setWidgetResizable(True)
-    area.setFrameShape(QtWidgets.QFrame.NoFrame)
-    area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-    area.setWidget(content)
-    area.viewport().setAutoFillBackground(False)
-    content.setAutoFillBackground(False)
-    area.setStyleSheet(
-        "QScrollArea { background: transparent; border: none; }"
-        "QScrollBar:vertical { background: %s; width: 14px; margin: 0; border-radius: 7px; }"
-        "QScrollBar::handle:vertical { background: %s; min-height: 36px; margin: 2px; border-radius: 5px; }"
-        "QScrollBar::handle:vertical:hover { background: %s; }"
-        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; background: none; }"
-        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }" % (
-            theme.GROUND_3, theme.FG_3, theme.FG_2))
-    return area
+BAR_WIDTH = 14
+
+
+class FitScroll(QtWidgets.QScrollArea):
+    """A scroll area that reports the size of its content as its own minimum (so a window built from it cannot be made smaller
+    than the content needs, whatever the font or the display scaling), no larger than `cap` pixels so a small screen still works.
+    Bars only show when the window is smaller than that minimum; they are wide and easy to see."""
+
+    def __init__(self, content, preferred=0, cap=0):
+        super(FitScroll, self).__init__()
+        self._content, self._preferred, self._cap = content, preferred, cap
+        self.setWidgetResizable(True)
+        self.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        self.setWidget(content)
+        self.viewport().setAutoFillBackground(False)
+        content.setAutoFillBackground(False)
+        self.setStyleSheet(
+            "QScrollArea { background: transparent; border: none; }"
+            "QScrollBar:vertical { background: %(track)s; width: %(w)dpx; margin: 0; border-radius: 7px; }"
+            "QScrollBar:horizontal { background: %(track)s; height: %(w)dpx; margin: 0; border-radius: 7px; }"
+            "QScrollBar::handle:vertical { background: %(handle)s; min-height: 36px; margin: 2px; border-radius: 5px; }"
+            "QScrollBar::handle:horizontal { background: %(handle)s; min-width: 36px; margin: 2px; border-radius: 5px; }"
+            "QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover { background: %(hover)s; }"
+            "QScrollBar::add-line, QScrollBar::sub-line { height: 0; width: 0; background: none; }"
+            "QScrollBar::add-page, QScrollBar::sub-page { background: none; }" % {
+                "track": theme.GROUND_3, "handle": theme.FG_3, "hover": theme.FG_2, "w": BAR_WIDTH})
+
+        content.installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if watched is self._content and event.type() == QtCore.QEvent.LayoutRequest:
+            self.updateGeometry()                           # the content's needs changed (font, text): the window must hear of it
+        return super(FitScroll, self).eventFilter(watched, event)
+
+    def minimumSizeHint(self):
+        width = self._content.minimumSizeHint().width() + BAR_WIDTH + 8
+        if self._cap:
+            width = min(width, self._cap)
+        return QtCore.QSize(width, 120)
+
+    def sizeHint(self):
+        return QtCore.QSize(max(self._preferred, self.minimumSizeHint().width()), 400)
+
+
+def scroll_page(content, preferred=0, cap=0):
+    return FitScroll(content, preferred, cap)
+
+
+def screen_area():
+    """Room the screen leaves to a window (QRect); a generous default when Qt cannot say."""
+    try:
+        return QtWidgets.QApplication.primaryScreen().availableGeometry()
+    except Exception:
+        return QtCore.QRect(0, 0, 1920, 1040)
+
+
+def screen_width():
+    return screen_area().width()
+
+
+def fit_window(dialog, margin=70, again=True):
+    """Make a window follow what its panels need: its minimum size becomes the layout's (it follows later changes, such as a font
+    change), and it opens at least that big and no bigger than the screen. Call it from showEvent; it measures again a moment later,
+    because some widgets only reach their real size once the first layout is done."""
+    layout = dialog.layout()
+    layout.setSizeConstraint(QtWidgets.QLayout.SetMinimumSize)
+    dialog.ensurePolished()
+    for child in dialog.findChildren(QtWidgets.QWidget):
+        child.ensurePolished()
+        if child.layout() is not None:
+            child.layout().invalidate()
+    layout.invalidate()
+    layout.activate()
+    need = layout.minimumSize()
+    area = screen_area()
+    room = (area.width() - margin, area.height() - margin)
+    size = dialog.size()                                    # (not .height(): the look window has a slider of that name)
+    wanted = (min(max(size.width(), need.width()), room[0]), min(max(size.height(), need.height()), room[1]))
+    if (size.width(), size.height()) != wanted:
+        dialog.resize(*wanted)
+    if again:
+        QtCore.QTimer.singleShot(0, lambda: fit_window(dialog, margin, again=False))
+
+
+class WrapText(QtWidgets.QTextEdit):
+    """Read-only text that wraps anywhere (a path has no spaces to wrap at), can be selected and copied, and never makes its window wider.
+    Looks like a label; `setText` / `text` work like a label's, and the height follows the text."""
+
+    def __init__(self, meta=False):
+        super(WrapText, self).__init__()
+        self.setReadOnly(True)
+        self.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setLineWrapMode(QtWidgets.QTextEdit.WidgetWidth)
+        self.setWordWrapMode(QtGui.QTextOption.WrapAtWordBoundaryOrAnywhere)
+        self.document().setDocumentMargin(0)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.setStyleSheet("QTextEdit { background: transparent; border: none; color: %s; font-size: %s; }" % (
+            theme.FG_2 if meta else theme.FG_1, "9pt" if meta else "10pt"))
+        self.setFixedHeight(0)
+
+    def setText(self, text):
+        self.setPlainText(text)
+        self._fit()
+
+    def text(self):
+        return self.toPlainText()
+
+    def minimumSizeHint(self):
+        return QtCore.QSize(40, self.height())
+
+    def sizeHint(self):
+        return QtCore.QSize(200, self.height())
+
+    def resizeEvent(self, event):
+        super(WrapText, self).resizeEvent(event)
+        self._fit()
+
+    def _fit(self):
+        width = self.viewport().width()
+        if width <= 0:
+            return
+        self.document().setTextWidth(width)
+        height = int(self.document().size().height() + 2) if self.toPlainText() else 0
+        if height != self.height():
+            self.setFixedHeight(height)
 
 
 def slider_row(grid, row, key, low, high, show, default, modulo=None, typed_high=None):

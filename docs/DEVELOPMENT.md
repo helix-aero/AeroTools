@@ -64,7 +64,7 @@ python -m pytest tests -q
 `tests/` uses fake `Metashape` and Qt modules, so it runs anywhere.
 `tests_qt/run_qt_selftest.py` sends real mouse events through the real click filter. Run it with Metashape's own Python
 (`python\python.exe` in the Metashape folder) and with a Python that has PySide6.
-`tests_qt/run_qt_fastexport.py` does the same for Fast Export (look window, DEM card, pixel field); it needs numpy for the preview cases.
+`tests_qt/run_qt_fastexport.py` does the same for Fast Export (both windows, DEM card, pixel field, layout at several font scales, coordinate trap); it needs numpy for the preview cases.
 
 ## Languages
 
@@ -257,6 +257,31 @@ registry and the usual folders, or pointed at by the user):
   height drew a dark line along every border of the data (visible on the CITADELLE DEM); only the pixels touching no data changed.
 - Tests: `tests/test_fastexport_look*.py`, `test_fastexport_preview.py`; `python -B tests_qt\run_qt_fastexport.py` runs the window, the DEM
   card and the pixel field with real Qt events, without Metashape (14 cases, PySide6 here, also meant for Metashape's PySide2).
+
+### Window layout (two panels), coordinate trap, shared controls
+
+`controls.py` holds what both windows share (no numpy: it loads and is tested anywhere).
+- **Two panels** (`dialog.py`): left = what to export (Ortho and DEM cards, DEM look line) and the coordinates; right = format, image type,
+  options, file names, then the result line and the buttons, which stay in view under the right panel. Each panel is a `controls.FitScroll`:
+  it reports its content's size as its minimum, so the window's minimum (`controls.fit_window`: `SetMinimumSize` on the layout, measured at
+  `showEvent` and again once the first layout is done) always follows the fonts and the Windows display scaling. A panel only scrolls when the
+  screen is too small (the cap per panel comes from the screen), and then the bars are wide and easy to see. Long texts (file names, folder,
+  result) are `controls.WrapText` (wrap anywhere, selectable, never widens the window); combos use `AdjustToMinimumContentsLength`.
+  Real Metashape at 125-150 % scaling clipped the first version: the harness now checks every widget stays inside its panel (see below).
+- **Look window** (`previewwin.py`): the picture and its legend on the left, the settings on the right (short sliders). `controls.EditableValue`
+  is the number next to a slider: double-click it (or Tab to it, Enter / F2) to type an exact number, Enter applies, Esc cancels, a number out of range
+  is refused with a red frame and the range in the tooltip (a compass wraps: 360 is 0). `controls.reset_button` puts one control back to its default
+  (greyed when it already is); "Back to the Metashape look" resets all.
+- **Raster in degrees** (`dialog._sync_auto_crs`): Metashape answers "Empty raster" to a pixel in cm on a geographic raster, and a drawing needs metres.
+  When a ticked raster is geographic (`info["geographic_ortho" / "geographic_dem"]`, per raster since an ortho in WGS 84 can sit next to a DEM
+  in CC42) and the user has not chosen a system, "Export in" is preselected: the DEM's own projected system, else `projdb.best_projected`
+  (first catalogue system for the place that is not in feet / swapped axes). A short orange notice says why, or (user picked "Same as the project")
+  what to pick. Unticking the raster in degrees gives back "Same as the project". Exporting a drawing, tiles or a pixel in cm from a raster in
+  degrees without a projected system is refused in words before any file is written (`_degrees_blocks`).
+- The error line names the file that really failed: `pipeline.Context.failed` is set before each file (and for TOPO.dxf / .dwg).
+- Tests: `python -B tests_qtun_qt_fastexport.py` (29 cases) includes the layout at x1, x1.25, x1.5 and x2 font scale for both windows
+  (`rescale` grows every font, `cut_off` lists any widget past its panel's right edge or the window's) and a small 1024 px screen.
+  Offscreen Qt has no real DPI scaling, so this is an approximation of 125-200 %; the real check is Metashape on a scaled display.
 
 ### AutoCAD speed: what was measured
 

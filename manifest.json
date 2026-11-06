@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T14:07:51",
+ "built": "2026-11-06T14:19:45",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -58,12 +58,12 @@
    "size": 436
   },
   "aerotools/lang/en.py": {
-   "sha256": "2aebd81f58cc20b675ee8fb5f29759d53c6f97a090e25d30a60bc4bd93c17167",
-   "size": 43028
+   "sha256": "a8b937a2508f70fbe66455f874eb94441d40fc06ee7792a7af4d5fa09daf0173",
+   "size": 43804
   },
   "aerotools/lang/fr.py": {
-   "sha256": "5b966c60121ad35057d47e78e27cf69e03dc24906472f1f6af78bfb0f0918ce0",
-   "size": 46722
+   "sha256": "8e2c95afd7ccb0b912ed93125dd00df950cd8c7ab49796c8d12e6faa893b4d5b",
+   "size": 47540
   },
   "aerotools/msapi.py": {
    "sha256": "6bce2376f4481fbe7aad3edbaf55e413c200ab72ee4a5a87a98ff901c534560e",
@@ -90,16 +90,16 @@
    "size": 352
   },
   "aerotools/tools/fastexport/controls.py": {
-   "sha256": "4007e7f61f8576286dcf4d4c95aed6f208b450a1e1e341c30abc515fd63aacf8",
-   "size": 10375
+   "sha256": "96076e13f8b7b4b506594c81a5d4757134b78b4da011f91d405c85a38149c128",
+   "size": 15350
   },
   "aerotools/tools/fastexport/crs.py": {
    "sha256": "92feef5b012066452f3bdcd5af803aea04da585a9480016408fcca8d2b72f237",
    "size": 7237
   },
   "aerotools/tools/fastexport/dialog.py": {
-   "sha256": "503ac6f32aa9ccd5b847eba98ab7669fc6b48a5f247929970d8c7a194f56388b",
-   "size": 50480
+   "sha256": "830879631e69fd07b235510468344141b5298cd3eba867d394a61cbfcf1e114a",
+   "size": 58641
   },
   "aerotools/tools/fastexport/dxfout.py": {
    "sha256": "60cbde852c99da00bfd30bdef54c762be0c1b6ef8bb42b604d1fea99ae530f3b",
@@ -142,12 +142,12 @@
    "size": 9409
   },
   "aerotools/tools/fastexport/previewwin.py": {
-   "sha256": "e92ff4de93b4eb5d06ad8499d8c6496ef4bdcd92a8fc4672e757cc811863ac3f",
-   "size": 19016
+   "sha256": "0e6e737d67fd03515c1b8c1bedbbbc07405cf802fcbe8ac164d6769e1c7b6f90",
+   "size": 19524
   },
   "aerotools/tools/fastexport/projdb.py": {
-   "sha256": "7bab3490d61320cdaa245ba56697b9e872ad6f1d7e66ff0dc94de2ebf52666d7",
-   "size": 12628
+   "sha256": "fb52b3f20e0700c213301c0cc600653638b117de5da56556ce89498edc72136c",
+   "size": 13322
   },
   "aerotools/tools/fastexport/projtool.py": {
    "sha256": "90c0fec87b5e73aabdc5dacaa903c3edf229721653e02b92d649c0338d1f4232",
@@ -426,8 +426,8 @@
    "size": 15373
   },
   "docs/DEVELOPMENT.md": {
-   "sha256": "3c6ffda170a0df1161862160ef6ed54c1b18217baf760511e65d7163d637a13f",
-   "size": 37010
+   "sha256": "66e0906238f933d23fdbc59ea03cc2a59b934fd44b1976254cb8934be7419bda",
+   "size": 40063
   },
   "docs/TUTORIAL.fr.md": {
    "sha256": "d32c9091833b5a77d3d7b14b7132bdfb3c214b2fe1231c183eb0c11ae5fab589",

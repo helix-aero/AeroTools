@@ -254,3 +254,21 @@ def candidates(lon=None, lat=None, text=None, limit=40):
         if row:
             out.append((code, row[0]))
     return out
+
+
+_UNSUITABLE = ("(ft", "ftUS", "(N-E)", "grid system", "(E-N)", "Albers", "EASE-Grid")
+
+
+def best_projected(lon, lat):
+    """EPSG code of a metre-based projected system that suits the place (the most precise national or regional one, a UTM zone
+    when the place has nothing else), or None. Systems in feet, with swapped axes or meant for continents are passed over."""
+    if lon is None or lat is None or not available():
+        return None
+    try:
+        rows = candidates(lon, lat)
+    except Exception:
+        return None
+    for code, name in rows:
+        if not any(mark in name for mark in _UNSUITABLE):
+            return int(code)
+    return int(rows[0][0]) if rows else None

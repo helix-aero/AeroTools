@@ -59,3 +59,20 @@ def test_the_failing_file_is_named_not_the_first_one(tmp_path):
         pipeline.run(ctx, all_jobs, lambda f, t: None)
     assert ctx.failed == [j for j in all_jobs if j.kind == "dem"][0].name
     assert ctx.failed != all_jobs[0].name
+
+
+@pytest.mark.parametrize("lon,lat,expected", [(8.75, 41.92, 3942), (2.35, 48.85, 3948), (-1.5, 47.2, 3947)])
+def test_the_best_projected_system_for_a_place_in_france(lon, lat, expected):
+    from aerotools.tools.fastexport import projdb
+    if not projdb.available():
+        pytest.skip("proj.db not available")
+    assert projdb.best_projected(lon, lat) == expected
+
+
+def test_the_best_projected_system_skips_feet_and_needs_a_place():
+    from aerotools.tools.fastexport import projdb
+    if not projdb.available():
+        pytest.skip("proj.db not available")
+    assert projdb.best_projected(None, None) is None
+    name = dict(projdb.candidates(-74.0, 40.7))[projdb.best_projected(-74.0, 40.7)]
+    assert "ft" not in name

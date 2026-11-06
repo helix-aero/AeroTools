@@ -140,7 +140,6 @@ class PreviewWindow(QtWidgets.QDialog):
         side.setSpacing(theme.PAD)
         layout.addLayout(side)
         page = QtWidgets.QWidget()
-        page.setFixedWidth(PANEL_WIDTH)
         form = QtWidgets.QVBoxLayout(page)
         form.setContentsMargins(0, 0, theme.PAD, 0)
         form.setSpacing(theme.PAD)
@@ -211,7 +210,7 @@ class PreviewWindow(QtWidgets.QDialog):
         self.note.setVisible(bool(note))
         form.addWidget(self.note)
         form.addStretch(1)
-        side.addWidget(controls.scroll_page(page), 1)
+        side.addWidget(controls.scroll_page(page, preferred=PANEL_WIDTH, cap=self._panel_cap()), 1)
 
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(theme.PAD)
@@ -232,21 +231,31 @@ class PreviewWindow(QtWidgets.QDialog):
         self.paints = 0                                   # repaints done (the tests read it)
         self._show_look(self._look)
 
+    @staticmethod
+    def _panel_cap():
+        """Widest minimum asked of the settings panel: what a small screen leaves beside the picture (its own minimum) and the legend."""
+        return max(320, controls.screen_width() - SCREEN_MARGIN - 480 - LEGEND_WIDTH - 5 * theme.PAD_L)
+
+    def showEvent(self, event):
+        super(PreviewWindow, self).showEvent(event)
+        if not getattr(self, "_fitted", False):
+            self._fitted = True
+            controls.fit_window(self)
+
     # -- building ----------------------------------------------------------------------------
 
     @staticmethod
     def _size():
-        try:
-            area = QtWidgets.QApplication.primaryScreen().availableGeometry()
-            return min(WIDTH, area.width() - SCREEN_MARGIN), min(HEIGHT, area.height() - SCREEN_MARGIN)
-        except Exception:
-            return WIDTH, HEIGHT
+        area = controls.screen_area()
+        return min(WIDTH, area.width() - SCREEN_MARGIN), min(HEIGHT, area.height() - SCREEN_MARGIN)
 
     @staticmethod
     def _combo(grid, row, key, reset):
         """A drop-down with its label and its reset button: returns (box, reset button)."""
         grid.addWidget(ui.label(i18n.t(key), "aeroMeta", wrap=False), row, 0)
         box = ui.combo()
+        box.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+        box.setMinimumContentsLength(10)
         grid.addWidget(box, row, 1, 1, 2)
         button = controls.reset_button(reset)
         grid.addWidget(button, row, 3)

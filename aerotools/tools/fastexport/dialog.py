@@ -24,10 +24,10 @@ import traceback
 
 from ... import config, i18n, journal, msapi, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from . import crs, external, look as looks, naming, pipeline, plan, preview, projdb, projtool, tiling, vertical
+from . import controls, crs, external, look as looks, naming, pipeline, plan, preview, projdb, projtool, tiling, vertical
 
 SECTION = "fastexport"
-WIDTH, HEIGHT = 840, 920
+WIDTH, HEIGHT = 1080, 740
 SCREEN_MARGIN = 70
 KIND_TITLE = {plan.ORTHO: "export.ortho", plan.DEM: "export.dem"}
 CM = 100.0
@@ -43,7 +43,12 @@ def size_text(nbytes):
     return "{:.0f} KB".format(nbytes / 1024.0)
 
 
-combo = ui.combo
+def combo():
+    """Drop-down that may be narrower than its longest item (the names of systems and grids are long): the text is cut, not the window."""
+    box = ui.combo()
+    box.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
+    box.setMinimumContentsLength(12)
+    return box
 
 
 class ClickLabel(QtWidgets.QLabel):
@@ -110,27 +115,39 @@ class ExportDialog(QtWidgets.QDialog):
         self._preview = None                                # preview.Preview of the DEM (made when the user opens the look window)
         self._preview_key = None
         self._preview_ok = False
+        self._crs_picked = False                            # the user chose the export system himself: we stop choosing for him
+        self._crs_auto = None                               # EPSG we preselected because a raster is in degrees (None: none)
+        self._trap_key = None
         self.tools = {}
         self.setWindowTitle(i18n.t("export.title"))
         self.setModal(False)
         self.resize(*self._size())
         root = ui.dark_root(self)
-        outer = QtWidgets.QVBoxLayout(root)
-        outer.setContentsMargins(0, 0, 0, 0)
-        scroll = QtWidgets.QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-        outer.addWidget(scroll)
-        content = QtWidgets.QWidget()
-        scroll.setWidget(content)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        scroll.viewport().setAutoFillBackground(False)
-        content.setAutoFillBackground(False)
-        layout = QtWidgets.QVBoxLayout(content)
+        columns = QtWidgets.QHBoxLayout(root)
         pad = theme.PAD_L
-        layout.setContentsMargins(pad, pad, pad, pad)
+        columns.setContentsMargins(pad, pad, pad, pad)
+        columns.setSpacing(pad)
+        # Two panels side by side so that nothing hides below the fold: left = what to export and in which coordinates,
+        # right = in which format, under which names, and the button. Each panel scrolls (with a visible bar) only on a small screen.
+        left = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(left)
+        layout.setContentsMargins(0, 0, theme.PAD, 0)
         layout.setSpacing(theme.PAD + theme.PAD_S)
+        columns.addWidget(controls.scroll_page(left, cap=self._panel_cap()), 1)
+        divider = QtWidgets.QFrame()
+        divider.setFixedWidth(1)
+        divider.setStyleSheet("background: {}; border: none;".format(theme.BORDER_SOFT))
+        columns.addWidget(divider)
+        right_column = QtWidgets.QVBoxLayout()
+        right_column.setSpacing(theme.PAD)
+        columns.addLayout(right_column, 1)
+        right = QtWidgets.QWidget()
+        right_layout = QtWidgets.QVBoxLayout(right)
+        right_layout.setContentsMargins(0, 0, theme.PAD, 0)
+        right_layout.setSpacing(theme.PAD + theme.PAD_S)
+        right_column.addWidget(controls.scroll_page(right, cap=self._panel_cap()), 1)
 
+        layout.addWidget(ui.label(i18n.t("export.what_section"), "aeroSection"))
         self.cards, self.fields, self.native_labels = {}, {}, {}
         for kind in plan.KINDS:
             check = QtWidgets.QCheckBox(i18n.t(KIND_TITLE[kind]))
@@ -157,6 +174,9 @@ class ExportDialog(QtWidgets.QDialog):
         layout.addWidget(ui.label(i18n.t("export.crs_section"), "aeroSection"))
         self.crs = ui.label("", "aeroMeta")
         layout.addWidget(self.crs)
+        self.crs_notice = ui.label("", "aeroWarn")                # a raster in degrees: why a system is preselected, or what to pick
+        self.crs_notice.setVisible(False)
+        layout.addWidget(self.crs_notice)
         grid = QtWidgets.QGridLayout()
         grid.setHorizontalSpacing(theme.PAD)
         grid.setVerticalSpacing(theme.PAD_S)
@@ -193,8 +213,10 @@ class ExportDialog(QtWidgets.QDialog):
         self.geoid_bar.setVisible(False)
         geoid_box.addWidget(self.geoid_bar)
         layout.addWidget(self.geoid_card)
+        layout.addStretch(1)
 
         # -- format -----------------------------------------------------------------------------
+        layout = right_layout
         layout.addWidget(ui.label(i18n.t("export.preset"), "aeroSection"))
         self.preset = combo()
         self.preset.setMinimumHeight(40)
@@ -282,16 +304,13 @@ class ExportDialog(QtWidgets.QDialog):
         row.addWidget(self.date)
         row.addStretch(1)
         layout.addLayout(row)
-        self.names = ui.label("")
-        self.names.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse)
+        self.names = controls.WrapText()                    # wraps anywhere: a path has no spaces, and must never widen the window
         layout.addWidget(self.names)
-        self.folder = ui.label("", "aeroMeta")
+        self.folder = controls.WrapText(meta=True)
         layout.addWidget(self.folder)
         layout.addStretch(1)
 
-        bottom = QtWidgets.QWidget()
-        bottom_layout = QtWidgets.QVBoxLayout(bottom)
-        bottom_layout.setContentsMargins(pad, theme.PAD, pad, pad)
+        bottom_layout = right_column                     # the result and the buttons stay in view under the right panel
         self.bar = QtWidgets.QProgressBar()
         self.bar.setObjectName("aeroProgress")
         self.bar.setTextVisible(False)
@@ -302,30 +321,37 @@ class ExportDialog(QtWidgets.QDialog):
         line.setSpacing(theme.PAD_S)
         self.mark = ui.Mark()
         line.addWidget(self.mark, 0, QtCore.Qt.AlignTop)
-        self.status = ui.label("")
+        self.status = controls.WrapText()
         line.addWidget(self.status, 1)
         bottom_layout.addLayout(line)
         buttons = QtWidgets.QHBoxLayout()
         buttons.setSpacing(theme.PAD)
-        self.open_button = ui.big_button("export.open_folder", self._open_folder, width=170)
+        self.open_button = ui.big_button("export.open_folder", self._open_folder, width=150)
         buttons.addWidget(self.open_button)
         buttons.addStretch(1)
-        self.go_button = ui.big_button("export.go", self._on_export, "aeroGo", width=210)
+        self.go_button = ui.big_button("export.go", self._on_export, "aeroGo", width=170)
         buttons.addWidget(self.go_button)
-        self.close_button = ui.big_button("export.close", self.close, width=110)
+        self.close_button = ui.big_button("export.close", self.close, width=100)
         buttons.addWidget(self.close_button)
         bottom_layout.addLayout(buttons)
-        outer.addWidget(bottom)
 
         self.refresh()
 
     @staticmethod
+    def _panel_cap():
+        """Widest minimum asked of one panel: half of what a small screen leaves, so the window can always fit the screen."""
+        return max(300, (controls.screen_width() - SCREEN_MARGIN - 4 * theme.PAD_L - 1) // 2)
+
+    def showEvent(self, event):
+        super(ExportDialog, self).showEvent(event)
+        if not getattr(self, "_fitted", False):
+            self._fitted = True
+            controls.fit_window(self)                       # minimum size from the panels, once the styles (fonts, scaling) are applied
+
+    @staticmethod
     def _size():
-        try:
-            area = QtWidgets.QApplication.primaryScreen().availableGeometry()
-            return min(WIDTH, area.width() - SCREEN_MARGIN), min(HEIGHT, area.height() - SCREEN_MARGIN)
-        except Exception:
-            return WIDTH, HEIGHT
+        area = controls.screen_area()
+        return min(WIDTH, area.width() - SCREEN_MARGIN), min(HEIGHT, area.height() - SCREEN_MARGIN)
 
     def _radios(self, grid, row, title_key, choices, saved):
         """Une ligne de ronds (choix unique) : renvoie le groupe, dont chaque bouton porte sa valeur."""
@@ -523,7 +549,10 @@ class ExportDialog(QtWidgets.QDialog):
             card.button.blockSignals(False)
             field.blockSignals(False)
             card.sync()
-        self.crs.setText(i18n.t("export.crs", crs=self._info["crs"]) if self._info.get("crs") else "")
+        self.crs.setText(self._crs_text())
+        key = (self._psx, tuple(k for k in plan.KINDS if self._info.get("geographic_" + k)))
+        if key != self._trap_key:                           # another project, or another raster in degrees: choose afresh
+            self._trap_key, self._crs_picked, self._crs_auto = key, False, None
         self._fill_crs()
         self.site.blockSignals(True)
         self.site.setText(naming.guess_site(self._psx) if self._psx else "")
@@ -645,6 +674,7 @@ class ExportDialog(QtWidgets.QDialog):
         index = self.crs_box.findData(previous) if text or previous != SAME else 0
         self.crs_box.setCurrentIndex(max(0, index))
         self.crs_box.blockSignals(False)
+        self._sync_auto_crs(fill=False)
         self._fill_vertical()
 
     def _on_search(self, *_args):
@@ -669,8 +699,117 @@ class ExportDialog(QtWidgets.QDialog):
         self._check_geoid()
 
     def _on_crs(self, *_args):
+        self._crs_picked = True                             # his choice, even "Same as the project": we leave it alone
+        if self.crs_box.currentData() != self._crs_auto:
+            self._crs_auto = None
         self._fill_vertical()
         self._refresh_names()
+
+    # -- a raster in degrees --------------------------------------------------------------
+
+    def _crs_text(self):
+        """The coordinate system(s) of the project: one line, or one per raster when the ortho and the DEM differ (degrees next to metres)."""
+        info = self._info
+        names = {kind: str(info["crs_" + kind].name) for kind in plan.KINDS
+                 if info.get("crs_" + kind) is not None and info.get(kind)}
+        if len(set(names.values())) > 1:
+            return i18n.t("export.crs_each", ortho=names.get(plan.ORTHO, "-"), dem=names.get(plan.DEM, "-"))
+        return i18n.t("export.crs", crs=info["crs"]) if info.get("crs") else ""
+
+    def _degrees_kinds(self):
+        """The ticked rasters whose system is in degrees (a pixel in cm and a CAD drawing cannot use them)."""
+        return [kind for kind in plan.KINDS if self.cards[kind].button.isChecked() and self._info.get(kind)
+                and self._info.get("geographic_" + kind)]
+
+    def _auto_epsg(self):
+        """The projected system to suggest when a raster is in degrees: the DEM's own system when it is in metres (the user already
+        works in it), else the best one for the place from the list. None when nothing can be said."""
+        dem = self._info.get("crs_dem")
+        if dem is not None and self._info.get(plan.DEM) and not self._info.get("geographic_dem"):
+            code = msapi.project_epsg(dem)
+            if code:
+                return code
+        lon, lat = self._info.get("center") or (None, None)
+        return projdb.best_projected(lon, lat)
+
+    def _crs_row(self, epsg):
+        """(EPSG, name) of a system from the catalogue, or None."""
+        lon, lat = self._info.get("center") or (None, None)
+        rows = projdb.candidates(lon, lat, text=str(epsg), limit=1) if epsg and projdb.available() else []
+        return rows[0] if rows else None
+
+    def _select_crs(self, epsg):
+        """Select `epsg` in the "Export in" list, adding it when the list does not hold it (a DEM's own system, a search in progress)."""
+        index = self.crs_box.findData(epsg)
+        if index < 0:
+            row = self._crs_row(epsg)
+            if row is None:
+                return False
+            self.crs_box.insertItem(1, "{}  (EPSG:{})".format(row[1], row[0]), epsg)
+            index = 1
+        self.crs_box.blockSignals(True)
+        self.crs_box.setCurrentIndex(index)
+        self.crs_box.blockSignals(False)
+        return True
+
+    def _sync_auto_crs(self, fill=True):
+        """Keep "Export in" sensible: with a ticked raster in degrees and no choice of the user yet, suggest a projected system
+        instead of "Same as the project"; when no such raster is ticked any more, give back the project's system we had replaced."""
+        if not hasattr(self, "crs_notice"):
+            return
+        if self.crs_search.text().strip():
+            self._refresh_crs_notice()
+            return
+        current = self.crs_box.currentData()
+        changed = False
+        if self._degrees_kinds() and not self._crs_picked and current in (None, SAME):
+            epsg = self._auto_epsg()
+            if epsg is not None and self._select_crs(epsg):
+                self._crs_auto, changed = epsg, True
+        elif not self._degrees_kinds() and self._crs_auto is not None and current == self._crs_auto:
+            self.crs_box.blockSignals(True)
+            self.crs_box.setCurrentIndex(0)
+            self.crs_box.blockSignals(False)
+            self._crs_auto, changed = None, True
+        self._refresh_crs_notice()
+        if changed and fill:
+            self._fill_vertical()
+
+    def _degrees_sentence(self):
+        kinds = self._degrees_kinds()
+        key = "export.crs_deg_both" if len(kinds) > 1 else ("export.crs_deg_ortho" if kinds == [plan.ORTHO] else "export.crs_deg_dem")
+        return i18n.t(key)
+
+    def _degrees_advice(self):
+        """"Pick a projected system", with an example from the list when there is one."""
+        row = self._crs_row(self._auto_epsg())
+        return i18n.t("export.crs_deg_pick_example", name=row[1]) if row else i18n.t("export.crs_deg_pick")
+
+    def _refresh_crs_notice(self):
+        """One short notice under the coordinate system when a ticked raster is in degrees."""
+        if not self._degrees_kinds():
+            self.crs_notice.setVisible(False)
+            return
+        current = self.crs_box.currentData()
+        if current in (None, SAME):
+            text = self._degrees_sentence() + " " + self._degrees_advice()
+        elif current == self._crs_auto:
+            name = self.crs_box.currentText().split("  (EPSG")[0]
+            text = self._degrees_sentence() + " " + i18n.t("export.crs_deg_auto", name=name)
+        else:
+            self.crs_notice.setVisible(False)
+            return
+        self.crs_notice.setText(text)
+        self.crs_notice.setVisible(True)
+
+    def _degrees_blocks(self, jobs):
+        """True when the export would ask for metres from a raster in degrees: a drawing, a pixel in cm or tiles, with no projected system."""
+        if self.crs_box.currentData() not in (None, SAME):
+            return False
+        kinds = [kind for kind in self._degrees_kinds() if any(job.kind == kind for job in jobs)]
+        if not kinds:
+            return False
+        return self.preset.currentData() == plan.CAD or bool(self._tile_m()) or any(not self._is_native(kind) for kind in kinds)
 
     def _on_vertical(self, *_args):
         self._check_geoid()
@@ -880,6 +1019,8 @@ class ExportDialog(QtWidgets.QDialog):
             self.fields[kind].setEnabled(self.cards[kind].button.isChecked() and bool(self._info.get(kind)))
         if hasattr(self, "look_row"):
             self._refresh_look_row()
+        if hasattr(self, "crs_notice"):
+            self._sync_auto_crs()
         if hasattr(self, "tile_box"):
             self._fill_tiles()
         self._jobs, text = [], ""
@@ -958,6 +1099,9 @@ class ExportDialog(QtWidgets.QDialog):
                 return
             if ask.choice == NEW_VERSION:
                 jobs = self._plan(None)
+        if self._degrees_blocks(jobs):                      # told here, in words, before any file is written
+            self._finish(self._degrees_sentence() + " " + self._degrees_advice(), "error")
+            return
         target, error = self._target()
         if error:
             self._finish(error, "error")
