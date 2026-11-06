@@ -129,8 +129,10 @@ def clip_polygon(mask, mask_extent, image_info):
     """Polygone de decoupe d'une image, dans les coordonnees de son entite IMAGE du DXF.
 
     `mask_extent` : (gauche, bas, droite, haut) du masque en unites du dessin. `image_info` : {"width", "height", "origin",
-    "pixel"} de l'image finale (geotiff.read_geotiff). Les sommets sont en pixels de l'image, depuis son coin bas-gauche, le
-    centre du premier pixel valant (0, 0) : la convention de l'entite IMAGE. Le polygone est ferme (dernier sommet = premier).
+    "pixel"} de l'image finale (geotiff.read_geotiff). Les sommets sont en pixels de l'image, depuis son coin HAUT-gauche
+    (x vers la droite, y vers le BAS, comme les lignes d'une image), le centre du premier pixel valant (0, 0) : la convention de
+    l'espace image de l'entite IMAGE dans AutoCAD (verifie dans AutoCAD : depuis le bas, le polygone apparait retourne).
+    Le polygone est ferme (dernier sommet = premier).
     Renvoie [] s'il n'y a pas de donnees ou si le polygone couvre toute l'image (rien a decouper)."""
     path = outline(_grow(mask))
     if len(path) < 3:
@@ -140,13 +142,13 @@ def clip_polygon(mask, mask_extent, image_info):
     cell_y = (top - bottom) / float(mask.shape[0])
     il, it = image_info["origin"]
     px, py = image_info["pixel"]
-    ib = it - image_info["height"] * py
     width, height = image_info["width"], image_info["height"]
     out = []
     for col, row in path:
         x = left + col * cell_x
         y = top - row * cell_y
-        out.append((min(max((x - il) / px, 0.0), float(width)) - 0.5, min(max((y - ib) / py, 0.0), float(height)) - 0.5))
+        # column from the left edge, row from the TOP edge of the image (y down)
+        out.append((min(max((x - il) / px, 0.0), float(width)) - 0.5, min(max((it - y) / py, 0.0), float(height)) - 0.5))
     area_polygon = abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(out, out[1:] + out[:1]))) / 2.0
     if area_polygon >= 0.995 * width * height:
         return []

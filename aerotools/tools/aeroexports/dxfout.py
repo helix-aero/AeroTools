@@ -83,7 +83,7 @@ def build_dxf(images, units_m=True):
 
     `images` : liste de dicts {"layer", "file" (chemin tel qu'ecrit dans le DXF), "size_px": (largeur, hauteur),
     "insert": (x, y) coin bas-gauche en unites du dessin, "pixel": (largeur d'un pixel, hauteur d'un pixel),
-    "clip" (facultatif) : polygone ferme [(x, y), ...] en pixels de l'image, depuis son coin bas-gauche (voir footprint.py)}.
+    "clip" (facultatif) : polygone ferme [(x, y), ...] en pixels de l'image, depuis son coin HAUT-gauche, y vers le bas (voir footprint.py)}.
     """
     w = _Writer()
     layers = []

@@ -54,8 +54,19 @@ def test_the_clip_polygon_is_closed_in_image_pixels_and_never_cuts_the_data():
     # un pixel de donnees a la limite du losange reste dans le polygone (marge d'un pixel du masque)
     rows, cols = np.nonzero(mask)
     for r, c in list(zip(rows, cols))[::37]:
-        x_px, y_px = (c + 0.5) * 10 - 0.5, (100 - (r + 0.5)) * 10 - 0.5
+        x_px, y_px = (c + 0.5) * 10 - 0.5, (r + 0.5) * 10 - 0.5            # rows count from the TOP of the image (y down)
         assert _inside(clip, x_px, y_px)
+
+
+def test_the_clip_is_not_mirrored_vertically_for_data_that_is_not_symmetric():
+    """Found in AutoCAD: with y counted from the bottom the polygon came out upside down. Data in the TOP-LEFT of the picture
+    must give a polygon in the top-left of the image space, rows counted from the top."""
+    mask = np.zeros((100, 100), dtype=bool)
+    mask[5:40, 5:30] = True                                                # rows 5..39 (top part), columns 5..29 (left part)
+    clip = footprint.clip_polygon(mask, (500.0, 300.0, 600.0, 400.0), image_info())
+    xs, ys = [p[0] for p in clip], [p[1] for p in clip]
+    assert max(xs) < 400 and max(ys) < 500                                  # 1000 px image: the top-left quarter, not the bottom-left
+    assert min(ys) > 20 and _inside(clip, 150.0, 200.0) and not _inside(clip, 150.0, 800.0)
 
 
 def _inside(poly, x, y):

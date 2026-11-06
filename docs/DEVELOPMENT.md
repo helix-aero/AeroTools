@@ -214,7 +214,7 @@ registry and the usual folders, or pointed at by the user):
   Metashape's default DEM palette (read from the legend of the Ortho tab: blue low, red high, linear between the DEM min and max) times a
   hillshade (Horn, light from the north-west at 45 degrees, strength 0.8; checked against `gdaldem hillshade`: mean difference 1.4/255), white
   where there is no data. The nodata value is read from the file.
-- Clip (option "Crop the white borders", on by default): each IMAGE entity gets a polygonal clip boundary (group 71 = 2, vertices in pixels, closed,
+- Clip (option "Crop white background", on by default): each IMAGE entity gets a polygonal clip boundary (group 71 = 2, vertices in pixels, closed,
   display flags 7, clipping on) computed by `footprint.py` from a coarse mask (alpha of a small uncompressed RGBA export of the ortho by Metashape,
   about 800 px; valid pixels of the DEM), outline = first to last data pixel of each row, simplified, grown by one mask pixel so no data is cut.
   The image files are not changed. AutoCAD 2023 (accoreconsole) loads the DXF with the clip without error; not checked: the clip drawn in the window.
@@ -328,7 +328,7 @@ Measured live on Metashape 2.2.1 (three real chunks of one project), with read-o
 - The setting: a tick box "Clip to the chunk's boundary shapes", shown only when `msapi.boundary_count(chunk)` finds boundary shapes (a guarded loop,
   done at `refresh()` and when a click needs the exact count). Off by default (the export covers the whole default DEM, as seen in Metashape; ticking it cuts to the shapes), saved as `clip_to_boundary_shapes` in the settings. The same value
   (`ExportDialog._boundary_clip()`) goes to the small DEM of the preview (`preview.fetch_small(clip=)`), to every raster export and to the mask
-  export that draws the "Crop the white borders" polygon (`pipeline.Context.clip_boundary`). The look window says when its picture is clipped.
+  export that draws the "Crop white background" polygon (`pipeline.Context.clip_boundary`). The look window says when its picture is clipped.
   A DEM already exported next to the project is reused for the preview only when the chunk has no boundary shape (`boundaries == 0`): with shapes,
   or when the count could not be read, the file may have been written with the other setting, so a small export is made.
 
