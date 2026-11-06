@@ -365,7 +365,7 @@ Si le même export existe déjà, tu choisis entre l'écraser et une nouvelle ve
   MNT reste sans perte) ; JPEG + fichier monde ; JPEG 2000 (écrit avec QGIS ou Global Mapper) ; ECW (écrit par Global Mapper, qui
   doit être installé) ; et un **dessin AutoCAD**, DXF ou DWG (le DWG demande AutoCAD, qui convertit le DXF en arrière-plan).
 - **Dessin AutoCAD.** `TOPO.dxf` (ou `.dwg`) contient l'ortho et le MNT sur deux calques. Les images sont dans `00_Assets` et
-  reliées par des chemins relatifs : le dossier peut être déplacé ou envoyé tel quel. **Masquer la bordure vide** (activé par
+  reliées par des chemins relatifs : le dossier peut être déplacé ou envoyé tel quel. **Rogner les bords blancs** (activé par
   défaut) fait que AutoCAD n'affiche que la zone de données réelle de chaque image ; les fichiers image ne sont pas modifiés.
 - **Couleurs et ombrage du MNT.** **Couleurs et ombrage...** ouvre une fenêtre avec un aperçu en direct de l'image du MNT :
   palette, lumière (soleil, quatre lumières, pente), direction et hauteur de la lumière, force et plage de couleurs. Le dessin

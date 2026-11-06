@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T16:27:40",
+ "built": "2026-11-06T17:25:18",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -10,12 +10,12 @@
    "size": 4628
   },
   "README.fr.md": {
-   "sha256": "815555bee35bb2d5e57f94a3e41f82b54d7d96530a51ad2240947caa80716447",
+   "sha256": "6e46327ff1f4366547d44525393b512f805660ea25534c44553bd3d6f5e959d4",
    "size": 13917
   },
   "README.md": {
-   "sha256": "43d68d585c6a34075141a74b995518142653a885a9fa32c520b4eb9307ba20ec",
-   "size": 12275
+   "sha256": "eeb4f60ca199d3a9453b0c30f8a705891f8504bedbeb80e5430c57fe7f6c72c8",
+   "size": 12276
   },
   "aerotools/__init__.py": {
    "sha256": "e0a1a32cf870c742d0c1b0ab32d9c60585a65ee1cf6b9083eaee3d4e9b1a8691",
@@ -58,12 +58,12 @@
    "size": 436
   },
   "aerotools/lang/en.py": {
-   "sha256": "f0fd0ba80c42c68ecce45e368f7136a34c85394379497411f297b1e389437fc3",
-   "size": 45251
+   "sha256": "83e7978e36cc894db77e716a67d05264ae39ab2ab59003d7512877589dc9cf34",
+   "size": 45314
   },
   "aerotools/lang/fr.py": {
-   "sha256": "f22549c8617bad2a1052b891e72700f229f0ec1f19579de6b45564eae9312bac",
-   "size": 49130
+   "sha256": "9f8b1dbc59b11384e130583b8733d677ddfb4756562d772f5ac75fc62543ba1f",
+   "size": 49181
   },
   "aerotools/msapi.py": {
    "sha256": "b8ef5b7321762c120855709e4a8b9dd3695fc49c12b970f2266ebc3e5f5641b9",
@@ -98,8 +98,8 @@
    "size": 7239
   },
   "aerotools/tools/aeroexports/dialog.py": {
-   "sha256": "be0de10d30bfa6325975d481604c9a57ad896bf9d39942ccfd524a7bc184c6a9",
-   "size": 71084
+   "sha256": "b8cec1a663bff6ad70a9097bdad2eda467c96ccba52c6599c547c018e87cdf44",
+   "size": 71331
   },
   "aerotools/tools/aeroexports/dxfout.py": {
    "sha256": "c9e4ac66f127381666473073322862fc23642e8204f5ada87421098d3d7c439b",
@@ -426,16 +426,16 @@
    "size": 15373
   },
   "docs/DEVELOPMENT.md": {
-   "sha256": "c658b9f29f848fc30532f163b79d486d5954d0b211a636deef8ef89e6aca27ee",
-   "size": 47258
+   "sha256": "f30f2bee98737a41615c92e76beeb7cd3c86482c7ca37e17354d2514e8dcc546",
+   "size": 47260
   },
   "docs/TUTORIAL.fr.md": {
-   "sha256": "48d879bff4b7afd2657136b80d67f29daef57168910eae5fc5757673d706695e",
+   "sha256": "6c8c68e3d9a8562645ebb5509dae2fcd8ccb282afc42f2121feb3d47943e2f79",
    "size": 29507
   },
   "docs/TUTORIAL.md": {
-   "sha256": "5726f9f7fda096900ed2a04efec9224a9b052e60cac51c539631dd49bcd299c2",
-   "size": 26444
+   "sha256": "5ef283021570719d4912920e4cf380c61ff233b83f73f231afbbae2fe669ba53",
+   "size": 26445
   },
   "docs/debug_adjust.py": {
    "sha256": "941c77e544a3b881a272334d76ab795c5e97d4610c90eeb25862dcc77844984a",

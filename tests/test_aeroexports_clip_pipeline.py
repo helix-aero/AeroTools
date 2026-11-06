@@ -1,4 +1,4 @@
-"""Aero-Exports : le dessin DXF decoupe chaque image a ses vraies donnees (option « Masquer le blanc autour »)."""
+"""Aero-Exports : le dessin DXF decoupe chaque image a ses vraies donnees (option « Rogner les bords blancs »)."""
 
 import os
 
