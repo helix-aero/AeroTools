@@ -656,6 +656,20 @@ def _():
     return best and greyed and stays and tie and reason, "best={} greyed={} stays={} tie={} reason={}".format(best, greyed, stays, tie, reason)
 
 
+@case("method: surfaces that already exist cost no time (the hint says nothing is left to build, no long-wait notice)")
+def _():
+    window, _backend = new_wizard(existing="ABCDEFGHIJ")
+    show(window)
+    prepare_to(window, S.METHOD)
+    screen = window.screens[S.METHOD]
+    texts = " ".join(label.text() for label in screen.picker._cards["depth_maps"].findChildren(QtWidgets.QLabel))
+    nothing = "Nothing to build" in texts
+    quiet = screen.long_note.isHidden()
+    skipped = screen.next_step() == S.EXPORT
+    window.close()
+    return nothing and quiet and skipped, "nothing={} quiet={} skipped={} texts={}".format(nothing, quiet, skipped, texts[:120])
+
+
 @case("method: with every method available the dense cloud is the default; with none the screen says so and Next is off")
 def _():
     window, _backend = new_wizard()
@@ -694,6 +708,28 @@ def _():
     window.close()
     return (arrived and thumbs and written == expect and len(georef) == len(letters) and done and steps[5] == "current",
             "arrived={} thumbs={} written={} done={} steps={}".format(arrived, thumbs, written, done, steps))
+
+
+@case("export: rebuilding the pictures of the same walls redraws their small pictures and keeps the ticks")
+def _():
+    window, backend = new_wizard()
+    show(window)
+    prepare_to(window, S.EXPORT)
+    ex = window.screens[S.EXPORT]
+    until(lambda: ex.stack.currentIndex() == 1, 30)
+    ex.thumbs.set_checked(["A"])
+    first = ex.thumbs.list.item(0).icon().pixmap(240, 240).toImage()
+    real = backend.thumbnail
+    backend.thumbnail = lambda facade: 255 - real(facade)               # what a rebuilt picture would look like
+    window.state.ortho_key = None
+    ex.start_orthos(None)
+    window.wait_idle(60000)
+    pump(100)
+    second = ex.thumbs.list.item(0).icon().pixmap(240, 240).toImage()
+    redrawn = first != second
+    kept = ex.thumbs.checked_letters() == ["A"]
+    window.close()
+    return redrawn and kept, "redrawn={} kept={} checked={}".format(redrawn, kept, ex.thumbs.checked_letters())
 
 
 @case("export: only the ticked pictures are written, in the chosen format; the DXF option adds a drawing")
@@ -1146,6 +1182,31 @@ def render_all(scale):
     window.close()
     unscale()
     return dict((k, v) for k, v in problems.items() if v)
+
+
+@case("small screen (1366 x 768) and a very large preview picture: the window fits the screen, the whole picture shows, nothing is cut off")
+def _():
+    from aerotools.tools.aerofacade.fake_backend import render_ortho
+    original = controls.screen_area
+    controls.screen_area = lambda: QtCore.QRect(0, 0, 1366, 768)
+    try:
+        window, backend = new_wizard()
+        big, extent = render_ortho(4096, 1)
+        backend.ortho_preview = lambda max_px=1600: (big.copy(), tuple(extent))
+        show(window)
+        loaded = wait_picture(window)
+        pump(200)
+        fits = window.width() <= 1366 and window.height() <= 768
+        canvas = window.canvas
+        whole = canvas.scale_now() > 0 and abs(canvas.scale_now() - canvas._fit_scale) < 1e-6
+        usable = canvas.width() >= 320 and canvas.height() >= 240
+        cut = cut_off(window)
+        size = "{}x{}".format(window.width(), window.height())
+        window.close()
+        return loaded and fits and whole and usable and not cut, "loaded={} fits={} whole={} usable={} size={} cut={}".format(
+            loaded, fits, whole, usable, size, cut[:2])
+    finally:
+        controls.screen_area = original
 
 
 @case("font scales x1.0, x1.5 and x2.0: no widget is cut off on any of the screens")

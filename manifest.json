@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T19:51:50",
+ "built": "2026-11-06T20:03:52",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -54,8 +54,8 @@
    "size": 257
   },
   "aerotools/lang/en.py": {
-   "sha256": "57b986f5b9dc9ba93c1f227af31a94ec804b54a8a1cef3ff5b32052a5c3f97e0",
-   "size": 61959
+   "sha256": "0eb7840fc520900c928335f1f3f0e0aa4039f469505928842ec36f1bb92c22e1",
+   "size": 61954
   },
   "aerotools/msapi.py": {
    "sha256": "b022f749af88c005e8dabbc727c1d6efbd12e7fde105162fa9a904ef784c5721",
@@ -190,8 +190,8 @@
    "size": 17146
   },
   "aerotools/tools/aerofacade/methods.py": {
-   "sha256": "73392474994a7a852ee4b96da3a0bd5f316be566b8b54c47bb9d814020e44227",
-   "size": 10492
+   "sha256": "be4d33963714720f3e6f4e37236b27275509db038c17fb5bd0d23b44578168f2",
+   "size": 10829
   },
   "aerotools/tools/aerofacade/model.py": {
    "sha256": "964c8ce219e2854f6cdd6d31662114a9fe5194e45bf3c3816fd9c1a49fbe5ef8",
@@ -206,12 +206,12 @@
    "size": 2556
   },
   "aerotools/tools/aerofacade/screens_build.py": {
-   "sha256": "c2b42bfbaf55f5698dca7bacc8243b60269cc00055ff63155b38348a8c208fce",
-   "size": 25803
+   "sha256": "6e6c28d3d83a45bb9e072df79123045801288c30c13e06764ebb5fac13da2485",
+   "size": 26085
   },
   "aerotools/tools/aerofacade/screens_margins.py": {
-   "sha256": "955865cc4b09ceb75a845376c8f402df0ed9a11540ab0224b9b8d5a218c85f5e",
-   "size": 8680
+   "sha256": "fb17086add72c0f1a119d3af20838e39c0b96969cea7295f4b4669579bf60f3d",
+   "size": 9303
   },
   "aerotools/tools/aerofacade/screens_search.py": {
    "sha256": "79b63d70abe48b1fd8cb5a4150c315f96d182dc57c35c5058b7fc3805c8538e0",
@@ -234,8 +234,8 @@
    "size": 3322
   },
   "aerotools/tools/aerofacade/widgets.py": {
-   "sha256": "6e66debf4c9947f7c85f7dbc51ef7dac6d5e076890d361912fc9c7c0c2d5f22f",
-   "size": 55760
+   "sha256": "f9030fa1d1e28ff206a986d37a6fe4d5271710a41cfe406d57d18ce7a719f82d",
+   "size": 55871
   },
   "aerotools/tools/aerofacade/widgets_margins.py": {
    "sha256": "fdc0599403986e4cb3b021a311f1fb74f4596ba0c018db1fbc4c17163de99d01",

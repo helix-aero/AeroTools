@@ -136,8 +136,16 @@ class TimeHint:
     high_s: float = 0.0
 
 
+def _existing_for(method, existing):
+    """`existing` is a set of letters, or a dict method key -> set of letters (the surfaces differ from one method to the other)."""
+    if isinstance(existing, dict):
+        return existing.get(Method.from_key(method).value, ())
+    return existing
+
+
 def time_hint(method, facades, margins, existing=()):
     """Time hint of a method for the facades that are not removed (letters in `existing` already have a DEM and cost nothing)."""
+    existing = _existing_for(method, existing)
     todo = [f for f in facades if not f.removed and f.letter not in existing]
     n = len(todo)
     if n == 0:

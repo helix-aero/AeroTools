@@ -446,7 +446,7 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
         if not points or self._frame is None:
             return
         xs, ys = [p.x() for p in points], [p.y() for p in points]
-        grow = 30.0
+        grow = max(30.0, 0.1 * max(max(xs) - min(xs), max(ys) - min(ys)))      # room around the walls: labels and the outline fit
         rect = QtCore.QRectF(min(xs) - grow, min(ys) - grow, max(xs) - min(xs) + 2 * grow, max(ys) - min(ys) + 2 * grow)
         self._user_zoomed = True
         self.fitInView(rect, QtCore.Qt.KeepAspectRatio)

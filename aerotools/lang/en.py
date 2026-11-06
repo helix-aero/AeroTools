@@ -681,7 +681,7 @@ TEXTS = {
     "facade.ui.dir_W": "west",
     "facade.ui.dir_NW": "north-west",
     "facade.ui.margins_intro": "Choose how much to take around each wall, in metres. A bigger margin shows more around the wall.",
-    "facade.ui.margins_all_note": "These numbers apply to all {n} wall(s). Turn off the switch to set a wall on its own.",
+    "facade.ui.margins_all_note": "These numbers apply to all {n} wall(s). Untick the box to set a wall on its own.",
     "facade.ui.margins_some_note": "These numbers apply to the {n} wall(s) picked in the list.",
     "facade.ui.margins_pick_note": "Pick one or more walls in the list to change their margins.",
     "facade.ui.apply_all": "Apply to all walls",

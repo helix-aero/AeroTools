@@ -452,6 +452,7 @@ class ExportScreen(Screen):
             for letter, entry in (task.result or {}).items():
                 st.ortho_state[letter] = entry
             self._thumbs.update(task.extras.get("thumbs", {}))
+            self._thumbs_new = True                           # the pictures were rebuilt: the small ones must be redrawn
         st.ortho_key = st.signature()
         ok = st.ortho_ok_letters()
         self.batch.set_progress(1.0 if not task.was_cancelled and task.error is None else task.fraction, "")
@@ -474,10 +475,13 @@ class ExportScreen(Screen):
         facades = [f for f in st.active() if f.letter in st.ortho_ok_letters()]
         previous = set(self.thumbs.checked_letters())
         same = [f.letter for f in facades] == self.thumbs.letters()
-        if not same:
+        if not same or getattr(self, "_thumbs_new", False):
+            self._thumbs_new = False
             self.thumbs.set_items(facades, checked=True)
             for facade in facades:
                 self.thumbs.set_thumbnail(facade.letter, self._thumbs.get(facade.letter))
+            if same and previous:
+                self.thumbs.set_checked(previous)
         elif previous:
             self.thumbs.set_checked(previous)
         if not self.folder.text().strip():

@@ -158,7 +158,8 @@ class MethodScreen(Screen):
             pass
         availability = self.state.availability
         active = self.state.active()
-        rows = methods.describe(availability, facades=active, margins=self.state.margins_map())
+        self._existing = self._existing_surfaces()
+        rows = methods.describe(availability, facades=active, margins=self.state.margins_map(), existing=self._existing)
         options = []
         self._long = {}
         for row in rows:
@@ -173,6 +174,17 @@ class MethodScreen(Screen):
         self.picker.set_options(options, preferred or next((o.key for o in options if o.default), None))
         self.none_note.setVisible(not availability.any_surface())
         self._changed(self.picker.selected())
+
+    def _existing_surfaces(self):
+        """{method key: letters whose surface is already in the chunk}: those cost no time."""
+        found = {}
+        for method in Method:
+            try:
+                have = self.wizard.backend.existing_dems(self.state.active(), self.state.margins_map(), method)
+            except Exception:
+                have = {}
+            found[method.value] = set(letter for letter, yes in (have or {}).items() if yes)
+        return found
 
     def _changed(self, key):
         self.state.method = key
@@ -191,7 +203,8 @@ class MethodScreen(Screen):
 
     def _range(self, key):
         try:
-            hint = methods.time_hint(Method.from_key(key), self.state.active(), self.state.margins_map())
+            hint = methods.time_hint(Method.from_key(key), self.state.active(), self.state.margins_map(),
+                                     getattr(self, "_existing", ()))
             return hint.params.get("low", 0), hint.params.get("high", 0)
         except Exception:
             return 0, 0
