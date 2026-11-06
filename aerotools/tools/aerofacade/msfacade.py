@@ -123,10 +123,36 @@ def rank_cameras(centres, forwards, visible, plane_z, max_cameras=MAX_CAMERAS_DE
     return np.sort(order)
 
 
+def spread_cameras(centres, k):
+    """Indices of at most `k` of the cameras, spread out in space (farthest-point sampling on the centres, start: the camera nearest to
+    their mean). Depth maps cost about the same per photo whatever its neighbours are, so fewer, well spread photos are much faster."""
+    c = np.asarray(centres, dtype=np.float64).reshape(-1, 3)
+    n = len(c)
+    if n <= k:
+        return list(range(n))
+    first = int(np.argmin(((c - c.mean(axis=0)) ** 2).sum(axis=1)))
+    chosen = [first]
+    dist = ((c - c[first]) ** 2).sum(axis=1)
+    while len(chosen) < k:
+        nxt = int(np.argmax(dist))
+        chosen.append(nxt)
+        dist = np.minimum(dist, ((c - c[nxt]) ** 2).sum(axis=1))
+    return sorted(chosen)
+
+
 def sample_points(box, n=3):
     """n x n sample points (s, t) over the picture area, edges included."""
     s0, t0, s1, t1 = box
     return [(s0 + (s1 - s0) * i / (n - 1.0), t0 + (t1 - t0) * j / (n - 1.0)) for j in range(n) for i in range(n)]
+
+
+def finished(prog, text):
+    """Last progress report of a step that is DONE: a cancel that arrives now must not throw the finished work away (it is noticed at the
+    start of the next step)."""
+    try:
+        prog(1.0, text)
+    except Cancelled:
+        pass
 
 
 def explain(exc):
@@ -212,7 +238,7 @@ class MetashapeBackend(Backend):
 
     threaded = False                 # the wizard must call every method on the main thread (see the module docstring)
 
-    def __init__(self, chunk=None, pump=None, max_cameras=MAX_CAMERAS_DEFAULT, depth_downscale=4, keep_work_chunks=False):
+    def __init__(self, chunk=None, pump=None, max_cameras=MAX_CAMERAS_DEFAULT, depth_downscale=4, depth_max_cameras=40, keep_work_chunks=False):
         self.doc = Metashape.app.document
         chunk = chunk if chunk is not None else self.doc.chunk
         if chunk is None:
@@ -228,6 +254,7 @@ class MetashapeBackend(Backend):
         self.pump = pump or (lambda: None)
         self.max_cameras = int(max_cameras)
         self.depth_downscale = int(depth_downscale)
+        self.depth_max_cameras = int(depth_max_cameras)       # photos used for the depth maps of one façade (spread out)
         self.keep_work_chunks = bool(keep_work_chunks)
         self.enu = enu_matrix(chunk)                        # chunk -> ENU, frozen now: every façade frame is expressed in it
         self._points = None                                 # (N, 3) ENU tie points, read once
@@ -755,9 +782,11 @@ class MetashapeBackend(Backend):
                 source = Metashape.DataSource.DepthMapsData
                 lo = 0.1
                 if work.depth_maps is None or len(work.depth_maps.keys()) == 0:
-                    keys = [c.key for c in work.cameras if c.enabled and c.transform is not None]
-                    if not keys:
+                    enabled = [c for c in work.cameras if c.enabled and c.transform is not None]
+                    if not enabled:
                         raise RuntimeError("No photo looks at this façade.")
+                    pick = spread_cameras([list(c.center) for c in enabled], self.depth_max_cameras)
+                    keys = [enabled[i].key for i in pick]
                     self._call(prog, 0.1, 0.85, "Façade %s: computing depth maps for %d photos" % (f.letter, len(keys)), work.buildDepthMaps,
                                downscale=self.depth_downscale, filter_mode=Metashape.MildFiltering, cameras=keys, reuse_depth=False,
                                max_neighbors=16)
@@ -774,7 +803,7 @@ class MetashapeBackend(Backend):
             _meta_set(work, "aerofacade.method", method.key)
             log("DEM of façade %s (%s): %dx%d px at %.3f m, heights %.2f..%.2f m, %.1f s" % (f.letter, name, dem.width, dem.height, dem.resolution,
                                                                                            dem.min, dem.max, time.time() - t0))
-            prog(1.0, "Façade %s: surface ready" % f.letter)
+            finished(prog, "Façade %s: surface ready" % f.letter)
             return True, "Surface built from the %s (%d x %d, %.1f cm per pixel)." % (name, dem.width, dem.height, dem.resolution * 100.0)
         except BaseException:
             self._remove_chunk(work)
@@ -812,7 +841,7 @@ class MetashapeBackend(Backend):
         stage, pixel = self._stage_of(work), _meta_get(work, META_PIXEL)
         if stage == "ortho" and pixel and abs(float(pixel) - pixel_m) < 1e-9 and work.orthomosaic is not None:
             self._ortho_of[f.letter] = work.key
-            prog(1.0, "Façade %s: orthophoto already built" % f.letter)
+            finished(prog, "Façade %s: orthophoto already built" % f.letter)
             return True, "Already built."
         w, h = geometry.image_size_px(f, m, pixel_m)
         box = Metashape.BBox(Metashape.Vector(plane_box(f, m)[:2]), Metashape.Vector(plane_box(f, m)[2:]))
@@ -827,7 +856,7 @@ class MetashapeBackend(Backend):
         self._thumbs.pop(f.letter, None)
         self._ortho_of[f.letter] = work.key
         log("orthophoto of façade %s: %dx%d px at %.3f m in %.1f s" % (f.letter, ortho.width, ortho.height, ortho.resolution, time.time() - t0))
-        prog(1.0, "Façade %s: orthophoto ready" % f.letter)
+        finished(prog, "Façade %s: orthophoto ready" % f.letter)
         return True, "%d x %d px at %.1f cm." % (ortho.width, ortho.height, pixel_m * 100.0)
 
     # ---- Backend: thumbnail ------------------------------------------------------------------------------------
@@ -905,7 +934,7 @@ class MetashapeBackend(Backend):
         pixel = float(_meta_get(work, META_PIXEL) or ortho.resolution)
         if options.get("georef_txt", True):
             self._write_georef(f, work, path, pixel)
-        prog(1.0, "Façade %s: done" % f.letter)
+        finished(prog, "Façade %s: done" % f.letter)
 
     def _write_georef(self, f, work, path, pixel):
         """<picture>.txt: the frame, the pixel size and the exact extent, enough to place and measure the picture."""
