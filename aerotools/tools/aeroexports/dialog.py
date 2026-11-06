@@ -738,7 +738,7 @@ class ExportDialog(QtWidgets.QDialog):
         self.boundary_check = QtWidgets.QCheckBox()
         self.boundary_check.setToolTip(i18n.t("export.boundary_tip"))
         self.boundary_check.setCursor(QtCore.Qt.PointingHandCursor)
-        self.boundary_check.setChecked(config.get(SECTION, "clip_boundary") is not False)      # on by default, as in Metashape
+        self.boundary_check.setChecked(config.get(SECTION, "clip_to_boundary_shapes") is True)      # off by default: the export covers the whole default DEM, as seen in Metashape
         self.boundary_check.toggled.connect(self._on_boundary)
         line.addWidget(self.boundary_check, 0, QtCore.Qt.AlignTop)
         # the text wraps (a tick box's own text never does, and would widen the panel at large font sizes)
@@ -779,7 +779,7 @@ class ExportDialog(QtWidgets.QDialog):
         return bool(self.boundary_check.isChecked())
 
     def _on_boundary(self, *_args):
-        config.put(SECTION, "clip_boundary", bool(self.boundary_check.isChecked()))
+        config.put(SECTION, "clip_to_boundary_shapes", bool(self.boundary_check.isChecked()))
         self._preview, self._preview_key = None, None       # the small DEM was made with the other setting
         self._refresh_boundary_note()
         self._refresh_look_text()

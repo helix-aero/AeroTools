@@ -326,7 +326,7 @@ Measured live on Metashape 2.2.1 (three real chunks of one project), with read-o
   no shape, no difference. Nothing in the file says it happened, so `msapi.export_raster(..., clip_to_boundary=)` now passes the value on every
   call, never the implicit default.
 - The setting: a tick box "Clip to the chunk's boundary shapes", shown only when `msapi.boundary_count(chunk)` finds boundary shapes (a guarded loop,
-  done at `refresh()` and when a click needs the exact count). On by default, as in Metashape, saved as `clip_boundary` in the settings. The same value
+  done at `refresh()` and when a click needs the exact count). Off by default (the export covers the whole default DEM, as seen in Metashape; ticking it cuts to the shapes), saved as `clip_to_boundary_shapes` in the settings. The same value
   (`ExportDialog._boundary_clip()`) goes to the small DEM of the preview (`preview.fetch_small(clip=)`), to every raster export and to the mask
   export that draws the "Hide the empty border" polygon (`pipeline.Context.clip_boundary`). The look window says when its picture is clipped.
   A DEM already exported next to the project is reused for the preview only when the chunk has no boundary shape (`boundaries == 0`): with shapes,
