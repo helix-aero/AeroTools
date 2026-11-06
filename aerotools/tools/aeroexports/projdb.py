@@ -1,17 +1,17 @@
-"""Aero-Exports : la base de PROJ (proj.db, EPSG + IGNF + autres, lecture seule) et l'index des grilles de PROJ-data.
+"""Aero-Exports: the PROJ database (proj.db, EPSG + IGNF + others, read-only) and the index of the PROJ-data grids.
 
-Repond a : « quels systemes de coordonnees proposer ici ? » et « quelles altitudes (grilles de geoide) vont avec celui-ci, ici ? »,
-partout dans le monde, sans table ecrite a la main.
+Answers: "which coordinate systems to offer here?" and "which altitudes (geoid grids) go with this one, here?",
+anywhere in the world, without a hand-written table.
 
-* Systemes XY : les CRS projetes EPSG non obsoletes dont l'emprise d'usage contient le projet, les plus precis d'abord, plus la zone
-  UTM WGS 84 (et ETRS89 en Europe) ; recherche libre par nom ou par code.
-* Altitudes : les grilles `VERTICAL_OFFSET_GEOGRAPHIC_TO_VERTICAL` de PROJ-data (index `files.geojson` embarque : url, taille, SHA-256,
-  emprise, CRS source et cible) qui couvrent le lieu ET dont le repere source est le meme que celui du SCR choisi.
-  Pourquoi cette condition : Metashape exporte des hauteurs ellipsoidales dans le repere du SCR choisi ; retrancher la grille d'un
-  autre repere (une grille ETRS89 sur des hauteurs Bessel, par exemple) donnerait une altitude fausse de plusieurs metres. Repere
-  « identique » = meme datum, ou meme famille geocentrique moderne (ETRS89, WGS 84, ITRF et leurs realisations nationales, RGF93,
-  GDA2020, SIRGAS...), que PROJ lui-meme traite comme equivalentes a ~1 m pres en horizontal et sans effet sensible en hauteur.
-  Un SCR a datum local (Bessel, Clarke, NAD27...) n'a que la hauteur ellipsoidale.
+* XY systems: the non-deprecated EPSG projected CRS whose area of use contains the project, the most precise first, plus the
+  UTM WGS 84 zone (and ETRS89 in Europe); free search by name or by code.
+* Altitudes: the `VERTICAL_OFFSET_GEOGRAPHIC_TO_VERTICAL` grids of PROJ-data (embedded `files.geojson` index: URL, size, SHA-256,
+  extent, source and target CRS) that cover the place AND whose source frame is the same as that of the chosen CRS.
+  Why this condition: Metashape exports ellipsoidal heights in the frame of the chosen CRS; subtracting the grid of another
+  frame (an ETRS89 grid on Bessel heights, for example) would give an altitude wrong by several metres. "Same" frame
+  = same datum, or same modern geocentric family (ETRS89, WGS 84, ITRF and their national realisations, RGF93,
+  GDA2020, SIRGAS...), which PROJ itself treats as equivalent to ~1 m horizontally and with no noticeable effect on height.
+  A CRS with a local datum (Bessel, Clarke, NAD27...) only has the ellipsoidal height.
 """
 
 import json
@@ -23,9 +23,10 @@ import sqlite3
 from . import projtool
 
 DATA = os.path.join(projtool.VENDOR, "data", "files.geojson")
-OPS = os.path.join(projtool.VENDOR, "data", "grid_ops.json")      # operations PROJ de chaque grille (releve avec projinfo 9.8.1)
+OPS = os.path.join(projtool.VENDOR, "data", "grid_ops.json")      # PROJ operations of each grid (taken with projinfo 9.8.1)
 GRID_TYPE = "VERTICAL_OFFSET_GEOGRAPHIC_TO_VERTICAL"
 ELLIPSOID_ID = "ellipsoid"
+# Recognition list: lower-case PROJ datum names (proper names, kept as PROJ writes them) of the modern geocentric frames.
 MODERN_GLOBAL = ("reseau geodesique francais 1993", "european terrestrial reference", "etrs89", "etrf", "world geodetic system 1984",
                  "wgs 84", "international terrestrial reference", "itrf", "sirgas", "geocentric datum of australia 2020", "gda2020",
                  "national spatial reference system 2011", "nad83(2011)", "new zealand geodetic datum 2000", "nzgd2000",
@@ -47,17 +48,17 @@ def available():
 
 
 # --------------------------------------------------------------------------------------------------
-# Reperes
+# Frames
 # --------------------------------------------------------------------------------------------------
 
 def datum_family(name):
-    """"global" pour les reperes geocentriques modernes equivalents, sinon le nom du datum lui-meme (aucune equivalence)."""
+    """"global" for the equivalent modern geocentric frames, otherwise the datum name itself (no equivalence)."""
     low = (name or "").lower()
     return "global" if any(word in low for word in MODERN_GLOBAL) else low
 
 
 def frame_of(code):
-    """{"code2d", "datum", "name", "family"} du repere d'un CRS EPSG (projete ou geographique), ou None."""
+    """{"code2d", "datum", "name", "family"} of the frame of an EPSG CRS (projected or geographic), or None."""
     code = str(code).replace("EPSG:", "").replace("EPSG::", "")
     row = _db().execute(
         "select g.code, g.datum_code, d.name from projected_crs p join geodetic_crs g on g.auth_name=p.geodetic_crs_auth_name "
@@ -72,7 +73,7 @@ def frame_of(code):
 
 
 def geographic_epsg(horizontal_epsg):
-    """Code du CRS geographique 2D du repere d'un SCR projete (celui ou l'on interroge les grilles) ; 4326 si inconnu."""
+    """Code of the 2D geographic CRS of the frame of a projected CRS (the one in which the grids are queried); 4326 if unknown."""
     frame = frame_of(horizontal_epsg) if available() else None
     try:
         return int(frame["code2d"]) if frame else 4326
@@ -81,7 +82,7 @@ def geographic_epsg(horizontal_epsg):
 
 
 # --------------------------------------------------------------------------------------------------
-# Grilles d'altitude
+# Height grids
 # --------------------------------------------------------------------------------------------------
 
 def _bbox(geometry):
@@ -100,7 +101,7 @@ def _bbox(geometry):
 
 
 def grids():
-    """Toutes les grilles d'altitude de PROJ-data : liste de fiches {id, file, url, size, sha256, bbox, ...}."""
+    """All the height grids of PROJ-data: list of records {id, file, url, size, sha256, bbox, ...}."""
     if "all" not in _grids_cache:
         out = []
         with open(DATA, encoding="utf-8") as handle:
@@ -161,7 +162,7 @@ def area_of(box):
 
 
 def match(frame, grid):
-    """"exact" (meme datum), "equivalent" (autre realisation du meme repere geocentrique moderne) ou None. Voir l'en-tete."""
+    """"exact" (same datum), "equivalent" (another realisation of the same modern geocentric frame) or None. See the header."""
     if frame is None:
         return None
     source = frame_of(grid["source"])
@@ -175,12 +176,12 @@ def match(frame, grid):
 
 
 def verticals_for(horizontal_epsg, lon=None, lat=None, max_size=None):
-    """Grilles d'altitude utilisables avec ce SCR a cet endroit : les plus locales d'abord (une grille nationale avant EGM), a emprise
-    comparable la plus recente d'abord.
+    """Height grids usable with this CRS at this place: the most local first (a national grid before EGM), the most recent first
+    for a comparable extent.
 
-    Une grille d'un autre datum equivalent (RAC23, faite pour RGF93 v2b, avec un SCR RGF93 v1) n'est proposee que si aucune grille du
-    datum exact ne donne la meme altitude (RAC09 donne deja NGF-IGN78) : on ne melange pas deux realisations quand le choix existe.
-    `max_size` (octets) : ecarte les gros fichiers. Les grilles dont le CRS vertical est une profondeur (axe vers le bas) sont ecartees."""
+    A grid of another equivalent datum (RAC23, made for RGF93 v2b, with an RGF93 v1 CRS) is only offered if no grid of the
+    exact datum gives the same altitude (RAC09 already gives NGF-IGN78): two realisations are not mixed when there is a choice.
+    `max_size` (bytes): leaves out large files. Grids whose vertical CRS is a depth (axis pointing down) are left out."""
     frame = frame_of(horizontal_epsg)
     exact, equivalent = [], []
     for grid in grids():
@@ -189,7 +190,7 @@ def verticals_for(horizontal_epsg, lon=None, lat=None, max_size=None):
         if max_size is not None and grid["size"] > max_size:
             continue
         if grid["depth"]:
-            continue                      # surface comptee vers le bas (profondeur) : PROJ inverse l'axe vertical, pas une altitude
+            continue                      # surface counted downwards (depth): PROJ flips the vertical axis, not an altitude
         kind = match(frame, grid)
         if kind == "exact":
             exact.append(grid)
@@ -202,7 +203,7 @@ def verticals_for(horizontal_epsg, lon=None, lat=None, max_size=None):
 
 
 # --------------------------------------------------------------------------------------------------
-# Systemes XY
+# XY systems
 # --------------------------------------------------------------------------------------------------
 
 _BASE_SQL = (
@@ -219,8 +220,8 @@ def utm_zone(lon):
 
 
 def candidates(lon=None, lat=None, text=None, limit=40):
-    """[(code, nom)] de CRS projetes EPSG : sans texte, ceux qui couvrent (lon, lat) du plus precis au plus large, puis les zones UTM
-    WGS 84 / ETRS89 du lieu ; avec texte, ceux dont le nom contient le texte ou dont le code est le nombre saisi."""
+    """[(code, name)] of EPSG projected CRS: without text, those that cover (lon, lat) from the most precise to the widest, then the
+    UTM WGS 84 / ETRS89 zones of the place; with text, those whose name contains the text or whose code is the number typed."""
     db = _db()
     text = (text or "").strip()
     if text:
@@ -237,7 +238,7 @@ def candidates(lon=None, lat=None, text=None, limit=40):
     for code, name, west, south, east, north, datum in rows:
         if inside((west, south, east, north), lon, lat):
             size = area_of((west, south, east, north)) if west <= east else 1e9
-            rank = (datum_family(datum) != "global", size)           # reperes modernes d'abord, puis du plus precis au plus large
+            rank = (datum_family(datum) != "global", size)           # modern frames first, then from the most precise to the widest
             if code not in found or rank < found[code][0]:
                 found[code] = (rank, name)
     ranked = sorted(found.items(), key=lambda item: (item[1][0], item[1][1]))

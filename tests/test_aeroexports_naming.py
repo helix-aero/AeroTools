@@ -1,4 +1,4 @@
-"""Tests de naming.py : pytest tests/test_aeroexports_naming.py"""
+"""Tests of naming.py: pytest tests/test_aeroexports_naming.py"""
 import datetime
 import os
 
@@ -49,7 +49,7 @@ def test_date_styles():
 
 
 def test_flight_date_mode_and_fallback():
-    exif = ["2026:07:04 09:00:00"] * 50 + ["2026:07:05 00:10:00"] * 3 + ["1970:01:01 00:00:00", "", None, "n'importe quoi"]
+    exif = ["2026:07:04 09:00:00"] * 50 + ["2026:07:05 00:10:00"] * 3 + ["1970:01:01 00:00:00", "", None, "whatever"]
     assert naming.flight_date(exif) == (datetime.date(2026, 7, 4), "exif")
     today = datetime.date(2026, 11, 5)
     assert naming.flight_date([], today=today) == (today, "today")
@@ -62,7 +62,7 @@ def test_flight_date_tie_takes_earliest():
 
 
 def test_sanitize_windows_rules():
-    assert naming.sanitize_token("Zone nord / Pôle \"A\"?") == "Zone_nord_Pole_A"
+    assert naming.sanitize_token("Zone north / C\u00f4te \"A\"?") == "Zone_north_Cote_A"
     assert naming.sanitize_token("CON") == "CON_"
     assert naming.sanitize_token("  ..site.. ") == "site"
     assert naming.sanitize_token("A" * 40, max_len=10) == "A" * 10
@@ -88,7 +88,7 @@ def test_guess_site(psx, expected):
 
 
 def test_guess_site_max_len():
-    assert len(naming.guess_site(r"C:\a\Un_tres_long_nom_de_chantier_vraiment_long.psx", max_len=12)) <= 12
+    assert len(naming.guess_site(r"C:\a\A_very_long_site_name_really_long.psx", max_len=12)) <= 12
 
 
 def test_next_free_version_shared_by_ortho_and_dem():
@@ -102,7 +102,7 @@ def test_next_free_version_shared_by_ortho_and_dem():
     assert naming.next_free_version("x", planned, listing=["EDF_260704_3cm_dtm.tif"]) == 2
     present = ["EDF_260704_3cm_ortho.tif", "EDF_260704_3cm_v2_dtm.tif", "other.txt"]
     assert naming.next_free_version("x", planned, listing=present) == 3
-    assert naming.next_free_version("x", planned, listing=["EDF_260704_3CM_DTM.TIF"]) == 2     # casse Windows
+    assert naming.next_free_version("x", planned, listing=["EDF_260704_3CM_DTM.TIF"]) == 2     # Windows is case-insensitive
 
 
 def test_check_path_length(tmp_path):

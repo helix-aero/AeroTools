@@ -1,7 +1,7 @@
-"""Lecture minimale du georeferencement d'un GeoTIFF (TIFF classique ou BigTIFF), sans GDAL : stdlib seulement.
+"""Minimal reading of a GeoTIFF's georeferencing (classic TIFF or BigTIFF), without GDAL: standard library only.
 
-Sert a placer l'image dans le DXF a partir du fichier lui-meme (taille en pixels, coin haut-gauche, taille du pixel)
-et non d'apres ce qu'on croit avoir demande. Metashape ecrit ModelPixelScale (33550) et ModelTiepoint (33922).
+Used to place the image in the DXF from the file itself (size in pixels, top-left corner, pixel size)
+rather than from what we believe was requested. Metashape writes ModelPixelScale (33550) and ModelTiepoint (33922).
 """
 
 import struct
@@ -12,7 +12,7 @@ _TYPES = {1: ("B", 1), 2: ("c", 1), 3: ("H", 2), 4: ("I", 4), 5: ("II", 8), 6: (
 
 
 def read_geotiff(path):
-    """{"width", "height", "origin": (x, y) coin haut-gauche, "pixel": (px, py)} ou None si le fichier n'est pas un GeoTIFF lisible."""
+    """{"width", "height", "origin": (x, y) top-left corner, "pixel": (px, py)} or None if the file is not a readable GeoTIFF."""
     try:
         with open(path, "rb") as handle:
             head = handle.read(16)
@@ -72,6 +72,7 @@ def read_geotiff(path):
 
 
 def extent(info):
-    """(gauche, bas, droite, haut) d'un resultat de read_geotiff."""
+    """(left, bottom, right, top) of a read_geotiff result."""
+
     left, top = info["origin"]
     return left, top - info["height"] * info["pixel"][1], left + info["width"] * info["pixel"][0], top

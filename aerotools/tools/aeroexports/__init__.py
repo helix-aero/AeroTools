@@ -1,7 +1,8 @@
-"""Aero-Exports : exporte l'ortho et le MNT dans un dossier Outputs a cote du projet Metashape.
+"""Aero-Exports: exports the orthomosaic and the DTM into an Outputs folder next to the Metashape project.
 
-  naming.py    noms de fichiers courts (site, date, resolution, type) et dossier Outputs
-  plan.py      presets, liste des fichiers a ecrire (fonctions pures, testees sans Metashape)
-  dialog.py    la fenetre
-  tool.py      point d'entree du menu Aero
+  naming.py    short file names (site, date, resolution, type) and the Outputs folder
+  plan.py      presets, list of files to write (pure functions, tested without Metashape)
+  dialog.py    the window
+  tool.py      entry point of the Aero menu
+
 """

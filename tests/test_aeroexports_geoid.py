@@ -1,4 +1,4 @@
-"""Aero-Exports : grilles de geoide (notre dossier, etat, zone), lecture TIFF, application des altitudes a un MNT."""
+"""Aero-Exports: geoid grids (our folder, state, zone), TIFF reading, application of the altitudes to a DTM."""
 import hashlib
 import os
 import shutil
@@ -14,7 +14,7 @@ RAC23 = os.path.join(HERE, "data", "fr_ign_RAC23.tif")
 CORSICA = (9.0, 42.0)
 PARIS = (2.3, 48.8)
 
-# Altitude d'une hauteur ellipsoidale de 0 m, calculee avec PROJ 9.8.1 + notre fichier RAC23 (RGF93 v2b -> NGF-IGN78).
+# Altitude of an ellipsoidal height of 0 m, computed with PROJ 9.8.1 + our RAC23 file (RGF93 v2b -> NGF-IGN78).
 RAC23_PROJ = [((8.77, 41.39), -46.5833), ((9.0, 42.0), -49.2143), ((9.2, 42.5), -49.5548), ((8.55, 41.9), -46.8131)]
 
 
@@ -26,7 +26,7 @@ def touch(folder, name, content=b"x"):
     return path
 
 
-# -- dossier, etat -------------------------------------------------------------------------------
+# -- folder, state -------------------------------------------------------------------------------
 
 RAC23_ID, RAC09_ID = "fr_ign_RAC23", "fr_ign_RAC09"
 
@@ -39,9 +39,9 @@ def test_own_dir_is_a_geoid_folder_in_the_aerotools_settings(monkeypatch, tmp_pa
 def test_the_official_file_is_ok_and_a_different_one_is_stale(tmp_path):
     spec = crs.vertical_by_id(RAC23_ID)
     shutil.copy(RAC23, str(tmp_path / spec["file"]))
-    assert hashlib.sha256(open(RAC23, "rb").read()).hexdigest() == spec["sha256"]       # le fichier de test est l'officiel
+    assert hashlib.sha256(open(RAC23, "rb").read()).hexdigest() == spec["sha256"]       # the test file is the official one
     assert crs.grid_state(RAC23_ID, str(tmp_path))[0] == "ok"
-    touch(tmp_path, spec["file"], b"autre chose")
+    touch(tmp_path, spec["file"], b"something else")
     assert crs.grid_state(RAC23_ID, str(tmp_path))[0] == "stale"
     assert crs.grid_state(RAC09_ID, str(tmp_path))[0] == "missing"
 
@@ -57,7 +57,7 @@ def zone(epsg, place, folder):
 
 
 def test_zone_asks_for_the_small_grids_of_the_project_frame(tmp_path):
-    assert zone(3942, CORSICA, tmp_path) == [(RAC09_ID, "missing"), ("us_nga_egm96_15", "missing")]    # v1 : RAC09, pas RAC23 ; EGM2008 (80 Mo) pas ici
+    assert zone(3942, CORSICA, tmp_path) == [(RAC09_ID, "missing"), ("us_nga_egm96_15", "missing")]    # v1: RAC09, not RAC23; EGM2008 (80 MB) not here
     assert zone(9842, CORSICA, tmp_path) == [(RAC23_ID, "missing"), ("us_nga_egm96_15", "missing")]
     assert [i for i, _s in zone(2154, PARIS, tmp_path)][:1] != []
 
@@ -66,7 +66,7 @@ def test_zone_lists_an_outdated_grid_and_skips_a_good_one(tmp_path):
     spec = crs.vertical_by_id(RAC23_ID)
     shutil.copy(RAC23, str(tmp_path / spec["file"]))
     assert zone(9842, CORSICA, tmp_path) == [("us_nga_egm96_15", "missing")]
-    touch(tmp_path, spec["file"], b"abime")
+    touch(tmp_path, spec["file"], b"damaged")
     assert (RAC23_ID, "stale") in zone(9842, CORSICA, tmp_path)
 
 
@@ -75,14 +75,14 @@ def test_zone_without_position_or_frame_asks_for_nothing(tmp_path):
     assert crs.zone_grids(None, 9.0, 42.0, folder=str(tmp_path)) == []
 
 
-# -- quelle grille pour quel systeme, dans le monde (regle lue dans PROJ : voir projdb.py) -------------
+# -- which grid for which system, worldwide (rule read from PROJ: see projdb.py) ----------------------
 
 def ids(epsg, place=CORSICA):
     return [spec["id"] for spec in vertical.compatible_verticals(epsg, *place)]
 
 
 def test_a_v1_system_gets_the_v1_grid_and_a_v2b_system_the_v2b_one():
-    assert ids(3942)[0] == RAC09_ID and RAC23_ID not in ids(3942)                # CC42 de base : RAC09, pas RAC23
+    assert ids(3942)[0] == RAC09_ID and RAC23_ID not in ids(3942)                # plain CC42: RAC09, not RAC23
     assert ids(9842)[0] == RAC23_ID and RAC09_ID not in ids(9842)
     assert "fr_ign_RAF09" in ids(2154, PARIS) and "fr_ign_RAF20" not in ids(2154, PARIS)
     assert "fr_ign_RAF20" in ids(9794, PARIS) and "fr_ign_RAF09" not in ids(9794, PARIS)
@@ -95,9 +95,9 @@ def test_every_list_ends_with_the_ellipsoid_and_offers_the_world_grids_when_the_
 
 
 def test_other_countries_get_their_own_grids():
-    assert any(i.startswith("ch_swisstopo_chgeo2004") for i in ids(25832, (6.14, 46.2)))        # Suisse, ETRS89 UTM
-    assert "us_noaa_g2018u0" in ids(6347, (-74.0, 40.7))                                        # Etats-Unis, NAD83(2011)
-    assert any(i.startswith("au_ga_AUSGeoid2020") for i in ids(7856, (151.2, -33.9)))           # Australie, GDA2020
+    assert any(i.startswith("ch_swisstopo_chgeo2004") for i in ids(25832, (6.14, 46.2)))        # Switzerland, ETRS89 UTM
+    assert "us_noaa_g2018u0" in ids(6347, (-74.0, 40.7))                                        # United States, NAD83(2011)
+    assert any(i.startswith("au_ga_AUSGeoid2020") for i in ids(7856, (151.2, -33.9)))           # Australia, GDA2020
 
 
 def test_a_local_datum_only_gets_the_ellipsoidal_height():
@@ -120,7 +120,7 @@ def test_frames_and_xy_candidates_come_from_the_proj_database():
     assert projdb.candidates(None, None) == []
 
 
-# -- lecture de grille (valeurs de PROJ) -----------------------------------------------------------------
+# -- grid reading (values from PROJ) ----------------------------------------------------------------------
 
 def test_the_reader_matches_proj_on_rac23():
     grid = vertical.read_grid(RAC23)
@@ -146,10 +146,10 @@ def test_the_tiff_reader_refuses_what_it_does_not_know(tmp_path):
         tiffio.Tiff(path)
 
 
-# -- un MNT (TIFF ecrit a la main, comme Metashape : tuiles Deflate, georeferencement, nodata) ------------
+# -- a DTM (hand-written TIFF, like Metashape's: Deflate tiles, georeferencing, nodata) ----------------
 
 def make_dem(path, array, x0, y0, pixel, nodata=-32767.0, tile=16):
-    """GeoTIFF float32 a tuiles Deflate, PixelIsArea, comme celui de Metashape."""
+    """Float32 GeoTIFF with Deflate tiles, PixelIsArea, like Metashape's."""
     import zlib
     height, width = array.shape
     across, down = -(-width // tile), -(-height // tile)
@@ -192,17 +192,17 @@ def make_dem(path, array, x0, y0, pixel, nodata=-32767.0, tile=16):
         out.write(struct.pack("<H", len(entries)) + b"".join(entries) + struct.pack("<I", 0) + extra)
 
 
-X0, Y0, PIXEL = 1000.0, 2400.0, 0.5            # coin haut-gauche et pixel d'un MNT de 120 x 90 px (60 x 45 m)
+X0, Y0, PIXEL = 1000.0, 2400.0, 0.5            # top-left corner and pixel of a 120 x 90 px DTM (60 x 45 m)
 
 
 def fake_lonlat(x, y):
-    """SCR de test : 1 m = 1e-5 degre, pose en Corse (la grille RAC23 couvre)."""
+    """Test CRS: 1 m = 1e-5 degree, placed in Corsica (covered by the RAC23 grid)."""
     return 8.8 + (x - 1000.0) * 1e-5, 41.4 + (y - 2000.0) * 1e-5
 
 
 def test_correct_dem_subtracts_the_grid_undulation(tmp_path):
     height = np.full((90, 120), 100.0, dtype=np.float32)
-    height[10:20, 10:20] = -32767.0                           # trous
+    height[10:20, 10:20] = -32767.0                           # holes
     src, dst = str(tmp_path / "dem.tif"), str(tmp_path / "alt.tif")
     make_dem(src, height, X0, Y0, PIXEL)
     grid = vertical.read_grid(RAC23)
@@ -214,7 +214,7 @@ def test_correct_dem_subtracts_the_grid_undulation(tmp_path):
     expected = 100.0 - grid.undulation(lon, lat)
     good = height != -32767.0
     assert np.abs(out[good] - expected[good]).max() < 0.005
-    assert (out[~good] == -32767.0).all()                     # le « pas de donnee » reste tel quel
+    assert (out[~good] == -32767.0).all()                     # the "no data" value stays as it is
     assert 46.0 < stats["min"] <= stats["max"] < 48.0 and stats["check_mm"] < 5.0
     assert not os.path.exists(dst + ".part")
 
@@ -231,7 +231,7 @@ def test_correct_dem_keeps_the_georeferencing(tmp_path):
 def test_correct_dem_refuses_a_dem_outside_the_grid_and_writes_nothing(tmp_path):
     src, dst = str(tmp_path / "dem.tif"), str(tmp_path / "alt.tif")
     make_dem(src, np.full((90, 120), 5.0, dtype=np.float32), X0, Y0, PIXEL)
-    with pytest.raises(ValueError, match="ne couvre pas"):
+    with pytest.raises(ValueError, match="does not cover"):
         vertical.correct_dem(src, dst, vertical.read_grid(RAC23),
                               lambda x, y: (np.full(np.shape(x), 2.3), np.full(np.shape(x), 48.8)))
     assert not os.path.exists(dst) and not os.path.exists(dst + ".part")
@@ -243,10 +243,10 @@ def test_the_lattice_is_never_bigger_than_the_cap():
     assert vertical._lattice(10, 10, 0.5, 0.5) == (2, 2)
 
 
-# -- PROJ 9 embarque ---------------------------------------------------------------------------------
+# -- embedded PROJ 9 ---------------------------------------------------------------------------------
 
 DATA = os.path.join(HERE, "data")
-needs_proj = pytest.mark.skipif(os.name != "nt" or not projtool.Proj().available(), reason="binaires PROJ de Windows absents")
+needs_proj = pytest.mark.skipif(os.name != "nt" or not projtool.Proj().available(), reason="Windows PROJ binaries missing")
 
 
 def engine():
@@ -292,12 +292,12 @@ def test_a_reference_that_disagrees_with_us_stops_the_export(tmp_path):
     src, dst = str(tmp_path / "dem.tif"), str(tmp_path / "alt.tif")
     make_dem(src, np.full((90, 120), 100.0, dtype=np.float32), X0, Y0, PIXEL)
     grid = vertical.read_grid(RAC23)
-    with pytest.raises(ValueError, match="divergent"):
+    with pytest.raises(ValueError, match="differ"):
         vertical.correct_dem(src, dst, grid, fake_lonlat, reference=lambda lon, lat: grid.undulation(lon, lat) + 0.05)
     assert not os.path.exists(dst)
 
 
-def test_proj_output_is_parsed_by_lot_and_failures_become_nan():
+def test_proj_output_is_parsed_by_batch_and_failures_become_nan():
     def fake(exe, args, text):
         assert len(text.splitlines()) == 3
         return "\n".join(["1 2 3 0", "4 5 inf 0", "7 8 9 0"]) + "\n"
@@ -316,7 +316,7 @@ def test_geographic_frame_of_a_projected_system():
 def test_depth_surfaces_are_never_offered_as_heights():
     flipped = [g["id"] for g in projdb.grids() if g["depth"]]
     assert "dk_sdfi_dklat_2022" in flipped and len(flipped) == 7
-    assert not set(flipped) & set(ids(25832, (10.2, 56.1)))                    # Danemark, ETRS89 UTM
+    assert not set(flipped) & set(ids(25832, (10.2, 56.1)))                    # Denmark, ETRS89 UTM
 
 
 def test_every_grid_of_the_catalog_is_a_height_offset_with_its_sha256():

@@ -1,4 +1,4 @@
-"""Fast Space : mesure des projets, verrous, allegement et suppression (avec un faux Metashape)."""
+"""Fast Space: project measurement, locks, lightening and deletion (with a fake Metashape)."""
 
 import os
 import shutil
@@ -10,9 +10,9 @@ from aerotools.tools.fastspace import actions, scanner
 
 def make_project(root, name="p", dense=1000, depth=3000, tie=500, extra=0, chunks=1, with_psx=True, lock=False,
                  photos=0, mosaic=0):
-    """Un projet factice : p.psx et p.files/<chunk>/0/{dense_cloud, depth_maps.1, point_cloud, ...}.
+    """A dummy project: p.psx and p.files/<chunk>/0/{dense_cloud, depth_maps.1, point_cloud, ...}.
 
-    `photos` : octets d'orthophotos (images0.zip dans orthomosaic) ; `mosaic` : octets de la mosaique elle-meme."""
+    `photos`: bytes of orthophotos (images0.zip in orthomosaic); `mosaic`: bytes of the mosaic itself."""
     folder = os.path.join(str(root), name + "_dir")
     files = os.path.join(folder, name + ".files")
     os.makedirs(files)
@@ -70,7 +70,7 @@ def test_orthophotos_are_counted_apart_from_the_orthomosaic(tmp_path):
 
 def test_removable_adds_the_chosen_items_only(tmp_path):
     project = scanner.measure_project(make_project(tmp_path, dense=1000, depth=3000, photos=7000))
-    assert project.removable() == 4000                                     # par defaut : dense + depth
+    assert project.removable() == 4000                                     # by default: dense + depth
     assert project.removable(("ortho",)) == 7000
     assert project.removable(scanner.ITEMS) == 11000
     assert project.removable(()) == 0
@@ -91,9 +91,9 @@ def test_scan_finds_projects_orphans_and_sorts_by_size(tmp_path):
 
 def test_display_folder_gives_the_last_three_parents(tmp_path):
     psx = make_project(tmp_path)
-    project = scanner.Project(r"F:\1_Photogrammetry\CONTI\2025\06-JUIN\Metashape\CONTI.psx")
-    assert project.folders(3) == ["2025", "06-JUIN", "Metashape"]
-    assert project.display_folder(2, sep="/") == "06-JUIN/Metashape"
+    project = scanner.Project(r"F:\1_Photogrammetry\CONTI\2025\06-JUNE\Metashape\CONTI.psx")
+    assert project.folders(3) == ["2025", "06-JUNE", "Metashape"]
+    assert project.display_folder(2, sep="/") == "06-JUNE/Metashape"
     assert scanner.Project(r"F:\a\b.psx").folders(3) == ["F:\\", "a"]
     assert scanner.measure_project(psx).folders(1)
 
@@ -103,7 +103,7 @@ def test_gb_formatting():
     assert scanner.gb(50 * 1024 ** 2) == "50 MB"
 
 
-@pytest.mark.skipif(os.name != "nt", reason="verrou exclusif de Windows")
+@pytest.mark.skipif(os.name != "nt", reason="Windows exclusive lock")
 def test_lock_states(tmp_path):
     import ctypes
     free = make_project(tmp_path, "free")
@@ -114,7 +114,7 @@ def test_lock_states(tmp_path):
     lock_path = os.path.splitext(held)[0] + ".files\\lock"
     GENERIC_RW, OPEN_EXISTING = 0xC0000000, 3
     ctypes.windll.kernel32.CreateFileW.restype = ctypes.c_void_p
-    handle = ctypes.windll.kernel32.CreateFileW(lock_path, GENERIC_RW, 0, None, OPEN_EXISTING, 0, None)    # partage nul
+    handle = ctypes.windll.kernel32.CreateFileW(lock_path, GENERIC_RW, 0, None, OPEN_EXISTING, 0, None)    # no sharing
     try:
         project = scanner.measure_project(held)
         assert project.lock == scanner.OPEN and project.in_use
@@ -150,10 +150,10 @@ def test_refusal_for_the_project_open_here(tmp_path, monkeypatch):
     project = scanner.measure_project(make_project(tmp_path))
     assert actions.refusal(project) == ""
     monkeypatch.setattr(actions, "current_document_path", lambda: project.path)
-    assert "ce Metashape" in actions.refusal(project)
+    assert "this Metashape" in actions.refusal(project)
 
 
-# -- suppression ---------------------------------------------------------------------
+# -- deletion ------------------------------------------------------------------------
 
 def test_delete_permanent_removes_psx_and_files(tmp_path):
     psx = make_project(tmp_path)
@@ -193,14 +193,14 @@ def test_delete_keeps_every_file_next_to_the_project(tmp_path):
     psx = make_project(tmp_path)
     folder = os.path.dirname(psx)
     os.makedirs(os.path.join(folder, "Exports"))
-    for rel in ("ortho.tif", "rapport.pdf", os.path.join("Exports", "mnt.tif")):
+    for rel in ("ortho.tif", "report.pdf", os.path.join("Exports", "dtm.tif")):
         with open(os.path.join(folder, rel), "wb") as handle:
             handle.write(b"d" * 100)
     project = scanner.measure_project(psx)
     result = actions.delete_project(project, actions.PERMANENT)
     assert result["ok"] and not os.path.exists(psx) and not os.path.exists(project.files_dir)
-    assert sorted(os.listdir(folder)) == ["Exports", "ortho.tif", "rapport.pdf"]
-    assert os.path.exists(os.path.join(folder, "Exports", "mnt.tif"))
+    assert sorted(os.listdir(folder)) == ["Exports", "ortho.tif", "report.pdf"]
+    assert os.path.exists(os.path.join(folder, "Exports", "dtm.tif"))
 
 
 def test_kept_counts_files_next_to_the_project_but_not_projects(tmp_path):
@@ -211,21 +211,21 @@ def test_kept_counts_files_next_to_the_project_but_not_projects(tmp_path):
     with open(os.path.join(folder, "b.psx"), "w") as handle:
         handle.write("<document/>")
     os.makedirs(os.path.join(folder, "Exports", "deep"))
-    for rel, size in (("ortho.tif", 300), ("notes.txt", 20), (os.path.join("Exports", "mnt.tif"), 200),
+    for rel, size in (("ortho.tif", 300), ("notes.txt", 20), (os.path.join("Exports", "dtm.tif"), 200),
                       (os.path.join("Exports", "deep", "ignored.tif"), 999)):
         with open(os.path.join(folder, rel), "wb") as handle:
             handle.write(b"d" * size)
     kept = scanner.measure_project(psx).kept
     assert kept.files == 3 and kept.size == 520 and kept.dirs == 2
     assert kept.exports and not kept.partial
-    assert [name for _size, name in kept.biggest] == ["ortho.tif", "Exports/mnt.tif", "notes.txt"]
+    assert [name for _size, name in kept.biggest] == ["ortho.tif", "Exports/dtm.tif", "notes.txt"]
 
 
 def test_at_risk_when_a_built_dem_has_no_export_next_to_it(tmp_path):
     risky = scanner.measure_project(make_project(tmp_path, "risky", extra=4000))
     assert risky.internal_products == 4000 and risky.at_risk
     psx = make_project(tmp_path, "safe", extra=4000)
-    with open(os.path.join(os.path.dirname(psx), "mnt.TIF"), "wb") as handle:
+    with open(os.path.join(os.path.dirname(psx), "dtm.TIF"), "wb") as handle:
         handle.write(b"d")
     safe = scanner.measure_project(psx)
     assert safe.kept.exports and not safe.at_risk
@@ -251,18 +251,18 @@ def test_delete_failure_is_reported_not_raised(tmp_path, monkeypatch):
     project = scanner.measure_project(make_project(tmp_path))
 
     def boom(path):
-        raise PermissionError("verrouille")
+        raise PermissionError("locked")
 
     monkeypatch.setattr(actions, "remove_path", boom)
     result = actions.delete_project(project, actions.PERMANENT)
-    assert not result["ok"] and "verrouille" in result["error"]
+    assert not result["ok"] and "locked" in result["error"]
 
 
 def test_recycle_of_nothing_is_ok_and_failure_is_reported(tmp_path):
     assert actions.recycle([str(tmp_path / "absent")]) == (True, "")
 
 
-# -- allegement avec un faux Metashape ------------------------------------------------
+# -- lightening with a fake Metashape -------------------------------------------------
 
 class FakeOrthomosaic(object):
     def __init__(self, files_dir, index):
@@ -289,7 +289,7 @@ class FakeChunk(object):
 
 
 class FakeDocument(object):
-    """Un projet qui oublie ses nuages denses et efface ses fichiers a l'enregistrement, comme Metashape."""
+    """A project that forgets its dense clouds and deletes its files on save, like Metashape."""
 
     def __init__(self, path, delete_on_save=True):
         self.path, self.delete_on_save, self.chunks = path, delete_on_save, []
@@ -338,9 +338,9 @@ def test_lighten_permanent_removes_dense_and_depth_and_verifies(tmp_path, fake_m
     result = actions.lighten(project, actions.PERMANENT, progress=steps.append)
     assert result["ok"], result
     assert result["freed"] == 4000 and result["in_bin"] == 0
-    assert project.removable() == 0 and project.parts["point_cloud"] == 500    # le reste est intact
+    assert project.removable() == 0 and project.parts["point_cloud"] == 500    # the rest is intact
     assert [mode for mode, _ in fake_metashape["opened"]] == ["ro", "rw", "ro"]
-    assert steps[0] == "lecture" and steps[-1] == "verification"
+    assert steps[0] == "reading" and steps[-1] == "checking"
 
 
 def test_lighten_ortho_only_keeps_the_dense_cloud_and_the_mosaic(tmp_path, fake_metashape):
@@ -349,7 +349,7 @@ def test_lighten_ortho_only_keeps_the_dense_cloud_and_the_mosaic(tmp_path, fake_
     assert result["ok"], result
     assert result["freed"] == 9000
     assert project.ortho_photos == 0 and project.parts["orthomosaic"] == 400
-    assert project.dense == 1000 and project.depth == 3000                   # pas choisis : intacts
+    assert project.dense == 1000 and project.depth == 3000                   # not chosen: untouched
 
 
 def test_lighten_everything_in_one_pass(tmp_path, fake_metashape):
@@ -392,7 +392,7 @@ def test_lighten_cleans_leftover_folders_when_metashape_keeps_them(tmp_path, fak
 def test_lighten_has_no_recycle_mode_and_touches_nothing_then(tmp_path, fake_metashape):
     project = scanner.measure_project(make_project(tmp_path, dense=1000, depth=3000))
     result = actions.lighten(project, actions.RECYCLE)
-    assert not result["ok"] and "pas de corbeille" in result["error"]
+    assert not result["ok"] and "no recycle bin" in result["error"]
     assert fake_metashape["opened"] == [] and project.removable() == 4000
 
 
@@ -414,7 +414,7 @@ def test_lighten_refuses_open_projects_and_orphans(tmp_path, fake_metashape):
     assert not actions.lighten(held, actions.PERMANENT)["ok"] and fake_metashape["opened"] == []
     psx = make_project(tmp_path, "o", with_psx=False)
     orphan = scanner.measure_orphan(os.path.splitext(psx)[0] + ".files")
-    assert "pas de .psx" in actions.lighten(orphan, actions.PERMANENT)["error"]
+    assert "no .psx" in actions.lighten(orphan, actions.PERMANENT)["error"]
 
 
 def test_lighten_removes_an_old_lock_before_opening_the_project(tmp_path, fake_metashape):
@@ -425,12 +425,12 @@ def test_lighten_removes_an_old_lock_before_opening_the_project(tmp_path, fake_m
     result = actions.lighten(project, actions.PERMANENT, progress=steps.append)
     assert result["ok"], result
     assert not os.path.exists(lock) and project.lock == scanner.FREE
-    assert steps[0] == "verrou perime" and fake_metashape["opened"][0][0] == "ro"
+    assert steps[0] == "stale lock" and fake_metashape["opened"][0][0] == "ro"
 
 
 def test_lighten_explains_a_read_only_failure_with_the_lock_owner(tmp_path, monkeypatch):
     project = scanner.measure_project(make_project(tmp_path, "locked", lock=True))
-    project.lock, project.lock_owner = scanner.FREE, "OTHER-PC/HELIX"        # on saute le retrait du verrou
+    project.lock, project.lock_owner = scanner.FREE, "OTHER-PC/HELIX"        # skip the lock removal
 
     def read_only(path, read_only):
         raise OSError("Document.save(): editing is disabled in read-only mode")
@@ -456,9 +456,9 @@ def test_delete_can_bypass_an_open_lock_but_never_the_project_open_here(tmp_path
     assert actions.refusal(project) and actions.delete_refusal(project) == ""
     assert not actions.delete_project(project, actions.PERMANENT)["ok"] and os.path.exists(project.path)
     monkeypatch.setattr(actions, "current_document_path", lambda: project.path)
-    assert "ce Metashape" in actions.delete_refusal(project)
+    assert "this Metashape" in actions.delete_refusal(project)
     result = actions.delete_project(project, actions.PERMANENT, force=True)
-    assert not result["ok"] and os.path.exists(project.path)                 # ouvert ici : jamais
+    assert not result["ok"] and os.path.exists(project.path)                 # open here: never
     monkeypatch.setattr(actions, "current_document_path", lambda: "")
     assert actions.delete_project(project, actions.PERMANENT, force=True)["ok"]
     assert not os.path.exists(project.path)
@@ -468,10 +468,10 @@ def test_check_snapshots():
     before = [{"label": "C", "cameras": 3, "markers": 2, "dense": 1, "depth": 1}]
     assert actions.check_snapshots(before, [{"label": "C", "cameras": 3, "markers": 2, "dense": 0, "depth": 0}]) is None
     assert "markers" in actions.check_snapshots(before, [{"label": "C", "cameras": 3, "markers": 1, "dense": 0, "depth": 0}])
-    assert "reste" in actions.check_snapshots(before, [{"label": "C", "cameras": 3, "markers": 2, "dense": 1, "depth": 0}])
+    assert "remain" in actions.check_snapshots(before, [{"label": "C", "cameras": 3, "markers": 2, "dense": 1, "depth": 0}])
     assert "chunks" in actions.check_snapshots(before, [])
     still = [{"label": "C", "cameras": 3, "markers": 2, "dense": 1, "depth": 1}]
-    assert actions.check_snapshots(before, still, ("ortho",)) is None          # dense et depth non demandes : pas un probleme
+    assert actions.check_snapshots(before, still, ("ortho",)) is None          # dense and depth not requested: not a problem
 
 
 def test_log_is_written_as_csv(tmp_path, local_appdata):

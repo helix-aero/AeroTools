@@ -1,18 +1,18 @@
-"""Fenetre Aero-Exports (Qt) : on coche l'ortho et / ou le MNT, on choisit les coordonnees et un format, on exporte.
+"""Aero-Exports window (Qt): tick the orthomosaic and / or the DTM, choose the coordinates and a format, export.
 
-Les fichiers vont dans un dossier `Outputs` a cote du .psx, avec un nom court
-(`SITE_AAMMJJ_3cm_ortho.tif`, `SITE_AAMMJJ_3cm_mnt.tif`, `_dtm` si l'interface est en anglais). Si l'export existe
-deja, la fenetre demande : ecraser ou faire une nouvelle version (`_v2`).
+The files go to an `Outputs` folder next to the .psx, with a short name
+(`SITE_YYMMDD_3cm_ortho.tif`, `SITE_YYMMDD_3cm_dtm.tif`). If the export already exists,
+the window asks: overwrite or make a new version (`_v2`).
 
-Formats : GeoTIFF (3 reglages), JPEG 2000, ECW (Global Mapper), ou un dessin AutoCAD (TOPO.dxf / TOPO.dwg) qui pose les
-images (JPEG 2000 ou ECW) au bon endroit dans deux calques, ortho et MNT. Quand un logiciel manque (Global Mapper,
-AutoCAD, QGIS), la fenetre le dit, propose de designer le programme ou de l'acheter, et ne lance rien sans lui.
+Formats: GeoTIFF (3 settings), JPEG 2000, ECW (Global Mapper), or an AutoCAD drawing (TOPO.dxf / TOPO.dwg) that places the
+images (JPEG 2000 or ECW) at the right spot in two layers, orthomosaic and DTM. When a program is missing (Global Mapper,
+AutoCAD, QGIS), the window says so, offers to point to the program or to buy it, and does not start anything without it.
 
-Les coordonnees : le SCR du projet est affiche ; on peut exporter dans un autre SCR de la liste (catalogue officiel, rien a
-creer) avec son systeme d'altitude. Si la grille du geoide manque, la fenetre propose de la telecharger.
+Coordinates: the project CRS is shown; one can export in another CRS from the list (official catalogue, nothing to
+create) with its height system. If the geoid grid is missing, the window offers to download it.
 
-L'export lui-meme passe par l'API de Metashape (msapi.export_raster), qui travaille dans le fil principal : la
-fenetre reste vivante grace a processEvents pendant les rappels de progression.
+The export itself goes through Metashape's API (msapi.export_raster), which works in the main thread: the
+window stays alive thanks to processEvents during the progress callbacks.
 """
 
 import datetime
@@ -69,7 +69,7 @@ class ClickLabel(QtWidgets.QLabel):
 
 
 class ExistsDialog(QtWidgets.QDialog):
-    """« Ces fichiers existent deja » : ecraser, nouvelle version, ou annuler."""
+    """"These files already exist": overwrite, new version, or cancel."""
 
     def __init__(self, parent, count, next_version):
         super(ExistsDialog, self).__init__(parent)
@@ -112,12 +112,12 @@ class ExportDialog(QtWidgets.QDialog):
         self._native = {}
         self._jobs = []
         self._date = datetime.date.today()
-        self._missing = None                                # (outil, cle de texte) quand un logiciel manque
-        self._geoid_missing = None                          # id de la grille choisie qui manque (bloque l'export)
+        self._missing = None                                # (tool, text key) when a program is missing
+        self._geoid_missing = None                          # id of the chosen grid that is missing (blocks the export)
         self._geoid_busy = False
         self._geoid_states = {}
         self._project_epsg = None
-        self._geoid_ids = []                                # ids proposes au telechargement (la grille choisie, ou celles de la zone)
+        self._geoid_ids = []                                # ids offered for download (the chosen grid, or those of the zone)
         self._previous_preset = None
         self._tile_pixels = None
         self._preview = None                                # preview.Preview of the DEM (made when the user opens the look window)
@@ -189,7 +189,7 @@ class ExportDialog(QtWidgets.QDialog):
             self.raster_details[kind], self.raster_warnings[kind] = detail, warn
         self._build_look_row()
 
-        # -- coordonnees ----------------------------------------------------------------------
+        # -- coordinates ----------------------------------------------------------------------
         layout.addWidget(ui.label(i18n.t("export.crs_section"), "aeroSection"))
         self.crs = ui.label("", "aeroMeta")
         layout.addWidget(self.crs)
@@ -288,7 +288,7 @@ class ExportDialog(QtWidgets.QDialog):
         tool.addLayout(tool_row)
         layout.addWidget(self.tool_card)
 
-        # -- options avancees -------------------------------------------------------------------
+        # -- advanced options -------------------------------------------------------------------
         self.adv_toggle = ui.button("export.advanced", lambda: self._set_advanced(not self.adv_box.isVisible()), width=200)
         toggle_row = QtWidgets.QHBoxLayout()
         toggle_row.addWidget(self.adv_toggle)
@@ -386,7 +386,7 @@ class ExportDialog(QtWidgets.QDialog):
         try:
             self._follow_chunk()
         except Exception as exc:                            # a read of Metashape that fails must never disturb the window
-            journal.write("Aero-Exports : watch: {!r}".format(exc))
+            journal.write("Aero-Exports: watch: {!r}".format(exc))
 
     @staticmethod
     def _current_pin():
@@ -424,7 +424,7 @@ class ExportDialog(QtWidgets.QDialog):
         key = {"chunk": "export.chunk_changed", "dem": "export.dem_changed", "ortho": "export.ortho_changed",
                "shapes": "export.shapes_changed"}[reason]
         self.status.setText(i18n.t(key, name=self._chunk_label))
-        journal.write("Aero-Exports : {} ({}), now {}".format(reason, i18n.t(key, name=self._chunk_label), self._describe()))
+        journal.write("Aero-Exports: {} ({}), now {}".format(reason, i18n.t(key, name=self._chunk_label), self._describe()))
         return True
 
     def _describe(self):
@@ -444,7 +444,7 @@ class ExportDialog(QtWidgets.QDialog):
         return min(WIDTH, area.width() - SCREEN_MARGIN), min(HEIGHT, area.height() - SCREEN_MARGIN)
 
     def _radios(self, grid, row, title_key, choices, saved):
-        """Une ligne de ronds (choix unique) : renvoie le groupe, dont chaque bouton porte sa valeur."""
+        """A row of radio buttons (single choice): returns the group, each button carrying its value."""
         group = QtWidgets.QButtonGroup(self)
         holder = QtWidgets.QHBoxLayout()
         holder.setSpacing(theme.PAD_L)
@@ -578,13 +578,13 @@ class ExportDialog(QtWidgets.QDialog):
                 work = tempfile.mkdtemp(prefix="aero_preview_")
                 path = preview.fetch_small(msapi.export_raster, chunk, box, work, clip=self._boundary_clip())
             model = preview.Preview.from_tiff(path, exact=msapi.dem_range(chunk))
-            journal.write("Aero-Exports : preview of {}; DEM footprint: {:.1%} of the pixels have data".format(
+            journal.write("Aero-Exports: preview of {}; DEM footprint: {:.1%} of the pixels have data".format(
                 self._describe(), 1.0 - float(model.void.mean()) if model.valid else 0.0))
             if not model.valid:
                 problem = i18n.t("export.look_empty")
         except (ValueError, OSError, MemoryError) as exc:
             problem = i18n.t("export.look_failed", error=exc)
-            journal.write("Aero-Exports : apercu du MNT : {!r}".format(exc))
+            journal.write("Aero-Exports: DEM preview: {!r}".format(exc))
         finally:
             if work:
                 shutil.rmtree(work, ignore_errors=True)
@@ -622,10 +622,10 @@ class ExportDialog(QtWidgets.QDialog):
         button = group.checkedButton()
         return button.property("value") if button else None
 
-    # -- lecture du projet ----------------------------------------------------------------
+    # -- reading the project --------------------------------------------------------------
 
     def refresh(self):
-        """Relit le projet (ce qui existe, sa resolution, son nom) : a l'ouverture et a chaque retour devant."""
+        """Read the project again (what exists, its resolution, its name): on opening and each time it comes back to the front."""
         if self._busy:
             return
         # Pin the chunk with what we read from it: everything after (preview, export, clip, names) uses this chunk and this info,
@@ -688,12 +688,12 @@ class ExportDialog(QtWidgets.QDialog):
 
     @staticmethod
     def _cm_text(pixel_m):
-        """Taille de pixel en cm, sans zeros inutiles : 0.5 m -> « 50 », 0.0125 m -> « 1.25 »."""
+        """Pixel size in cm, without useless zeros: 0.5 m -> "50", 0.0125 m -> "1.25"."""
         text = "{:.2f}".format(pixel_m * CM).rstrip("0").rstrip(".")
         return text or "0"
 
     def _is_native(self, kind):
-        """True si le champ n'a pas ete touche (ou est vide ou faux) : on garde alors la grille de Metashape."""
+        """True if the field has not been touched (or is empty or invalid): Metashape's grid is then kept."""
         text = self.fields[kind].text().replace(",", ".").strip()
         try:
             value = float(text)
@@ -702,7 +702,7 @@ class ExportDialog(QtWidgets.QDialog):
         return value <= 0 or text == self._cm_text(self._native.get(kind, 0.0))
 
     def _pixel(self, kind):
-        """Taille de pixel voulue en metres (la taille native si le champ est intact, vide ou faux)."""
+        """Wanted pixel size in metres (the native size if the field is untouched, empty or invalid)."""
         if self._is_native(kind):
             return self._native.get(kind, 0.0)
         return float(self.fields[kind].text().replace(",", ".").strip()) / CM
@@ -784,7 +784,7 @@ class ExportDialog(QtWidgets.QDialog):
         self._refresh_boundary_note()
         self._refresh_look_text()
 
-    # -- logiciels externes ---------------------------------------------------------------
+    # -- external software ----------------------------------------------------------------
 
     def _detect_tools(self):
         self.tools = {"gm": external.find_global_mapper(config.get(SECTION, "path_gm") or ""),
@@ -792,7 +792,7 @@ class ExportDialog(QtWidgets.QDialog):
                       "gdal": external.find_gdal(config.get(SECTION, "path_gdal") or "")}
 
     def _requirement(self):
-        """(outil, cle de texte) du premier logiciel qui manque pour le format choisi, ou None."""
+        """(tool, text key) of the first program that is missing for the chosen format, or None."""
         key = self.preset.currentData()
         if key == "ecw" and not self.tools["gm"]:
             return "gm", "export.need_ecw"
@@ -840,7 +840,7 @@ class ExportDialog(QtWidgets.QDialog):
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
 
     def _cancel_tool(self):
-        """On renonce : retour au dernier format qui fonctionne."""
+        """Give up: back to the last format that works."""
         self.preset.setCurrentIndex(max(0, self.preset.findData("full")))
         if self._value(self.cad_images) == "ecw" and not self.tools["gm"]:
             self.cad_images.buttons()[0].setChecked(True)       # JPEG 2000
@@ -848,10 +848,10 @@ class ExportDialog(QtWidgets.QDialog):
             self.cad_format.buttons()[0].setChecked(True)       # DXF
         self._on_preset()
 
-    # -- coordonnees ----------------------------------------------------------------------
+    # -- coordinates ----------------------------------------------------------------------
 
     def _fill_crs(self):
-        """Systemes proposes : ceux du lieu du projet (base EPSG de PROJ), ou le resultat de la recherche saisie."""
+        """Systems offered: those of the project's location (PROJ's EPSG database), or the result of the search typed."""
         center = self._info.get("center")
         lon, lat = center if center else (None, None)
         text = self.crs_search.text().strip()
@@ -877,7 +877,7 @@ class ExportDialog(QtWidgets.QDialog):
         self._refresh_names()
 
     def _fill_vertical(self):
-        """Altitudes proposees : celles qui vont avec le SCR horizontal choisi, a l'endroit du projet (voir vertical.py)."""
+        """Altitudes offered: those that go with the chosen horizontal CRS, at the project's location (see vertical.py)."""
         center = self._info.get("center")
         lon, lat = center if center else (None, None)
         self.vert_box.blockSignals(True)
@@ -1011,9 +1011,9 @@ class ExportDialog(QtWidgets.QDialog):
         self._refresh_names()
 
     def _check_geoid(self):
-        """Etat de la grille d'altitude choisie dans notre dossier : absente ou perimee = bandeau orange, export gele, bouton de
-        telechargement. Sinon, propose les grilles de la zone du projet qui manquent (meme bandeau, « Plus tard » ; Exporter le fait
-        clignoter tant qu'on n'a pas choisi)."""
+        """State of the chosen height grid in our folder: missing or stale = orange banner, export frozen, download button.
+        Otherwise, offers the grids of the project's zone that are missing (same banner, "Later"; Export makes it
+        flash until a choice is made)."""
         if self._geoid_busy:
             return
         choice = self.vert_box.currentData()
@@ -1050,20 +1050,20 @@ class ExportDialog(QtWidgets.QDialog):
         self._refresh_buttons()
 
     def _style_geoid(self, on=True):
-        """Bandeau des grilles manquantes en orange (alerte du theme) ; `on=False` l'eteint (sert au clignotement)."""
+        """Banner of the missing grids in orange (the theme's alert); `on=False` turns it off (used for the flashing)."""
         self.geoid_card.setProperty("on", on)
         self.geoid_card.setProperty("danger", True)
         self.geoid_card.style().unpolish(self.geoid_card)
         self.geoid_card.style().polish(self.geoid_card)
 
     def _flash_geoid(self, steps=6):
-        """Fait clignoter le bandeau : on a cherche a exporter alors qu'une decision sur les grilles est attendue."""
+        """Make the banner flash: an export was attempted while a decision on the grids is awaited."""
         self._style_geoid(steps % 2 == 1 or steps == 0)
         if steps > 0:
             QtCore.QTimer.singleShot(130, lambda: self._flash_geoid(steps - 1))
 
     def _geoid_not_now(self):
-        """« Plus tard » : on ne reproposera pas ces grilles-la sur ce poste (le choix d'une grille manquante reste signale)."""
+        """"Later": these grids will not be offered again on this workstation (the choice of a missing grid is still flagged)."""
         old = list(config.get(SECTION, "geoid_declined") or [])
         config.put(SECTION, "geoid_declined", sorted(set(old) | set(self._geoid_ids)))
         self._check_geoid()
@@ -1090,12 +1090,12 @@ class ExportDialog(QtWidgets.QDialog):
                 try:
                     path = crs.download_geoid(vid, folder, overwrite=states.get(vid) == "stale",
                                               progress=lambda got, _t, base=before: state.update(done=base + got))
-                    journal.write("Aero-Exports : geoide telecharge : {}".format(path))
+                    journal.write("Aero-Exports: geoid downloaded: {}".format(path))
                 except FileExistsError:
                     pass
                 except Exception as exc:
-                    state["errors"].append("{} : {}".format(vid, str(exc) or repr(exc)))
-                    journal.write("Aero-Exports : geoide {} : {}".format(vid, state["errors"][-1]))
+                    state["errors"].append("{}: {}".format(vid, str(exc) or repr(exc)))
+                    journal.write("Aero-Exports: geoid {}: {}".format(vid, state["errors"][-1]))
                 state["done"] = before + crs.vertical_by_id(vid).get("size", 0)
 
         thread = threading.Thread(target=work, daemon=True)
@@ -1117,13 +1117,13 @@ class ExportDialog(QtWidgets.QDialog):
         self.status.setText(i18n.t("export.geoid_done", name=", ".join(ids)))
 
     def _vertical_choice(self):
-        """Identifiant de la grille d'altitude a appliquer aux MNT, ou None (SCR du projet, ou hauteurs ellipsoidales)."""
+        """Identifier of the height grid to apply to the DTMs, or None (project CRS, or ellipsoidal heights)."""
         choice = self.vert_box.currentData()
         return None if choice in (None, SAME, "ellipsoid") or self.crs_box.currentData() == SAME else choice
 
     def _target(self):
-        """(SCR horizontal de sortie ou None, texte d'erreur). Les hauteurs sont ellipsoidales a la sortie de Metashape ; l'altitude
-        choisie est calculee ensuite par AeroTools."""
+        """(output horizontal CRS or None, error text). Heights are ellipsoidal as they leave Metashape; the chosen
+        altitude is then computed by AeroTools."""
         epsg = self.crs_box.currentData()
         if epsg in (None, SAME):
             return None, ""
@@ -1132,17 +1132,17 @@ class ExportDialog(QtWidgets.QDialog):
             return None, i18n.t("export.crs_refused")
         return target, ""
 
-    # -- options avancees -----------------------------------------------------------------
+    # -- advanced options -----------------------------------------------------------------
 
     def _set_advanced(self, shown):
         self.adv_box.setVisible(shown)
         self.adv_toggle.setText(("▾ " if shown else "▸ ") + i18n.t("export.advanced"))
 
     def _fill_tiles(self):
-        """Tailles de dalle rondes, compatibles avec les pixels choisis, autour du tiers de la plus grande emprise."""
+        """Round tile sizes, compatible with the chosen pixels, around a third of the largest extent."""
         pixels = [round(self._pixel(k), 4) for k in plan.KINDS if self.cards[k].button.isChecked() and self._pixel(k) > 0]
         if pixels == self._tile_pixels and self.tile_box.count():
-            return                                         # memes pixels : on garde la taille deja choisie
+            return                                         # same pixels: the size already chosen is kept
         self._tile_pixels = pixels
         self.tile_box.blockSignals(True)
         self.tile_box.clear()
@@ -1167,7 +1167,7 @@ class ExportDialog(QtWidgets.QDialog):
             return self.tile_box.currentData()
         return None
 
-    # -- noms -------------------------------------------------------------------------------
+    # -- names ------------------------------------------------------------------------------
 
     def _on_preset(self, *_args):
         key = self.preset.currentData()
@@ -1201,7 +1201,7 @@ class ExportDialog(QtWidgets.QDialog):
         return naming.outputs_folder(self._psx) if self._psx else ""
 
     def _plan(self, version=1):
-        """Liste des fichiers pour un numero de version (1 = noms de base ; None = premier numero libre)."""
+        """List of the files for a version number (1 = base names; None = first free number)."""
         wanted = self._wanted()
         return plan.build_jobs(self.site.text().strip(), self._date, wanted, self.preset.currentData(), self._folder(),
                                native={k for k in wanted if self._is_native(k)}, cad=self._cad(),
@@ -1284,11 +1284,11 @@ class ExportDialog(QtWidgets.QDialog):
         if chunk is None:
             self._finish(i18n.t("export.no_chunk"), "error")
             return
-        if self._geoid_ids and self.geoid_card.isVisible():     # grilles de la zone : Telecharger ou Plus tard d'abord
+        if self._geoid_ids and self.geoid_card.isVisible():     # grids of the zone: Download or Later first
             self._flash_geoid()
             return
         jobs = list(self._jobs)
-        if self._existing(jobs):                            # l'export existe deja : ecraser ou nouvelle version
+        if self._existing(jobs):                            # the export already exists: overwrite or new version
             try:
                 following = self._plan(None)[0].version
             except ValueError:
@@ -1321,8 +1321,8 @@ class ExportDialog(QtWidgets.QDialog):
                                tick=QtWidgets.QApplication.processEvents, vertical=self._vertical_choice(),
                                proj=projtool.Proj(geoid_dir=crs.own_dir()),
                                epsg=int(self.crs_box.currentData()) if target is not None else None, look=looks.load(),
-                               clip_boundary=self._boundary_clip(), log=lambda text: journal.write("Aero-Exports : " + text))
-        journal.write("Aero-Exports : export of {}".format(self._describe()))
+                               clip_boundary=self._boundary_clip(), log=lambda text: journal.write("Aero-Exports: " + text))
+        journal.write("Aero-Exports: export of {}".format(self._describe()))
         self._busy = True
         self.bar.setRange(0, 1000)
         self.bar.setValue(0)
@@ -1334,7 +1334,7 @@ class ExportDialog(QtWidgets.QDialog):
             self.bar.setValue(int(1000 * max(0.0, min(1.0, fraction))))
             if name:
                 self.status.setText(i18n.t("export.working", name=name, i=1, n=len(jobs)))
-            if not ctx.native:                    # appele par Metashape en plein calcul : pas de boucle d'evenements (crash de repaint)
+            if not ctx.native:                    # called by Metashape in the middle of its computation: no event loop (repaint crash)
                 QtWidgets.QApplication.processEvents()
 
         problem, result = "", None
@@ -1342,22 +1342,22 @@ class ExportDialog(QtWidgets.QDialog):
             result = pipeline.run(ctx, jobs, progress)
         except pipeline.Failure as exc:
             problem = i18n.t("export.failed", name=ctx.failed or jobs[0].name, error=exc)
-            journal.write("Aero-Exports : {}: {}".format(ctx.failed, exc))
+            journal.write("Aero-Exports: {}: {}".format(ctx.failed, exc))
         except Exception as exc:
             problem = i18n.t("export.failed", name=ctx.failed or jobs[0].name, error=repr(exc))
-            journal.write("Aero-Exports : {!r}".format(exc))
-            journal.write("Aero-Exports : {}".format(traceback.format_exc().strip().replace("\n", " | ")))
+            journal.write("Aero-Exports: {!r}".format(exc))
+            journal.write("Aero-Exports: {}".format(traceback.format_exc().strip().replace("\n", " | ")))
         self._busy = False
         if problem:
             self._finish(problem, "error")
             return
         for path, _size in result.files:
-            journal.write("Aero-Exports : {}".format(path))
+            journal.write("Aero-Exports: {}".format(path))
         written = sum(size for _path, size in result.files)
         text = i18n.t("export.done", n=len(result.files), size=size_text(written))
         text += self._cad_report(result)
         self._finish(text, "ok" if not result.warnings and not (result.check and result.check["failed"]) else "error")
-        self._refresh_names()                           # le numero de version suivant se met a jour
+        self._refresh_names()                           # the next version number is updated
 
     @staticmethod
     def _cad_report(result):
@@ -1392,7 +1392,7 @@ class ExportDialog(QtWidgets.QDialog):
 
 
 def show(parent=None, existing=None):
-    """Ouvre la fenetre (non modale). Renvoie l'instance, a garder."""
+    """Open the window (non-modal). Returns the instance, to be kept."""
     dialog = existing
     try:
         if dialog is not None:

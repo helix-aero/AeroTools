@@ -1,15 +1,15 @@
-"""Aero-Exports : presets et liste des fichiers a ecrire (fonctions pures : ni Qt, ni Metashape).
+"""Aero-Exports: presets and list of the files to write (pure functions: no Qt, no Metashape).
 
-Un preset dit, pour l'ortho et pour le MNT, le format du fichier et sa compression. La fenetre en tire la liste
-des fichiers (`build_jobs`) : un nom court par fichier, dans le dossier Outputs, avec un numero de version si le
-meme export existe deja. Le travail lui-meme (appel de Metashape) est dans msapi.export_raster ; la conversion en
-JPEG 2000 / ECW et l'ecriture du DXF sont dans pipeline.py.
+A preset says, for the orthomosaic and for the DTM, the file format and its compression. The window derives the list
+of files from it (`build_jobs`): one short name per file, in the Outputs folder, with a version number if the
+same export already exists. The work itself (calling Metashape) is in msapi.export_raster; the conversion to
+JPEG 2000 / ECW and the writing of the DXF are in pipeline.py.
 
-Presets :
-    full / quick / jpeg   GeoTIFF pleine qualite, GeoTIFF compresse, JPEG + fichier monde (Metashape seul)
-    jp2                   JPEG 2000 (GDAL ou Global Mapper)
+Presets:
+    full / quick / jpeg   full-quality GeoTIFF, compressed GeoTIFF, JPEG + world file (Metashape alone)
+    jp2                   JPEG 2000 (GDAL or Global Mapper)
     ecw                   ECW (Global Mapper)
-    cad                   TOPO.dxf ou TOPO.dwg + 00_Assets\\ortho + 00_Assets\\DTM, images en JPEG 2000 ou ECW
+    cad                   TOPO.dxf or TOPO.dwg + 00_Assets\\ortho + 00_Assets\\DTM, images in JPEG 2000 or ECW
 """
 
 import collections
@@ -25,24 +25,24 @@ CAD_IMAGES = ("jp2", "ecw")
 CAD_BASENAME = "TOPO"
 PICTURE_PRESETS = {"jp2": "jp2", "ecw": "ecw"}      # presets that can add a coloured DEM picture, and its extension
 
-# Un fichier a ecrire.
-# `pixel_m` sert au nom ; `native` : on garde la grille de Metashape (rien n'est rechantillonne) ;
-# `extra` : dict (CAD : chemin et extension de l'image de visualisation du MNT, calque, dossier).
+# A file to write.
+# `pixel_m` goes into the name; `native`: Metashape's grid is kept (nothing is resampled);
+# `extra`: dict (CAD: path and extension of the DTM display picture, layer, folder).
 Job = collections.namedtuple("Job", "kind name path pixel_m spec version native extra")
 Job.__new__.__defaults__ = (None,)
 
-# Le MNT est toujours un GeoTIFF flottant compresse sans perte.
+# The DTM is always a losslessly compressed floating-point GeoTIFF.
 _DEM_SPEC = {"ext": "tif", "image": "tiff", "compression": "deflate", "tiled": True, "overviews": False,
              "world": False, "white": False, "alpha": False}
 
 
 def _raw_ortho(post, ext):
-    """Ortho brute (GeoTIFF RVB sans perte, fond blanc) que GDAL / Global Mapper convertissent ensuite."""
+    """Raw orthomosaic (lossless RGB GeoTIFF, white background) that GDAL / Global Mapper then convert."""
     return {"ext": ext, "image": "tiff", "compression": "lzw", "quality": 90, "tiled": True, "overviews": False,
             "world": False, "white": True, "alpha": False, "post": post}
 
 
-# `title` : cle de texte de la fenetre. `ortho` : reglages passes a msapi.export_raster.
+# `title`: text key of the window. `ortho`: settings passed to msapi.export_raster.
 PRESETS = (
     {"key": "full", "title": "export.preset_full", "tip": "export.preset_full_tip",
      "ortho": {"ext": "tif", "image": "tiff", "compression": "lzw", "quality": 90, "tiled": True,
@@ -64,8 +64,8 @@ PRESETS = (
      "ortho": _raw_ortho("cad", "jp2"), "dem": _DEM_SPEC, "needs": "cad"},
 )
 
-# Au-dela, un TIFF classique (4 Go) ne suffit plus : on demande un BigTIFF. Mesure sur la taille brute, sans
-# compter la compression, pour ne jamais rater le seuil.
+# Beyond this, a classic TIFF (4 GB) is no longer enough: a BigTIFF is requested. Measured on the raw size, without
+# counting compression, so the threshold is never missed.
 BIGTIFF_RAW_BYTES = 3.5e9
 
 
@@ -77,7 +77,7 @@ def preset(key):
 
 
 def spec_for(preset_key, kind, cad=None):
-    """Reglages d'un type de fichier. En CAD, l'extension suit le choix d'images (jp2 / ecw)."""
+    """Settings of a file type. In CAD, the extension follows the image choice (jp2 / ecw)."""
     spec = dict(preset(preset_key)[kind])
     if preset_key == CAD and kind == ORTHO:
         images = (cad or {}).get("images", "jp2")
@@ -86,12 +86,12 @@ def spec_for(preset_key, kind, cad=None):
 
 
 def needs_bigtiff(width_px, height_px, bands=4, bytes_per_sample=1):
-    """True si l'image brute depasse BIGTIFF_RAW_BYTES (ortho 4 bandes a 8 bits ; MNT 1 bande flottante)."""
+    """True if the raw image exceeds BIGTIFF_RAW_BYTES (orthomosaic 4 bands of 8 bits; DTM 1 floating-point band)."""
     return float(width_px) * float(height_px) * bands * bytes_per_sample > BIGTIFF_RAW_BYTES
 
 
 def aux_names(name, spec):
-    """Fichiers que Metashape ecrit a cote du fichier principal : fichier monde et .prj d'un JPEG."""
+    """Files that Metashape writes next to the main file: world file and .prj of a JPEG."""
     stem = os.path.splitext(name)[0]
     return [stem + ".jgw", stem + ".prj"] if spec.get("world") else []
 
@@ -102,7 +102,7 @@ def cad_dxf_name(version, fmt="dxf"):
 
 
 def listing_of(folder):
-    """Chemins relatifs (barres obliques, minuscules) de tous les fichiers sous `folder` : pour next_free_version."""
+    """Relative paths (forward slashes, lower case) of all the files under `folder`: for next_free_version."""
     found = []
     for base, _dirs, names in os.walk(folder):
         for name in names:
@@ -112,15 +112,15 @@ def listing_of(folder):
 
 def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listing=None, native=(),
                cad=None, version=None, dem_picture=False):
-    """Liste des fichiers a ecrire.
+    """List of the files to write.
 
-    `wanted` : {"ortho": taille de pixel en metres, "dem": ...} pour ce qui est coche (les autres sont absents).
-    `native` : les types dont on garde la grille native (pixel non modifie par l'utilisateur).
-    `cad` : {"format": "dxf" | "dwg", "images": "jp2" | "ecw"} quand le preset est CAD.
-    `dem_picture` : ecrire aussi l'image coloree du MNT (meme nom, extension .jp2 / .ecw) : presets JPEG 2000 et ECW seulement
-    (avec un GeoTIFF, le nom serait celui du MNT lui-meme).
-    `version` : numero impose (1 = ecraser) ; sinon le plus petit pour lequel aucun des fichiers prevus n'existe deja
-    dans `folder` (l'ortho et le MNT d'un meme export partagent le meme numero).
+    `wanted`: {"ortho": pixel size in metres, "dem": ...} for what is ticked (the others are absent).
+    `native`: the types whose native grid is kept (pixel not changed by the user).
+    `cad`: {"format": "dxf" | "dwg", "images": "jp2" | "ecw"} when the preset is CAD.
+    `dem_picture`: also write the coloured picture of the DTM (same name, extension .jp2 / .ecw): JPEG 2000 and ECW presets only
+    (with a GeoTIFF, the name would be that of the DTM itself).
+    `version`: imposed number (1 = overwrite); otherwise the smallest one for which none of the planned files already exists
+    in `folder` (the orthomosaic and the DTM of one export share the same number).
     """
     kinds = [kind for kind in KINDS if wanted.get(kind)]
     if not kinds:
@@ -129,7 +129,7 @@ def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listi
     cad = dict({"format": "dxf", "images": "jp2"}, **(cad or {})) if is_cad else None
 
     def locate(kind, version_number):
-        """(nom, chemin, extra) de ce que produit un type pour un numero de version."""
+        """(name, path, extra) of what one type produces for a version number."""
         spec = spec_for(preset_key, kind, cad)
         name = naming.build_name(site, date, wanted[kind], kind, spec["ext"], version=version_number,
                                  date_style=date_style)
@@ -177,7 +177,7 @@ def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listi
 
 
 def planned_files(jobs, preset_key, cad=None):
-    """Chemins de tout ce qu'un export ecrit (fichiers principaux, annexes, DXF / DWG) : pour savoir ce qui existe deja."""
+    """Paths of everything an export writes (main files, side files, DXF / DWG): to know what already exists."""
     paths = []
     for job in jobs:
         paths.append(job.path)

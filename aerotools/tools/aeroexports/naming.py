@@ -1,16 +1,16 @@
-"""Aero-Exports : noms de fichiers de sortie (fonctions pures, sans Qt ni Metashape).
+"""Aero-Exports: output file names (pure functions, no Qt, no Metashape).
 
-Regle : ``<site>_<date>_<resolution>[_v<N>][_<tuile>]_<type>.<ext>``
+Rule: ``<site>_<date>_<resolution>[_v<N>][_<tile>]_<type>.<ext>``
 
-    CITADELLE_260704_3cm_ortho.tif        ortho, 3 cm
-    CITADELLE_260704_5cm_mnt.tif          MNT   (_dtm si l'interface est en anglais)
-    CITADELLE_260704_3cm_v2_ortho.ecw     deuxieme export le meme jour
-    CITADELLE_260704_3cm_R02C05_ortho.tif dalle ligne 2, colonne 5 (voir tiling.py)
+    CITADELLE_260704_3cm_ortho.tif        orthomosaic, 3 cm
+    CITADELLE_260704_5cm_dtm.tif          DTM
+    CITADELLE_260704_3cm_v2_ortho.ecw     second export on the same day
+    CITADELLE_260704_3cm_R02C05_ortho.tif tile at row 2, column 5 (see tiling.py)
 
-Le type (_ortho / _mnt) est TOUJOURS la fin du nom : une dalle, une version ou un doublon ne le
-decale jamais, et on retrouve tout ce qui est ortho avec ``*_ortho.*``.
+The type (_ortho / _dtm) is ALWAYS the end of the name: a tile, a version or a duplicate never
+shifts it, and everything that is an orthomosaic is found with ``*_ortho.*``.
 
-Python 3.9, aucune dependance.
+Python 3.9, no dependency.
 """
 
 import datetime
@@ -21,26 +21,30 @@ from collections import Counter
 
 KINDS = {"ortho": "ortho", "dem": "dtm"}
 
-# Fichiers qui accompagnent un export et qui comptent pour detecter un doublon.
+# Files that accompany an export and count when detecting a duplicate.
 AUX_EXTS = (".tfw", ".wld", ".jgw", ".prj", ".aux.xml", ".ovr", ".xml", ".dxf", ".dwg", ".ers", ".txt", ".csv")
 KNOWN_EXTS = (".tif", ".tiff", ".ecw", ".jp2", ".jpg", ".jpeg", ".png", ".dxf", ".dwg", ".xyz", ".asc")
 
 WINDOWS_FORBIDDEN = '<>:"/\\|?*'
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL"} | {"COM%d" % i for i in range(1, 10)} | {"LPT%d" % i for i in range(1, 10)}
+# Recognition lists, not prose: generic folder names, as found in real project trees, that say nothing about
+# the site; guess_site() skips them and looks higher up the path.
 GENERIC_FOLDERS = {
     "metashape", "photogrammetry", "photogrammetrie", "photos", "projet", "projets", "project", "projects", "drone",
     "outputs", "output", "export", "exports", "livrable", "livrables", "1_livrable", "ortho", "mnt", "dtm", "dem",
     "data", "donnees", "travail", "work", "psx", "agisoft",
 }
+# Recognition list, not prose: generic words, as found in real project and file names, dropped from a file
+# name when deriving the site name.
 GENERIC_TOKENS = {
     "ortho", "orthomosaic", "orthophoto", "mnt", "dtm", "dem", "mns", "final", "finale", "copy", "copie", "test",
     "tmp", "temp", "new", "nouveau", "backup", "bak", "psx", "metashape", "project", "projet", "untitled",
 }
-MAX_PATH_SAFE = 240   # marge sous les 260 caracteres de Windows (le chemin complet, dossier compris)
+MAX_PATH_SAFE = 240   # margin under Windows' 260 characters (the full path, folder included)
 
 
 # ---------------------------------------------------------------------------
-# Nettoyage
+# Cleaning
 # ---------------------------------------------------------------------------
 
 def strip_accents(text):
@@ -49,12 +53,12 @@ def strip_accents(text):
 
 
 def sanitize_token(text, max_len=None):
-    """Transforme un texte libre en jeton de nom de fichier : ASCII, lettres / chiffres / tiret / souligne.
+    """Turn free text into a file name token: ASCII, letters / digits / hyphen / underscore.
 
-    Les espaces et ponctuations deviennent un souligne unique ; jamais de caractere interdit sous Windows,
-    jamais de point ou d'espace final, jamais de nom reserve (CON, PRN, COM1...).
+    Spaces and punctuation become a single underscore; never a character forbidden on Windows,
+    never a trailing dot or space, never a reserved name (CON, PRN, COM1...).
     """
-    text = strip_accents(str(text or "")).replace("ß", "ss").replace("œ", "oe")
+    text = strip_accents(str(text or "")).replace("\u00df", "ss").replace("\u0153", "oe")
     text = re.sub(r"[^A-Za-z0-9\-]+", "_", text)
     text = re.sub(r"_+", "_", text).strip("_-")
     if max_len and len(text) > max_len:
@@ -65,7 +69,7 @@ def sanitize_token(text, max_len=None):
 
 
 def is_valid_windows_name(name):
-    """True si `name` (nom de fichier sans dossier) est acceptable sous Windows."""
+    """True if `name` (file name without folder) is acceptable on Windows."""
     if not name or name != name.rstrip(" ."):
         return False
     if any(ch in WINDOWS_FORBIDDEN or ord(ch) < 32 for ch in name):
@@ -81,11 +85,11 @@ _DATE_LIKE = re.compile(r"^(?:\d{6}|\d{8}|\d{4}-\d{2}-\d{2}|\d{2}-\d{2}-\d{4}|v\
 
 
 def guess_site(psx_path, max_len=16):
-    """Propose un nom de site court a partir du .psx (puis du dossier parent si le nom est generique).
+    """Propose a short site name from the .psx (then from the parent folder if the name is generic).
 
     CITADELLE_Pompeani.psx                      -> CITADELLE
-    2026-07-04.psx dans ...\\Bouygues\\EDF\\     -> EDF
-    Le resultat n'est qu'une proposition : l'utilisateur peut la corriger dans la fenetre.
+    2026-07-04.psx in ...\\Bouygues\\EDF\\       -> EDF
+    The result is only a proposal: the user can correct it in the window.
     """
     stem = os.path.splitext(os.path.basename(psx_path or ""))[0]
     folder_names = []
@@ -118,7 +122,7 @@ def guess_site(psx_path, max_len=16):
 # ---------------------------------------------------------------------------
 
 def parse_exif_date(text):
-    """'2026:07:04 09:12:33' (ou ISO) -> datetime.date, ou None."""
+    """'2026:07:04 09:12:33' (or ISO) -> datetime.date, or None."""
     if not text:
         return None
     match = re.match(r"\s*(\d{4})[:\-/](\d{2})[:\-/](\d{2})", str(text))
@@ -131,9 +135,9 @@ def parse_exif_date(text):
 
 
 def flight_date(exif_dates, today=None):
-    """Date de vol : le jour le plus frequent parmi les dates EXIF des photos (robuste aux photos aberrantes).
+    """Flight date: the most frequent day among the EXIF dates of the photos (robust to stray photos).
 
-    Sans date exploitable : `today` (ou la date du jour). Renvoie (date, source) avec source 'exif' ou 'today'.
+    Without a usable date: `today` (or the current date). Returns (date, source) with source 'exif' or 'today'.
     """
     days = [d for d in (parse_exif_date(x) for x in (exif_dates or [])) if d and d.year >= 2000]
     if days:
@@ -144,7 +148,7 @@ def flight_date(exif_dates, today=None):
 
 
 def format_date(date, style="short"):
-    """short = YYMMDD (le plus court), long = YYYYMMDD, iso = YYYY-MM-DD."""
+    """short = YYMMDD (the shortest), long = YYYYMMDD, iso = YYYY-MM-DD."""
     if isinstance(date, str):
         date = parse_exif_date(date) or datetime.date.today()
     if style == "long":
@@ -159,24 +163,24 @@ def format_date(date, style="short"):
 # ---------------------------------------------------------------------------
 
 def _half_up(value):
-    """Arrondi 'commercial' (2.5 -> 3), pas l'arrondi bancaire de round()."""
+    """Round half up (2.5 -> 3), not the banker's rounding of round()."""
     return int(value + 0.5)
 
 
 def format_resolution(pixel_m):
-    """Taille de pixel en metres -> texte court : 0.03 -> '3cm', 0.008 -> '8mm', 2.0 -> '2m'.
+    """Pixel size in metres -> short text: 0.03 -> '3cm', 0.008 -> '8mm', 2.0 -> '2m'.
 
-    La resolution du NOM est arrondie (0.0312871 donne '31mm'), celle du FICHIER reste celle demandee.
-    Regles : >= 1 m entier -> '2m' ; multiple entier de cm -> '5cm' ; multiple entier de mm -> '8mm' ;
-    sinon on arrondit au mm le plus proche (jamais de virgule dans un nom de fichier).
+    The resolution in the NAME is rounded (0.0312871 gives '31mm'), the one of the FILE stays the one requested.
+    Rules: whole metres >= 1 m -> '2m'; whole centimetres -> '5cm'; whole millimetres -> '8mm';
+    otherwise round to the nearest mm (never a decimal separator in a file name).
     """
     if pixel_m is None or pixel_m <= 0:
-        raise ValueError("taille de pixel invalide : %r" % (pixel_m,))
+        raise ValueError("invalid pixel size: %r" % (pixel_m,))
     cm = pixel_m * 100.0
     mm = pixel_m * 1000.0
     if pixel_m >= 1.0 and abs(pixel_m - round(pixel_m)) < 1e-9:
         return "%dm" % round(pixel_m)
-    if abs(cm - round(cm)) < 0.02 and round(cm) >= 1:     # 0.0300 ou 0.03000001 -> 3cm
+    if abs(cm - round(cm)) < 0.02 and round(cm) >= 1:     # 0.0300 or 0.03000001 -> 3cm
         return "%dcm" % round(cm)
     if _half_up(mm) >= 1:
         return "%dmm" % _half_up(mm)
@@ -184,7 +188,7 @@ def format_resolution(pixel_m):
 
 
 # ---------------------------------------------------------------------------
-# Construction du nom
+# Building the name
 # ---------------------------------------------------------------------------
 
 def kind_label(kind):
@@ -193,13 +197,13 @@ def kind_label(kind):
 
 
 def build_name(site, date, pixel_m, kind, ext, version=1, tile=None, date_style="short"):
-    """Nom de fichier complet (sans dossier).
+    """Complete file name (without folder).
 
-    `kind` : 'ortho' ou 'dem' ; `ext` avec ou sans point ; `version` > 1 ajoute _v<N> ;
-    `tile` : jeton de dalle deja formate (ex. 'R02C05', voir tiling.tile_name).
+    `kind`: 'ortho' or 'dem'; `ext` with or without the dot; `version` > 1 adds _v<N>;
+    `tile`: already formatted tile token (e.g. 'R02C05', see tiling.tile_name).
     """
     if kind not in ("ortho", "dem"):
-        raise ValueError("kind doit etre 'ortho' ou 'dem' : %r" % (kind,))
+        raise ValueError("kind must be 'ortho' or 'dem': %r" % (kind,))
     parts = [sanitize_token(site) or "SITE", format_date(date, date_style), format_resolution(pixel_m)]
     if version and int(version) > 1:
         parts.append("v%d" % int(version))
@@ -209,12 +213,12 @@ def build_name(site, date, pixel_m, kind, ext, version=1, tile=None, date_style=
     ext = ext if ext.startswith(".") else "." + ext
     name = "_".join(parts) + ext.lower()
     if not is_valid_windows_name(name):
-        raise ValueError("nom invalide sous Windows : %r" % (name,))
+        raise ValueError("invalid name on Windows: %r" % (name,))
     return name
 
 
 def stem_of(name):
-    """Nom sans extension (gere .aux.xml)."""
+    """Name without extension (handles .aux.xml)."""
     exts = sorted(AUX_EXTS + KNOWN_EXTS, key=len, reverse=True)
     changed = True
     while changed:
@@ -228,24 +232,24 @@ def stem_of(name):
 
 
 def next_free_version(folder, planned_names, listing=None):
-    """Plus petit N >= 1 tel qu'aucun fichier prevu (avec _v<N>) n'existe deja dans `folder`.
+    """Smallest N >= 1 such that no planned file (with _v<N>) already exists in `folder`.
 
-    `planned_names` : fonction version -> liste de noms (tous types, toutes extensions, y compris
-    fichiers auxiliaires), pour que l'ortho et le MNT d'un meme export partagent le meme _vN.
-    `listing` : liste de noms deja presents (tests) ; sinon os.listdir.
+    `planned_names`: function version -> list of names (all types, all extensions, auxiliary
+    files included), so that the orthomosaic and the DTM of one export share the same _vN.
+    `listing`: list of names already present (tests); otherwise os.listdir.
     """
     existing = set(n.lower() for n in (listing if listing is not None else (os.listdir(folder) if os.path.isdir(folder) else [])))
     for version in range(1, 1000):
         if not any(n.lower() in existing for n in planned_names(version)):
             return version
-    raise RuntimeError("plus de 999 versions du meme export")
+    raise RuntimeError("more than 999 versions of the same export")
 
 
 def check_path_length(folder, names):
-    """Liste les chemins complets trop longs pour Windows (> MAX_PATH_SAFE)."""
+    """List the full paths that are too long for Windows (> MAX_PATH_SAFE)."""
     return [os.path.join(folder, n) for n in names if len(os.path.join(os.path.abspath(folder), n)) > MAX_PATH_SAFE]
 
 
 def outputs_folder(psx_path):
-    """Dossier de sortie : ``Outputs`` a cote du .psx (non cree ici)."""
+    """Output folder: ``Outputs`` next to the .psx (not created here)."""
     return os.path.join(os.path.dirname(os.path.abspath(psx_path)), "Outputs")

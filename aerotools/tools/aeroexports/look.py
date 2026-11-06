@@ -114,7 +114,8 @@ def _clean(entry):
     if any(not 0.0 <= p <= 1.0 for p, _rgb in stops) or any(b[0] <= a[0] for a, b in zip(stops, stops[1:])):
         return None
     label = entry.get("label")
-    if isinstance(label, dict):                       # older palette files: {"en": ...}
+    if isinstance(label, dict):                       # a label may also be given as a mapping {"en": ...}
+
         label = label.get("en")
     return {"id": ident, "label": label if isinstance(label, str) else "", "stops": stops}
 

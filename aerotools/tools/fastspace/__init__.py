@@ -1,7 +1,8 @@
-"""Fast Space : libere de la place en allegeant ou en supprimant les anciens projets Metashape.
+"""Fast Space: frees disk space by lightening or deleting old Metashape projects.
 
-  scanner.py   cherche les .psx d'un disque et mesure nuage dense, cartes de profondeur, projet entier
-  actions.py   alleger (doux) ou supprimer (dur), corbeille ou definitif, garde-fous, journal
-  dialog.py    la fenetre (tableau, tri, selection, confirmation avec DELETE)
-  tool.py      point d'entree du menu Aero
+  scanner.py   finds the .psx files of a drive and measures dense cloud, depth maps and the whole project
+  actions.py   lighten (soft) or delete (hard), recycle bin or permanent, safeguards, journal
+  dialog.py    the window (table, sorting, selection, confirmation with DELETE)
+  tool.py      entry point of the Aero menu
+
 """

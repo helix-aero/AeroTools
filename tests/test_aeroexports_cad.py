@@ -1,4 +1,4 @@
-"""Aero-Exports : DXF, GeoTIFF, presets CAD / JPEG 2000 / ECW, tuiles, chaine d'export et logiciels externes (sans Metashape)."""
+"""Aero-Exports: DXF, GeoTIFF, CAD / JPEG 2000 / ECW presets, tiles, export chain and external software (without Metashape)."""
 import datetime
 import os
 import struct
@@ -10,10 +10,10 @@ from aerotools.tools.aeroexports import dxfout, external, geotiff, pipeline, pla
 DAY = datetime.date(2026, 7, 4)
 
 
-# -- un GeoTIFF minimal, ecrit a la main -----------------------------------------------------------
+# -- a minimal GeoTIFF, written by hand ------------------------------------------------------------
 
 def write_geotiff(path, width, height, left, top, pixel):
-    """TIFF classique avec ModelPixelScale et ModelTiepoint : tout ce que lit geotiff.read_geotiff."""
+    """Classic TIFF with ModelPixelScale and ModelTiepoint: all that geotiff.read_geotiff reads."""
     entries = []
     blobs = b""
     data_start = 8 + 2 + 12 * 4 + 4
@@ -62,7 +62,7 @@ def pairs(text):
 
 
 def test_dxf_has_the_sections_autocad_needs_and_the_image(tmp_path):
-    text = dxfout.build_dxf([image(), image("260704_0.2_MNT", r"00_Assets\DTM\a.jp2")])
+    text = dxfout.build_dxf([image(), image("260704_0.2_DTM", r"00_Assets\DTM\a.jp2")])
     names = [value for code, value in pairs(text) if code == "2"]
     for section in ("HEADER", "CLASSES", "TABLES", "BLOCKS", "ENTITIES", "OBJECTS"):
         assert section in names
@@ -84,7 +84,7 @@ def test_dxf_places_the_image_by_its_lower_left_corner_and_pixel_size():
 def test_dxf_layers_and_handles_are_unique_and_names_are_cleaned():
     text = dxfout.build_dxf([image("a:b/c"), image("a:b/c"), image("other")])
     layers = [v for (c, v), nxt in zip(pairs(text), pairs(text)[1:]) if c == "100" and v == "AcDbLayerTableRecord"]
-    assert len(layers) == 3                                   # 0 + deux calques (le doublon est regroupe)
+    assert len(layers) == 3                                   # 0 + two layers (the duplicate is merged)
     assert "a_b_c" in text and "a:b/c" not in text
     handles = [v for c, v in pairs(text) if c == "5"]
     assert len(handles) == len(set(handles))
@@ -99,11 +99,11 @@ def test_dxf_is_written_with_crlf_and_relative_path_helpers(tmp_path):
     dxfout.write_dxf(dxf, [image()])
     assert b"\r\n" in open(dxf, "rb").read()
     assert dxfout.layer_name("260704", "0.1", "ortho") == "260704_0.1_ortho"
-    assert dxfout.layer_name("260704", "0.2", "dem") == "260704_0.2_MNT"
+    assert dxfout.layer_name("260704", "0.2", "dem") == "260704_0.2_DTM"
     assert dxfout.placement(10.0, 20.0, 30.0, 40.0, (100, 200)) == ((10.0, 20.0), (0.2, 0.1))
 
 
-# -- presets et noms -----------------------------------------------------------------------------------
+# -- presets and names ---------------------------------------------------------------------------------
 
 def test_new_presets_exist_and_export_a_raw_geotiff_first():
     keys = [item["key"] for item in plan.PRESETS]
@@ -149,10 +149,10 @@ def test_cad_versions_look_inside_the_asset_folders(tmp_path):
     assert plan.cad_dxf_name(1) == "TOPO.dxf" and plan.cad_dxf_name(2, "dwg") == "TOPO_v2.dwg"
 
 
-# -- chaine d'export avec de faux outils -----------------------------------------------------------
+# -- export chain with fake tools ------------------------------------------------------------------
 
 class Env(object):
-    """Un faux Metashape (il ecrit de vrais petits GeoTIFF) et de faux convertisseurs."""
+    """A fake Metashape (it writes real small GeoTIFFs) and fake converters."""
 
     def __init__(self, tmp_path):
         self.tmp = tmp_path
@@ -163,7 +163,7 @@ class Env(object):
         self.exports.append((kind, os.path.basename(path), pixel, box, crs, clip_to_boundary))
         left, bottom, right, top = box if box else (1000.0, 2000.0, 1100.0, 2050.0)
         if box and (round(left), round(bottom)) in self.empty_tiles:
-            return True, ""                                   # dalle sans donnee : Metashape n'ecrit rien
+            return True, ""                                   # tile without data: Metashape writes nothing
         pixel = pixel or 0.5
         os.makedirs(os.path.dirname(path), exist_ok=True)
         if spec.get("image") == "jp2":
@@ -210,12 +210,12 @@ def test_jp2_export_writes_a_raw_tiff_then_converts_it_and_removes_the_raw(tmp_p
     result = pipeline.run(fake_context(tmp_path, env, "jp2", tools={"gdal": "G"}), jobs, lambda f, t: None)
     assert record == [("gdal", "EDF_260704_50cm_ortho.tif", "EDF_260704_50cm_ortho.jp2")]
     assert os.path.exists(tmp_path / "EDF_260704_50cm_ortho.jp2")
-    assert not [n for n in os.listdir(tmp_path) if n.startswith(pipeline.TMP_NAME)]      # le dossier de travail est efface
+    assert not [n for n in os.listdir(tmp_path) if n.startswith(pipeline.TMP_NAME)]      # the work folder is deleted
     assert result.tiles == 1 and result.files[0][1] == len(b"converted")
 
 
 def test_metashape_gets_no_progress_callback_so_it_never_calls_back_into_qt_while_exporting(tmp_path):
-    """Un rappel appele par Metashape en plein calcul a fait planter Metashape (repaint recursif) : on n'en passe aucun."""
+    """A callback called by Metashape in the middle of its computation crashed Metashape (recursive repaint): none is passed."""
     env, seen = Env(tmp_path), []
     original = env.export
 
@@ -265,7 +265,7 @@ def test_cad_export_writes_assets_a_dxf_and_checks_it_with_autocad(tmp_path, mon
     assert os.path.isfile(tmp_path / "00_Assets" / "DTM" / "EDF_260704_50cm_dtm.jp2")
     text = open(tmp_path / "TOPO.dxf", "rb").read().decode("ascii")
     assert "00_Assets\\ortho\\EDF_260704_50cm_ortho.jp2" in text and "00_Assets\\DTM\\EDF_260704_50cm_dtm.jp2" in text
-    assert "260704_0.5_ortho" in text and "260704_0.5_MNT" in text
+    assert "260704_0.5_ortho" in text and "260704_0.5_DTM" in text
     assert result.dxf == str(tmp_path / "TOPO.dxf") and result.check["images"] == 2 and not result.warnings
 
 
@@ -277,7 +277,7 @@ def test_the_dem_layer_needs_no_gdal(tmp_path, monkeypatch):
     ctx = fake_context(tmp_path, env, "cad", tools={"gm": "GM"}, cad={"format": "dxf", "images": "ecw"})
     result = pipeline.run(ctx, jobs, lambda f, t: None)
     assert not result.warnings and os.path.isfile(tmp_path / "00_Assets" / "DTM" / "EDF_260704_50cm_dtm.tif")
-    assert b"_MNT" in open(tmp_path / "TOPO.dxf", "rb").read()
+    assert b"_DTM" in open(tmp_path / "TOPO.dxf", "rb").read()
 
 
 def test_dwg_is_made_by_autocad_and_fails_clearly_without_it(tmp_path, monkeypatch):
@@ -297,13 +297,13 @@ def test_dwg_is_made_by_autocad_and_fails_clearly_without_it(tmp_path, monkeypat
 def test_tiles_export_one_file_per_tile_and_skip_empty_ones(tmp_path, monkeypatch):
     env, record = Env(tmp_path), []
     fake_converters(monkeypatch, record)
-    env.empty_tiles = {(1050, 2000)}                          # la dalle en bas a droite n'a pas de donnees
+    env.empty_tiles = {(1050, 2000)}                          # the bottom-right tile has no data
     jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), version=1)
     ctx = fake_context(tmp_path, env, "full", tile_m=50)
     result = pipeline.run(ctx, jobs, lambda f, t: None)
     names = sorted(name for _kind, name, _p, _b, _c, _f in env.exports)
     assert names == ["EDF_260704_50cm_R01C01_ortho.tif", "EDF_260704_50cm_R01C02_ortho.tif"] or len(names) == 2
-    assert result.tiles == len(env.exports) - 1               # une dalle vide : rien d'ecrit
+    assert result.tiles == len(env.exports) - 1               # one empty tile: nothing written
     boxes = [b for _k, _n, _p, b, _c, _f in env.exports]
     assert all(box[2] - box[0] <= 50.0 + 1e-6 for box in boxes)
 
@@ -335,7 +335,7 @@ def test_a_failed_export_is_reported_not_swallowed(tmp_path):
         pipeline.run(fake_context(tmp_path, env, "full"), jobs, lambda f, t: None)
 
 
-# -- logiciels externes --------------------------------------------------------------------------------
+# -- external software ---------------------------------------------------------------------------------
 
 def test_global_mapper_script_converts_a_geotiff_to_ecw():
     text = external.gm_script("C:/a/b.tif", "C:/a/b.ecw", 10)

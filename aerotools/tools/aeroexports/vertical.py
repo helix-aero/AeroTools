@@ -1,12 +1,12 @@
-"""Aero-Exports : systemes d'altitude calcules par AeroTools (grilles de geoide lues et appliquees ici, pas par Metashape).
+"""Aero-Exports: height systems computed by AeroTools (geoid grids read and applied here, not by Metashape).
 
-Pourquoi : Metashape 2.2.1 choisit sa grille par le nom du datum et non par le fichier (« RAC23 » et « RAC09 » donnent la
-meme valeur, 23 cm d'ecart avec la vraie grille RAC23 en Corse), ignore RAC23 avec un repere RGF93 v2b, et refuse EGM96 avec un
-repere francais. Ici : Metashape exporte le MNT en hauteurs ellipsoidales (ce qu'il fait bien), puis on retranche l'ondulation
-du geoide lue dans notre dossier `Geoid` (`H = h - N`).
+Why: Metashape 2.2.1 chooses its grid by the datum name and not by the file ("RAC23" and "RAC09" give the
+same value, 23 cm off the true RAC23 grid in Corsica), ignores RAC23 with an RGF93 v2b frame, and refuses EGM96 with a
+French frame. Here: Metashape exports the DTM in ellipsoidal heights (which it does well), then the geoid undulation
+read from our `Geoid` folder is subtracted (`H = h - N`).
 
-Grilles : GeoTIFF « GTG » de PROJ-data (Float32, une bande `geoid_undulation`, Deflate + predicteur flottant), noeuds regulierement
-espaces en longitude / latitude, interpolation bilineaire comme PROJ. Valeurs de reference : voir tests/test_aeroexports_vertical.py.
+Grids: PROJ-data "GTG" GeoTIFF (Float32, one `geoid_undulation` band, Deflate + floating-point predictor), nodes regularly
+spaced in longitude / latitude, bilinear interpolation like PROJ. Reference values: see tests/test_aeroexports_vertical.py.
 """
 
 import hashlib
@@ -17,24 +17,24 @@ import numpy as np
 
 from . import crs, projdb, tiffio
 
-NODATA_LIMIT = -1000.0          # une ondulation plus petite que ca est une valeur « pas de donnee »
-LATTICE_STEP_M = 100.0          # pas du semis de points ou l'on calcule l'ondulation d'un MNT (elle varie de quelques cm par km)
+NODATA_LIMIT = -1000.0          # an undulation smaller than this is a "no data" value
+LATTICE_STEP_M = 100.0          # spacing of the lattice of points where the undulation of a DTM is computed (it varies by a few cm per km)
 MAX_LATTICE = 400
 
 
 class Grid(object):
-    """Une grille d'ondulation : `values[ligne, colonne]`, ligne 0 au nord ; noeuds en (lon0 + col * dlon, lat0 - ligne * dlat)."""
+    """An undulation grid: `values[row, column]`, row 0 at the north; nodes at (lon0 + col * dlon, lat0 - row * dlat)."""
 
     def __init__(self, values, lon0, lat0, dlon, dlat):
         self.values, self.lon0, self.lat0, self.dlon, self.dlat = values, lon0, lat0, dlon, dlat
         self.rows, self.cols = values.shape
 
     def bounds(self):
-        """(lon min, lat min, lon max, lat max) des noeuds."""
+        """(min lon, min lat, max lon, max lat) of the nodes."""
         return (self.lon0, self.lat0 - (self.rows - 1) * self.dlat, self.lon0 + (self.cols - 1) * self.dlon, self.lat0)
 
     def undulation(self, lon, lat):
-        """N (metres) aux points (tableaux ou nombres) ; NaN hors de la grille ou sur un noeud sans donnee."""
+        """N (metres) at the points (arrays or numbers); NaN outside the grid or on a node without data."""
         lon = np.asarray(lon, dtype=np.float64)
         lat = np.asarray(lat, dtype=np.float64)
         fx = (lon - self.lon0) / self.dlon
@@ -55,18 +55,18 @@ class Grid(object):
 
 
 def read_grid(path):
-    """Grid d'un fichier GTG, ou ValueError. Le georeferencement vient du fichier : pas de table supposee."""
+    """Grid of a GTG file, or ValueError. The georeferencing comes from the file: no assumed table."""
     tiff = tiffio.Tiff(path)
     scale = tiff.ints(tiffio.T_SCALE)
     tie = tiff.ints(tiffio.T_TIEPOINT)
     if not scale or not tie or len(tie) < 6:
-        raise ValueError("grille sans georeferencement")
+        raise ValueError("grid without georeferencing")
     if _raster_type(tiff) != RASTER_PIXEL_IS_POINT:
-        raise ValueError("grille « PixelIsArea » : repere des noeuds non verifie")
+        raise ValueError("\"PixelIsArea\" grid: node frame not verified")
     values = tiff.read_all()
     i, j, _k, x, y, _z = tie[:6]
     dlon, dlat = scale[0], scale[1]
-    # PixelIsPoint : le point de calage est le noeud (0, 0) lui-meme. Verifie contre PROJ 9.8 : ecart 0,0 mm sur 4 points de RAC23.
+    # PixelIsPoint: the tie point is the node (0, 0) itself. Checked against PROJ 9.8: 0.0 mm difference on 4 points of RAC23.
     return Grid(values, x - i * dlon, y + j * dlat, dlon, dlat)
 
 
@@ -74,7 +74,7 @@ RASTER_PIXEL_IS_POINT = 2
 
 
 def _raster_type(tiff):
-    """Valeur de la clef GeoTIFF GTRasterTypeGeoKey (1 = PixelIsArea, 2 = PixelIsPoint) ; 1 si absente."""
+    """Value of the GeoTIFF key GTRasterTypeGeoKey (1 = PixelIsArea, 2 = PixelIsPoint); 1 if absent."""
     keys = tiff.ints(tiffio.T_GEOKEYS, [])
     for index in range(4, len(keys) - 3, 4):
         if keys[index] == 1025 and keys[index + 1] == 0:
@@ -83,13 +83,13 @@ def _raster_type(tiff):
 
 
 # --------------------------------------------------------------------------------------------------
-# Quelle grille pour quel repere (la regle vient de PROJ : voir projdb.py)
+# Which grid for which frame (the rule comes from PROJ: see projdb.py)
 # --------------------------------------------------------------------------------------------------
 
 def compatible_verticals(epsg, lon=None, lat=None, folder=None):
-    """Altitudes proposables avec ce SCR horizontal a la position (lon, lat), dans le monde entier : fiches de grilles du meme repere
-    (la plus locale d'abord), puis l'ellipsoide. `folder` : si une grille est deja la et qu'elle ne couvre pas le centre du projet
-    (emprise rectangulaire mais donnees seulement sur le pays), on l'ecarte."""
+    """Altitudes that can be offered with this horizontal CRS at position (lon, lat), worldwide: records of grids of the same frame
+    (the most local first), then the ellipsoid. `folder`: if a grid is already there and does not cover the centre of the project
+    (rectangular extent but data only over the country), it is left out."""
     out = []
     for spec in projdb.verticals_for(epsg, lon, lat):
         if folder and lon is not None and lat is not None and crs.grid_state(spec["id"], folder)[0] == "ok":
@@ -104,17 +104,17 @@ def compatible_verticals(epsg, lon=None, lat=None, folder=None):
 
 
 # --------------------------------------------------------------------------------------------------
-# Grille d'un identifiant, correction d'un MNT
+# Grid of an identifier, correction of a DTM
 # --------------------------------------------------------------------------------------------------
 
 _GRID_CACHE = {}
 
 
 def load_grid(vertical_id, folder=None):
-    """Grid de l'altitude demandee, lue dans notre dossier (verifiee par son empreinte) ; ValueError sinon."""
+    """Grid of the requested altitude, read from our folder (verified by its fingerprint); ValueError otherwise."""
     state, path = crs.grid_state(vertical_id, folder)
     if state != "ok":
-        raise ValueError("grille %s : %s" % (vertical_id, state))
+        raise ValueError("grid %s: %s" % (vertical_id, state))
     stamp = (path, os.path.getsize(path), os.path.getmtime(path))
     if stamp not in _GRID_CACHE:
         _GRID_CACHE.clear()
@@ -123,14 +123,14 @@ def load_grid(vertical_id, folder=None):
 
 
 def _lattice(width, height, px, py):
-    """Nombre de points (colonnes, lignes) du semis qui couvre un raster."""
+    """Number of points (columns, rows) of the lattice that covers a raster."""
     cols = int(min(MAX_LATTICE, max(2, math.ceil(width * px / LATTICE_STEP_M) + 1)))
     rows = int(min(MAX_LATTICE, max(2, math.ceil(height * py / LATTICE_STEP_M) + 1)))
     return cols, rows
 
 
 def _bilinear(field, fx, fy):
-    """Interpolation bilineaire de `field` (lignes x colonnes) aux positions fractionnaires (fy, fx), tableaux 2D broadcastables."""
+    """Bilinear interpolation of `field` (rows x columns) at the fractional positions (fy, fx), broadcastable 2D arrays."""
     rows, cols = field.shape
     x0 = np.minimum(np.floor(fx).astype(int), cols - 2)
     y0 = np.minimum(np.floor(fy).astype(int), rows - 2)
@@ -140,23 +140,23 @@ def _bilinear(field, fx, fy):
 
 
 def correct_dem(src, dst, grid, lonlat, reference=None, progress=None, samples=5):
-    """Ecrit dans `dst` le MNT `src` (hauteurs ellipsoidales) passe en altitudes : `H = h - N`.
+    """Write to `dst` the DTM `src` (ellipsoidal heights) converted to altitudes: `H = h - N`.
 
-    `lonlat(xs, ys)` : (longitudes, latitudes) en degres de points du MNT (tableaux, dans le repere du MNT). N est calcule sur un
-    semis de points (un tous les ~100 m) puis interpole bilineairement a chaque pixel.
-    * `grid` : notre lecture de la grille. `reference(lons, lats)` : N donne par PROJ (autorite) ; s'il est fourni, c'est lui qui
-      s'applique et on exige qu'il concorde avec notre calcul a 1 cm pres sur tout le semis (sinon ValueError, rien n'est ecrit).
-    * Controle : `samples` pixels sont recalcules directement (sans semis) ; plus de 5 mm d'ecart annule tout (ValueError).
-    Renvoie {"min": N min, "max": N max, "check_mm": ecart du controle, "proj_mm": ecart PROJ / nous ou None}. Leve ValueError, et
-    laisse `dst` absent, si la grille ne couvre pas tout le MNT."""
+    `lonlat(xs, ys)`: (longitudes, latitudes) in degrees of points of the DTM (arrays, in the DTM's frame). N is computed on a
+    lattice of points (one every ~100 m) then interpolated bilinearly at each pixel.
+    * `grid`: our reading of the grid. `reference(lons, lats)`: N given by PROJ (authority); if supplied, it is the one that
+      applies and it must agree with our computation to within 1 cm over the whole lattice (otherwise ValueError, nothing is written).
+    * Check: `samples` pixels are recomputed directly (without the lattice); more than 5 mm of difference cancels everything (ValueError).
+    Returns {"min": min N, "max": max N, "check_mm": check difference, "proj_mm": PROJ / ours difference or None}. Raises ValueError, and
+    leaves `dst` absent, if the grid does not cover the whole DTM."""
     tiff = tiffio.Tiff(src)
     if _raster_type(tiff) == RASTER_PIXEL_IS_POINT:
-        raise ValueError("MNT « PixelIsPoint » non pris en charge")
+        raise ValueError("\"PixelIsPoint\" DTM not supported")
     scale, tie = tiff.ints(tiffio.T_SCALE), tiff.ints(tiffio.T_TIEPOINT)
     if not scale or not tie:
-        raise ValueError("MNT sans georeferencement")
+        raise ValueError("DTM without georeferencing")
     px, py = float(scale[0]), float(scale[1])
-    x0, y0 = tie[3] - tie[0] * px, tie[4] + tie[1] * py                 # coin haut-gauche
+    x0, y0 = tie[3] - tie[0] * px, tie[4] + tie[1] * py                 # top-left corner
     width, height = tiff.width, tiff.height
     nodata_text = tiff.text(tiffio.T_GDAL_NODATA).strip()
     nodata = float(nodata_text) if nodata_text else None
@@ -171,14 +171,14 @@ def correct_dem(src, dst, grid, lonlat, reference=None, progress=None, samples=5
     if reference is not None:
         n_ref = np.asarray(reference(lon, lat), dtype=np.float64).reshape(rows, cols)
         if not np.all(np.isfinite(n_ref)):
-            raise ValueError("la grille ne couvre pas tout le MNT")
+            raise ValueError("the grid does not cover the whole DTM")
         if np.all(np.isfinite(n_ours)):
             proj_mm = float(np.abs(n_ref - n_ours).max()) * 1000.0
             if proj_mm > 10.0:
-                raise ValueError("PROJ et AeroTools divergent de %.1f mm sur la grille" % proj_mm)
+                raise ValueError("PROJ and AeroTools differ by %.1f mm on the grid" % proj_mm)
         n_field = n_ref
     if not np.all(np.isfinite(n_field)):
-        raise ValueError("la grille ne couvre pas tout le MNT")
+        raise ValueError("the grid does not cover the whole DTM")
 
     rng = np.random.RandomState(7)
     picks = [(int(rng.randint(0, height)), int(rng.randint(0, width))) for _ in range(samples)]
@@ -211,7 +211,7 @@ def correct_dem(src, dst, grid, lonlat, reference=None, progress=None, samples=5
     try:
         tiff.rewrite(tmp, change)
         if state["worst"] > 0.005:
-            raise ValueError("controle de la correction : %.1f mm d'ecart" % (state["worst"] * 1000.0))
+            raise ValueError("correction check: %.1f mm of difference" % (state["worst"] * 1000.0))
         os.replace(tmp, dst)
     finally:
         if os.path.exists(tmp):

@@ -1,4 +1,4 @@
-"""Demarrage et arret de Aero-Exports : le point d'entree appele par le menu Aero."""
+"""Start and stop of Aero-Exports: the entry point called by the Aero menu."""
 
 from ... import i18n, journal, msapi, theme
 from ...qt import QtGui
@@ -7,7 +7,7 @@ _STATE = {"dialog": None}
 
 
 def install():
-    """Ouvre (ou ramene devant) la fenetre Aero-Exports."""
+    """Open the Aero-Exports window (or bring it to the front)."""
     window = msapi.main_window()
     if window is None:
         msapi.message_box(i18n.t("tool.no_window"))
@@ -15,11 +15,12 @@ def install():
     theme.load_fonts(QtGui)
     from . import dialog
     _STATE["dialog"] = dialog.show(window, _STATE["dialog"])
-    journal.write("Aero-Exports ouvert")
+    journal.write("Aero-Exports opened")
 
 
 def uninstall():
-    """Ferme la fenetre (avant un rechargement du code), sauf si un export est en cours."""
+    """Close the window (before a code reload), unless an export is running."""
+
     shown = _STATE.get("dialog")
     if shown is None:
         return

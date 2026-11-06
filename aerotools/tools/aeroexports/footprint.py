@@ -1,12 +1,12 @@
-"""Aero-Exports : emprise reelle des donnees d'une ortho ou d'un MNT, pour que le DXF decoupe le blanc autour.
+"""Aero-Exports: real extent of the data of an orthomosaic or DEM, so that the DXF clips the white around it.
 
-Le DXF peut porter un polygone de decoupe (clip) sur chaque image : AutoCAD n'affiche alors que l'interieur, le fichier
-image n'est pas modifie. Ce module fabrique ce polygone :
-  - un masque « il y a des donnees ici » a faible resolution (alpha d'un petit export de l'ortho par Metashape, ou pixels
-    valides du MNT) ;
-  - son contour : pour chaque ligne, du premier au dernier pixel de donnees (un polygone simple), simplifie ;
-  - la conversion dans les pixels de l'image finale, au format du DXF.
-Module pur (numpy) : aucune dependance a Metashape.
+The DXF can carry a clip polygon on each image: AutoCAD then shows only the inside, the image file is not
+modified. This module builds that polygon:
+  - a "there is data here" mask at low resolution (alpha of a small orthomosaic export by Metashape, or valid pixels
+    of the DEM);
+  - its outline: for each row, from the first to the last data pixel (a simple polygon), simplified;
+  - the conversion into pixels of the final image, in the DXF's convention.
+Pure module (numpy): no dependency on Metashape.
 """
 
 import zlib
@@ -18,18 +18,18 @@ from . import relief, tiffio
 T_PLANAR = 284
 DECODERS = {1: lambda payload: payload, 8: zlib.decompress, 32946: zlib.decompress, 5: tiffio.lzw_decode}   # TIFF compression codes
 
-TARGET_PX = 800                  # le masque a environ 800 pixels sur son grand cote
-TOLERANCE_PX = 1.2               # simplification du contour : 1 pixel de masque au plus
+TARGET_PX = 800                  # the mask is about 800 pixels on its long side
+TOLERANCE_PX = 1.2               # outline simplification: 1 mask pixel at most
 
 
 def alpha_mask(path):
-    """Masque (lignes x colonnes, True = donnees) de la bande alpha d'un GeoTIFF RVBA 8 bits (bandes ou tuiles ; sans compression, Deflate ou LZW)."""
+    """Mask (rows x columns, True = data) of the alpha band of an 8-bit RGBA GeoTIFF (strips or tiles; uncompressed, Deflate or LZW)."""
     tiff = tiffio.Tiff(path, strict=False)
     samples = tiff.ints(tiffio.T_SAMPLES, [1])[0]
     bits = tiff.ints(tiffio.T_BITS, [8])
     if (any(b != 8 for b in bits) or samples < 4 or tiff.ints(T_PLANAR, [1])[0] != 1
             or tiff.compression not in DECODERS or tiff.predictor not in (1, 2)):
-        raise ValueError("alpha : RVBA 8 bits entrelace (sans compression, Deflate ou LZW) attendu")
+        raise ValueError("alpha: interleaved 8-bit RGBA expected (uncompressed, Deflate or LZW)")
     alpha = np.zeros((tiff.height, tiff.width), dtype=np.uint8)
     with open(path, "rb") as handle:
         for index, (offset, count) in enumerate(zip(tiff.offsets, tiff.counts)):
@@ -45,9 +45,9 @@ def alpha_mask(path):
             try:
                 data = np.frombuffer(DECODERS[tiff.compression](payload), dtype=np.uint8)
             except zlib.error:
-                raise ValueError("alpha : bloc Deflate abime")
+                raise ValueError("alpha: damaged Deflate block")
             if data.size < rows * cols * samples:
-                raise ValueError("alpha : bloc trop court")
+                raise ValueError("alpha: block too short")
             block = data[:rows * cols * samples].reshape(rows, cols, samples)
             if tiff.predictor == 2:                                  # each sample is stored as the difference to its left neighbour
                 block = np.cumsum(block, axis=1, dtype=np.uint8)
@@ -57,13 +57,13 @@ def alpha_mask(path):
 
 
 def dem_mask(path, target=TARGET_PX):
-    """Masque des pixels valides d'un MNT, reduit pour avoir au plus `target` pixels sur son grand cote."""
+    """Mask of the valid pixels of a DEM, reduced to at most `target` pixels on its long side."""
     tiff = tiffio.Tiff(path)
     nodata = relief.declared_nodata(tiff)
     step = max(1, int(round(max(tiff.width, tiff.height) / float(target))))
     mask = np.zeros((-(-tiff.height // step), -(-tiff.width // step)), dtype=bool)
     for top, left, block in tiff.blocks():
-        good = ~relief._nodata_mask(block, nodata)
+        good = ~relief.nodata_mask(block, nodata)
         rows, cols = np.nonzero(good)
         inside = (top + rows < tiff.height) & (left + cols < tiff.width)       # a tile on the edge can reach past the image
         rows, cols = rows[inside], cols[inside]
@@ -72,16 +72,16 @@ def dem_mask(path, target=TARGET_PX):
 
 
 def outline(mask):
-    """Contour du masque : [(colonne, ligne), ...] en bords de pixels (la colonne 3 va de 3 a 4), ou [] sans donnee.
+    """Outline of the mask: [(column, row), ...] on pixel edges (column 3 runs from 3 to 4), or [] without data.
 
-    Pour chaque ligne, du bord gauche du premier pixel de donnees au bord droit du dernier. Un trou ou une encoche horizontale
-    est donc comblee (le blanc qui reste est a l'interieur de l'emprise)."""
+    For each row, from the left edge of the first data pixel to the right edge of the last. A horizontal hole or notch
+    is therefore filled (the white that remains is inside the extent)."""
     rows = np.nonzero(mask.any(axis=1))[0]
     if rows.size == 0:
         return []
     first = mask.argmax(axis=1)
     last = mask.shape[1] - mask[:, ::-1].argmax(axis=1)
-    # bord gauche vers le bas, puis bord droit vers le haut
+    # left edge going down, then right edge going up
     left_chain = [(float(first[r]), float(r)) for r in rows] + [(float(first[rows[-1]]), float(rows[-1] + 1))]
     right_chain = [(float(last[rows[-1]]), float(rows[-1] + 1))] + [(float(last[r]), float(r)) for r in rows[::-1]]
     right_chain.append((float(last[rows[0]]), float(rows[0])))
@@ -89,7 +89,7 @@ def outline(mask):
 
 
 def _simplify(points, tolerance):
-    """Douglas-Peucker (iteratif) : garde les points qui s'ecartent de plus de `tolerance` de la droite voisine."""
+    """Douglas-Peucker (iterative): keeps the points that deviate by more than `tolerance` from the neighbouring line."""
     if len(points) < 3:
         return list(points)
     pts = np.array(points, dtype=float)
@@ -116,7 +116,7 @@ def _simplify(points, tolerance):
 
 
 def _grow(mask):
-    """Masque agrandi d'un pixel dans toutes les directions : le polygone ne rogne jamais une donnee a la limite."""
+    """Mask grown by one pixel in every direction: the polygon never trims data at the limit."""
     padded = np.pad(mask, 1)
     out = np.zeros_like(mask)
     for dr in (0, 1, 2):
@@ -126,14 +126,15 @@ def _grow(mask):
 
 
 def clip_polygon(mask, mask_extent, image_info):
-    """Polygone de decoupe d'une image, dans les coordonnees de son entite IMAGE du DXF.
+    """Clip polygon of an image, in the coordinates of its IMAGE entity in the DXF.
 
-    `mask_extent` : (gauche, bas, droite, haut) du masque en unites du dessin. `image_info` : {"width", "height", "origin",
-    "pixel"} de l'image finale (geotiff.read_geotiff). Les sommets sont en pixels de l'image, depuis son coin HAUT-gauche
-    (x vers la droite, y vers le BAS, comme les lignes d'une image), le centre du premier pixel valant (0, 0) : la convention de
-    l'espace image de l'entite IMAGE dans AutoCAD (verifie dans AutoCAD : depuis le bas, le polygone apparait retourne).
-    Le polygone est ferme (dernier sommet = premier).
-    Renvoie [] s'il n'y a pas de donnees ou si le polygone couvre toute l'image (rien a decouper)."""
+    `mask_extent`: (left, bottom, right, top) of the mask in drawing units. `image_info`: {"width", "height", "origin",
+    "pixel"} of the final image (geotiff.read_geotiff). The vertices are in image pixels, from its TOP-left corner
+    (x to the right, y DOWN, like the rows of an image), the centre of the first pixel being (0, 0): the convention of the
+    image space of the IMAGE entity in AutoCAD (checked in AutoCAD: measured from the bottom, the polygon appears flipped).
+    The polygon is closed (last vertex = first).
+    Returns [] if there is no data or if the polygon covers the whole image (nothing to clip)."""
+
     path = outline(_grow(mask))
     if len(path) < 3:
         return []

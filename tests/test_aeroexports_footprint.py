@@ -1,4 +1,4 @@
-"""Aero-Exports : emprise reelle des donnees et polygone de decoupe (clip) des images du DXF."""
+"""Aero-Exports: real extent of the data and clip polygon of the DXF images."""
 
 import os
 import struct
@@ -11,7 +11,7 @@ from aerotools.tools.aeroexports import dxfout, footprint
 
 
 def diamond(size=100):
-    """Un losange (ortho tournee) dans un carre : les coins sont vides."""
+    """A diamond (rotated orthomosaic) in a square: the corners are empty."""
     rows, cols = np.mgrid[0:size, 0:size]
     middle = (size - 1) / 2.0
     return (np.abs(rows - middle) + np.abs(cols - middle)) <= size / 2.0 - 2
@@ -29,9 +29,9 @@ def test_the_outline_of_a_diamond_has_few_vertices_and_follows_the_data():
     mask = diamond()
     path = footprint.outline(mask)
     assert 4 <= len(path) <= 40
-    assert path[0][1] <= path[1][1] <= path[2][1]                                   # descend le long du bord gauche
+    assert path[0][1] <= path[1][1] <= path[2][1]                                   # goes down along the left edge
     area = polygon_area(path)
-    assert mask.sum() * 0.95 < area < mask.sum() * 1.15                             # a peu pres l'aire des donnees
+    assert mask.sum() * 0.95 < area < mask.sum() * 1.15                             # roughly the area of the data
 
 
 def test_an_empty_mask_has_no_outline_and_a_full_one_needs_no_clip():
@@ -44,14 +44,14 @@ def test_an_empty_mask_has_no_outline_and_a_full_one_needs_no_clip():
 
 def test_the_clip_polygon_is_closed_in_image_pixels_and_never_cuts_the_data():
     mask = diamond()
-    extent = (500.0, 300.0, 600.0, 400.0)                                          # 100 m, image de 1000 px a 0,1 m
+    extent = (500.0, 300.0, 600.0, 400.0)                                          # 100 m, 1000 px image at 0.1 m
     clip = footprint.clip_polygon(mask, extent, image_info())
     assert clip[0] == clip[-1] and len(clip) >= 5
     xs, ys = [p[0] for p in clip], [p[1] for p in clip]
     assert -0.5 <= min(xs) and max(xs) <= 999.5 and -0.5 <= min(ys) and max(ys) <= 999.5
-    # le centre du losange est dedans, les coins de l'image sont dehors
+    # the centre of the diamond is inside, the corners of the image are outside
     assert _inside(clip, 499.5, 499.5) and not _inside(clip, 5.0, 5.0) and not _inside(clip, 990.0, 990.0)
-    # un pixel de donnees a la limite du losange reste dans le polygone (marge d'un pixel du masque)
+    # a data pixel at the edge of the diamond stays inside the polygon (one mask pixel of margin)
     rows, cols = np.nonzero(mask)
     for r, c in list(zip(rows, cols))[::37]:
         x_px, y_px = (c + 0.5) * 10 - 0.5, (r + 0.5) * 10 - 0.5            # rows count from the TOP of the image (y down)
@@ -78,7 +78,7 @@ def _inside(poly, x, y):
 
 
 def rgba_tiff(path, alpha):
-    """TIFF RVBA 8 bits sans compression, en bandes, comme le petit export de masque de Metashape."""
+    """Uncompressed 8-bit RGBA TIFF, in strips, like Metashape's small mask export."""
     height, width = alpha.shape
     pixels = np.zeros((height, width, 4), dtype=np.uint8)
     pixels[:, :, 3] = np.where(alpha, 255, 0)
@@ -107,7 +107,7 @@ def test_the_alpha_band_of_a_small_export_becomes_the_mask(tmp_path):
 def test_the_dxf_writes_a_polygon_clip_only_when_there_is_one():
     base = {"layer": "260704_0.1_ortho", "file": "00_Assets\\a.jp2", "size_px": (1000, 1000), "insert": (500.0, 300.0),
             "pixel": (0.1, 0.1)}
-    unix = lambda text: "\n".join(text.splitlines()) + "\n"                          # le DXF est ecrit en CRLF
+    unix = lambda text: "\n".join(text.splitlines()) + "\n"                          # the DXF is written with CRLF
     plain = unix(dxfout.build_dxf([base]))
     clipped = unix(dxfout.build_dxf([dict(base, clip=[(100.0, 100.0), (900.0, 100.0), (500.0, 900.0), (100.0, 100.0)])]))
     assert "\n71\n1\n" in plain and "\n280\n0\n" in plain and "\n70\n3\n" in plain

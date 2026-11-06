@@ -1,8 +1,8 @@
-"""Aero-Exports : lecture et reecriture d'un TIFF float32 a une bande (classique ou BigTIFF), sans GDAL.
+"""Aero-Exports: reading and rewriting of a single-band float32 TIFF (classic or BigTIFF), without GDAL.
 
-Ne sert qu'a deux choses : lire une grille de geoide (`vertical.py`) et corriger les hauteurs d'un MNT ecrit par Metashape.
-Compressions lues : aucune, Deflate (avec ou sans predicteur flottant). Le reste leve ValueError : on prefere refuser
-un fichier inconnu que le corrompre.
+Only used for two things: reading a geoid grid (`vertical.py`) and correcting the heights of a DTM written by Metashape.
+Compressions read: none, Deflate (with or without floating-point predictor). Anything else raises ValueError: refusing
+an unknown file is preferred to corrupting it.
 """
 
 import struct
@@ -17,7 +17,7 @@ T_SCALE, T_TIEPOINT, T_GDAL_NODATA, T_GDAL_METADATA, T_GEOKEYS = 33550, 33922, 4
 OFFSET_TAGS = (T_STRIP_OFFSETS, T_STRIP_COUNTS, T_TILE_OFFSETS, T_TILE_COUNTS, T_COMPRESSION, T_PREDICTOR)
 TYPE_SIZE = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 2, 9: 4, 10: 8, 11: 4, 12: 8, 16: 8, 17: 8, 18: 8}
 TYPE_CODE = {1: "B", 3: "H", 4: "I", 6: "b", 8: "h", 9: "i", 11: "f", 12: "d", 16: "Q", 17: "q"}
-CLASSIC_LIMIT = 3900 * 1024 * 1024               # au-dela : BigTIFF
+CLASSIC_LIMIT = 3900 * 1024 * 1024               # beyond: BigTIFF
 
 
 def lzw_decode(data):
@@ -41,11 +41,11 @@ def lzw_decode(data):
                 continue
             if previous is None:
                 if code >= 256:
-                    raise ValueError("LZW : bloc abime")
+                    raise ValueError("LZW: damaged block")
                 entry = table[code]
             else:
                 if code > len(table):
-                    raise ValueError("LZW : bloc abime")
+                    raise ValueError("LZW: damaged block")
                 entry = table[code] if code < len(table) else previous + previous[:1]
                 if len(table) < 4096:
                     table.append(previous + entry[:1])
@@ -57,19 +57,19 @@ def lzw_decode(data):
 
 
 class Tiff(object):
-    """Premiere image d'un TIFF : ses balises (octets bruts) et ses blocs (tuiles ou bandes)."""
+    """First image of a TIFF: its tags (raw bytes) and its blocks (tiles or strips)."""
 
     def __init__(self, path, strict=True):
-        """`strict=False` : ne verifie pas que c'est un float32 a une bande (les balises et les positions des blocs seules)."""
+        """`strict=False`: does not check that it is a single-band float32 (only the tags and the block positions)."""
         self.path = path
         with open(path, "rb") as handle:
             head = handle.read(16)
             self.end = {b"II": "<", b"MM": ">"}.get(head[:2])
             if self.end is None:
-                raise ValueError("pas un TIFF")
+                raise ValueError("not a TIFF")
             magic = struct.unpack(self.end + "H", head[2:4])[0]
             if magic not in (42, 43):
-                raise ValueError("pas un TIFF")
+                raise ValueError("not a TIFF")
             self.big = magic == 43
             offset = struct.unpack(self.end + ("Q" if self.big else "I"), head[8:16] if self.big else head[4:8])[0]
             handle.seek(offset)
@@ -77,7 +77,7 @@ class Tiff(object):
             size = 20 if self.big else 12
             raw = handle.read(size * count)
             limit = 8 if self.big else 4
-            self.tags = {}                         # balise -> (type, nombre, octets)
+            self.tags = {}                         # tag -> (type, count, bytes)
             for index in range(count):
                 entry = raw[index * size:(index + 1) * size]
                 if self.big:
@@ -102,9 +102,9 @@ class Tiff(object):
         self.predictor = self.ints(T_PREDICTOR, [1])[0]
         if strict:
             if self.ints(T_BITS, [0])[0] != 32 or self.ints(T_FORMAT, [1])[0] != 3 or self.ints(T_SAMPLES, [1])[0] != 1:
-                raise ValueError("seul le float32 a une bande est lu")
+                raise ValueError("only single-band float32 is read")
             if self.compression not in (1, 8, 32946) or self.predictor not in (1, 3):
-                raise ValueError("compression %d / predicteur %d non pris en charge" % (self.compression, self.predictor))
+                raise ValueError("compression %d / predictor %d not supported" % (self.compression, self.predictor))
         self.tiled = T_TILE_W in self.tags
         if self.tiled:
             self.block_w, self.block_h = self.ints(T_TILE_W)[0], self.ints(T_TILE_H)[0]
@@ -115,7 +115,7 @@ class Tiff(object):
         self.across = -(-self.width // self.block_w)
 
     def ints(self, tag, default=None):
-        """Valeurs numeriques d'une balise, ou `default`."""
+        """Numeric values of a tag, or `default`."""
         found = self.tags.get(tag)
         if found is None:
             return default
@@ -126,24 +126,24 @@ class Tiff(object):
         found = self.tags.get(tag)
         return found[2].decode("latin-1").rstrip("\0") if found else ""
 
-    # -- decodage --------------------------------------------------------------------------
+    # -- decoding --------------------------------------------------------------------------
 
     def _decode(self, payload, width, height):
         data = payload if self.compression == 1 else zlib.decompress(payload)
         buf = np.frombuffer(data, dtype=np.uint8)
         if buf.size < width * height * 4:
-            raise ValueError("bloc trop court")
+            raise ValueError("block too short")
         buf = buf[:width * height * 4]
         if self.predictor == 3:
             rows = np.cumsum(buf.reshape(height, width * 4), axis=1, dtype=np.uint8)
-            planes = rows.reshape(height, 4, width)            # plan 0 = octet de poids fort
+            planes = rows.reshape(height, 4, width)            # plane 0 = most significant byte
             if self.end == "<":
                 planes = planes[:, ::-1, :]
             buf = np.ascontiguousarray(planes.transpose(0, 2, 1)).reshape(-1)
         return np.frombuffer(buf.tobytes(), dtype=np.dtype(self.end + "f4")).reshape(height, width).astype(np.float32)
 
     def blocks(self):
-        """(ligne, colonne, tableau) de chaque bloc, tableau complet (tuile entiere, bande entiere)."""
+        """(row, column, array) of each block, complete array (whole tile, whole strip)."""
         with open(self.path, "rb") as handle:
             for index, (offset, count) in enumerate(zip(self.offsets, self.counts)):
                 handle.seek(offset)
@@ -157,22 +157,22 @@ class Tiff(object):
                     yield top, 0, self._decode(payload, self.width, min(self.block_h, self.height - top))
 
     def read_all(self):
-        """L'image entiere (pour une grille : quelques Ko)."""
+        """The whole image (for a grid: a few KB)."""
         out = np.empty((self.height, self.width), dtype=np.float32)
         for top, left, block in self.blocks():
             part = block[:self.height - top, :self.width - left]
             out[top:top + part.shape[0], left:left + part.shape[1]] = part
         return out
 
-    # -- reecriture ------------------------------------------------------------------------
+    # -- rewriting -------------------------------------------------------------------------
 
     def rewrite(self, dest, change, level=6):
-        """Ecrit une copie de la premiere image dans `dest`, chaque bloc passant par `change(ligne, colonne, tableau)`.
+        """Write a copy of the first image to `dest`, each block going through `change(row, column, array)`.
 
-        Les balises de georeferencement sont recopiees telles quelles ; la copie est en Deflate sans predicteur, sans
-        apercus (les apercus d'origine ne correspondraient plus aux valeurs corrigees). Octets little-endian seulement."""
+        The georeferencing tags are copied as they are; the copy is Deflate without predictor, without
+        overviews (the original overviews would no longer match the corrected values). Little-endian bytes only."""
         if self.end != "<":
-            raise ValueError("reecriture : TIFF little-endian seulement")
+            raise ValueError("rewriting: little-endian TIFF only")
         compressed = []
         for top, left, block in self.blocks():
             new = np.ascontiguousarray(change(top, left, block), dtype="<f4")
@@ -197,7 +197,7 @@ class Tiff(object):
         for tag, values in zip(names, (offsets, counts)):
             tags[tag] = (kind_off, len(values), struct.pack(end + (("Q" if big else "I") * len(values)), *values))
         extra, entries = bytearray(), []
-        pad = b"\0" if cursor % 2 else b""          # une IFD commence a une adresse paire
+        pad = b"\0" if cursor % 2 else b""          # an IFD starts at an even address
         ifd_start = cursor + len(pad)
         entry_size = 20 if big else 12
         table_size = (8 if big else 2) + entry_size * len(tags) + (8 if big else 4)
