@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T08:41:45",
+ "built": "2026-11-06T08:45:46",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -94,8 +94,8 @@
    "size": 7237
   },
   "aerotools/tools/fastexport/dialog.py": {
-   "sha256": "03434853b9a95607112142012d32ea41cd2664b47fa6159346d374794726350d",
-   "size": 41639
+   "sha256": "8ae948fa7d55b903677f072404e43214cdd697a009670544157b1c23bb5b1e09",
+   "size": 41636
   },
   "aerotools/tools/fastexport/dxfout.py": {
    "sha256": "f79fb7a7a7b981f64ee4243da57275089227a22ea33ed7ac93faafc155460005",
@@ -286,8 +286,8 @@
    "size": 834
   },
   "aerotools/ui.py": {
-   "sha256": "e87fb1807cf17cb3d00c99cb5645b8a95f812636aca84212e5b9ead9bb24cf4a",
-   "size": 5896
+   "sha256": "7bedef3e299a31893e50e47f6e8c68fc006b98618ca4b20baff823c68c4d4845",
+   "size": 6481
   },
   "aerotools/update_dialog.py": {
    "sha256": "2da5fd02c3f939ffbd968b454d370dc3c51c442e87a5fe78ee1d8e9c53234591",
@@ -366,8 +366,8 @@
    "size": 659968
   },
   "aerotools/vendor/proj/data/files.geojson": {
-   "sha256": "34870c4e786a1225641452adf5313e850f0554a0b1647b0289bdd3ca3675fc7c",
-   "size": 331508
+   "sha256": "46f26c830faa164af9ef9ef51a7325a9d3800eb12ad4b1661c1d3143af7becc3",
+   "size": 331044
   },
   "aerotools/vendor/proj/data/grid_ops.json": {
    "sha256": "129569c565905a86a29998b76925fcf80753b809c336e8e97d49b4fca4d741c5",
@@ -378,8 +378,8 @@
    "size": 10280960
   },
   "aerotools/vendor/proj/share/proj/proj.ini": {
-   "sha256": "821e0bdea2266b7ef4c3d63ed56078afd76eff09f9176f0e56e0ba6b785d25d6",
-   "size": 2494
+   "sha256": "b95ebf0d007339244483d65d571cd887a51806e2bd2c1ab7f47b897d25320d65",
+   "size": 2435
   },
   "assets/fonts/Manrope-VariableFont_wght.ttf": {
    "sha256": "2b7a1ebc80c79246faa1b6e7093c7b91de2a4ceedb9b9a2b2fa05cf9bf8c77cd",

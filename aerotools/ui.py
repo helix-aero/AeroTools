@@ -95,6 +95,20 @@ class Mark(QtWidgets.QLabel):
         self.setVisible(bool(symbol))
 
 
+class SelectAllEdit(QtWidgets.QLineEdit):
+    """Champ de saisie dont tout le texte est selectionne des qu'on y entre (clic ou Tab) : on tape, la valeur est remplacee."""
+
+    def focusInEvent(self, event):
+        super(SelectAllEdit, self).focusInEvent(event)
+        QtCore.QTimer.singleShot(0, self.selectAll)         # apres le clic, qui placerait sinon le curseur
+
+    def mousePressEvent(self, event):
+        entering = not self.hasFocus()
+        super(SelectAllEdit, self).mousePressEvent(event)
+        if entering:
+            QtCore.QTimer.singleShot(0, self.selectAll)
+
+
 class OptionCard(QtWidgets.QFrame):
     """Une option : un bouton (rond ou case) dans un cadre qui passe au vert une fois choisi (orange si `danger`).
 

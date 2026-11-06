@@ -125,7 +125,7 @@ class ExportDialog(QtWidgets.QDialog):
             check.setCursor(QtCore.Qt.PointingHandCursor)
             card = ui.OptionCard(check)
             native = ui.label("", "aeroMeta", wrap=False)
-            field = QtWidgets.QLineEdit()
+            field = ui.SelectAllEdit()
             field.setFixedWidth(90)
             field.setAlignment(QtCore.Qt.AlignRight)
             field.setMaxLength(8)
