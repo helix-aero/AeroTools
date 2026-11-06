@@ -214,21 +214,22 @@ def test_jp2_export_writes_a_raw_tiff_then_converts_it_and_removes_the_raw(tmp_p
     assert result.tiles == 1 and result.files[0][1] == len(b"converted")
 
 
-def test_no_event_loop_is_run_while_metashape_is_exporting(tmp_path, monkeypatch):
-    """Metashape appelle notre rappel en plein calcul : la fenetre ne doit pas y relancer la boucle Qt (crash de repaint)."""
+def test_metashape_gets_no_progress_callback_so_it_never_calls_back_into_qt_while_exporting(tmp_path):
+    """Un rappel appele par Metashape en plein calcul a fait planter Metashape (repaint recursif) : on n'en passe aucun."""
     env, seen = Env(tmp_path), []
     original = env.export
 
     def export(*args, **kwargs):
-        seen.append(ctx.native)
+        seen.append((kwargs.get("progress"), ctx.native))
         return original(*args, **kwargs)
 
     ctx = fake_context(tmp_path, env, "full")
     ctx.export = export
     jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
-    pipeline.run(ctx, jobs, lambda f, t: seen.append(("progress", ctx.native)))
-    assert True in seen and ctx.native is False                  # pendant l'export de Metashape, pas apres
-    assert ("progress", True) in seen                                 # son rappel de progression arrive bien dans cette fenetre
+    fractions = []
+    pipeline.run(ctx, jobs, lambda f, t: fractions.append(f))
+    assert seen and all(progress is None and native for progress, native in seen)
+    assert ctx.native is False and fractions[-1] == 1.0 and fractions == sorted(fractions)
 
 
 def test_ecw_needs_global_mapper_and_jp2_prefers_gdal_then_global_mapper(tmp_path, monkeypatch):

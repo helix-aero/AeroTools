@@ -182,12 +182,15 @@ def run_job(ctx, job, work, report, result, images):
         if metashape_jp2:
             raw_spec = dict(spec, image="jp2", ext="jp2")
             raw = final
-        ctx.native = True                     # Metashape peint ses propres fenetres pendant ce calcul : on n'y relance pas la boucle Qt
+        # Pas de rappel de progression : Metashape l'appellerait en plein calcul (peut-etre depuis un autre fil) et toucher
+        # une barre Qt a cet instant plante Metashape (« Recursive repaint detected »). La barre avance entre les fichiers.
+        ctx.native = True
         try:
-            ok, error = ctx.export(ctx.chunk, job.kind, raw_spec, raw, pixel, tile_box, big=_big(ctx, job), progress=sub,
+            ok, error = ctx.export(ctx.chunk, job.kind, raw_spec, raw, pixel, tile_box, big=_big(ctx, job), progress=None,
                                    crs=ctx.crs)
         finally:
             ctx.native = False
+        sub(100)
         if not ok:
             raise Failure(error or "Metashape n'a pas ecrit le fichier")
         if not os.path.isfile(raw):
