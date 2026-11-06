@@ -574,10 +574,9 @@ class MetashapeBackend(Backend):
         """The chunk's own orthomosaic, exported small and resampled onto ENU east/north axes."""
         ortho = chunk.orthomosaic
         path = os.path.join(self.tmp(), "preview_src.png")
-        scale = max_px / float(max(ortho.width, ortho.height))
-        w, h = max(2, int(ortho.width * min(1.0, scale))), max(2, int(ortho.height * min(1.0, scale)))
-        chunk.exportRaster(path, source_data=Metashape.DataSource.OrthomosaicData, image_format=Metashape.ImageFormatPNG, width=w, height=h,
-                           save_alpha=False, white_background=True, clip_to_boundary=False)
+        factor = max(1.0, max(ortho.width, ortho.height) / float(max_px))
+        chunk.exportRaster(path, source_data=Metashape.DataSource.OrthomosaicData, image_format=Metashape.ImageFormatPNG,
+                           resolution=float(ortho.resolution) * factor, save_alpha=False, white_background=True, clip_to_boundary=False)
         src = self._read_image(path)
         sl, sb, sr, st = float(ortho.left), float(ortho.bottom), float(ortho.right), float(ortho.top)
         crs = ortho.projection.crs if hasattr(ortho, "projection") and ortho.projection is not None else chunk.crs
@@ -892,11 +891,11 @@ class MetashapeBackend(Backend):
         if work is None or work.orthomosaic is None:
             raise RuntimeError("The orthophoto of façade %s is not built yet." % facade.letter)
         ortho = work.orthomosaic
-        scale = width / float(ortho.width)
-        h = max(2, int(round(ortho.height * scale)))
+        factor = max(1.0, ortho.width / float(width))
         path = os.path.join(self.tmp(), "thumb_%s.png" % facade.letter)
-        work.exportRaster(path, source_data=Metashape.DataSource.OrthomosaicData, image_format=Metashape.ImageFormatPNG, width=width, height=h,
-                          save_alpha=False, white_background=True)
+        # `resolution` resamples the whole picture; `width` / `height` would only cut a window of that many native pixels out of it (measured)
+        work.exportRaster(path, source_data=Metashape.DataSource.OrthomosaicData, image_format=Metashape.ImageFormatPNG,
+                          resolution=float(ortho.resolution) * factor, save_alpha=False, white_background=True, clip_to_boundary=False)
         arr = self._read_image(path)
         self._thumbs[facade.letter] = arr
         return arr
