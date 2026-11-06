@@ -3,6 +3,7 @@
 import builtins
 import os
 import sys
+import tempfile
 import types
 
 import pytest
@@ -10,6 +11,34 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
+
+
+def _real_settings():
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "HELIX", "AeroTools", "settings.json")
+
+
+def _snapshot(path):
+    import hashlib
+    try:
+        with open(path, "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest(), os.path.getmtime(path)
+    except OSError:
+        return None
+
+
+# The machine's real settings are read now, before anything can write to them. From here to the end of the run LOCALAPPDATA points
+# to a throw-away folder (code that runs at import or collection time, or from a test without the fixtures below, is covered too),
+# and the session fails if the real file changed.
+_REAL_SETTINGS = _real_settings()
+_REAL_BEFORE = _snapshot(_REAL_SETTINGS)
+os.environ["LOCALAPPDATA"] = tempfile.mkdtemp(prefix="aerotools_pytest_")
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _real_settings_untouched():
+    yield
+    assert _snapshot(_REAL_SETTINGS) == _REAL_BEFORE, "a test wrote the real settings file " + _REAL_SETTINGS
 
 
 @pytest.fixture(autouse=True)

@@ -20,7 +20,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-os.environ["LOCALAPPDATA"] = tempfile.mkdtemp(prefix="aerotools_qt_fx_")
+sys.path.insert(0, HERE)
+import _isolation  # noqa: E402
+GUARD = _isolation.Guard("aerotools_qt_fx_")                      # settings of the machine stay untouched
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 FAKE = types.ModuleType("Metashape")
@@ -29,6 +31,7 @@ FAKE.app = types.SimpleNamespace(version="2.2.1-selftest", document=types.Simple
 sys.modules["Metashape"] = FAKE
 
 from aerotools import config, i18n, journal, qt  # noqa: E402
+GUARD.pin(config)
 from aerotools.qt import QtCore, QtGui, QtWidgets  # noqa: E402
 from aerotools import ui  # noqa: E402
 from aerotools.tools.fastexport import look as looks  # noqa: E402
@@ -733,6 +736,10 @@ def main():
     print("-" * 60)
     print("Qt binding: {} ; Python {} ; platform {}".format(qt.BINDING, sys.version.split()[0],
                                                            os.environ.get("QT_QPA_PLATFORM")))
+    problem = GUARD.check()
+    print("{} the real settings are untouched".format("FAIL" if problem else "PASS") + ("  -> " + problem if problem else ""))
+    if problem:
+        FAILURES.append("real settings untouched")
     if FAILURES:
         print("{} failure(s): {}".format(len(FAILURES), " | ".join(FAILURES)))
         return 1
