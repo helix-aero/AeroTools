@@ -39,12 +39,16 @@ from aerotools.qt import QtCore, QtGui, QtWidgets  # noqa: E402
 from aerotools.tools.aerofacade import state as S  # noqa: E402
 from aerotools.tools.aerofacade import widgets, wizard as W  # noqa: E402
 from aerotools.tools.aerofacade.fake_backend import FakeBackend  # noqa: E402
+from aerotools.tools.aerofacade import sheetout  # noqa: E402
 from aerotools.tools.aerofacade.model import Margins  # noqa: E402
 
 from aerotools.tools.aeroexports import controls  # noqa: E402
 controls.screen_area = lambda: QtCore.QRect(0, 0, 1920, 1040)       # a Full HD screen (the offscreen one is small and varies)
 
 journal.print = lambda *args, **kwargs: None
+NO_TOOLS = {"gm": "", "acad": "", "gdal": ""}
+ALL_TOOLS = {"gm": "gm.exe", "acad": "accore.exe", "gdal": "gdal"}
+sheetout.detect_tools = lambda: dict(NO_TOOLS)                      # what this machine has installed must not change the results
 APP = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 FAILURES = []
 SHOTS = None
@@ -756,6 +760,191 @@ def _():
     return ok, str(names)
 
 
+def export_screen(tools=None, keep_settings=False, **backend_args):
+    """(window, backend, export screen) on the choose page, with the given external tools 'found'."""
+    if not keep_settings:
+        config.save_settings({})                                   # the choices a case saved must not leak into the next one
+    sheetout.detect_tools = lambda: dict(tools if tools is not None else NO_TOOLS)
+    window, backend = new_wizard(**backend_args)
+    show(window)
+    prepare_to(window, S.EXPORT)
+    ex = window.screens[S.EXPORT]
+    until(lambda: ex.stack.currentIndex() == 1, 30)
+    return window, backend, ex
+
+
+def pick(group, value):
+    for radio in group.buttons():
+        if radio.property("value") == value:
+            radio.setChecked(True)
+            return radio
+    return None
+
+
+@case("export sheet: ticking the drawing sheet shows its options; the sheet and its pictures are written, relative heights, French titles")
+def _():
+    folder = tempfile.mkdtemp(prefix="aerofacade_sheet_")
+    window, backend, ex = export_screen()
+    hidden = not ex.sheet_box.isVisibleTo(ex)
+    ex.thumbs.set_checked(facade_letters(window)[:3])
+    ex.folder.setText(folder)
+    ex.sheet_on.setChecked(True)
+    shown = ex.sheet_box.isVisibleTo(ex)
+    names_line = "facades.dxf" in ex.names.toPlainText()
+    opts = ex.options()
+    ex.start_export()
+    window.wait_idle(30000)
+    names = sorted(os.listdir(folder))
+    dxf = [n for n in names if n.endswith("_facades.dxf")]
+    text = open(os.path.join(folder, dxf[0]), newline="").read() if dxf else ""
+    pics = [n for n in names if n.endswith(".png")]
+    assets = os.listdir(os.path.join(folder, "00_Assets", "ortho")) if os.path.isdir(os.path.join(folder, "00_Assets")) else []
+    ok = (hidden and shown and names_line and opts["sheet"] == {"dxf": True, "dwg": False, "z": False, "vertical": None, "titles": "fr"}
+          and len(dxf) == 1 and len(pics) == 3 and len(assets) == 3 and "FACADE SUD" in text and "Hauteurs relatives" in text
+          and not [n for n in names if n.endswith(".dwg")] and ex.stack.currentIndex() == 2)
+    window.close()
+    return ok, "names={} assets={} hidden={} shown={} names_line={} opts={}".format(names, assets, hidden, shown, names_line, opts["sheet"])
+
+
+@case("export sheet: without the loose pictures only the sheet and its pictures folder are written; English titles")
+def _():
+    folder = tempfile.mkdtemp(prefix="aerofacade_sheet2_")
+    window, backend, ex = export_screen()
+    ex.thumbs.set_checked(facade_letters(window)[:2])
+    ex.folder.setText(folder)
+    ex.sheet_on.setChecked(True)
+    ex.sheet_pictures.setChecked(False)
+    ex.sheet_titles.setCurrentIndex(ex.sheet_titles.findData("en"))
+    ex.start_export()
+    window.wait_idle(30000)
+    names = sorted(os.listdir(folder))
+    text = open(os.path.join(folder, [n for n in names if n.endswith(".dxf")][0]), newline="").read()
+    ok = len(names) == 2 and "00_Assets" in names and "FACADE" in text and "Relative heights" in text
+    window.close()
+    return ok, str(names)
+
+
+@case("export sheet: DWG, JPEG 2000 and ECW are greyed with their reason when AutoCAD, GDAL and Global Mapper are not found, and offered when they are")
+def _():
+    window, backend, ex = export_screen(tools=NO_TOOLS)
+    off = {r.property("value"): not r.isEnabled() for r in ex.formats.buttons()}
+    dwg = [r for r in ex.sheet_fmt.buttons() if r.property("value") == "dwg"][0]
+    note = ex.sheet_dwg_note.isVisibleTo(ex.sheet_box) or True
+    ex.sheet_on.setChecked(True)
+    first = (off["jp2"] and off["ecw"] and not off["png"] and not dwg.isEnabled() and ex.sheet_dwg_note.isVisibleTo(ex.sheet_box)
+             and ex.format() == "png")
+    window.close()
+    window, backend, ex = export_screen(tools=ALL_TOOLS)
+    off = {r.property("value"): not r.isEnabled() for r in ex.formats.buttons()}
+    dwg = [r for r in ex.sheet_fmt.buttons() if r.property("value") == "dwg"][0]
+    second = not any(off.values()) and dwg.isEnabled()
+    only_gm = export_screen(tools={"gm": "gm.exe", "acad": "", "gdal": ""})
+    jp2_gm = [r for r in only_gm[2].formats.buttons() if r.property("value") == "jp2"][0].isEnabled()
+    only_gm[0].close()
+    window.close()
+    sheetout.detect_tools = lambda: dict(NO_TOOLS)
+    return first and second and jp2_gm, "first={} second={} jp2_gm={}".format(first, second, jp2_gm)
+
+
+@case("export sheet: a format whose program is missing is refused by the backend with a reason, nothing is written")
+def _():
+    folder = os.path.join(tempfile.mkdtemp(prefix="aerofacade_sheet3_"), "o")
+    window, backend, ex = export_screen()
+    facades = window.state.active()[:2]
+    out = backend.export(facades, folder, "ecw", {"tools": NO_TOOLS}, None, None)
+    out2 = backend.export(facades, folder, "png", {"tools": NO_TOOLS, "sheet": {"dwg": True}}, None, None)
+    window.close()
+    ok = (len(out) == 1 and not out[0][1] and "Global Mapper" in out[0][2]
+          and [r[1] for r in out2].count(False) == 1 and "AutoCAD" in [r[2] for r in out2 if not r[1]][0]
+          and any(r[0].endswith("_facades.dxf") and r[1] for r in out2))
+    return ok, "{} | {}".format(out, out2)
+
+
+@case("export sheet: altitudes need a height system; a missing grid shows the banner and holds Export; the ellipsoid frees it")
+def _():
+    window, backend, ex = export_screen()
+    ex.sheet_on.setChecked(True)
+    enabled = ex.sheet_z.isEnabled()
+    hidden = not ex.heights.isVisibleTo(ex.sheet_box)
+    ex.sheet_z.setChecked(True)
+    pump(40)
+    ids = [ex.heights.box.itemData(i) for i in range(ex.heights.box.count())]
+    ex.heights.select("fr_ign_RAC09")
+    pump(40)
+    blocked = ex.heights.blocking() and not ex.export_button.isEnabled() and ex.heights.card.isVisibleTo(ex.heights)
+    ex.heights.select("ellipsoid")
+    pump(40)
+    freed = not ex.heights.blocking() and ex.export_button.isEnabled() and not ex.heights.card.isVisibleTo(ex.heights)
+    opts = ex.sheet_options()
+    window.close()
+    ok = enabled and hidden and "fr_ign_RAC09" in ids and ids[-1] == "ellipsoid" and blocked and freed and opts["z"] and opts["vertical"] == "ellipsoid"
+    return ok, "enabled={} hidden={} ids={} blocked={} freed={} opts={}".format(enabled, hidden, ids, blocked, freed, opts)
+
+
+@case("export sheet: with the real RAC23 grid in the Geoid folder the sheet is written in altitudes (PROJ checked), the note names the system")
+def _():
+    import shutil
+    from aerotools.tools.aeroexports import crs as exports_crs
+    folder = tempfile.mkdtemp(prefix="aerofacade_sheet4_")
+    geoid = exports_crs.own_dir()
+    os.makedirs(geoid, exist_ok=True)
+    shutil.copy(os.path.join(ROOT, "tests", "data", "fr_ign_RAC23.tif"), os.path.join(geoid, "fr_ign_RAC23.tif"))
+    window, backend, ex = export_screen(epsg=9794, lonlat=(9.0, 42.0), origin_xy=(1197656.7, 6118854.9))
+    ex.thumbs.set_checked(facade_letters(window)[:2])
+    ex.folder.setText(folder)
+    ex.sheet_on.setChecked(True)
+    ex.sheet_z.setChecked(True)
+    pump(40)
+    ex.heights.select("fr_ign_RAC23")
+    pump(40)
+    ready = ex.heights.selected() == "fr_ign_RAC23" and not ex.heights.blocking() and ex.export_button.isEnabled()
+    ex.start_export()
+    window.wait_idle(60000)
+    dxf = [n for n in os.listdir(folder) if n.endswith("_facades.dxf")]
+    text = open(os.path.join(folder, dxf[0]), newline="").read() if dxf else ""
+    os.remove(os.path.join(geoid, "fr_ign_RAC23.tif"))
+    saved = config.section("aerofacade")
+    window.close()
+    ok = (ready and "Altimetrie" in text and "RAC23" in text and "Y = altitude (m)" in text and "NGF-IGN78" in text
+          and saved.get("sheet") is True and saved.get("sheet_z") is True and saved.get("sheet_vertical") == "fr_ign_RAC23")
+    config.save_settings({})
+    return ok, "ready={} dxf={} saved={}".format(ready, dxf, saved)
+
+
+@case("export sheet: a project without coordinate system keeps relative heights and says why altitudes are off")
+def _():
+    window, backend, ex = export_screen(epsg=None)
+    ex.sheet_on.setChecked(True)
+    off = not ex.sheet_z.isEnabled() and ex.sheet_z_note.isVisibleTo(ex.sheet_box) and "no coordinate system" in ex.sheet_z_note.text()
+    opts = ex.sheet_options()
+    window.close()
+    return off and not opts["z"], "off={} opts={}".format(off, opts)
+
+
+@case("export sheet: the choices of the sheet are remembered between two sessions")
+def _():
+    config.save_settings({})
+    window, backend, ex = export_screen(tools=ALL_TOOLS)
+    ex.thumbs.set_checked(facade_letters(window)[:1])
+    ex.folder.setText(tempfile.mkdtemp(prefix="aerofacade_sheet5_"))
+    ex.sheet_on.setChecked(True)
+    pick(ex.sheet_fmt, "dwg")
+    ex.sheet_pictures.setChecked(False)
+    ex.sheet_titles.setCurrentIndex(ex.sheet_titles.findData("en"))
+    pick(ex.formats, "jp2")
+    ex.start_export()
+    window.wait_idle(30000)
+    window.close()
+    saved = dict(config.section("aerofacade"))
+    window2, _b, ex2 = export_screen(tools=ALL_TOOLS, keep_settings=True)
+    loaded = (ex2.sheet_on.isChecked() and [r.isChecked() for r in ex2.sheet_fmt.buttons() if r.property("value") == "dwg"] == [True]
+              and not ex2.sheet_pictures.isChecked() and ex2.sheet_titles.currentData() == "en" and ex2.format() == "jp2")
+    window2.close()
+    config.save_settings({})
+    sheetout.detect_tools = lambda: dict(NO_TOOLS)
+    return loaded, "saved={}".format({k: v for k, v in saved.items() if k.startswith(("sheet", "fmt"))})
+
+
 @case("export: Export is off while nothing is ticked or the folder is empty")
 def _():
     window, _backend = new_wizard()
@@ -1176,6 +1365,22 @@ def render_all(scale):
         pump(200)
     shot(window, "UI15_export_choose_" + tag)
     problems["export_choose"] = cut_off(window)
+    sheet_screen = window.screens[S.EXPORT]
+    sheet_screen.sheet_on.setChecked(True)
+    sheet_screen.sheet_z.setChecked(True)
+    sheet_screen.heights.select("fr_ign_RAC09")
+    pump(150)
+    parent = sheet_screen.sheet_box.parent()                             # the options panel scrolls: show its lower part, where the sheet is
+    while parent is not None and not isinstance(parent, QtWidgets.QScrollArea):
+        parent = parent.parent()
+    if parent is not None:
+        parent.verticalScrollBar().setValue(parent.verticalScrollBar().maximum())
+    pump(100)
+    shot(window, "UI15b_export_sheet_" + tag)
+    problems["export_sheet"] = cut_off(window)
+    sheet_screen.sheet_z.setChecked(False)
+    sheet_screen.sheet_on.setChecked(False)
+    pump(60)
     window.screens[S.EXPORT].start_export()
     until(lambda: window.screens[S.EXPORT].stack.currentIndex() == 2, 60)
     pump(200)

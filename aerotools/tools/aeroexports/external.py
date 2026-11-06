@@ -217,8 +217,10 @@ def acad_script_check():
     return "-IMAGE\nR\n*\n-IMAGE\n?\n*\n_QUIT\nY\n"
 
 
-def acad_script_dwg(dwg, version="2018"):
-    return '_SAVEAS\n%s\n"%s"\n_QUIT\nY\n' % (version, dwg.replace("/", "\\"))
+def acad_script_dwg(dwg, version="2018", zoom_extents=False):
+    """AutoCAD script: save the DXF as a DWG. `zoom_extents`: show everything first, so the drawing opens on its content."""
+    zoom = "_ZOOM\nE\n" if zoom_extents else ""
+    return '%s_SAVEAS\n%s\n"%s"\n_QUIT\nY\n' % (zoom, version, dwg.replace("/", "\\"))
 
 
 def _run_core(core, dxf, script_text, tick=None):
@@ -263,11 +265,11 @@ def check_dxf(core, dxf, tick=None):
     return parse_check(_run_core(core, dxf, acad_script_check(), tick))
 
 
-def dxf_to_dwg(core, dxf, dwg, tick=None):
+def dxf_to_dwg(core, dxf, dwg, tick=None, zoom_extents=False):
     """DXF -> DWG through AutoCAD. Returns (ok, message). The DWG is checked (exists, not empty)."""
     if os.path.exists(dwg):
         os.remove(dwg)
-    _run_core(core, dxf, acad_script_dwg(dwg), tick)
+    _run_core(core, dxf, acad_script_dwg(dwg, zoom_extents=zoom_extents), tick)
     if not os.path.isfile(dwg) or os.path.getsize(dwg) == 0:
         return False, "AutoCAD did not write the DWG"
 

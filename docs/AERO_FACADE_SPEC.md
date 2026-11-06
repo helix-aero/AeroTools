@@ -60,8 +60,8 @@ selected method will take a long time, a gentle notice says so.
 
 ### Screen 6 — Orthophotos and export
 - Preview of each facade's orthophoto (small thumbnail) in a list; checkboxes to pick which to export; output folder (default:
-  `Outputs` next to the project, like Aero-Exports; the folder is created); format choices (PNG / JPEG / TIFF + a georeferencing
-  text file: origin, pixel size, plane frame, so the picture can be placed and measured; optional DXF with the picture inserted).
+  `Outputs` next to the project, like Aero-Exports; the folder is created); format choices (PNG / JPEG / TIFF / JPEG 2000 / ECW + a georeferencing
+  text file: origin, pixel size, plane frame, so the picture can be placed and measured; optional DXF with the picture inserted, optional drawing sheet: see "Drawing sheet" below).
 - **Export** writes one file per facade named `<site>_<date>_facade_<A>.<ext>`; a final success screen with **Open folder**.
 
 ## Architecture (three layers, so three people can work in parallel)
@@ -88,7 +88,8 @@ class Backend:
     def build_dems(self, facades, margins, method, progress, cancelled) -> dict   # letter -> (ok, message); sequential
     def build_orthos(self, facades, margins, method, pixel_m, progress, cancelled) -> dict  # letter -> (ok, message)
     def thumbnail(self, facade) -> array      # small RGB picture of the built orthophoto
-    def export(self, facades, folder, fmt, options, progress, cancelled) -> list[(path, ok, message)]
+    def height_context(self) -> dict           # {"epsg": int | None, "lonlat": (lon, lat) | None, "crs_name": str}: where the sheet's altitudes can be read (see Drawing sheet)
+    def export(self, facades, folder, fmt, options, progress, cancelled) -> list[(path, ok, message)]   # fmt: png | jpg | tif | jp2 | ecw; options: see Drawing sheet
 ```
 All long calls report `progress(fraction, text)` and honour `cancelled()`. Metashape calls that need the main thread are made by the
 backend on the main thread (the UI calls `detect/build/export` from a worker thread or a timer-driven step runner: the adapter agent
@@ -293,3 +294,76 @@ Found and fixed during this run:
 `_preview_from_ortho` was checked on a chunk whose orthomosaic is in EPSG:3942 (aligned with the built preview), not on a chunk with a projected CRS that is a compound one or on a very large ortho.
 A dense cloud of tens of millions of points in `chunk.copy`; a chunk without georeference (`enu_matrix` falls back to the chunk axes, untested live); Cancel through the wizard's own button during a Metashape job
 (Metashape's modal progress window blocks it; the path was checked through the Cancel button of that window); a project saved with work chunks inside (`keep_work_chunks`).
+
+
+## Drawing sheet (DXF / DWG with every picture), JPEG 2000 and ECW
+
+Added on top of the export of screen 6. Pure logic: `sheet.py` (naming, order, layout, levels, entities; no Metashape, no Qt, no files), `sheet_labels.py`
+(the few words written INTO the drawing, French and English, plain ASCII), `sheetout.py` (options, heights, pictures, files, and `run_export`, the whole
+export sequence shared by both backends), `widgets_heights.py` (the height system picker). Tests: `tests/test_aerofacade_sheet.py`, the sheet cases of
+`tests/test_aerofacade_msfacade.py`, and the `export sheet:` cases of `tests_qt/run_qt_aerofacade.py`.
+
+### What the user gets
+* New formats next to PNG / JPEG / TIFF: **JPEG 2000** (GDAL from QGIS, or Global Mapper) and **ECW** (Global Mapper only), converted from a GeoTIFF with the
+  Aero-Exports tools (`external.to_jp2_gdal`, `to_jp2_gm`, `to_ecw`, found by `external.find_*`, saved paths of the Aero-Exports settings honoured). A format whose
+  program is missing is greyed on the screen with its reason, and refused by the backend with the same reason (never skipped silently).
+* A group **Drawing sheet**: one `<Site>_<date>_facades.dxf` (and `.dwg`, made by AutoCAD's `accoreconsole`; the DXF is kept) holding every ticked picture.
+  The pictures are referenced by RELATIVE paths in `00_Assets\ortho\<Site>_<date>_facade_<L>.<ext>` (the `aeroexports.dxfout` convention). The loose
+  pictures in the folder stay (option "Also save each picture on its own", on by default). The per-facade 3D DXF is a separate option, unchanged.
+* After the export, AutoCAD (when found) reloads every image of the DXF (`external.check_dxf`): a picture it cannot load is listed on the last screen.
+
+### The sheet
+* Drawing units = metres, scale 1:1 (`$INSUNITS` 6). ONE row, left to right, the facades in the order of the compass bearing of the direction they face, in steps of
+  5 degrees from the start of the north sector (N, NE, E, SE, S, SW, W, NW; walls facing the same way within 5 degrees keep the order of their letters). The first
+  picture's left edge is at X = 0. A constant gap: `max(2 m, 5 % of the mean picture width)`. Pictures are as in the wizard (seen from outside, left to right).
+* **Y is the height**: each picture stands with its bottom edge at its true height, at 1:1. Georeferencing in X/Y is not kept (the sheet is a plane drawing).
+  Leaning walls are drawn upright (the picture is not squashed).
+* Titles under each picture, `FACADE NORD` / `NORTH FACADE` ... with the cardinal point of the outward normal (`sheet.compass`, 45 degree sectors); two walls with the
+  same name both get their letter (`FACADE SUD (A)`); a smaller line gives azimuth, size in metres and pixel size (two lines when the picture is narrow). Language:
+  `options["sheet"]["titles"]` = `"fr"` (default) or `"en"`. The words are in `sheet_labels.py`.
+* Dressing: thin level lines at round values (step 0.5 / 1 / 2 / 5 / 10 ... m chosen so that there are at most 20 lines), labelled at both ends (`+3.00` in relative
+  mode, `NGF-IGN78 123.45` in altitude mode: the datum's short name), a graduated axis on the left, ticks on both edges of each frame, a thin frame around each picture, a
+  note under the sheet (`Relative heights, zero = lowest point of the selected facades`, or `Altimetry: NGF-IGN78 / RAC09, geoid grid fr_ign_RAC09.tif (horizontal frame
+  EPSG:32632)`). The level lines are cut around the pictures and the titles: they never run through a picture. Layers: `FACADE_LEVELS` (lines, ticks, axis and labels:
+  freeze it to hide the dressing), `FACADE_FRAMES`, `FACADE_TITLES` (titles and notes), one image layer `FACADE_<L>` per picture (these names are English on purpose).
+  Font: SHX `simplex` (the default `txt` draws the capital O as a square). The DWG is saved after a `ZOOM Extents`, so it opens on the whole sheet.
+
+### Heights
+* **Relative** (default): Y = height above the lowest bottom edge of the ticked pictures (common zero, relative heights between facades kept). The height of a
+  picture's bottom edge is read in the local ENU frame of the backend (no coordinate system needed).
+* **Altitudes** (`z`: true): Y = `H = h - N`. `h` is the height of the bottom edge in the chunk's horizontal output CRS, which is ELLIPSOIDAL (measured live, below);
+  `N` is the undulation of the chosen vertical datum at the middle of the facade, one value per facade: read from the `Geoid` folder with PROJ as the authority and our own
+  reading of the grid as a check (they must agree to 10 mm, the rule of `vertical.correct_dem`), or no `N` for `ellipsoid`. The systems offered are
+  `vertical.compatible_verticals(epsg, lon, lat)`; the picker has the same states as the Aero-Exports window (missing / damaged grid: orange banner, verified download,
+  Export held until it is there). A missing grid, a grid that does not cover the place, no PROJ, no coordinate system: a plain `SheetError` message, and NOTHING of the
+  sheet is written (the loose pictures still are). The horizontal CRS is the chunk's own when it is projected with an EPSG code, else WGS 84 / UTM of the site (a geographic
+  chunk, as CARRO's); a local (engineering) chunk has no altitudes.
+
+### Backend protocol additions
+```python
+def height_context(self) -> dict    # {"epsg": int | None, "lonlat": (lon, lat) | None, "crs_name": str}; default: nothing known (relative heights only)
+def export(self, facades, folder, fmt, options, progress, cancelled)
+    # fmt: 'png' | 'jpg' | 'tif' | 'jp2' | 'ecw'
+    # options: {'georef_txt': bool, 'dxf': bool (3D DXF of each picture), 'pictures': bool (default True; False only counts with a sheet),
+    #           'tools': {'gm','acad','gdal'} (default: detected only when needed),
+    #           'sheet': {'dxf': bool, 'dwg': bool, 'z': bool, 'vertical': id | None, 'titles': 'fr' | 'en'}}   # dwg implies dxf
+    # returns [(path, ok, message)]; the sheet's .dxf / .dwg are in it; a problem with the sheet is an entry (path, False, reason)
+```
+Both backends call `sheetout.run_export(...)` with their `sheetout.Hooks` (`info`, `write_native`, `write_tif`, `sidecars`, `message`, `epsg`): `MetashapeBackend` (`msfacade._ExportHooks`,
+`bottom_edge`, `height_context`) and `FakeBackend` (`fake_backend._FakeHooks`, a synthetic site in Ajaccio, RGF93 v1 / CC42, `epsg=None` for a project without CRS). Preferences saved
+in the `aerofacade` section: `fmt`, `sheet`, `sheet_fmt`, `sheet_pictures`, `sheet_titles`, `sheet_z`, `sheet_vertical` (besides the existing ones).
+
+### JPEG 2000 / ECW pictures
+Metashape writes a GeoTIFF of the picture in its plane frame; the loose JPEG 2000 / ECW is converted from it as it is. The picture of the sheet is converted from a COPY whose
+tiepoint (`geotiff.set_origin`, in place on the copy only) puts its top-left corner at its place of the sheet (X, Y = height): the file says where it sits on the drawing.
+AutoCAD's IMAGE entity does not read the georeferencing, it uses the entity's own insertion point and pixel vectors.
+
+### Checked
+* Offline, with real tools on this PC (AutoCAD 2023 `accoreconsole`, QGIS 4.0.3 GDAL, Global Mapper 26): DXF reloads with all images (`check_dxf`), DWG written, plotted to PDF through
+  `-PLOT` and rendered with Ghostscript; PNG, JPEG 2000 and ECW pictures all load and plot. Synthetic facades (the fake backend's), titles readable, levels cut around pictures,
+  not mirrored.
+* Live in Metashape 2.2.1 on CARRO (chunk CRS WGS 84, EPSG:4326, no vertical): `crs.project` of a 2D projected EPSG (32632, 3942) returns the SAME height as the geographic WGS 84
+  height (64.2025 m in all four cases at a tie point): ellipsoidal. Altitudes of the ground at the five surveyed points of `CARRO.csv` (CC42, NGF) from the tie points: `h - N`
+  with RAC09 differs from the survey by -5.7 cm on average (std 4.6 cm, worst -13.8 cm), with RAC23 by -3.6 cm (std 4.6 cm, worst -11.7 cm).
+* Not verified: ECW / JPEG 2000 sheets from Metashape live (only offline with the fake backend), a chunk with a projected compound CRS live, a very large picture, DWG opened in
+  AutoCAD's interface (only `accoreconsole`).

@@ -23,6 +23,7 @@ import zlib
 import numpy as np
 
 from . import detect as D
+from . import sheetout
 from .backend import Backend, Cancelled, Progress
 from .geometry import georef_lines
 from .methods import stage_text
@@ -404,16 +405,67 @@ def write_image(path, rgb, fmt):
 # The backend
 # ---------------------------------------------------------------------------------------------------------------------
 
+class _FakeHooks(sheetout.Hooks):
+    """The fake backend's side of `sheetout.run_export`."""
+
+    def __init__(self, backend, prog):
+        self.b, self.prog = backend, prog
+
+    def epsg(self):
+        return self.b.epsg
+
+    def _ortho(self, f):
+        o = self.b._orthos.get(f.letter)
+        if o is None:
+            raise RuntimeError("The orthophoto of facade %s is not built yet." % f.letter)
+        return o
+
+    def info(self, f):
+        o = self._ortho(f)
+        m = o["margins"]
+        mid = f.point_at(f.length / 2.0, 0.0)
+        return {"size_px": (o["img"].shape[1], o["img"].shape[0]), "pixel": o["pixel"], "azimuth": f.azimuth,
+                "h": self.b.base_height + f.z0 - m.bottom, "x": self.b.origin_xy[0] + mid[0], "y": self.b.origin_xy[1] + mid[1]}
+
+    def write_native(self, f, path, ext, prog):
+        o = self._ortho(f)
+        self.b._wait(prog, 0.0, 0.8, "Writing %s" % os.path.basename(path), ticks=2)
+        if f.letter in self.b.fail_export:
+            raise RuntimeError(self.b.fail_export[f.letter])
+        if ext == "tif":
+            m = o["margins"]
+            sheetout.write_geotiff_rgb(path, o["img"], -m.left, f.height + m.top, o["pixel"])
+        else:
+            write_image(path, o["img"], ext)
+
+    def write_tif(self, f, path, prog):
+        self.write_native(f, path, "tif", prog)
+
+    def sidecars(self, f, path, options, prog):
+        o = self._ortho(f)
+        if options.get("georef_txt", True):
+            self.b._write_georef(os.path.splitext(path)[0] + ".txt", f, o)
+        if options.get("dxf"):
+            self.b._write_dxf(os.path.splitext(path)[0] + ".dxf", f, o)
+        prog(1.0, "Facade %s exported" % f.letter)
+
+    def message(self, f, path):
+        o = self._ortho(f)
+        return "%d x %d px" % (o["img"].shape[1], o["img"].shape[0])
+
+
 class FakeBackend(Backend):
     """Synthetic building behind the Backend protocol. See the module docstring.
 
     delay: seconds slept per simulated stage (0 in tests). Detection takes ~6 stages, a DEM ~4 per facade, an orthophoto ~3.
     fail: {letter: message} DEM builds that fail; fail_ortho: same for the orthophoto step; fail_export: same for export.
+    epsg / lonlat / origin_xy / base_height: where the synthetic site stands, for the heights of the drawing sheet (epsg=None: no coordinate system).
     existing: letters whose DEM is already in the chunk (for every method/margins) when the wizard starts (tests screen 5's shortcut).
     strict: an orthophoto needs its DEM first, a thumbnail/export needs its orthophoto (like the real adapter)."""
 
     def __init__(self, delay=0.05, tie_points=True, depth_maps=True, dense_cloud=True, ortho=True, fail=None, fail_ortho=None,
-                 fail_export=None, existing=(), stop_at=(), strict=True, seed=1, site="CARRO", date="261106", outputs=None, chunk="Chunk 1"):
+                 fail_export=None, existing=(), stop_at=(), strict=True, seed=1, site="CARRO", date="261106", outputs=None, chunk="Chunk 1",
+                 epsg=3942, lonlat=(8.7407, 41.9170), origin_xy=(2175840.0, 1206740.0), base_height=120.0):
         self.delay = float(delay)
         self.flags = dict(tie_points=tie_points, depth_maps=depth_maps, dense_cloud=dense_cloud)
         self.has_ortho = ortho
@@ -424,6 +476,8 @@ class FakeBackend(Backend):
         self.existing = set(existing)
         self.strict = strict
         self.site, self.date, self.chunk = site, date, chunk
+        self.epsg, self.lonlat = epsg, tuple(lonlat)                  # where the synthetic site is (Ajaccio, RGF93 v1 / CC42): the drawing sheet's heights
+        self.origin_xy, self.base_height = tuple(origin_xy), float(base_height)   # CC42 coordinates of the local ENU origin; ellipsoidal height of its zero
         self.outputs = outputs or os.path.join(tempfile.gettempdir(), "aerofacade_fake_outputs")
         self.seed = seed
         scene = build_scene(seed)
@@ -546,41 +600,14 @@ class FakeBackend(Backend):
             raise RuntimeError("The orthophoto of facade %s is not built yet." % facade.letter)
         return resize_nearest(o["img"], 240)
 
+    def height_context(self):
+        return {"epsg": self.epsg, "lonlat": self.lonlat if self.epsg else None,
+                "crs_name": "RGF93 v1 / CC42 (synthetic)" if self.epsg else ""}
+
     def export(self, facades, folder, fmt, options, progress, cancelled):
         self.calls.append(("export", [f.letter for f in facades], fmt))
-        options = options or {}
         prog = Progress.of(progress, cancelled)
-        fmt = fmt.lower().lstrip(".")
-        ext = {"jpeg": "jpg", "tiff": "tif"}.get(fmt, fmt)
-        os.makedirs(folder, exist_ok=True)
-        todo = [f for f in facades if not f.removed]
-        out = []
-        for i, f in enumerate(todo):
-            if prog.is_cancelled():
-                break
-            a, b = i / float(len(todo)), (i + 1) / float(len(todo))
-            path = os.path.join(folder, "%s_%s_facade_%s.%s" % (self.site, self.date, f.letter, ext))
-            try:
-                self._wait(prog, a, a + (b - a) * 0.8, "Writing %s" % os.path.basename(path), ticks=2)
-                o = self._orthos.get(f.letter)
-                if o is None:
-                    out.append((path, False, "The orthophoto of facade %s is not built yet." % f.letter))
-                    continue
-                if f.letter in self.fail_export:
-                    out.append((path, False, self.fail_export[f.letter]))
-                    continue
-                write_image(path, o["img"], ext)
-                if options.get("georef_txt", True):
-                    self._write_georef(os.path.splitext(path)[0] + ".txt", f, o)
-                if options.get("dxf"):
-                    self._write_dxf(os.path.splitext(path)[0] + ".dxf", f, o)
-                out.append((path, True, "%d x %d px" % (o["img"].shape[1], o["img"].shape[0])))
-                prog(b, "Facade %s exported" % f.letter)
-            except Cancelled:
-                break
-            except (RuntimeError, ValueError, OSError) as exc:
-                out.append((path, False, str(exc)))
-        return out
+        return sheetout.run_export(facades, folder, fmt, options or {}, self.site, self.date, _FakeHooks(self, prog), prog)
 
     # ---- sidecar files ---------------------------------------------------------------------------------------------
     @staticmethod

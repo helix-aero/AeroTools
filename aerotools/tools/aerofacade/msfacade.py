@@ -33,8 +33,10 @@ import Metashape
 from ... import journal
 from . import detect as detect_module
 from . import geometry
+from . import sheetout
 from .backend import Backend, Cancelled, Progress
 from .model import Method, margins_for
+from .sheetout import SheetError
 
 TAG = "AeroFacade"
 WORK_PREFIX = "AeroFacade_"
@@ -902,34 +904,22 @@ class MetashapeBackend(Backend):
 
     # ---- Backend: export -----------------------------------------------------------------------------------------
     def export(self, facades, folder, fmt, options, progress, cancelled):
+        """The pictures (and the drawing sheet when `options["sheet"]` asks for it): the sequence is `sheetout.run_export`, shared with the
+        fake backend; what is Metashape's (the pictures, the heights) is in `_ExportHooks`."""
         prog = Progress.of(progress, cancelled)
         options = options or {}
-        ext = EXT.get(str(fmt).lower().lstrip("."), "png")
         info = self.project_info()
-        os.makedirs(folder, exist_ok=True)
-        todo = [f for f in facades if not f.removed]
-        out = []
-        for i, f in enumerate(todo):
-            sub = prog.sub(i / float(len(todo)), (i + 1) / float(len(todo)))
-            path = os.path.join(folder, "%s_%s_facade_%s.%s" % (info["site"], info["date"], f.letter, ext))
-            try:
-                work = self._work_for(f)
-                if work is None or work.orthomosaic is None:
-                    out.append((path, False, "The orthophoto of this facade is not built yet."))
-                    continue
-                t0 = time.time()
-                self._export_one(f, work, path, ext, options, sub)
-                log("exported %s (%.1f s, %.1f MB)" % (os.path.basename(path), time.time() - t0, os.path.getsize(path) / 1e6))
-                out.append((path, True, ""))
-            except Cancelled:
-                log("cancelled during the export of facade %s" % f.letter)
-                break
-            except Exception as exc:
-                log("export of facade %s failed: %s" % (f.letter, exc))
-                out.append((path, False, explain(exc)))
+        hooks = _ExportHooks(self, options)
+        t0 = time.time()
+        out = sheetout.run_export(facades, folder, fmt, options, info["site"], info["date"], hooks, prog, tick=self.pump)
+        log("export in %.1f s: %s" % (time.time() - t0, "; ".join("%s %s" % (os.path.basename(p), "ok" if ok else m) for p, ok, m in out)))
         return out
 
-    def _export_one(self, f, work, path, ext, options, prog):
+    def _picture_pixel(self, work):
+        return float(_meta_get(work, META_PIXEL) or work.orthomosaic.resolution)
+
+    def _write_raster(self, f, work, path, ext, options, prog):
+        """One `exportRaster` of the facade's orthophoto (png / jpg / tif)."""
         ortho = work.orthomosaic
         big = ortho.width * ortho.height * 3 > 3.5e9
         comp = Metashape.ImageCompression()
@@ -938,17 +928,70 @@ class MetashapeBackend(Backend):
         comp.tiff_overviews = False
         comp.jpeg_quality = int(options.get("jpeg_quality", 92))
         fmt = {"png": Metashape.ImageFormatPNG, "jpg": Metashape.ImageFormatJPEG, "tif": Metashape.ImageFormatTIFF}[ext]
+        t0 = time.time()
         self._call(prog, 0.0, 0.9, "Facade %s: writing %s" % (f.letter, os.path.basename(path)), work.exportRaster, path,
                    source_data=Metashape.DataSource.OrthomosaicData, image_format=fmt, image_compression=comp, save_alpha=False,
                    white_background=True, clip_to_boundary=False, save_world=False)
         if not os.path.isfile(path):
             raise RuntimeError("Metashape wrote no file.")
-        pixel = float(_meta_get(work, META_PIXEL) or ortho.resolution)
-        if options.get("georef_txt", True):
-            self._write_georef(f, work, path, pixel)
-        if options.get("dxf"):
-            self._write_dxf(f, work, path, pixel, options)
-        finished(prog, "Facade %s: done" % f.letter)
+        log("exported %s (%.1f s, %.1f MB)" % (os.path.basename(path), time.time() - t0, os.path.getsize(path) / 1e6))
+
+    # ---- heights for the drawing sheet -------------------------------------------------------------------------
+    def _height_crs(self):
+        """(epsg, Metashape CoordinateSystem, name) of the projected CRS the sheet's heights are read in: the chunk's own horizontal CRS when it is
+        projected and has an EPSG code, else WGS 84 / UTM of the site (the heights are ellipsoidal either way). None when the chunk has no
+        geographic coordinate system (a local one): only relative heights are possible."""
+        chunk = self._src()
+        crs = chunk.crs
+        if crs is None or chunk.transform is None or chunk.transform.matrix is None:
+            return None
+        if str(getattr(crs, "wkt", "")).lstrip().upper().startswith("LOCAL_CS"):
+            return None
+        epsg, geographic = None, True
+        try:
+            from ... import msapi
+            epsg, geographic = msapi.project_epsg(crs), msapi.is_geographic(crs)
+        except Exception:
+            pass
+        if epsg and not geographic:
+            return epsg, Metashape.CoordinateSystem("EPSG::%d" % int(epsg)), str(getattr(crs, "name", "") or "EPSG:%d" % epsg)
+        lon, lat = self._site_lonlat()
+        code = utm_epsg(lon, lat)
+        return code, Metashape.CoordinateSystem("EPSG::%d" % code), "WGS 84 / UTM %d%s" % (code % 100, "N" if code < 32700 else "S")
+
+    def _site_lonlat(self):
+        """(longitude, latitude) of the middle of the chunk, in degrees."""
+        chunk = self._src()
+        mid = chunk.transform.matrix.mulp(chunk.region.center)
+        lon, lat = Metashape.CoordinateSystem("EPSG::4326").project(mid)[:2]
+        return float(lon), float(lat)
+
+    def height_context(self):
+        try:
+            found = self._height_crs()
+            if found is None:
+                return {"epsg": None, "lonlat": None, "crs_name": ""}
+            lon, lat = self._site_lonlat()
+            return {"epsg": int(found[0]), "lonlat": (lon, lat), "crs_name": found[2]}
+        except Exception as exc:
+            log("height context: %s" % exc)
+            return {"epsg": None, "lonlat": None, "crs_name": ""}
+
+    def bottom_edge(self, f, work, altitude):
+        """(h, x, y) of the middle of the picture's bottom edge. `altitude` False: h = height in the local ENU frame (up), x and y are 0: only
+        differences between facades count. True: the point goes through the chunk's transform into the height CRS and h is the height Metashape
+        gives there (ellipsoidal: checked live), x and y the projected coordinates, in the CRS of `_height_crs`."""
+        ortho = work.orthomosaic
+        s, t = (float(ortho.left) + float(ortho.right)) / 2.0, float(ortho.bottom)
+        enu = geometry.plane_to_enu(f, [[s, t, 0.0]])[0]
+        if not altitude:
+            return float(enu[2]), 0.0, 0.0
+        found = self._height_crs()
+        if found is None:
+            raise RuntimeError("This project has no geographic coordinate system, so altitudes cannot be computed. Use relative heights.")
+        pc = np.linalg.inv(self.enu) @ np.append(enu, 1.0)
+        x, y, h = [float(v) for v in found[1].project(self._src().transform.matrix.mulp(_vec(pc[:3])))]
+        return h, x, y
 
     # ---- DXF with the picture standing in its vertical plane -------------------------------------------------
     def _dxf_crs(self, options):
@@ -1025,3 +1068,58 @@ class MetashapeBackend(Backend):
         if self._tmp and os.path.isdir(self._tmp):
             shutil.rmtree(self._tmp, ignore_errors=True)
         self._tmp = None
+
+
+# --------------------------------------------------------------------------------------------------
+# Export hooks: Metashape's side of `sheetout.run_export`
+# --------------------------------------------------------------------------------------------------
+
+def utm_epsg(lon, lat):
+    """EPSG code of WGS 84 / UTM for a position in degrees."""
+    zone = int((float(lon) + 180.0) // 6.0) % 60 + 1
+    return (32600 if lat >= 0 else 32700) + zone
+
+
+class _ExportHooks(sheetout.Hooks):
+    def __init__(self, backend, options):
+        self.b, self.options = backend, options
+        self.altitude = bool(sheetout.normalise(options.get("sheet"))["z"])
+        self._epsg = None
+
+    def epsg(self):
+        if self._epsg is None:
+            found = self.b._height_crs()
+            self._epsg = found[0] if found else 0
+        return self._epsg or None
+
+    def _work(self, f):
+        work = self.b._work_for(f)
+        if work is None or work.orthomosaic is None:
+            raise RuntimeError("The orthophoto of this facade is not built yet.")
+        return work
+
+    def info(self, f):
+        work = self._work(f)
+        ortho = work.orthomosaic
+        h, x, y = self.b.bottom_edge(f, work, self.altitude)
+        return {"size_px": (int(ortho.width), int(ortho.height)), "pixel": self.b._picture_pixel(work), "azimuth": f.azimuth, "h": h, "x": x, "y": y}
+
+    def write_native(self, f, path, ext, prog):
+        try:
+            self.b._write_raster(f, self._work(f), path, ext, self.options, prog)
+        except (Cancelled, SheetError):
+            raise
+        except Exception as exc:
+            raise RuntimeError(explain(exc))
+
+    def write_tif(self, f, path, prog):
+        self.write_native(f, path, "tif", prog)
+
+    def sidecars(self, f, path, options, prog):
+        work = self._work(f)
+        pixel = self.b._picture_pixel(work)
+        if options.get("georef_txt", True):
+            self.b._write_georef(f, work, path, pixel)
+        if options.get("dxf"):
+            self.b._write_dxf(f, work, path, pixel, options)
+        finished(prog, "Facade %s: done" % f.letter)

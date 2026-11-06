@@ -565,3 +565,118 @@ def test_the_flat_dxf_writer_is_unchanged_without_3d_keys():
     lines = text.splitlines()
     i = lines.index("AcDbRasterImage", lines.index("ENTITIES"))
     assert lines[i + 3:i + 15] == ["10", "5.0", "20", "6.0", "30", "0.0", "11", "0.5", "21", "0.0", "31", "0.0"]
+
+
+# --------------------------------------------------------------------------------------------------
+# The drawing sheet
+# --------------------------------------------------------------------------------------------------
+
+def facade_b(**kw):
+    return Facade.from_frame("B", 1, (0.0, 0.0, 3.0), (1.0, 0.0, 0.0), 20.0, 8.0, n=(0.0, -1.0), **kw)
+
+
+class OffsetCrs(object):
+    """A coordinate system that adds a fixed offset (east, north, ellipsoidal height) to the geocentric point: what `project` does, minus the geodesy."""
+    wkt = "PROJCS[fake]"
+
+    def __init__(self, offset=(2175840.0, 1206740.0, 120.0)):
+        self.offset = np.array(offset)
+
+    def project(self, p):
+        return Vector(np.array(list(p)) + self.offset)
+
+
+def built(world, be, facades):
+    for f in facades:
+        assert be.build_orthos([f], Margins(), Method.TIE_POINTS, 0.03, None, lambda: False)[f.letter][0] is True
+
+
+def test_the_sheet_of_two_pictures_is_written_with_relative_heights(world, tmp_path):
+    from aerotools.tools.aerofacade import sheetout
+    be = msfacade.MetashapeBackend(world.chunk)
+    a, b = facade_a(), facade_b()
+    built(world, be, [a, b])
+    folder = str(tmp_path / "out")
+    out = be.export([a, b], folder, "png", {"georef_txt": False, "tools": {}, "sheet": {"dxf": True}}, None, lambda: False)
+    names = [os.path.basename(p) for p, ok, m in out if ok]
+    assert names == ["SITE_%s_facade_A.png" % be.project_info()["date"], "SITE_%s_facade_B.png" % be.project_info()["date"],
+                     "SITE_%s_facades.dxf" % be.project_info()["date"]]
+    assets = os.listdir(os.path.join(folder, "00_Assets", "ortho"))
+    assert len(assets) == 2 and all(n.endswith(".png") for n in assets)
+    text = open(os.path.join(folder, names[-1]), newline="").read()
+    assert "FACADE SUD (A)" in text and "FACADE SUD (B)" in text                    # two south walls: the letter tells them apart
+    p = [(a_.strip(), b_) for a_, b_ in zip(text.split("\r\n")[0::2], text.split("\r\n")[1::2])]
+    images = [i for i, pair in enumerate(p) if pair == ("0", "IMAGE")]
+    y_of = [float(dict(p[i:i + 30])["20"]) for i in images]
+    assert y_of == pytest.approx([0.0, 3.0])                                      # B stands 3 m higher than A, A is the common zero
+
+
+def test_the_sheet_alone_when_the_loose_pictures_are_not_wanted(world, tmp_path):
+    be = msfacade.MetashapeBackend(world.chunk)
+    a = facade_a()
+    built(world, be, [a])
+    folder = str(tmp_path / "only")
+    out = be.export([a], folder, "png", {"georef_txt": True, "pictures": False, "tools": {}, "sheet": {"dxf": True}}, None, lambda: False)
+    assert sorted(os.listdir(folder)) == ["00_Assets", [n for n in os.listdir(folder) if n.endswith(".dxf")][0]]
+    assert [ok for _p, ok, _m in out] == [True]
+
+
+def test_altitude_goes_through_the_chunk_transform_into_the_height_crs(world, tmp_path, monkeypatch):
+    be = msfacade.MetashapeBackend(world.chunk)
+    a, b = facade_a(), facade_b()
+    built(world, be, [a, b])
+    monkeypatch.setattr(be, "_height_crs", lambda: (3942, OffsetCrs(), "fake"))
+    work = be._work_for(b)
+    h, x, y = be.bottom_edge(b, work, True)
+    assert (x, y) == pytest.approx((2175840.0 + 10.0, 1206740.0 + 0.0))              # middle of the picture along the wall: east 10 m
+    assert h == pytest.approx(120.0 + 3.0 - 1.0)                                      # picture bottom = wall foot (3 m) - bottom margin (1 m), plus the CRS height offset
+    h0, x0, y0 = be.bottom_edge(b, work, False)
+    assert (h0, x0, y0) == pytest.approx((2.0, 0.0, 0.0))
+    folder = str(tmp_path / "z")
+    out = be.export([a, b], folder, "png", {"georef_txt": False, "tools": {}, "sheet": {"dxf": True, "z": True, "vertical": "ellipsoid"}}, None,
+                    lambda: False)
+    assert all(ok for _p, ok, _m in out)
+    dxf = [p for p, ok, m in out if p.endswith(".dxf")][0]
+    text = open(dxf, newline="").read()
+    assert "Y = altitude (m)" in text and "ellipsoidal heights" in text and "EPSG:3942" in text
+
+
+def test_a_missing_geoid_grid_stops_the_sheet_but_not_the_pictures(world, tmp_path, monkeypatch):
+    from aerotools.tools.aeroexports import crs as exports_crs
+    monkeypatch.setattr(exports_crs, "own_dir", lambda: str(tmp_path / "no_geoid"))
+    be = msfacade.MetashapeBackend(world.chunk)
+    a = facade_a()
+    built(world, be, [a])
+    monkeypatch.setattr(be, "_height_crs", lambda: (3942, OffsetCrs(), "fake"))
+    folder = str(tmp_path / "nz")
+    out = be.export([a], folder, "png", {"georef_txt": False, "tools": {}, "sheet": {"dxf": True, "z": True, "vertical": "fr_ign_RAC09"}}, None,
+                    lambda: False)
+    assert [ok for _p, ok, _m in out].count(True) == 1
+    bad = [m for _p, ok, m in out if not ok]
+    assert len(bad) == 1 and "not on this computer" in bad[0]
+    assert not [n for n in os.listdir(folder) if n.endswith((".dxf", ".dwg"))] and not os.path.isdir(os.path.join(folder, "00_Assets"))
+
+
+def test_a_project_without_a_coordinate_system_offers_no_altitudes(world):
+    be = msfacade.MetashapeBackend(world.chunk)
+    world.chunk.crs = None
+    assert be.height_context() == {"epsg": None, "lonlat": None, "crs_name": ""}
+    world.chunk.crs = types.SimpleNamespace(wkt='LOCAL_CS["x"]')
+    assert be.height_context()["epsg"] is None
+    world.chunk.crs = CoordinateSystem("fake geographic")
+    assert be.height_context()["epsg"] == msfacade.utm_epsg(0.0, 0.0) == 32631
+
+
+def test_utm_zone_of_a_position():
+    assert msfacade.utm_epsg(9.0, 42.0) == 32632
+    assert msfacade.utm_epsg(-3.7, 40.4) == 32630
+    assert msfacade.utm_epsg(151.2, -33.9) == 32756
+
+
+def test_ecw_without_global_mapper_is_refused_with_a_reason_and_writes_nothing(world, tmp_path):
+    be = msfacade.MetashapeBackend(world.chunk)
+    a = facade_a()
+    built(world, be, [a])
+    folder = str(tmp_path / "ecw")
+    out = be.export([a], folder, "ecw", {"tools": {}}, None, lambda: False)
+    assert len(out) == 1 and out[0][1] is False and "Global Mapper" in out[0][2] and not os.path.isdir(folder)

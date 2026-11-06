@@ -78,17 +78,73 @@ def closed_polygon(points):
     return points if points[0] == points[-1] else points + [points[0]]
 
 
-def build_dxf(images, units_m=True):
+def text_value(value):
+    """A TEXT string as the ASCII file holds it: a letter outside ASCII becomes the DXF escape "U+00C7" form (nothing is lost, no "?")."""
+    out = "".join(char if ord(char) < 128 else "\\U+%04X" % ord(char) for char in str(value))
+    return out.replace("\r", " ").replace("\n", " ")
+
+
+TEXT_ALIGN = {"left": 0, "center": 1, "right": 2}
+
+
+def _layer_style(spec):
+    """(AutoCAD colour index, lineweight in hundredths of a millimetre) of a layer given as an int or a (colour, lineweight) pair."""
+    if isinstance(spec, (tuple, list)):
+        return int(spec[0]), int(spec[1])
+    return int(spec), -3
+
+
+def _write_entity(w, handle, item):
+    """One LINE, LWPOLYLINE or TEXT of the model space (R2000 subclass markers, as AutoCAD writes them)."""
+    kind = item["type"]
+    w.add(0, kind); w.add(5, handle); w.add(330, H_MODEL_RECORD); w.add(100, "AcDbEntity"); w.add(8, _clean_layer(item["layer"]))
+    if kind == "LINE":
+        (x1, y1), (x2, y2) = item["p1"], item["p2"]
+        w.add(100, "AcDbLine")
+        w.add(10, _number(x1)); w.add(20, _number(y1)); w.add(30, 0.0)
+        w.add(11, _number(x2)); w.add(21, _number(y2)); w.add(31, 0.0)
+    elif kind == "LWPOLYLINE":
+        points = list(item["points"])
+        w.add(100, "AcDbPolyline"); w.add(90, len(points)); w.add(70, 1 if item.get("closed") else 0)
+        for x, y in points:
+            w.add(10, _number(x)); w.add(20, _number(y))
+    elif kind == "TEXT":
+        x, y = item["pos"]
+        align = TEXT_ALIGN.get(item.get("align", "left"), 0)
+        w.add(100, "AcDbText")
+        w.add(10, _number(x)); w.add(20, _number(y)); w.add(30, 0.0)
+        w.add(40, _number(item["height"])); w.add(1, text_value(item["text"]))
+        if align:
+            w.add(72, align)
+            w.add(11, _number(x)); w.add(21, _number(y)); w.add(31, 0.0)
+        w.add(100, "AcDbText"); w.add(73, 0)
+    else:
+        raise ValueError("unknown DXF entity: %r" % (kind,))
+
+
+def build_dxf(images, units_m=True, entities=None, layers=None, extents=None, font="txt"):
     """Text of an R2000 DXF.
 
     `images`: list of dicts {"layer", "file" (path as written in the DXF), "size_px": (width, height),
     "insert": (x, y) bottom-left corner in drawing units, "pixel": (width of a pixel, height of a pixel),
     "clip" (optional): closed polygon [(x, y), ...] in image pixels, from its TOP-left corner, y pointing down (see footprint.py)}.
+
+    Optional, for drawings that are more than images (Aero-Facade's sheet), all written AFTER the images (so on top of them):
+    `entities`: list of dicts {"type": "LINE", "layer", "p1": (x, y), "p2": (x, y)} | {"type": "LWPOLYLINE", "layer", "points": [(x, y)...],
+    "closed": bool} | {"type": "TEXT", "layer", "pos": (x, y), "height", "text", "align": "left" | "center" | "right"} (the text sits on its
+    baseline, `pos` is the anchor of the chosen alignment). `layers`: {name: colour index, or (colour index, lineweight)}, the colour of a
+    layer (7 when not given). `extents`: (xmin, ymin, xmax, ymax), written in the header ($EXTMIN / $EXTMAX). `font`: the SHX font of the
+    "Standard" text style ("txt" squares the capital O: Aero-Facade asks for "simplex").
     """
     w = _Writer()
+    entities = list(entities or [])
+    styles = {_clean_layer(name): _layer_style(spec) for name, spec in (layers or {}).items()}
     layers = []
-    for item in images:
+    for item in list(images) + entities:
         name = _clean_layer(item["layer"])
+        if name not in layers and name != "0":
+            layers.append(name)
+    for name in styles:
         if name not in layers and name != "0":
             layers.append(name)
     handle = [FIRST_FREE]
@@ -99,10 +155,14 @@ def build_dxf(images, units_m=True):
 
     layer_handles = {name: new_handle() for name in layers}
     defs = [(new_handle(), new_handle(), new_handle(), item) for item in images]   # (entity, definition, reactor)
+    entity_handles = [new_handle() for _item in entities]
 
     w.add(0, "SECTION"); w.add(2, "HEADER")
     w.add(9, "$ACADVER"); w.add(1, "AC1015")
     w.add(9, "$HANDSEED"); w.add(5, "%X" % (handle[0] + 1))
+    if extents:
+        w.add(9, "$EXTMIN"); w.add(10, _number(extents[0])); w.add(20, _number(extents[1])); w.add(30, 0.0)
+        w.add(9, "$EXTMAX"); w.add(10, _number(extents[2])); w.add(20, _number(extents[3])); w.add(30, 0.0)
     w.add(9, "$INSUNITS"); w.add(70, 6 if units_m else 0)
     w.add(9, "$MEASUREMENT"); w.add(70, 1)
     w.add(0, "ENDSEC")
@@ -131,13 +191,14 @@ def build_dxf(images, units_m=True):
     w.add(70, 1 + len(layers))
     for name, h in [("0", H_LAYER0)] + [(name, layer_handles[name]) for name in layers]:
         w.add(0, "LAYER"); w.add(5, h); w.add(330, "2"); w.add(100, "AcDbSymbolTableRecord")
-        w.add(100, "AcDbLayerTableRecord"); w.add(2, name); w.add(70, 0); w.add(62, 7); w.add(6, CONTINUOUS)
-        w.add(370, -3); w.add(390, H_PLOT_NORMAL)
+        color, weight = styles.get(name, (7, -3))
+        w.add(100, "AcDbLayerTableRecord"); w.add(2, name); w.add(70, 0); w.add(62, color); w.add(6, CONTINUOUS)
+        w.add(370, weight); w.add(390, H_PLOT_NORMAL)
     w.add(0, "ENDTAB")
     w.add(0, "TABLE"); w.add(2, "STYLE"); w.add(5, "3"); w.add(330, 0); w.add(100, "AcDbSymbolTable"); w.add(70, 1)
     w.add(0, "STYLE"); w.add(5, H_STYLE); w.add(330, "3"); w.add(100, "AcDbSymbolTableRecord")
     w.add(100, "AcDbTextStyleTableRecord"); w.add(2, "Standard"); w.add(70, 0); w.add(40, 0.0); w.add(41, 1.0)
-    w.add(50, 0.0); w.add(71, 0); w.add(42, 2.5); w.add(3, "txt"); w.add(4, "")
+    w.add(50, 0.0); w.add(71, 0); w.add(42, 2.5); w.add(3, font); w.add(4, "")
     w.add(0, "ENDTAB")
     for name, h in (("VIEW", "6"), ("UCS", "7")):
         w.add(0, "TABLE"); w.add(2, name); w.add(5, h); w.add(330, 0); w.add(100, "AcDbSymbolTable"); w.add(70, 0)
@@ -192,6 +253,8 @@ def build_dxf(images, units_m=True):
         else:                                           # rectangular clip: the whole image
             w.add(360, reactor); w.add(71, 1); w.add(91, 2)
             w.add(14, -0.5); w.add(24, -0.5); w.add(14, _number(width - 0.5)); w.add(24, _number(height - 0.5))
+    for entity, item in zip(entity_handles, entities):
+        _write_entity(w, entity, item)
     w.add(0, "ENDSEC")
 
     w.add(0, "SECTION"); w.add(2, "OBJECTS")
@@ -218,12 +281,12 @@ def build_dxf(images, units_m=True):
     return w.text()
 
 
-def write_dxf(path, images, units_m=True):
+def write_dxf(path, images, units_m=True, entities=None, layers=None, extents=None, font="txt"):
     """Write the DXF (ASCII, CRLF) and return its path."""
     folder = os.path.dirname(os.path.abspath(path))
     os.makedirs(folder, exist_ok=True)
     with open(path, "w", encoding="ascii", errors="replace", newline="") as handle:
-        handle.write(build_dxf(images, units_m))
+        handle.write(build_dxf(images, units_m, entities, layers, extents, font))
     return path
 
 

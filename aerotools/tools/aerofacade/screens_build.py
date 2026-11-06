@@ -11,12 +11,14 @@ from ...qt import QtCore, QtWidgets
 from ..aeroexports import controls
 from . import state as S
 from .backend import Cancelled, Progress
-from .common import FORMAT_KEYS, tr
+from . import sheetout
+from .common import FORMAT_KEYS, FORMAT_NEED_KEYS, tr
 from .screens_base import Screen, heading, right_panel
 from .tasks import plain_error
 from .widgets import (STATE_CANCELLED, STATE_DONE, STATE_FAILED, STATE_RUNNING, STATE_WAITING, BatchProgress, OrthoThumbnails)
+from .widgets_heights import HeightPicker
 
-EXTENSIONS = {"png": "png", "jpg": "jpg", "tif": "tif"}
+EXTENSIONS = {"png": "png", "jpg": "jpg", "tif": "tif", "jp2": "jp2", "ecw": "ecw"}
 
 
 def batch_worker(facades, call, items, extras=None, after=None):
@@ -291,17 +293,21 @@ class ExportScreen(Screen):
         col.addWidget(ui.label(tr("facade.ui.format_title"), "aeroSection"))
         self.formats = QtWidgets.QButtonGroup(self)
         saved = config.get(S.SECTION, "fmt")
+        self.tools = sheetout.detect_tools()                     # {"gm", "acad", "gdal"}: what JPEG 2000, ECW and DWG need
+        have = {key: not sheetout.tools_for_formats(self.tools, key, None) for key in S.FORMATS}
+        saved = saved if saved in S.FORMATS and have.get(saved) else "png"
         for key in S.FORMATS:
             radio = QtWidgets.QRadioButton(tr(FORMAT_KEYS[key][0]))
             radio.setProperty("value", key)
             radio.setCursor(QtCore.Qt.PointingHandCursor)
             radio.setToolTip(tr(FORMAT_KEYS[key][2]))
-            radio.setChecked(key == (saved if saved in S.FORMATS else "png"))
+            radio.setChecked(key == saved)
+            radio.setEnabled(have[key])
             radio.toggled.connect(lambda _c: self._refresh_choose())
             self.formats.addButton(radio)
             card = ui.OptionCard(radio)
             card.grid.setColumnStretch(1, 1)
-            card.grid.addWidget(ui.label(tr(FORMAT_KEYS[key][1]), "aeroMeta"), 0, 1)
+            card.grid.addWidget(ui.label(tr(FORMAT_KEYS[key][1] if have[key] else FORMAT_NEED_KEYS[key]), "aeroMeta"), 0, 1)
             col.addWidget(card)
         self.georef = QtWidgets.QCheckBox(tr("facade.ui.opt_georef"))
         self.georef.setChecked(config.get(S.SECTION, "georef_txt") is not False)
@@ -313,6 +319,7 @@ class ExportScreen(Screen):
         self.dxf.toggled.connect(self._refresh_choose)
         col.addWidget(self.georef)
         col.addWidget(self.dxf)
+        self._build_sheet_group(col)
         self.names = controls.WrapText(meta=True)
         col.addWidget(self.names)
         self.export_button = ui.big_button("facade.ui.export", self.start_export, "aeroGo")
@@ -332,8 +339,106 @@ class ExportScreen(Screen):
         self.export_box.setVisible(False)
         col.addWidget(self.export_box)
         col.addStretch(1)
+        self._sheet_changed()
         row.addWidget(area, 2)
         self.stack.addWidget(page)
+
+    def _build_sheet_group(self, col):
+        """The drawing sheet: one DXF or DWG with every ticked picture, titles, level lines (docs/AERO_FACADE_SPEC.md, "Drawing sheet")."""
+        saved = config.section(S.SECTION)
+        col.addWidget(ui.label(tr("facade.ui.sheet_title"), "aeroSection"))
+        self.sheet_on = QtWidgets.QCheckBox(tr("facade.ui.sheet_on"))
+        self.sheet_on.setChecked(saved.get("sheet") is True)
+        self.sheet_on.setToolTip(tr("facade.ui.sheet_on_tip"))
+        self.sheet_on.toggled.connect(self._sheet_changed)
+        col.addWidget(self.sheet_on)
+        self.sheet_box = QtWidgets.QWidget()
+        inner = QtWidgets.QVBoxLayout(self.sheet_box)
+        inner.setContentsMargins(24, 0, 0, 0)
+        inner.setSpacing(theme.PAD)
+        have_dwg = bool(self.tools.get("acad"))
+        row = QtWidgets.QHBoxLayout()
+        row.setSpacing(theme.PAD_L)
+        self.sheet_fmt = QtWidgets.QButtonGroup(self)
+        for key, text, tip in (("dxf", "facade.ui.sheet_dxf", "facade.ui.sheet_dxf_tip"), ("dwg", "facade.ui.sheet_dwg", "facade.ui.sheet_dwg_tip")):
+            radio = QtWidgets.QRadioButton(tr(text))
+            radio.setProperty("value", key)
+            radio.setToolTip(tr(tip))
+            radio.setCursor(QtCore.Qt.PointingHandCursor)
+            radio.setEnabled(key != "dwg" or have_dwg)
+            radio.setChecked(key == ("dwg" if saved.get("sheet_fmt") == "dwg" and have_dwg else "dxf"))
+            radio.toggled.connect(self._sheet_changed)
+            self.sheet_fmt.addButton(radio)
+            row.addWidget(radio)
+        row.addStretch(1)
+        inner.addLayout(row)
+        self.sheet_dwg_note = ui.label(tr("facade.ui.sheet_need_dwg"), "aeroMeta")
+        self.sheet_dwg_note.setVisible(not have_dwg)
+        inner.addWidget(self.sheet_dwg_note)
+        self.sheet_pictures = QtWidgets.QCheckBox(tr("facade.ui.sheet_pictures"))
+        self.sheet_pictures.setChecked(saved.get("sheet_pictures") is not False)
+        self.sheet_pictures.setToolTip(tr("facade.ui.sheet_pictures_tip"))
+        self.sheet_pictures.toggled.connect(self._sheet_changed)
+        inner.addWidget(self.sheet_pictures)
+        lang_row = QtWidgets.QHBoxLayout()
+        lang_row.setSpacing(theme.PAD)
+        lang_row.addWidget(ui.label(tr("facade.ui.sheet_titles"), "aeroMeta", wrap=False))
+        self.sheet_titles = ui.combo()
+        self.sheet_titles.addItem(tr("facade.ui.sheet_lang_fr"), "fr")
+        self.sheet_titles.addItem(tr("facade.ui.sheet_lang_en"), "en")
+        self.sheet_titles.setCurrentIndex(max(0, self.sheet_titles.findData(saved.get("sheet_titles") or "fr")))
+        self.sheet_titles.activated.connect(self._sheet_changed)
+        lang_row.addWidget(self.sheet_titles, 1)
+        inner.addLayout(lang_row)
+        self.sheet_z = QtWidgets.QCheckBox(tr("facade.ui.sheet_z"))
+        self.sheet_z.setChecked(saved.get("sheet_z") is True)
+        self.sheet_z.setToolTip(tr("facade.ui.sheet_z_tip"))
+        self.sheet_z.toggled.connect(self._sheet_changed)
+        inner.addWidget(self.sheet_z)
+        self.heights = HeightPicker()
+        self.heights.changed.connect(self._refresh_choose)
+        inner.addWidget(self.heights)
+        self.sheet_z_note = ui.label(tr("facade.ui.sheet_relative"), "aeroMeta")
+        inner.addWidget(self.sheet_z_note)
+        self._saved_vertical = saved.get("sheet_vertical")
+        self._height_ready = False
+        col.addWidget(self.sheet_box)
+
+    def _load_height_context(self):
+        """Ask the backend where the site is (once): the height systems offered depend on its coordinate system and place."""
+        if self._height_ready:
+            return
+        self._height_ready = True
+        ask = getattr(self.wizard.backend, "height_context", None)
+        try:
+            context = ask() if ask else {}
+        except Exception:
+            context = {}
+        self._height_epsg = context.get("epsg")
+        self.heights.set_context(self._height_epsg, context.get("lonlat"), keep=self._saved_vertical)
+        self._sheet_changed()
+
+    def _sheet_changed(self, *_args):
+        """Show what the sheet needs: its options only when ticked, the height systems only when altitudes are asked."""
+        on = self.sheet_on.isChecked()
+        self.sheet_box.setVisible(on)
+        has_epsg = bool(getattr(self, "_height_epsg", None)) and self.heights.count() > 0
+        self.sheet_z.setEnabled(has_epsg)
+        z = self.sheet_z.isChecked() and has_epsg
+        self.heights.setVisible(z)
+        self.sheet_z_note.setText(tr("facade.ui.sheet_relative") if has_epsg or not self._height_ready else tr("facade.ui.sheet_z_none"))
+        self.sheet_z_note.setVisible(not z)
+        self._refresh_choose()
+
+    def sheet_options(self):
+        """`options["sheet"]` of the Backend protocol, from the controls."""
+        if not self.sheet_on.isChecked():
+            return {"dxf": False, "dwg": False, "z": False, "vertical": None, "titles": self.sheet_titles.currentData() or "fr"}
+        has_epsg = bool(getattr(self, "_height_epsg", None)) and self.heights.count() > 0
+        z = self.sheet_z.isChecked() and has_epsg
+        dwg = any(radio.isChecked() and radio.property("value") == "dwg" for radio in self.sheet_fmt.buttons())
+        return {"dxf": True, "dwg": dwg, "z": z, "vertical": self.heights.selected() if z else None,
+                "titles": self.sheet_titles.currentData() or "fr"}
 
     def _build_page_done(self):
         page = QtWidgets.QWidget()
@@ -491,6 +596,7 @@ class ExportScreen(Screen):
         if not self.folder.text().strip():
             self.folder.setText(self.wizard.info.get("outputs", ""))
         self.stack.setCurrentIndex(PAGE_CHOOSE)
+        self._load_height_context()
         self._refresh_choose()
         self.wizard.refresh_buttons()
 
@@ -501,7 +607,8 @@ class ExportScreen(Screen):
         return "png"
 
     def options(self):
-        return {"georef_txt": self.georef.isChecked(), "dxf": self.dxf.isChecked()}
+        return {"georef_txt": self.georef.isChecked(), "dxf": self.dxf.isChecked(), "sheet": self.sheet_options(),
+                "pictures": self.sheet_pictures.isChecked() or not self.sheet_on.isChecked(), "tools": dict(self.tools)}
 
     def _browse(self):
         start = self.folder.text().strip() or self.wizard.info.get("outputs", "")
@@ -515,8 +622,14 @@ class ExportScreen(Screen):
         info = self.wizard.info
         ext = EXTENSIONS[self.format()]
         sample = "%s_%s_facade_%s.%s" % (info.get("site", "SITE"), info.get("date", "000000"), letters[0] if letters else "A", ext)
-        self.names.setText(tr("facade.ui.names_example", name=sample) if letters else tr("facade.ui.names_none"))
-        self.export_button.setEnabled(bool(letters) and bool(folder) and not self._running)
+        text = tr("facade.ui.names_example", name=sample) if letters else tr("facade.ui.names_none")
+        sheet = self.sheet_options()
+        if letters and (sheet["dxf"] or sheet["dwg"]):
+            sheet_name = sheetout.sheet_stem(info.get("site", "SITE"), info.get("date", "000000")) + (".dwg" if sheet["dwg"] else ".dxf")
+            text += "\n" + tr("facade.ui.names_sheet", name=sheet_name)
+        self.names.setText(text)
+        waiting = sheet["z"] and self.heights.blocking()               # the chosen height grid must be on this computer first
+        self.export_button.setEnabled(bool(letters) and bool(folder) and not self._running and not waiting)
         self.export_button.setText(tr("facade.ui.export_n", n=len(letters)) if letters else tr("facade.ui.export"))
         self.export_button.setVisible(not self._running)
         self.export_box.setVisible(self._running)
@@ -531,7 +644,10 @@ class ExportScreen(Screen):
         if not facades or not folder:
             return False
         fmt, options = self.format(), self.options()
-        S.save_prefs(st, fmt=fmt, georef_txt=options["georef_txt"], dxf=options["dxf"])
+        sheet = options["sheet"]
+        S.save_prefs(st, fmt=fmt, georef_txt=options["georef_txt"], dxf=options["dxf"], sheet=self.sheet_on.isChecked(),
+                     sheet_fmt="dwg" if sheet["dwg"] else "dxf", sheet_pictures=self.sheet_pictures.isChecked(),
+                     sheet_titles=sheet["titles"], sheet_z=self.sheet_z.isChecked(), sheet_vertical=self.heights.selected() or self._saved_vertical)
         backend = self.wizard.backend
         self._running, self._job = True, "export"
         self.export_bar.setValue(0)

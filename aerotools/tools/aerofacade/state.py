@@ -11,7 +11,7 @@ from .model import Availability, Margins, Method, active
 SECTION = "aerofacade"
 SEARCH, FACADES, MARGINS, METHOD, BUILD, EXPORT = range(6)
 STEP_KEYS = ("search", "facades", "margins", "method", "build", "export")
-FORMATS = ("png", "jpg", "tif")
+FORMATS = ("png", "jpg", "tif", "jp2", "ecw")
 DEFAULT_PIXEL_CM = 3.0
 
 

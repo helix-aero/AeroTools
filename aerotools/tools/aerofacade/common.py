@@ -48,7 +48,15 @@ LINK_KEYS = {("lr", True): "facade.ui.link_on_lr", ("lr", False): "facade.ui.lin
              ("tb", True): "facade.ui.link_on_tb", ("tb", False): "facade.ui.link_off_tb"}
 FORMAT_KEYS = {"png": ("facade.ui.format_png", "facade.ui.format_png_text", "facade.ui.format_png_tip"),
                "jpg": ("facade.ui.format_jpg", "facade.ui.format_jpg_text", "facade.ui.format_jpg_tip"),
-               "tif": ("facade.ui.format_tif", "facade.ui.format_tif_text", "facade.ui.format_tif_tip")}
+               "tif": ("facade.ui.format_tif", "facade.ui.format_tif_text", "facade.ui.format_tif_tip"),
+               "jp2": ("facade.ui.format_jp2", "facade.ui.format_jp2_text", "facade.ui.format_jp2_tip"),
+               "ecw": ("facade.ui.format_ecw", "facade.ui.format_ecw_text", "facade.ui.format_ecw_tip")}
+FORMAT_NEED_KEYS = {"jp2": "facade.ui.format_need_jp2", "ecw": "facade.ui.format_need_ecw"}
+SHEET_KEYS = ("facade.ui.sheet_title", "facade.ui.sheet_on", "facade.ui.sheet_on_tip", "facade.ui.sheet_dxf", "facade.ui.sheet_dwg",
+              "facade.ui.sheet_dxf_tip", "facade.ui.sheet_dwg_tip", "facade.ui.sheet_need_dwg", "facade.ui.sheet_pictures",
+              "facade.ui.sheet_pictures_tip", "facade.ui.sheet_titles", "facade.ui.sheet_lang_fr", "facade.ui.sheet_lang_en",
+              "facade.ui.sheet_z", "facade.ui.sheet_z_tip", "facade.ui.sheet_z_none", "facade.ui.sheet_relative",
+              "facade.ui.height_not_covering", "facade.ui.height_ellipsoid_note", "facade.ui.names_sheet")
 
 
 def dir_key(facing):

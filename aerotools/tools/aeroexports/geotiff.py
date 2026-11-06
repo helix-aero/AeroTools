@@ -71,6 +71,43 @@ def read_geotiff(path):
         return None
 
 
+def set_origin(path, left, top):
+    """Rewrite, IN PLACE, the ModelTiepoint of a GeoTIFF so that its top-left corner is at (left, top); the pixel size is untouched. Works on
+    classic TIFF and BigTIFF (the 48 bytes of the tag are rewritten where they already are). Returns True when done, False if the file has
+    no usable tiepoint (nothing is changed then). Used by Aero-Facade to give a picture its place on the drawing sheet."""
+    try:
+        with open(path, "r+b") as handle:
+            head = handle.read(16)
+            end = {b"II": "<", b"MM": ">"}.get(head[:2])
+            if end is None:
+                return False
+            magic = struct.unpack(end + "H", head[2:4])[0]
+            big = magic == 43
+            if magic not in (42, 43):
+                return False
+            offset = struct.unpack(end + ("Q" if big else "I"), head[8:16] if big else head[4:8])[0]
+            handle.seek(offset)
+            count = struct.unpack(end + ("Q" if big else "H"), handle.read(8 if big else 2))[0]
+            entry_size = 20 if big else 12
+            raw = handle.read(entry_size * count)
+            for index in range(count):
+                entry = raw[index * entry_size:(index + 1) * entry_size]
+                tag, kind = struct.unpack(end + "HH", entry[:4])
+                if tag != TAG_TIEPOINT:
+                    continue
+                number = struct.unpack(end + ("Q" if big else "I"), entry[4:12] if big else entry[4:8])[0]
+                slot = entry[12:20] if big else entry[8:12]
+                if kind != 12 or number < 6:
+                    return False
+                pointer = struct.unpack(end + ("Q" if big else "I"), slot)[0]
+                handle.seek(pointer)
+                handle.write(struct.pack(end + "6d", 0.0, 0.0, 0.0, float(left), float(top), 0.0))
+                return True
+    except (OSError, struct.error):
+        return False
+    return False
+
+
 def extent(info):
     """(left, bottom, right, top) of a read_geotiff result."""
 

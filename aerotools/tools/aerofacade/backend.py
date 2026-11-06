@@ -115,7 +115,16 @@ class Backend:
         """Small RGB uint8 array (about 240 px wide) of the built orthophoto of `facade`."""
         raise NotImplementedError
 
+    def height_context(self):
+        """Where the heights of the drawing sheet can be read: {"epsg": EPSG code of the projected (or geographic) CRS or None when the chunk
+        has no usable coordinate system, "lonlat": (longitude, latitude) of the site or None, "crs_name": text}. The export screen offers the
+        height systems of that CRS at that place (`aeroexports.vertical.compatible_verticals`). Default: nothing known (relative heights only)."""
+        return {"epsg": None, "lonlat": None, "crs_name": ""}
+
     def export(self, facades, folder, fmt, options, progress, cancelled):
         """Write one file per facade into `folder` (created if needed), named `<site>_<date>_facade_<letter>.<ext>`.
-        `fmt`: 'png' | 'jpg' | 'tif'; `options`: dict (e.g. {'georef_txt': True, 'dxf': False}). Returns [(path, ok, message)]."""
+        `fmt`: 'png' | 'jpg' | 'tif' | 'jp2' | 'ecw'; `options`: dict {'georef_txt': bool, 'dxf': bool (3D DXF of each picture),
+        'pictures': bool (default True: the loose pictures; False only counts with a sheet), 'tools': {'gm', 'acad', 'gdal'} paths (default: detected),
+        'sheet': {'dxf': bool, 'dwg': bool, 'z': bool, 'vertical': id | None, 'titles': 'fr' | 'en'}} (see `sheetout.normalise` and the drawing sheet
+        section of docs/AERO_FACADE_SPEC.md). Returns [(path, ok, message)], the sheet's files included."""
         raise NotImplementedError
