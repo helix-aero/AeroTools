@@ -1,5 +1,5 @@
 {
- "built": "2026-11-06T10:38:28",
+ "built": "2026-11-06T10:44:00",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "3b792e6d4bb92be3543f3ebab2473ff2769e498ae759d47de5dd015a84eca0b5",
@@ -14,8 +14,8 @@
    "size": 13103
   },
   "README.md": {
-   "sha256": "4cd10710ca43e11524a0bdff45694379a807b612b03d30af3ac99791568560a2",
-   "size": 11514
+   "sha256": "87a1942063d25416c9cd13fb96c013732a3f7be10cf9f336904d2bd6dff0f292",
+   "size": 11954
   },
   "aerotools/__init__.py": {
    "sha256": "e0a1a32cf870c742d0c1b0ab32d9c60585a65ee1cf6b9083eaee3d4e9b1a8691",
