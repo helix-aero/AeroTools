@@ -496,3 +496,37 @@ def detect(P, method="combined", params=None, origin=True, max_points=600000):
         if sel is not None:
             w.idx = sel[w.idx]
     return walls
+
+
+def main(argv=None):
+    """Command line: `python -m aerotools.tools.facade.detect tie_enu.npy [--method grid_hough|combined] [--out walls.json]`.
+
+    Reads an (N, 3) array (.npy, or an .npz with an `enu` or `xyz` array), prints the walls and writes them as JSON (plan-view end points,
+    heights, direction, tilt, confidence) in the same frame as the input."""
+    import argparse
+    import json
+    parser = argparse.ArgumentParser(description="Find vertical walls in a sparse point cloud.")
+    parser.add_argument("path")
+    parser.add_argument("--method", default="grid_hough", choices=sorted(DETECTORS))
+    parser.add_argument("--out", default="")
+    parser.add_argument("--tol", type=float, default=Params().tol)
+    args = parser.parse_args(argv)
+    data = np.load(args.path)
+    if hasattr(data, "files"):
+        data = data["enu"] if "enu" in data.files else data["xyz"]
+    walls = detect(data, args.method, Params(tol=args.tol))
+    walls.sort(key=lambda w: -(w.length * w.height * w.contrast))
+    rows = []
+    for k, w in enumerate(walls):
+        rows.append(dict(id=k, x0=w.x0, y0=w.y0, x1=w.x1, y1=w.y1, z0=w.z0, z1=w.z1, length=w.length, height=w.height, azimuth=w.azimuth,
+                         tilt=w.tilt, points=w.n, contrast=w.contrast, rms=w.rms))
+        print("%2d  length %6.1f m  height %5.1f m  azimuth %5.1f  tilt %4.1f  points %6d  contrast %4.1f" % (k, w.length, w.height, w.azimuth, w.tilt, w.n,
+                                                                                                           w.contrast))
+    if args.out:
+        with open(args.out, "w") as handle:
+            json.dump(rows, handle, indent=1)
+    return rows
+
+
+if __name__ == "__main__":
+    main()

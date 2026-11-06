@@ -9,8 +9,8 @@ then builds the **orthomosaic of the façade**.
 ## 1. Verdict
 
 **GO, with changes.** Detection works and is fast; the Metashape side is much better than feared (a DEM *can* be built from the sparse
-cloud, in an arbitrary plane, in 2 seconds). Two points stay open and must be checked in 5 minutes in a console before any UI work
-(section 8): the orthomosaic in the façade plane through the Python API, and the depth crop of the DEM.
+cloud, in an arbitrary plane, in 2 seconds). The façade ortho itself was built in the plane in 4 s from the tie-point DEM and is upright and readable. One **blocker** was found and must be solved
+before any UI work (section 4, row "Export"): `exportRaster` writes nothing for a vertical plane, so the picture cannot yet leave Metashape as a file.
 
 Changes to the original idea:
 
@@ -137,6 +137,36 @@ agreement with its own detection on the full cloud (this measures robustness to 
 (0.67 to 0.72 with the second pass) because slopes and vegetation fill the Hough accumulator with false peaks; thin dense clouds
 (voxel 20 to 30 cm) before detecting. This does not concern tie points, but it matters for the "dense cloud" option later.
 
+### Ground truth: a real building with plans (CARRO, 5-storey block, stepped façades)
+
+Data (read only, `F:\1_Photogrammetry\Forcioli\CARRO`): `Metashape\CARRO.laz` (66 M points, 670 MB, CC42), the plans `CARRO_plans.dwg` / `CARRO.dwg`
+(converted to DXF with AutoCAD's `accoreconsole` on a copy in the scratch folder) and the finished ortho `facade_sud.jpg` (6621 x 2629 px, about 1 cm).
+The plans are **elevation drawings** (layers FACE_SUD / NORD / EST / OUEST / TOITURE), not a plan-view footprint, so there is no absolute wall
+position to compare with, but they give lengths, heights, the roof depth and the orthogonality: south 65.96 m, north 66.46 m, west 15.71 m,
+east 15.84 m, roof plan 65.6 m x 11.8 m, walls from altitude 14.6 m to the eaves.
+
+The cloud is thinned by voxels (0.1 / 0.2 / 0.3 m: 801 k / 194 k / 84 k points, one pass over the file, 52 s) and `grid_hough` is run (band 15 cm):
+
+| cloud | detector time | walls | south | north | west | east |
+|---|---|---|---|---|---|---|
+| voxel 0.1 m (801 k) | 2.6 s | 5 | 68.1 m x 19.8 m | 67.4 m x 15.2 m | 14.0 m x 22.1 m | 14.4 m x 15.6 m |
+| voxel 0.2 m (194 k) | 4.3 s | 7 | 67.7 x 19.7 | 67.6 x 15.1 | 14.0 x 21.8 | 14.2 x 15.6 |
+| voxel 0.3 m (84 k) | 1.8 s | 6 | 66.9 x 19.7 | 67.4 x 15.1 | missing | 14.2 x 15.6 |
+| plans | | | 66.0 | 66.5 | 15.7 | 15.8 |
+
+* Lengths: +1 to +2 m on the long façades (eaves and gutters at the ends), -1.5 m on the two short ones. **Orientation: south and north parallel to 0.1
+  degree (azimuth 5.3), west and east perpendicular to them within 0.5 to 1 degree.** The south and north planes are 10.5 m apart, the roof plan is
+  11.8 m deep (the south front steps out by balconies): consistent. No tilt (0.0) on any wall. The plan-view overlay (`carro_*_walls.png`) follows the roof outline.
+* The stepped south façade also comes out as extra pieces at other depths (15.6 m x 12.8 m and 13.8 m x 12.8 m), which are the recessed sections visible
+  on `facade_sud.jpg` (three sections separated by two vertical joints); the walls start at the first storey (z0 17.7 m) because the ground floor
+  arcades and garages are set back.
+* Thinned at random to tie-point densities (from the 0.2 m cloud): 60 000, 20 000, 6 000 and 2 000 points still give the two long façades and both
+  sides (6, 7, 5, 4 walls); at 2 000 points (0.4 point/m2 of footprint) the lengths fall to 64 m and 10 to 11 m.
+* **A dense cloud must be thinned first**: on the raw 600 k random sample the plumb pass found 6 to 12 % of the walls; on the 0.1 to 0.3 m voxel
+  clouds it finds all four façades. The second pass (`combined`) found nothing more here and cost 17 to 284 s: keep it on request only.
+* Not measured: a position error in centimetres (needs a plan-view footprint with absolute coordinates; the DWG gives elevations only). The five
+  ground points of `CARRO.csv` lie 3 to 4 m in front of the south wall, as targets on the ground would.
+
 ### Honest limits
 
 * No ground truth on real data yet: François should mark the façades he wants on one of his sites (two clicks each); 30 minutes give a real
@@ -157,20 +187,19 @@ tests in the live session. **V** = verified in Metashape 2.2.1 in the Citadelle 
 | `OrthoProjection` types | Only `Planar` and `Cylindrical`. The usual map projection **is** a `Planar` projection with an identity matrix and a projected CRS (the existing DEM and ortho of the project report exactly that). A façade plane is a `Planar` projection with another matrix. | V |
 | Meaning of `OrthoProjection.matrix` | 4 x 4, maps the coordinates of `proj.crs` **into the plane frame**: X, Y = image axes, Z = height above the plane. So `matrix = inverse([u v n \| o])` with `u` along the wall (to the viewer's right), `v` up, `n` toward the viewer (= toward the cameras), `o` the origin, all in `proj.crs` coordinates (E, N, H). Checked with `proj.transform`: o -> (0,0,0), o+5u -> (5,0,0), o+3v -> (0,3,0), o+2n -> (0,0,2). | V |
 | DEM from the sparse cloud | `chunk.buildDem(source_data=Metashape.DataSource.TiePointsData, ...)` is allowed by the API and by the manual ("preliminary elevation data from tie points"). **It ran with a planar façade projection in 2.2 s** on 448 k tie points: `projection=proj`, `region=Metashape.BBox(Vector((-b,-b)), Vector((L+b,H+b)))` (**2D, in plane coordinates**; a 3D BBox raises `Invalid argument value: region`), `replace_asset=True`. Result 233 x 131 px, extent exactly the requested box. | V |
-| DEM resolution | Requested 0.05 m, got **0.112 m**: Metashape imposes its own minimum (tie point spacing). Other values not tried. | V (one value), U (rule) |
-| Depth of the DEM | The 2D region does not limit depth: heights ran from -9.7 m to +87.5 m (terrain and trees far in front of the plane). The DEM keeps the surface nearest to the viewer, so anything in front of the wall hides it. A depth crop is needed: the way is `chunk.region` rotated onto the façade box (centre, size, rotation in **chunk** units and axes). | U (script ready, section 8) |
-| Ortho in the plane | Manual: planar ortho "providing that mesh is selected as the surface type". API: `buildOrthomosaic(surface_data=ModelData / ElevationData ...)`, `projection=`, `region=`, `resolution=`. Whether `ElevationData` (the planar DEM) is accepted as surface through the API is **not verified**. Fallbacks, in order: surface = planar tie-point DEM; surface = a small mesh built from the tie points inside the region (`buildModel(source_data=TiePointsData)` with `chunk.region` on the façade box, seconds); surface = flat plane (a DEM at constant 0). | **U** |
-| Project must be saved? | Manual: ortho "only for projects saved in .PSX". The project here is read-only and DEM built fine in memory; the ortho test is pending. | U |
+| DEM resolution | Not settable for a tie-point DEM: 0.05, 0.2 and 0 (auto) all gave **0.112 m** (the tie-point spacing). The DEM is a coarse relief, the ortho resolution is independent (3 cm worked). | V |
+| Depth of the DEM | The 2D region does not limit depth: without a crop the heights ran from -9.7 m to +87.5 m (terrain and trees far in front of the plane hide the wall). **Setting `chunk.region` of the work copy to the façade box (centre, size and rotation in chunk units and axes) crops it: heights -1.99 m to +1.99 m for a 2 m depth.** Sampling `chunk.elevation.altitude(Vector((x, y)))` in plane coordinates gives 0.04 m at mid-wall: the plane is on the wall. | V |
+| Ortho in the plane | `buildOrthomosaic(surface_data=ElevationData, projection=<wall plane>, region=<2D box>, resolution=0.03)` **works with the planar tie-point DEM as the surface: 4.4 s for 873 x 489 px (26 m x 14.7 m at 3 cm)**, 11 images blended, extent exactly the box. The result opened in the Ortho view is an **upright, unmirrored façade picture** (windows, shutters, balconies readable). Quality: shutters and glazing are smeared where the sparse DEM is wrong (a 11 cm relief cannot follow a window recess): a flat plane or a denser surface will be cleaner. Not tried: flat-plane surface, mesh surface (the manual says planar ortho needs a mesh in the GUI; the API accepted the DEM). | V (DEM surface), U (flat, mesh) |
+| Project must be saved? | The ortho was built in a copy chunk of a **read-only** project, in memory, without error. | V |
 | Chunk copy | `chunk.copy(items=[TiePointsData], keypoints=False)`: 1.4 s for 278 cameras and 448 k tie points; the copy has no dense cloud, DEM or ortho. Ortho needs cameras only. | V |
-| Aim the 3D view at the façade | `Metashape.app.model_view.viewpoint` (`coo`, `rot`, `mag`, `fov`) exists and `Application.captureView()` returns an image. No locked camera needed. | U (exists in the Reference) |
+| Aim the 3D view at the façade | `Metashape.app.model_view.viewpoint` exists (U). `Metashape.app.ortho_view.captureView(w, h, transparent, hide_items)` works and returns an image (1900 x 1050 in 0.08 s), but the framing did not match `ortho_view.center/scale` (it showed ~3x less ground than asked): usable as a fallback, to be calibrated. | V (capture), U (3D view) |
 | Read the polygon | `chunk.shapes` / `Shape.geometry` / `Shape.selected` / `Shapes.crs` (Reference). The user draws with Metashape's own polygon tool on the Ortho view; the tool reads the selected shape. | U |
-| Export | `exportRaster(source_data=ElevationData / OrthomosaicData, save_world=True, region=..., resolution_x/y=...)`; world file in plane coordinates. Georeferencing of a planar raster in a GeoTIFF: not checked. | U |
+| Export | **Blocker found.** `chunk.exportRaster` writes the DEM of a *horizontal* plane and of a plane rotated about Z (control tests, 0.2 s), but for a **vertical** plane it writes nothing: with a region, with or without `projection`, a 2D or 2D-in-CRS region, TIFF / JPEG / PNG, with or without world file, it returns after 0.2 s without error and **no file**; without a region it ends after 2 to 5 minutes with the dialog "Empty raster. Retry processing?" (blocking Metashape until clicked). A compound CRS with a vertical datum gives "Vertical datum out of range" for a vertical plane: use a horizontal-only CRS (EPSG 3942 in the test). Not tried: the GUI export dialog. Fallbacks: `ortho_view.captureView`, or the GUI export, or sampling the DEM with `altitude()`. **This must be solved (or worked around) before any UI.** | V (failure), U (GUI export) |
 
-Consequence for the user's plan "DEM from tie points, then ortho": **feasible for the DEM**; for the ortho the safe design is "ortho on the
-plane (flat) by default, on the DEM or on a local mesh as options", decided by the 5-minute check below.
+Consequence for the user's plan "DEM from tie points, then ortho": **feasible for the DEM and for the ortho** (both built in seconds on a work copy); what is not solved is getting the picture **out of Metashape as a file** (row "Export").
 
-Cost of the Metashape calls in the session: copy 1.4 s, DEM 2.2 s. Ortho timing is **not measured**; for a 30 m x 15 m façade at 3 cm
-(1 000 x 500 px) expect seconds to a minute, dominated by loading the images that see the façade (estimate).
+Cost of the Metashape calls in the session: copy 1.4 s, DEM 2.2 s, ortho 4.4 s for 873 x 489 px (no export). Never call `exportRaster` on a vertical
+plane without a region: it blocks Metashape for minutes.
 
 Pure-Python note: numpy 2.0.2 is importable in this Metashape (the project's other tools already depend on it, see the tutorial note).
 Without numpy the detector is not usable (a pure-Python Hough on 100 k points would take minutes); the tool should show a clear message
@@ -230,8 +259,8 @@ Effort (working days, one developer, includes tests, English + French texts):
 
 Main risks:
 
-1. Ortho in the façade plane through the API (surface choice, project-must-be-saved): unverified; three fallbacks exist; worst case a local mesh.
-2. The depth of the DEM needs `chunk.region` of the work copy: unverified, but only the copy is touched.
+1. **Exporting the façade ortho/DEM as a file**: `exportRaster` is silent for a vertical plane. Untested ways out: the GUI export dialog (same engine?), `ortho_view.captureView` (works, framing to calibrate), tiling the capture. If none gives a georeferenced file, the tool is limited to previews and screenshots: that would change the verdict.
+2. The depth crop needs `chunk.region` of the work copy: **verified**, only the copy is touched.
 3. Tie points are sparse and noisy on façades with windows, vegetation, scaffolding: the user must see and control (front view, band, manual add).
 4. Georeferenced chunks in a geographic CRS need a projected CRS for the plane: take the project's DEM/ortho CRS, else UTM from the longitude.
 5. Metashape freezes its window during `buildDem` / `buildOrthomosaic` (main thread): keep each call short, show "working" first, never run the Qt
@@ -250,13 +279,17 @@ DXF. What is hard is not the file but the **geometry**: closing rooms, snapping 
 one thick wall, handling the pieces cut by gaps. Tie points give wall traces at +-5 to 10 cm, good for "where are the façades", not for an
 architectural plan; a dense cloud or a 2 m horizontal slice is the better source for that. Effort 4 to 6 days after Aero-Facade.
 
-## 8. Not verified, and the 5-minute checks
+## 8. Not verified, and what remains to run
 
-Not verified (**U**): ortho in the plane through the API and with which surface; depth crop through `chunk.region`; DEM resolution rule;
-planar GeoTIFF georeferencing; reading the selected shape; `model_view.viewpoint`; the DXF placement of a vertical image; recall/precision on
-real façades (no ground truth); behaviour with a dense-cloud DEM (greyed out in the first version).
+Verified in the session (section 4): planar projection convention, DEM from tie points in the façade plane, 2D region, depth crop by `chunk.region`,
+ortho from the planar DEM (upright picture), work copy, `ortho_view.captureView`. **Not verified:** export of a vertical planar raster as a file (fails: the
+blocker), flat-plane or mesh surface for the ortho, DEM/ortho in a chunk **built from a fresh alignment** (only the Citadelle chunks were used), reading the
+selected polygon shape, `model_view.viewpoint`, the DXF placement of a vertical image, georeferencing of a planar picture, a dense-cloud DEM.
+The whole `docs/facade_console_build.py` in one go has not been run either (assembled from verified steps).
 
-**Check 1: export the tie points of any chunk (3 lines, Metashape console):**
+**Run on the real tie points of a new alignment (e.g. CARRO, once aligned):**
+
+1. Export the tie points (3 lines in the Metashape console; east/north/up in metres around the region centre):
 
 ```python
 import numpy as np
@@ -264,45 +297,19 @@ c = Metashape.app.document.chunk; V = Metashape.Vector; M = c.transform.matrix; 
 np.save(r"C:\temp\tie_enu.npy", np.array([list(LF.mulp(M.mulp(V((p.coord[0], p.coord[1], p.coord[2]))))) for p in c.tie_points.points if p.valid]))
 ```
 
-(east, north, up in metres around the region centre; then `detect.detect(np.load(...))`.)
+2. Detect the walls (any Python with numpy, no Metashape needed), from the repository folder:
+   `python -m aerotools.tools.facade.detect C:\temp\tie_enu.npy --out C:\temp\walls.json`
+   (prints one line per wall, best first: length, height, azimuth, tilt, points, contrast).
+3. Build the DEM and the ortho of one wall on a work copy, in the Metashape console (edit the settings at the top, `WALL` = the `id` in `walls.json`):
+   `exec(open(r"C:\path\to\AeroTools\docs\facade_console_build.py").read())`. It prints the DEM size and height range (expect a range of about
+   2 x depth), the ortho size, and saves `facade_<id>.png` from the Ortho view. Delete the chunk `FACADE_<id>` afterwards and do not save the project.
+4. Compare with `facade_sud.jpg`: size 66 m x about 26 m, upright, not mirrored, balconies and the stepped sections visible.
 
-**Check 2: planar DEM and ortho on a work copy (nothing saved, place two markers `FA` and `FB` at the foot of the two ends of a façade):**
-
-```python
-import Metashape as M
-V = M.Vector
-c0 = M.app.document.chunk
-crs = c0.elevation.projection.crs if c0.elevation else M.CoordinateSystem("EPSG::2154")   # any projected CRS in metres
-T = c0.transform.matrix
-mk = {m.label: m for m in c0.markers}
-a, b = [crs.project(T.mulp(mk[k].position)) for k in ("FA", "FB")]
-H, BUF, DEPTH = 10.0, 1.0, 2.0                       # façade height, buffer, depth in front/behind (m)
-u = V((b.x - a.x, b.y - a.y, 0.0)); L = u.norm(); u = u / L
-v = V((0.0, 0.0, 1.0)); n = V((u.y, -u.x, 0.0))       # n must point to the cameras: swap FA and FB otherwise
-F = M.Matrix([[u.x, v.x, n.x, a.x], [u.y, v.y, n.y, a.y], [u.z, v.z, n.z, a.z], [0, 0, 0, 1]])
-proj = M.OrthoProjection(); proj.type = M.OrthoProjection.Type.Planar; proj.crs = crs; proj.matrix = F.inv()
-box = M.BBox(V((-BUF, -BUF)), V((L + BUF, H + BUF)))
-c = c0.copy(items=[M.DataSource.TiePointsData], keypoints=False); c.label = "FACADE_CHECK"      # work copy, never save
-# depth crop: chunk.region on the façade box (chunk units and axes)
-Ti = T.inv(); ch = lambda p: Ti.mulp(crs.unproject(p))
-o = ch(a); eu, ev, en = ch(a + u) - o, ch(a + v) - o, ch(a + n) - o; s = eu.norm()
-reg = M.Region(); reg.center = ch(a + u * (L / 2) + v * (H / 2)); reg.size = V((L + 2 * BUF, H + 2 * BUF, 2 * DEPTH)) * s
-reg.rot = M.Matrix([[eu.x / s, ev.x / s, en.x / s], [eu.y / s, ev.y / s, en.y / s], [eu.z / s, ev.z / s, en.z / s]]); c.region = reg
-c.buildDem(source_data=M.DataSource.TiePointsData, interpolation=M.EnabledInterpolation, projection=proj, region=box, resolution=0.05, replace_asset=True)
-e = c.elevation; print("DEM", e.width, e.height, e.resolution, e.min, e.max)           # expect max-min ~ buffer, not tens of metres
-c.buildOrthomosaic(surface_data=M.DataSource.ElevationData, projection=proj, region=box, resolution=0.03, replace_asset=True)
-o2 = c.orthomosaic; print("ORTHO", o2.width, o2.height, o2.resolution)
-c.exportRaster(path=r"C:\temp\facade_ortho.tif", source_data=M.DataSource.OrthomosaicData, save_world=True, save_alpha=True)
-```
-
-What to look at: (a) DEM `max - min` of the order of the buffer (depth crop works); (b) the ortho builds from the DEM, otherwise change
-`surface_data` to `ModelData` after `c.buildModel(source_data=M.DataSource.TiePointsData, surface_type=M.Arbitrary)`; (c) the TIFF shows
-the façade upright and not mirrored (if mirrored, swap `FA` and `FB`). Delete the copy (`Metashape.app.document.remove(c)`) and do not save.
-The same code, with the plane taken from a detected `Wall`, is what the tool will run. The ready-made probe scripts are in the scratch
-folder (`ms_probe1.py`, `ms_probe2a.py`, `ms_probe2b.py`, `ms_probe2c.py`).
+Never call `exportRaster` on a vertical plane without a region (it blocks Metashape for minutes with a dialog).
 
 ## 9. Decisions for the user
 
+0. **Export blocker**: authorise a short investigation (GUI export of a planar ortho, calibrated `captureView`, or a Metashape support question) before any UI.
 1. Go with the **smallest useful version first** (5 to 6 days) or the complete v1 (9 to 10)?
 2. **Ortho surface by default**: flat plane (fast, usual for façades) or tie-point DEM? Decide after Check 2.
 3. **Manual façade definition** (two markers) in v1, yes or no (recommended: yes).
@@ -314,6 +321,8 @@ folder (`ms_probe1.py`, `ms_probe2a.py`, `ms_probe2b.py`, `ms_probe2c.py`).
 9. Aero-Plan (section 7) afterwards, yes or no.
 
 ## 10. Where things are
+
+* Console build script: `docs/facade_console_build.py`; detector command line: `python -m aerotools.tools.facade.detect`.
 
 * Worktree `C:\Users\LTB1\AeroTools_facade`, branch `aerofacade` (from `origin/dev` 87313dd), local commits only.
 * Prototype: `aerotools/tools/facade/detect.py`; synthetic scene `tests/facade_synth.py`; tests `tests/test_facade_detect.py`.
