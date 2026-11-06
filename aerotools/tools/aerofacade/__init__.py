@@ -1,1 +1,1 @@
-"""Aero-Facade: feasibility prototype (wall detection). Not registered in config.TOOLS."""
+"""Aero-Facade: orthophotos of building façades from a Metashape chunk (engine, adapter and wizard)."""
