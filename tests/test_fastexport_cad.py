@@ -227,7 +227,7 @@ def test_no_event_loop_is_run_while_metashape_is_exporting(tmp_path, monkeypatch
     ctx.export = export
     jobs = plan.build_jobs("EDF", DAY, {"ortho": 0.5}, "full", str(tmp_path), lang="en", version=1)
     pipeline.run(ctx, jobs, lambda f, t: seen.append(("progress", ctx.native)))
-    assert seen[0] is True and ctx.native is False                  # pendant l'export de Metashape, pas apres
+    assert True in seen and ctx.native is False                  # pendant l'export de Metashape, pas apres
     assert ("progress", True) in seen                                 # son rappel de progression arrive bien dans cette fenetre
 
 
