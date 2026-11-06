@@ -283,7 +283,7 @@ def test_signature_changes_with_margins_method_and_frame_not_with_noise():
     shifted[0, 3] = 10.0
     assert base != msfacade.signature(f, Margins(), Method.TIE_POINTS, shifted)
     g = facade_a()
-    g.length += 0.001                                                      # a millimetre is the same façade
+    g.length += 0.001                                                      # a millimetre is the same facade
     assert base == msfacade.signature(g, Margins(), Method.TIE_POINTS, enu)
 
 

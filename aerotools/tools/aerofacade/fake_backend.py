@@ -3,14 +3,14 @@
 Used by the wizard's tests and offscreen screenshots, and by the engine's own tests. Deterministic (seeded). The scene is a
 66 m x 14 m block seen from the south: a stepped south front (three sections of 15, 20 and 26 m, the middle one set back 2.5 m), a
 66 m north wall, two gables, trees, a small neighbour house, sloping terrain, a road and a courtyard. The tie points are
-synthetic, and `detect` runs the REAL detector on them inside the search polygon. The orthomosaic preview and the façade pictures
+synthetic, and `detect` runs the REAL detector on them inside the search polygon. The orthomosaic preview and the facade pictures
 are drawn procedurally (numpy only) and written as real small PNG / TIFF / JPEG (JPEG only when Pillow is installed) files.
 
-Frames: the preview "crs" and the façade frames are the same local east/north/up metres here (no conversion needed).
+Frames: the preview "crs" and the facade frames are the same local east/north/up metres here (no conversion needed).
 
     fb = FakeBackend()                       # all methods available, 0.05 s per simulated stage
     fb = FakeBackend(delay=0, dense_cloud=False)   # tests: no sleep, no dense cloud
-    fb = FakeBackend(fail={"B": "Not enough depth maps cover this façade"})
+    fb = FakeBackend(fail={"B": "Not enough depth maps cover this facade"})
 """
 
 import math
@@ -46,7 +46,7 @@ WALLS = (
     ("N3", (44.0, 14.0), (66.0, 14.0), (0, 1), 26.0, 0.7),
     ("W", (0.0, 0.0), (0.0, 14.0), (-1, 0), 15.0, 0.8),
     ("E", (66.0, 0.0), (66.0, 14.0), (1, 0), 26.0, 0.8),
-    ("R1", (22.0, 0.0), (22.0, 2.5), (1, 0), 15.0, 0.8),         # the two returns of the set-back: 2.5 m, too short to be a façade
+    ("R1", (22.0, 0.0), (22.0, 2.5), (1, 0), 15.0, 0.8),         # the two returns of the set-back: 2.5 m, too short to be a facade
     ("R2", (44.0, 0.0), (44.0, 2.5), (-1, 0), 26.0, 0.8),
 )
 BLOCKS = ((0.0, 0.0, 22.0, 14.0, 15.0), (22.0, 2.5, 44.0, 14.0, 20.0), (44.0, 0.0, 66.0, 14.0, 26.0))   # x0, y0, x1, y1, roof height
@@ -271,7 +271,7 @@ def render_ortho(max_px=1600, seed=1):
 
 
 def render_facade(facade, margins, pixel_m, seed=0, max_side=1400):
-    """A procedural orthophoto of one façade (plaster, floors, windows with shutters, balconies, an arcade at the foot, sky and ground
+    """A procedural orthophoto of one facade (plaster, floors, windows with shutters, balconies, an arcade at the foot, sky and ground
     in the margins). Returns (RGB uint8 array, effective pixel size in metres): the picture is limited to `max_side` pixels."""
     L, H = facade.length, facade.height
     ml, mr, mt, mb = margins.left, margins.right, margins.top, margins.bottom
@@ -407,7 +407,7 @@ def write_image(path, rgb, fmt):
 class FakeBackend(Backend):
     """Synthetic building behind the Backend protocol. See the module docstring.
 
-    delay: seconds slept per simulated stage (0 in tests). Detection takes ~6 stages, a DEM ~4 per façade, an orthophoto ~3.
+    delay: seconds slept per simulated stage (0 in tests). Detection takes ~6 stages, a DEM ~4 per facade, an orthophoto ~3.
     fail: {letter: message} DEM builds that fail; fail_ortho: same for the orthophoto step; fail_export: same for export.
     existing: letters whose DEM is already in the chunk (for every method/margins) when the wizard starts (tests screen 5's shortcut).
     strict: an orthophoto needs its DEM first, a thumbnail/export needs its orthophoto (like the real adapter)."""

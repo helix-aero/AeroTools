@@ -108,7 +108,6 @@ class FacadeWizard(QtWidgets.QDialog):
 
     def __init__(self, backend, parent=None):
         super(FacadeWizard, self).__init__(parent)
-        self._lang = i18n.lang()
         self.backend = backend
         self.state = S.WizardState()
         S.load_prefs(self.state)

@@ -252,43 +252,55 @@ def _ui_keys_in_code():
 
 
 def test_every_ui_text_the_code_asks_for_exists_in_english():
-    texts = i18n.texts("en")
+    texts = i18n.texts()
     missing = sorted(k for k in _ui_keys_in_code() if k not in texts)
     assert missing == []
 
 
 def test_every_ui_text_is_used_by_the_code():
     keys = _ui_keys_in_code()
-    unused = sorted(k for k in i18n.texts("en") if k.startswith("facade.ui.") and k not in keys)
+    unused = sorted(k for k in i18n.texts() if k.startswith("facade.ui.") and k not in keys)
     assert unused == []
 
 
-def test_ui_texts_fill_their_fields_in_both_languages():
-    import string
-    en, fr = i18n.texts("en"), i18n.texts("fr")
-    for key, text in en.items():
-        if key.startswith("facade.ui.") and key in fr:
-            fields = lambda t: sorted(n for _l, n, _s, _c in string.Formatter().parse(t) if n)
-            assert fields(text) == fields(fr[key]), key
+def _package_trees():
+    for name in sorted(os.listdir(PACKAGE)):
+        if name.endswith(".py"):
+            with open(os.path.join(PACKAGE, name), encoding="utf-8") as handle:
+                yield name, ast.parse(handle.read(), name)
 
 
-def test_the_code_of_the_ui_has_no_hardcoded_visible_text():
-    """Every visible text goes through the catalog: no accented letter or French word in a string literal of the UI modules."""
-    accents = re.compile("[àâäçéèêëîïôöùûüÿœ«»]")
-    for name in ("widgets.py", "widgets_margins.py", "wizard.py", "screens_base.py", "screens_search.py", "screens_margins.py",
-                 "screens_build.py", "tool.py"):
-        with open(os.path.join(PACKAGE, name), encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
-        docs = set()
+def test_every_text_key_written_in_the_package_exists_in_the_catalog():
+    """A key that is not in the catalog would show on screen as raw text: no string that looks like a key may be missing."""
+    key_like = re.compile(r"^facade\.[A-Za-z0-9_.]+$")
+    missing = []
+    for name, tree in _package_trees():
         for node in ast.walk(tree):
-            if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef)) and node.body and isinstance(node.body[0], ast.Expr) \
-                    and isinstance(node.body[0].value, ast.Constant):
-                docs.add(id(node.body[0].value))
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) and key_like.match(node.value):
+                if not i18n.has(node.value):
+                    missing.append((name, node.lineno, node.value))
+    assert missing == []
+
+
+def test_every_translation_call_gets_a_key_that_exists_or_a_variable():
+    """`tr("...")` / `i18n.t("...")` with a literal must name a catalog key; a key built by string arithmetic is refused
+    (it cannot be checked, and it is how a raw key ends up on screen)."""
+    problems = []
+    for name, tree in _package_trees():
         for node in ast.walk(tree):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docs:
-                if name == "tool.py" and node.value.startswith("Aero-Facade"):
-                    continue                                        # journal lines (technical, French like the others)
-                if accents.search(node.value) and node.value not in ("✓", "✕"):
-                    if name == "tool.py":
-                        continue
-                    pytest.fail("{}: {!r}".format(name, node.value))
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            func = node.func
+            called = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else ""
+            if called not in ("tr", "t"):
+                continue
+            if called == "t" and not (isinstance(func, ast.Attribute) and getattr(func.value, "id", "") == "i18n"):
+                continue
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                if not i18n.has(first.value):
+                    problems.append((name, node.lineno, first.value))
+            elif isinstance(first, (ast.BinOp, ast.JoinedStr)) or (
+                    isinstance(first, ast.Call) and getattr(first.func, "attr", "") == "format"):
+                problems.append((name, node.lineno, "key built at run time"))
+    assert problems == []

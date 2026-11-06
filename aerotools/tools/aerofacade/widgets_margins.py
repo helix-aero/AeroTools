@@ -131,7 +131,7 @@ class NumberField(ui.SelectAllEdit):
 
 
 def i18n_number(value, decimals):
-    """The number as written in the interface language ("1,5" in French), at least one decimal."""
+    """The number as written with the decimal mark of the interface ("1.5"), at least one decimal."""
     text = metres(value, decimals)
     mark = "," if "," in text else "."
     if mark in text:

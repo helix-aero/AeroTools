@@ -3,9 +3,9 @@
 This module holds the picture and the lists:
 
 * `OrthoCanvas`      the orthomosaic picture with wheel zoom, middle / right drag pan, the polygon tool of the search area
-                     and the overlay of the façades (colour, letter, hover, selection);
-* `FacadeList`       the detected façades as rows (swatch, letter, length, height, facing), multi-select, Remove, Undo;
-* `BatchProgress`    waiting / running / done / failed per façade, the "please wait" banner, Cancel and Retry;
+                     and the overlay of the facades (colour, letter, hover, selection);
+* `FacadeList`       the detected facades as rows (swatch, letter, length, height, facing), multi-select, Remove, Undo;
+* `BatchProgress`    waiting / running / done / failed per facade, the "please wait" banner, Cancel and Retry;
 * `OrthoThumbnails`  the built orthophotos with a check box each (export screen).
 
 The margin editor and the method picker are in `widgets_margins.py` and re-exported here, so `widgets.MarginEditor` and
@@ -22,7 +22,7 @@ from .common import POLY_KEYS, STATE_KEYS, dir_key, metres, qt_shortcut, readabl
 
 MIN_AREA = 1e-9
 CLOSE_PX = 14                                         # a click this close to the first point closes the polygon
-HIT_PX = 11                                           # a click this close to a façade line selects it
+HIT_PX = 11                                           # a click this close to a facade line selects it
 DRAG_PX = 4                                           # a press that moves less than this is a click, not a drag
 ZOOM_STEP = 1.25
 STATE_WAITING, STATE_RUNNING, STATE_DONE, STATE_FAILED, STATE_CANCELLED = "waiting", "running", "done", "failed", "cancelled"
@@ -103,7 +103,7 @@ def polygon_problem(points):
 
 
 class RemovalLog(object):
-    """What the operator removed from the façade list, in groups, so that Undo brings the last group back."""
+    """What the operator removed from the facade list, in groups, so that Undo brings the last group back."""
 
     def __init__(self):
         self._groups = []
@@ -157,7 +157,7 @@ def _is_button(event, button):
 # --------------------------------------------------------------------------------------------------
 
 class _Badge(QtWidgets.QGraphicsItem):
-    """The round letter label of a façade. It ignores the view's zoom (always the same size on screen) and sits `offset` pixels
+    """The round letter label of a facade. It ignores the view's zoom (always the same size on screen) and sits `offset` pixels
     from its anchor point."""
 
     RADIUS = 12
@@ -191,7 +191,7 @@ class _Badge(QtWidgets.QGraphicsItem):
 
 
 class _FacadeMark(object):
-    """The three scene items of one façade: dark halo, coloured line, letter badge."""
+    """The three scene items of one facade: dark halo, coloured line, letter badge."""
 
     def __init__(self, scene, facade, frame):
         self.letter = facade.letter
@@ -235,7 +235,7 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
 
     Search area: while `set_draw_enabled(True)` and no outline is closed, each click adds a corner; a double click, or a click on
     the first corner, closes the outline; Esc drops the outline being drawn; Delete clears it so it can be drawn again.
-    Façades (`set_facades`) are drawn as coloured lines with their letter; click, hover and selection are reported by signals.
+    Facades (`set_facades`) are drawn as coloured lines with their letter; click, hover and selection are reported by signals.
 
     Signals: `polygon_changed(list or None)` corners in metres of the extent, `drawing_changed(bool)`, `facade_clicked(letter,
     ctrl, shift)` ("" when the click hit nothing), `facade_hovered(letter)`, `message(text)`."""
@@ -574,7 +574,7 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
                 self._scene.addItem(dot)
                 self._poly_items.append(dot)
 
-    # -- the façades ------------------------------------------------------------------------------
+    # -- the facades ------------------------------------------------------------------------------
 
     def set_facades(self, facades):
         """Draw `facades` (objects with letter, colour, polyline_xy(), nx, ny); the old ones are removed. A hover or selection on a
@@ -614,7 +614,7 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
             mark.style(letter in self._selected, letter == self._hover)
 
     def letter_at(self, view_pos):
-        """Letter of the façade drawn under the viewport point `view_pos`, or ""."""
+        """Letter of the facade drawn under the viewport point `view_pos`, or ""."""
         best, best_distance = "", HIT_PX + 0.5
         point = (view_pos.x(), view_pos.y())
         for letter, mark in self._marks.items():
@@ -628,7 +628,7 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
         return best
 
     def facade_view_point(self, letter):
-        """Viewport position (QPoint) of the middle of a façade line: for tests and hints."""
+        """Viewport position (QPoint) of the middle of a facade line: for tests and hints."""
         mark = self._marks.get(letter)
         if mark is None:
             return None
@@ -753,7 +753,7 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
 
 
 # --------------------------------------------------------------------------------------------------
-# The façade list
+# The facade list
 # --------------------------------------------------------------------------------------------------
 
 LETTER_ROLE = QtCore.Qt.UserRole + 1
@@ -831,8 +831,8 @@ class _FacadeDelegate(QtWidgets.QStyledItemDelegate):
 
 
 class FacadeList(QtWidgets.QWidget):
-    """The façades of the building as a list. Click selects, Shift and Ctrl click select several, right-click or the Delete key removes the
-    selected ones, Undo (button or Ctrl+Z) brings the last removal back. A removed façade keeps its letter and is flagged
+    """The facades of the building as a list. Click selects, Shift and Ctrl click select several, right-click or the Delete key removes the
+    selected ones, Undo (button or Ctrl+Z) brings the last removal back. A removed facade keeps its letter and is flagged
     `removed = True`, so it is not processed.
 
     Signals: `selection_changed(list of letters)`, `changed()` (something was removed or restored), `activated(letter)` (double click)."""
@@ -1068,7 +1068,7 @@ class _BatchRow(QtWidgets.QFrame):
 
 
 class BatchProgress(QtWidgets.QWidget):
-    """What is being computed, one row per façade: waiting, running, done or failed (with the plain reason), an overall bar,
+    """What is being computed, one row per facade: waiting, running, done or failed (with the plain reason), an overall bar,
     the "please do not touch Metashape" banner while it runs, Cancel, and Retry for the failed ones.
 
     Signals: `cancel_requested()`, `retry_requested(list of letters)`."""
@@ -1124,7 +1124,7 @@ class BatchProgress(QtWidgets.QWidget):
     # -- rows ---------------------------------------------------------------------------------------
 
     def set_items(self, facades):
-        """One waiting row per façade (objects with letter and colour)."""
+        """One waiting row per facade (objects with letter and colour)."""
         for row in self._rows.values():
             row.setParent(None)
             row.deleteLater()
@@ -1188,7 +1188,7 @@ THUMB_SIZE = QtCore.QSize(168, 112)
 
 
 class OrthoThumbnails(QtWidgets.QWidget):
-    """The orthophotos of the façades, a small picture and a check box each: the checked ones are exported.
+    """The orthophotos of the facades, a small picture and a check box each: the checked ones are exported.
 
     Signal: `checks_changed()`."""
 

@@ -4,7 +4,7 @@ Pure numpy, no Metashape, no Qt. Input: an (N, 3) array of metric coordinates (t
 Output: a list of `Wall` (a vertical plane patch: two end points in plan view, a height range, the fitted tilt, a score).
 
 Recommended entry: `detect_in_polygon(points, polygon, progress, cancelled, cameras)` -> list of `model.Facade` (method "auto" =
-`two_pass`: a demanding vertical-occupancy pass for the dense, thick façades of real tie points, then a tolerant pass on what is left,
+`two_pass`: a demanding vertical-occupancy pass for the dense, thick facades of real tie points, then a tolerant pass on what is left,
 then duplicate / relief suppression, a direction gate and parallel / perpendicular regularisation; see docs/AERO_FACADE_SPEC.md,
 "Engine notes"). The original detectors stay available for comparison.
 
@@ -49,7 +49,7 @@ class Params:
     occ_zbin: float = 0.5        # height bin (m) of that test
     dup_offset: float = 0.7      # parallel pieces closer than this (m) and overlapping along the wall are the same wall seen twice
     relief_offset: float = 1.8   # a short piece this close in front of / behind a longer parallel wall is relief (balcony, pilaster)
-    relief_len: float = 8.0      # ... when it is shorter than this (m); longer ones are setbacks and stay separate façades
+    relief_len: float = 8.0      # ... when it is shorter than this (m); longer ones are setbacks and stay separate facades
     snap_tol: float = 4.5        # degrees: walls this close to the main axes (or their perpendiculars) are made exactly parallel / perpendicular
     axis_tol: float = 3.0        # degrees: a wall within this of an anchor wall (or of its perpendicular) is "aligned"
     contrast_free: float = 12.0  # contrast a wall with no parallel / perpendicular partner must reach
@@ -57,7 +57,7 @@ class Params:
     anchor_dist: float = 30.0    # metres: a wall dwarfed (5 x fewer points) by one this close is not an anchor
     shadow: float = 1.2          # cells this close to an accepted wall (m, either side) cannot seed another wall
     min_area: float = 40.0       # smallest wall (length x height, m2): below that it is a parapet, a garden wall or a bush
-    back_ratio: float = 0.10     # thick façades: the density behind the wall may be at most this share of the density in its band
+    back_ratio: float = 0.10     # thick facades: the density behind the wall may be at most this share of the density in its band
     min_fill: float = 0.5        # a wall fills at least this fraction of the 1 m cells of its (length x height) rectangle
     min_density: float = 0.5     # ... and holds at least this many tie points per m2 of wall (the study: 0.5 is the floor for detection)
     occ_min: int = 8             # least number of occupied height bins in a cell: ~4 m of wall covered by points (0 = old extent test)
@@ -269,7 +269,7 @@ def _finish(P, pool, n3, d, p, vertical=True, ref=None):
         flank_out = int((along & (rr <= -p.tol) & (rr > -4 * p.tol)).sum())
         inband = int((along & (np.abs(rr) < p.tol)).sum())
         contrast = 3.0 * inband / max(flank_in + flank_out, 1)         # both flanks together: a thin slab in empty space
-        # (thick façades: balconies, shutters and cornices fill the outside flank, so a wall that FILLS its rectangle with points is also
+        # (thick facades: balconies, shutters and cornices fill the outside flank, so a wall that FILLS its rectangle with points is also
         # accepted on its weaker flank only: the inside of a building is never seen. A hedge or a tree fills both flanks.)
         contrast_thick = 3.0 * inband / max(min(flank_in, flank_out), 1)
         thin_ok = contrast >= p.contrast
@@ -335,7 +335,7 @@ def _lazy_greedy(P, pool, hyps, p, scorer, vertical=True, ref=None):
 # --------------------------------------------------------------------------
 
 def _snap(offsets, d, p):
-    """Move a Hough line to the densest plane within `relief_offset` of it: a thick façade (balconies a metre in front of the wall)
+    """Move a Hough line to the densest plane within `relief_offset` of it: a thick facade (balconies a metre in front of the wall)
     votes for several parallel lines, and the one to keep is the main plane, the one that holds most points."""
     r = np.asarray(offsets) - d
     reach = p.relief_offset
@@ -357,7 +357,7 @@ def grid_hough(P, p=None, exclude=None, clean=True):
     time hardly depends on the number of tie points; the accumulator is updated incrementally when a wall is taken out.
 
     Wall cells come from the vertical-occupancy test (`occupancy_cells`). The strongest line is snapped to the densest plane within
-    `relief_offset` (thick façades), refitted on the points, cut into pieces at gaps and validated (`_finish`); the cells within
+    `relief_offset` (thick facades), refitted on the points, cut into pieces at gaps and validated (`_finish`); the cells within
     `shadow` of an accepted wall stop voting (relief cannot seed a wall), and at the end `suppress` and `aligned_with_axes` clean up."""
     p = p or Params()
     P = np.asarray(P, dtype=np.float64)
@@ -569,10 +569,10 @@ def _dist_to_wall(pt, w):
 
 def aligned_with_axes(walls, p):
     """Gate on direction. The walls of a building run along a few directions and their perpendiculars; a slanted cut through a thick
-    façade, or through a bush, does not. A wall is an *anchor* when no wall within `anchor_dist` metres holds more than five times its
+    facade, or through a bush, does not. A wall is an *anchor* when no wall within `anchor_dist` metres holds more than five times its
     points (nothing dwarfs it). Anchors are kept. Any other wall is kept only when an anchor within `partner_dist` metres is parallel or
     perpendicular to it (within `axis_tol` degrees), or when its contrast reaches `contrast_free`. Several buildings with different
-    directions keep their own walls, the debris around the main façade goes."""
+    directions keep their own walls, the debris around the main facade goes."""
     mids = [np.array([(w.x0 + w.x1) / 2, (w.y0 + w.y1) / 2]) for w in walls]
     anchor = []
     for i, w in enumerate(walls):
@@ -642,7 +642,7 @@ def _same_wall(a, b):
 
 
 def regularize(P, walls, p):
-    """Make the façades of a building parallel and perpendicular when the data allow it. The reference axis is the n-weighted mean
+    """Make the facades of a building parallel and perpendicular when the data allow it. The reference axis is the n-weighted mean
     direction (modulo 90 degrees) of the main walls (at least a fifth of the points of the strongest, within 5 degrees of it). A wall
     within `snap_tol` degrees of that axis or of its perpendicular is turned to it exactly (the offset becomes the densest plane of its
     points) when at least 85 % of the inliers it had stay inliers; otherwise it keeps its own fitted direction (a really skewed wing).
@@ -708,9 +708,9 @@ def zone_points(P, walls, width):
 
 def two_pass(P, p=None):
     """Recommended. Pass 1 looks for the dense walls with a fine and demanding test (0.5 m columns, 8 height bins: the vertical-occupancy
-    test): the main façades of real tie points, thick with balconies and noise, clean of the roofs and the clutter around them. Pass 2 runs
+    test): the main facades of real tie points, thick with balconies and noise, clean of the roofs and the clutter around them. Pass 2 runs
     the tolerant test (1 m cells with a vertical extent of at least `hmin`) on the points that are NOT within `shadow` of a wall of pass 1,
-    to catch sparse walls (a small house, a back wall seen from afar) without the debris that thick façades throw up. One suppression and
+    to catch sparse walls (a small house, a back wall seen from afar) without the debris that thick facades throw up. One suppression and
     direction gate at the end."""
     p = p or Params()
     P = np.asarray(P, dtype=np.float64)
@@ -824,7 +824,7 @@ def walls_to_facades(walls, P, cameras=None):
 
 
 def detect_in_polygon(points, polygon, progress=None, cancelled=None, cameras=None, params=None, method="auto"):
-    """Façades inside a search polygon: the entry the backends call. `points` (N, 3) ENU metres, `polygon` [(x, y)] in the same frame.
+    """Facades inside a search polygon: the entry the backends call. `points` (N, 3) ENU metres, `polygon` [(x, y)] in the same frame.
     Returns list[Facade]. Raises backend.Cancelled when `cancelled()` becomes true between stages."""
     from .backend import Progress
     from .geometry import filter_points

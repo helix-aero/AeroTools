@@ -67,14 +67,14 @@ def test_detect_finds_the_building_walls(found):
     assert [f.letter for f in found] == list("ABCDEF")
     lengths = sorted(round(f.length) for f in found)
     assert lengths[-1] == 66                         # the north wall, one plane
-    assert lengths.count(22) == 3                    # the three south sections (the set-back is its own façade)
+    assert lengths.count(22) == 3                    # the three south sections (the set-back is its own facade)
     assert lengths.count(14) == 2                    # the gables
     for f in found:
         assert f.height > 10 and f.points > 400
         assert 0.0 < f.score <= 1.0
 
 
-def test_detect_orients_every_façade_to_the_outside(found):
+def test_detect_orients_every_facade_to_the_outside(found):
     facing = sorted(f.facing for f in found)
     assert facing == sorted(["N", "S", "S", "S", "E", "W"])
     # the normal points away from the building centre

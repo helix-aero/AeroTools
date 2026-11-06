@@ -4,11 +4,11 @@ Everything the three layers (engine, Metashape adapter, Qt wizard) exchange is d
 
 * `Facade`       one detected wall: letter name, colour, plane frame in local ENU metres, size, quality, `removed` flag;
 * `Margins`      how much to take around the plane (left / right / top / bottom / depth) with the two "link" badges;
-* `Method`       how the surface under a façade is built (dense cloud, depth maps, tie points);
+* `Method`       how the surface under a facade is built (dense cloud, depth maps, tie points);
 * `Availability` which methods the chunk can offer, and why not when it cannot;
 * `letter_name`  0 -> A, 25 -> Z, 26 -> AA, 27 -> AB ...
 
-The plane frame of a façade follows the Metashape convention used by the study (docs/AERO_FACADE_STUDY.md, section 4):
+The plane frame of a facade follows the Metashape convention used by the study (docs/AERO_FACADE_STUDY.md, section 4):
 `u` runs along the wall to the viewer's right, `v` points up, `n` points toward the viewer (= toward the cameras) and
 `u x v = n`. All coordinates are metres in the chunk's local east/north/up frame (the frame of the exported tie points).
 For a plumb wall `v = (0, 0, 1)` and `n = (u_y, -u_x, 0)`.
@@ -37,7 +37,7 @@ PALETTE = (
 
 
 def letter_name(i):
-    """Name of the i-th façade (0-based): A..Z, then AA, AB .. AZ, BA .. (bijective base 26)."""
+    """Name of the i-th facade (0-based): A..Z, then AA, AB .. AZ, BA .. (bijective base 26)."""
     if i < 0:
         raise ValueError("index must be >= 0")
     s = ""
@@ -52,7 +52,7 @@ def letter_index(name):
     """Inverse of `letter_name`: 'A' -> 0, 'Z' -> 25, 'AA' -> 26."""
     name = (name or "").strip().upper()
     if not name or not name.isalpha() or not name.isascii():
-        raise ValueError("not a façade letter: %r" % (name,))
+        raise ValueError("not a facade letter: %r" % (name,))
     n = 0
     for ch in name:
         n = n * 26 + (ord(ch) - 64)
@@ -60,7 +60,7 @@ def letter_index(name):
 
 
 def colour_for(i):
-    """Colour (hex string) of the i-th façade; the palette repeats after 12."""
+    """Colour (hex string) of the i-th facade; the palette repeats after 12."""
     return PALETTE[i % len(PALETTE)]
 
 
@@ -84,7 +84,7 @@ def _unit(a):
 
 
 class Method(Enum):
-    """How the surface (the DEM) under a façade is built. Order = quality order, best first (see methods.py)."""
+    """How the surface (the DEM) under a facade is built. Order = quality order, best first (see methods.py)."""
     DENSE_CLOUD = "dense_cloud"
     DEPTH_MAPS = "depth_maps"
     TIE_POINTS = "tie_points"
@@ -228,7 +228,7 @@ class Margins:
 
 
 def margins_for(margins, facade):
-    """The Margins that apply to `facade`. `margins` is one `Margins` (same for all façades) or a dict letter -> Margins."""
+    """The Margins that apply to `facade`. `margins` is one `Margins` (same for all facades) or a dict letter -> Margins."""
     if isinstance(margins, dict):
         return margins.get(facade.letter) or margins.get("*") or Margins()
     return margins or Margins()
@@ -241,7 +241,7 @@ class Facade:
     Plane frame (local ENU metres): `origin` = bottom-left corner of the wall as seen by someone standing in front of it,
     `u` along the wall to the viewer's right, `n` toward the cameras, `v` up. The wall rectangle is
     origin + s*u + t*v, 0 <= s <= length, 0 <= t <= height. `azimuth` is the compass bearing (degrees, 0 = north, clockwise)
-    of the direction the façade FACES (the normal `n`), so a south-facing front reads 180.
+    of the direction the facade FACES (the normal `n`), so a south-facing front reads 180.
     """
     letter: str = "A"
     colour: str = PALETTE[0]
@@ -283,7 +283,7 @@ class Facade:
 
     @property
     def facing(self):
-        """Compass name of the direction the façade faces ('S' for a south front)."""
+        """Compass name of the direction the facade faces ('S' for a south front)."""
         return compass_name(self.azimuth)
 
     def point_at(self, s, t, d=0.0):
@@ -314,7 +314,7 @@ class Facade:
 
     @property
     def density(self):
-        """Tie points per square metre of façade."""
+        """Tie points per square metre of facade."""
         return self.points / self.area if self.area > 0 else 0.0
 
     # ---- JSON ---------------------------------------------------------------------------------------------------
@@ -330,7 +330,7 @@ class Facade:
 
     @classmethod
     def from_frame(cls, letter, index, origin, u, length, height, points=0, score=0.0, n=None, **kw):
-        """Build a plumb façade from its bottom-left origin, the unit vector along it (horizontal part is used) and its size.
+        """Build a plumb facade from its bottom-left origin, the unit vector along it (horizontal part is used) and its size.
 
         If `n` is not given it is (u_y, -u_x, 0), the plane normal that goes with a plumb wall seen from the right-hand side."""
         ux, uy = u[0], u[1]
@@ -355,7 +355,7 @@ def facades_from_json(rows):
 
 
 def assign_names(facades, order=None):
-    """Give each façade its letter and colour in the current list order (A, B, C ...). Returns the same list."""
+    """Give each facade its letter and colour in the current list order (A, B, C ...). Returns the same list."""
     for i, f in enumerate(facades):
         f.letter = letter_name(i)
         f.colour = colour_for(i)
@@ -363,7 +363,7 @@ def assign_names(facades, order=None):
 
 
 def active(facades):
-    """The façades that are not removed (the only ones processed)."""
+    """The facades that are not removed (the only ones processed)."""
     return [f for f in facades if not f.removed]
 
 

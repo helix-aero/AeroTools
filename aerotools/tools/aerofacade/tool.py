@@ -1,8 +1,8 @@
-"""Demarrage et arret de Aero-Facade : le point d'entree appele par le menu Aero (Aero > Aero-Facade).
+"""Start and stop of Aero-Facade: the entry point called by the Aero menu (Aero > Aero-Facade).
 
-`install()` / `uninstall()` sont les noms que le lanceur (`bootstrap.launch`) appelle ; `start()` / `stop()` sont les memes fonctions.
-Dans Metashape la fenetre parle au projet par `msfacade.MetashapeBackend` (module de l'adaptateur, importe seulement ici) ; les tests
-et les captures d'ecran donnent leur propre `Backend` (`FakeBackend`) a `open_window`.
+`install()` / `uninstall()` are the names the launcher (`bootstrap.launch`) calls; `start()` / `stop()` are the same functions.
+Inside Metashape the window talks to the project through `msfacade.MetashapeBackend` (the adapter module, imported only here); the
+tests and the screenshots hand their own `Backend` (`FakeBackend`) to `open_window`.
 """
 
 from ... import i18n, journal, msapi, theme
@@ -12,11 +12,11 @@ _STATE = {"window": None}
 
 
 def make_backend():
-    """Le `Backend` de Metashape. Leve ImportError si l'adaptateur n'est pas installe, RuntimeError s'il n'y a pas de projet.
+    """The Metashape `Backend`. Raises ImportError if the adapter is not installed, RuntimeError if there is no project.
 
-    Modele de fil de l'adaptateur : tous ses calculs tournent dans le fil PRINCIPAL et le bloquent ; entre deux appels il appelle
-    `pump()`, qui laisse Qt travailler (la fenetre se met a jour par son minuteur). La fenetre le sait par `backend.threaded = False`."""
-    from . import msfacade                                   # le seul import de Metashape de tout le paquet : paresseux, ici
+    Threading model of the adapter: all its computing runs on the MAIN thread and blocks it; between two calls it calls
+    `pump()`, which lets Qt work (the window refreshes itself with its timer). The window knows it from `backend.threaded = False`."""
+    from . import msfacade                                   # the only Metashape import of the whole package: lazy, here
     from ...qt import QtWidgets
     backend = msfacade.MetashapeBackend(pump=QtWidgets.QApplication.processEvents)
     backend.threaded = False
@@ -24,13 +24,13 @@ def make_backend():
 
 
 def open_window(backend, parent=None, existing=None):
-    """Ouvre (ou ramene devant) la fenetre Aero-Facade sur `backend`. Renvoie la fenetre, a garder."""
+    """Open (or bring to the front) the Aero-Facade window on `backend`. Returns the window, to be kept."""
     from . import wizard
     window = existing
     try:
         if window is not None:
             window.objectName()
-            if window._lang != i18n.lang() or window.backend is not backend:
+            if window.backend is not backend:
                 window.close()
                 window.deleteLater()
                 window = None
@@ -46,7 +46,7 @@ def open_window(backend, parent=None, existing=None):
 
 
 def install():
-    """Ouvre (ou ramene devant) la fenetre Aero-Facade sur le projet de Metashape."""
+    """Open (or bring to the front) the Aero-Facade window on the Metashape project."""
     parent = msapi.main_window()
     if parent is None:
         msapi.message_box(i18n.t("tool.no_window"))
@@ -58,27 +58,26 @@ def install():
             shown.show()
             shown.raise_()
             shown.activateWindow()
-            if shown._lang == i18n.lang():
-                return
+            return
     except RuntimeError:
         pass
     try:
         backend = make_backend()
     except ImportError as exc:
-        journal.write("Aero-Facade : adaptateur Metashape absent : {!r}".format(exc))
+        journal.write("Aero-Facade: Metashape adapter missing: {!r}".format(exc))
         msapi.message_box(i18n.t("facade.ui.backend_missing", error=str(exc)))
         return
     except Exception as exc:
-        journal.write("Aero-Facade : pas de projet : {!r}".format(exc))
+        journal.write("Aero-Facade: no project: {!r}".format(exc))
         msapi.message_box(i18n.t("facade.ui.no_backend"))
         return
     theme.load_fonts(QtGui)
     _STATE["window"] = open_window(backend, parent, _STATE.get("window"))
-    journal.write("Aero-Facade ouvert")
+    journal.write("Aero-Facade opened")
 
 
 def uninstall():
-    """Ferme la fenetre (avant un rechargement du code) : un calcul en cours est d'abord arrete."""
+    """Close the window (before the code is reloaded): a running job is stopped first."""
     shown = _STATE.get("window")
     if shown is None:
         return

@@ -13,7 +13,7 @@ from .backend import Cancelled
 class Task(object):
     """`func(progress, cancelled)` runs on a daemon thread. `progress(fraction, text)` and `cancelled()` are what the backend gets.
 
-    While it runs the worker may also write `items[key] = (state, text)` (the window shows these per façade). When it ends, exactly
+    While it runs the worker may also write `items[key] = (state, text)` (the window shows these per facade). When it ends, exactly
     one of `result`, `error` (an exception, `trace` has the traceback) or `was_cancelled` tells how, and `done` becomes True last."""
 
     def __init__(self, func, name="", items=None, extras=None):

@@ -1,6 +1,6 @@
 """Aero-Facade UI: screen 5 (build the surface under each wall) and screen 6 (orthophotos and export).
 
-The long steps run one façade at a time, so that each wall has its own row with its own result: `batch_worker` is the function that
+The long steps run one facade at a time, so that each wall has its own row with its own result: `batch_worker` is the function that
 runs on the worker thread. It only writes plain dictionaries (`items`, `extras`); the screens read them with the wizard's timer.
 """
 
@@ -20,10 +20,10 @@ EXTENSIONS = {"png": "png", "jpg": "jpg", "tif": "tif"}
 
 
 def batch_worker(facades, call, items, extras=None, after=None):
-    """Function for `Task`: run `call(facade, progress)` -> (ok, message) on each façade in turn.
+    """Function for `Task`: run `call(facade, progress)` -> (ok, message) on each facade in turn.
 
     `items[letter] = (state, text)` is updated as it goes. Cancelling marks the rest "cancelled" and stops; an exception on one
-    façade is that façade's failure, the others still run. `after(facade, extras)` runs after a success (thumbnails)."""
+    facade is that facade's failure, the others still run. `after(facade, extras)` runs after a success (thumbnails)."""
     facades = list(facades)
 
     def work(progress, cancelled):
@@ -293,13 +293,13 @@ class ExportScreen(Screen):
             radio = QtWidgets.QRadioButton(tr(FORMAT_KEYS[key][0]))
             radio.setProperty("value", key)
             radio.setCursor(QtCore.Qt.PointingHandCursor)
-            radio.setToolTip(tr("format_%s_tip" % key))
+            radio.setToolTip(tr(FORMAT_KEYS[key][2]))
             radio.setChecked(key == (saved if saved in S.FORMATS else "png"))
             radio.toggled.connect(lambda _c: self._refresh_choose())
             self.formats.addButton(radio)
             card = ui.OptionCard(radio)
             card.grid.setColumnStretch(1, 1)
-            card.grid.addWidget(ui.label(tr("format_%s_text" % key), "aeroMeta"), 0, 1)
+            card.grid.addWidget(ui.label(tr(FORMAT_KEYS[key][1]), "aeroMeta"), 0, 1)
             col.addWidget(card)
         self.georef = QtWidgets.QCheckBox(tr("facade.ui.opt_georef"))
         self.georef.setChecked(config.get(S.SECTION, "georef_txt") is not False)

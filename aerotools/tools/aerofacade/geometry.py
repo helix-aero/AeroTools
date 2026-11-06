@@ -2,7 +2,7 @@
 
 Pure numpy / math, no Qt, no Metashape. All coordinates are metres in the chunk's local east/north/up frame unless stated.
 
-Plane frame of a façade (see model.Facade): `u` along the wall to the viewer's right, `v` up, `n` toward the cameras; a point of the
+Plane frame of a facade (see model.Facade): `u` along the wall to the viewer's right, `v` up, `n` toward the cameras; a point of the
 plane frame is (s along, t up, d toward the cameras) measured from the bottom-left corner of the wall.
 """
 
@@ -105,7 +105,7 @@ def filter_points(points_xyz, polygon):
 # --------------------------------------------------------------------------
 
 def plane_axes(facade):
-    """(u, v, n) of the façade as three numpy unit vectors."""
+    """(u, v, n) of the facade as three numpy unit vectors."""
     return np.array(facade.u, float), np.array(facade.v, float), np.array(facade.n, float)
 
 
@@ -131,16 +131,16 @@ def plane_to_enu(facade, stn):
 
 
 def distance_to_plane(facade, points):
-    """Signed distance (m) of ENU points to the façade plane, positive toward the cameras."""
+    """Signed distance (m) of ENU points to the facade plane, positive toward the cameras."""
     return enu_to_plane(facade, points)[:, 2]
 
 
 # --------------------------------------------------------------------------
-# Generated bounding region around a façade
+# Generated bounding region around a facade
 # --------------------------------------------------------------------------
 
 def bounding_region(facade, margins):
-    """The box that limits every computation for one façade: the wall rectangle grown by the margins, `depth` metres in front of
+    """The box that limits every computation for one facade: the wall rectangle grown by the margins, `depth` metres in front of
     and behind the plane. Returns a dict, in local ENU metres:
 
       centre   (x, y, z) of the box
@@ -192,7 +192,7 @@ def region_footprint(facade, margins):
 def margin_schematic(length, height, margins, width_px=240, height_px=150, pad=14):
     """Geometry of the little front view of screen 3, in pixels (y down), scaled to fit a `width_px` x `height_px` box.
 
-    Returns dict(scale, wall=(x, y, w, h), area=(x, y, w, h), total_m=(w, h), labels) where `wall` is the façade rectangle, `area` the
+    Returns dict(scale, wall=(x, y, w, h), area=(x, y, w, h), total_m=(w, h), labels) where `wall` is the facade rectangle, `area` the
     picture area (wall + margins) and `labels` the metre values to print beside each side. The area is centred in the box. A zero
     margin gives an area edge on the wall edge."""
     m = margins if isinstance(margins, Margins) else Margins()
@@ -314,7 +314,7 @@ class TimeEstimate:
         return self.basis != "unknown"
 
 
-# seconds = fixed + per_m2 * (area of the picture region in m2), as (low, high) for the DEM step of ONE façade.
+# seconds = fixed + per_m2 * (area of the picture region in m2), as (low, high) for the DEM step of ONE facade.
 # 'measured': Metashape 2.2.1 on CARRO / Citadelle (docs/AERO_FACADE_STUDY.md: DEM from tie points 2.2 s for 26 m x 14.7 m).
 # The other two are first estimates until the adapter measures them; update THESE numbers (one place) when it does.
 DEM_TIME = {
@@ -326,7 +326,7 @@ ORTHO_TIME = dict(fixed=(1.5, 4.0), per_mpix=(4.0, 14.0), basis="measured")     
 
 
 def estimate_dem_time(method, area_m2):
-    """TimeEstimate (seconds) of the DEM of one façade whose picture region covers `area_m2`."""
+    """TimeEstimate (seconds) of the DEM of one facade whose picture region covers `area_m2`."""
     spec = DEM_TIME.get(Method.from_key(method).value)
     if spec is None:
         return TimeEstimate()
@@ -341,7 +341,7 @@ def estimate_ortho_time(mpix):
 
 
 def estimate_batch_dems(method, facades, margins, skip=()):
-    """TimeEstimate for the DEMs of all not-removed façades (letters in `skip` already exist and cost nothing)."""
+    """TimeEstimate for the DEMs of all not-removed facades (letters in `skip` already exist and cost nothing)."""
     total = TimeEstimate(0.0, 0.0, "measured")
     n = 0
     for f in facades:
@@ -364,7 +364,7 @@ def estimate_batch_orthos(facades, margins, pixel_m):
 
 
 def suggest_default_margins(facade=None):
-    """Margins to preselect: 1 m on the four sides and 2 m depth (the spec defaults), adapted to the façade: half a metre for a very
+    """Margins to preselect: 1 m on the four sides and 2 m depth (the spec defaults), adapted to the facade: half a metre for a very
     short wall, and more depth for a leaning wall (a vertical plane through its middle is up to H x tan(tilt) / 2 away from the top and
     the foot). Rounded to 0.5 m."""
     m = Margins()

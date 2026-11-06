@@ -9,7 +9,7 @@ Conventions common to every method:
 * `cancelled()`: returns True when the operator pressed Cancel. A backend checks it between steps and raises `Cancelled` (or returns
   what is done so far, as documented per method).
 * `facades`: list of `model.Facade`; removed ones (`removed=True`) must be skipped by the caller, the backend ignores them anyway.
-* `margins`: a `model.Margins` (the same for all façades) or a dict `letter -> Margins`; use `model.margins_for(margins, facade)`.
+* `margins`: a `model.Margins` (the same for all facades) or a dict `letter -> Margins`; use `model.margins_for(margins, facade)`.
 * `method`: a `model.Method` (or its key string).
 * Coordinates: local east/north/up metres of the chunk for `Facade` frames; the polygon and the orthomosaic preview extent are in
   `project_info()["crs"]` metres. A backend that has two frames converts inside; the UI never converts.
@@ -94,21 +94,21 @@ class Backend:
         raise NotImplementedError
 
     def detect(self, polygon, progress, cancelled):
-        """Find the façades inside `polygon` ([(x, y)], preview crs metres) from the tie points. Runs off the UI thread.
+        """Find the facades inside `polygon` ([(x, y)], preview crs metres) from the tie points. Runs off the UI thread.
         Returns list[Facade], named A, B, C ... in `model.assign_names` order. Raises `Cancelled` if cancelled."""
         raise NotImplementedError
 
     def existing_dems(self, facades, margins, method):
-        """{letter: True/False}: is the DEM of this façade already in the chunk for these margins and this method (assets we tagged)?"""
+        """{letter: True/False}: is the DEM of this facade already in the chunk for these margins and this method (assets we tagged)?"""
         raise NotImplementedError
 
     def build_dems(self, facades, margins, method, progress, cancelled):
-        """Build the DEMs one after the other. Returns {letter: (ok, message)}; a failure of one façade never stops the others.
+        """Build the DEMs one after the other. Returns {letter: (ok, message)}; a failure of one facade never stops the others.
         On cancel, returns what was done (the others are simply absent)."""
         raise NotImplementedError
 
     def build_orthos(self, facades, margins, method, pixel_m, progress, cancelled):
-        """Build the orthophoto of each façade at `pixel_m` metres per pixel. Returns {letter: (ok, message)}."""
+        """Build the orthophoto of each facade at `pixel_m` metres per pixel. Returns {letter: (ok, message)}."""
         raise NotImplementedError
 
     def thumbnail(self, facade):
@@ -116,6 +116,6 @@ class Backend:
         raise NotImplementedError
 
     def export(self, facades, folder, fmt, options, progress, cancelled):
-        """Write one file per façade into `folder` (created if needed), named `<site>_<date>_facade_<letter>.<ext>`.
+        """Write one file per facade into `folder` (created if needed), named `<site>_<date>_facade_<letter>.<ext>`.
         `fmt`: 'png' | 'jpg' | 'tif'; `options`: dict (e.g. {'georef_txt': True, 'dxf': False}). Returns [(path, ok, message)]."""
         raise NotImplementedError

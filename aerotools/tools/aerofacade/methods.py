@@ -1,6 +1,6 @@
-"""Aero-Facade: how the surface (the DEM) under each façade is built. Ranking, availability rules, explanations, warnings, time hints.
+"""Aero-Facade: how the surface (the DEM) under each facade is built. Ranking, availability rules, explanations, warnings, time hints.
 
-Pure Python, no Qt, no Metashape. Texts are translation KEYS (`facade.method.*` in aerotools/lang/en.py and fr.py); the functions
+Pure Python, no Qt, no Metashape. Texts are translation KEYS (`facade.method.*` in aerotools/lang/en.py); the functions
 return keys and fields, and `text(key, **fields)` renders them with `aerotools.i18n.t`.
 
 Order decided in the spec (best quality first), with the reasons shown to the operator as small grey text:
@@ -8,7 +8,7 @@ Order decided in the spec (best quality first), with the reasons shown to the op
 1. Dense cloud  - the most complete and cleanest surface. Best quality, and the fastest to use when it already exists. It is never
                   built by the tool: if the chunk has none the option is greyed with the reason.
 2. Depth maps   - very good detail, quality close to the dense cloud, available in most projects, quick because only the area of the
-                  façade is processed. The usual default when there is no dense cloud.
+                  facade is processed. The usual default when there is no dense cloud.
 3. Tie points   - always there but sparse: holes and a rough surface. Offered with a warning ("quick look only").
 """
 
@@ -74,13 +74,13 @@ def method_keys(method):
 
 
 def direction_key(facade_or_name):
-    """Key of the compass word of a façade's facing direction ('S' -> facade.detect.dir.S)."""
+    """Key of the compass word of a facade's facing direction ('S' -> facade.detect.dir.S)."""
     name = facade_or_name if isinstance(facade_or_name, str) else facade_or_name.facing
     return DIRECTION_KEYS[name]
 
 
 def quality_level(score):
-    """'high' | 'medium' | 'low' from a façade's 0..1 quality score."""
+    """'high' | 'medium' | 'low' from a facade's 0..1 quality score."""
     return "high" if score >= 0.75 else "medium" if score >= 0.45 else "low"
 
 
@@ -137,7 +137,7 @@ class TimeHint:
 
 
 def time_hint(method, facades, margins, existing=()):
-    """Time hint of a method for the façades that are not removed (letters in `existing` already have a DEM and cost nothing)."""
+    """Time hint of a method for the facades that are not removed (letters in `existing` already have a DEM and cost nothing)."""
     todo = [f for f in facades if not f.removed and f.letter not in existing]
     n = len(todo)
     if n == 0:

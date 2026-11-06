@@ -66,7 +66,7 @@ class MarginsScreen(Screen):
         return [letter for letter in self.list.selected_letters() if self.state.facade(letter) is not None]
 
     def _reference(self):
-        """The façade whose numbers the editor shows: the first picked one (any one, when the numbers apply to all)."""
+        """The facade whose numbers the editor shows: the first picked one (any one, when the numbers apply to all)."""
         targets = self.targets() or self.state.letters()
         return self.state.facade(targets[0]) if targets else None
 

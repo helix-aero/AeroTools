@@ -1,6 +1,6 @@
 """Aero-Facade UI: what the wizard knows and the rules that enable its buttons. No Qt, no Metashape: tested without a display.
 
-`WizardState` holds the search outline, the façades (with their removed flags), the margins of each façade, the method, the pixel
+`WizardState` holds the search outline, the facades (with their removed flags), the margins of each facade, the method, the pixel
 size and the results of the long steps. The wizard windows read and write it; the rules (`can_run`, `can_next`...) are plain
 functions of it.
 """
@@ -19,10 +19,10 @@ class WizardState(object):
     def __init__(self):
         self.polygon = None                       # closed outline, [(x, y)] metres of the picture
         self.polygon_problem = "few"              # "" when the outline can be used
-        self.detected_for = None                  # the outline (tuple) the current façades were detected for
-        self.facades = []                         # every detected façade, removed ones included
-        self.version = 0                          # grows each time a new detection replaces the façades
-        self.default_margins = Margins()          # what a façade gets until the operator changes it
+        self.detected_for = None                  # the outline (tuple) the current facades were detected for
+        self.facades = []                         # every detected facade, removed ones included
+        self.version = 0                          # grows each time a new detection replaces the facades
+        self.default_margins = Margins()          # what a facade gets until the operator changes it
         self.margins = {}                         # letter -> Margins
         self.apply_all = True
         self.method = ""                          # key of a Method ("" until screen 4 chose)
@@ -49,7 +49,7 @@ class WizardState(object):
     def detection_is_current(self):
         return bool(self.facades) and self.detected_for is not None and self.detected_for == self.polygon_key()
 
-    # -- façades ----------------------------------------------------------------------------------
+    # -- facades ----------------------------------------------------------------------------------
 
     def set_facades(self, facades, polygon_key=None):
         self.facades = list(facades)
@@ -78,11 +78,11 @@ class WizardState(object):
         return self.margins[letter]
 
     def margins_map(self):
-        """{letter: Margins copy} of the façades that are kept."""
+        """{letter: Margins copy} of the facades that are kept."""
         return {f.letter: self.margins_of(f.letter).copy() for f in self.active()}
 
     def apply_margin(self, letters, name, value):
-        """Set one margin ("left", "right", "top", "bottom", "depth") on these façades (the link flags of each decide the twin side)."""
+        """Set one margin ("left", "right", "top", "bottom", "depth") on these facades (the link flags of each decide the twin side)."""
         for letter in letters:
             getattr(self.margins_of(letter), "set_" + name)(value)
         getattr(self.default_margins, "set_" + name)(value)
@@ -95,7 +95,7 @@ class WizardState(object):
         self.invalidate_builds()
 
     def set_all_margins(self, margins):
-        """The same margins on every façade (the "apply to all" switch turned on)."""
+        """The same margins on every facade (the "apply to all" switch turned on)."""
         for f in self.facades:
             self.margins[f.letter] = margins.copy()
         self.default_margins = margins.copy()
@@ -104,7 +104,7 @@ class WizardState(object):
     # -- results ----------------------------------------------------------------------------------
 
     def signature(self):
-        """What the built DEMs and orthophotos depend on: the kept façades, their margins, the method and the pixel size."""
+        """What the built DEMs and orthophotos depend on: the kept facades, their margins, the method and the pixel size."""
         rows = tuple((f.letter, tuple(sorted(self.margins_of(f.letter).to_dict().items()))) for f in self.active())
         return (rows, self.method, round(self.pixel_cm, 4))
 

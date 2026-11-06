@@ -1,4 +1,4 @@
-"""Aero-Facade methods.py: ranking, defaults, texts (both languages), time hints, warnings."""
+"""Aero-Facade methods.py: ranking, defaults, texts, time hints, warnings."""
 
 import math
 
@@ -54,14 +54,6 @@ def test_unknown_reason_gets_the_default():
     assert rows[1][1] is False and rows[1][2] == ME.DEFAULT_REASON[Method.DEPTH_MAPS]
 
 
-@pytest.fixture(params=["en", "fr"])
-def lang(request):
-    old = i18n.lang()
-    i18n.set_lang(request.param, persist=False)
-    yield request.param
-    i18n.set_lang(old, persist=False)
-
-
 def _all_keys():
     keys = list(ME.METHOD_KEYS.values()) + list(ME.MARGIN_KEYS.values()) + list(ME.DETECT_KEYS.values())
     keys += list(ME.DIRECTION_KEYS.values()) + list(ME.QUALITY_KEYS.values()) + list(ME.STAGE_KEYS.values())
@@ -72,37 +64,28 @@ def _all_keys():
     return keys
 
 
-def test_every_key_exists_in_both_catalogs():
+def test_every_key_exists_in_the_catalog():
     keys = _all_keys()
     assert len(keys) > 50
-    for code in ("en", "fr"):
-        texts = i18n.texts(code)
-        missing = [k for k in keys if k not in texts]
-        assert missing == [], (code, missing)
+    missing = [k for k in keys if not i18n.has(k)]
+    assert missing == []
 
 
 def test_every_facade_engine_key_is_listed_in_the_tables():
     """No orphan text: every facade.method / margin / detect key of the catalog is reachable from methods.py."""
     listed = set(_all_keys())
-    ours = [k for k in i18n.texts("en") if k.startswith(("facade.method.", "facade.margin.", "facade.detect."))]
+    ours = [k for k in i18n.texts() if k.startswith(("facade.method.", "facade.margin.", "facade.detect."))]
     assert [k for k in ours if k not in listed] == []
 
 
-def test_texts_have_matching_fields_in_both_languages_and_render(lang):
+def test_texts_render():
     for k in _all_keys():
         text = i18n.t(k, n=2, low=1, high=3, w=100, h=50, mp="5.0", mb="9", fmt="PNG", min_cm=5, length="10.0", height="5.0",
                       direction="x", error="e")
-        assert text and text != k and "{" not in text, (lang, k)
+        assert text and text != k and "{" not in text, k
 
 
-def test_french_has_accents_and_english_has_none_of_them():
-    en, fr = i18n.texts("en"), i18n.texts("fr")
-    assert "façade" in en["facade.margin.title"]
-    assert "façade" in fr["facade.margin.title"]
-    assert "Très" in fr["facade.method.depth_maps.quality"]
-
-
-def test_describe_renders_rows_in_quality_order(lang):
+def test_describe_renders_rows_in_quality_order():
     rows = ME.describe(NO_DENSE, _facades(), Margins(), translate=None)
     assert [r["key"] for r in rows] == ["dense_cloud", "depth_maps", "tie_points"]
     assert [r["default"] for r in rows] == [False, True, False]
@@ -111,7 +94,7 @@ def test_describe_renders_rows_in_quality_order(lang):
     assert rows[2]["warning"] and rows[0]["warning"] == ""
     assert rows[0]["time"] == ""                              # no time for a method that cannot be used
     assert all(r["title"] and r["explain"] and r["quality"] for r in rows)
-    assert ME.describe(NO_DENSE)[1]["time"] == ""             # without façades, no time hint
+    assert ME.describe(NO_DENSE)[1]["time"] == ""             # without facades, no time hint
 
 
 def test_describe_accepts_a_custom_translator():
@@ -153,7 +136,7 @@ def test_warnings():
     assert ME.warnings_for("depth_maps", _facades(1, 10.0, 5.0), Margins()) == []
 
 
-def test_facade_summary_and_levels(lang):
+def test_facade_summary_and_levels():
     f = Facade.from_frame("A", 0, (0, 0, 0), (1, 0, 0), 66.24, 21.8, score=0.9)
     s = ME.facade_summary(f)
     assert "66.2" in s["size"] and "21.8" in s["size"]
@@ -164,7 +147,7 @@ def test_facade_summary_and_levels(lang):
     assert ME.direction_key(f) == "facade.detect.dir.S"
 
 
-def test_stage_text_renders_in_both_languages(lang):
+def test_stage_text_renders():
     assert ME.stage_text("done", n=3)
     assert "3" in ME.stage_text("done", n=3)
     assert ME.stage_text("read") != ME.stage_text("search")

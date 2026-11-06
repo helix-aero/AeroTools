@@ -1,4 +1,4 @@
-"""Aero-Facade UI: screen 1 (draw the search area, run the detection) and screen 2 (check the detected façades)."""
+"""Aero-Facade UI: screen 1 (draw the search area, run the detection) and screen 2 (check the detected facades)."""
 
 from ... import theme, ui
 from ...qt import QtCore, QtWidgets
@@ -209,7 +209,7 @@ class SearchScreen(Screen):
 
 
 class FacadesScreen(Screen):
-    """Screen 2: the detected façades on the picture and in a list; remove the ones that are not wanted."""
+    """Screen 2: the detected facades on the picture and in a list; remove the ones that are not wanted."""
 
     step = S.FACADES
     name_key = "facade.ui.step_facades"

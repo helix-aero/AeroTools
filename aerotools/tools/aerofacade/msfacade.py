@@ -1,11 +1,11 @@
 """Aero-Facade: the Metashape adapter. The ONLY module of the tool that imports `Metashape`; it implements `backend.Backend`.
 
 How a vertical-plane orthophoto gets OUT of Metashape (measured on Metashape 2.2.1, see docs/AERO_FACADE_SPEC.md, "Adapter notes"):
-`exportRaster` writes nothing for a vertical planar projection, but it exports a *horizontal* raster without trouble. So every façade
+`exportRaster` writes nothing for a vertical planar projection, but it exports a *horizontal* raster without trouble. So every facade
 gets its own throw-away work chunk (`AeroFacade_<site>_<letter>`, a copy of the user's chunk) in which the *coordinate system is
-rotated* so that the façade plane becomes the horizontal plane: `chunk.crs` = a local metric system, `chunk.transform.matrix` = chunk ->
+rotated* so that the facade plane becomes the horizontal plane: `chunk.crs` = a local metric system, `chunk.transform.matrix` = chunk ->
 (plane frame: x along the wall, y up, z toward the viewer, origin = bottom-left corner of the wall). In that chunk a perfectly ordinary
-`buildDem` / `buildOrthomosaic` / `exportRaster` produces the façade picture, with exact pixel size and extent. The user's chunk is
+`buildDem` / `buildOrthomosaic` / `exportRaster` produces the facade picture, with exact pixel size and extent. The user's chunk is
 never modified.
 
 Threading model (for the UI): every call into Metashape that processes data (buildDem, buildOrthomosaic, exportRaster, copy) runs
@@ -45,7 +45,7 @@ META_PIXEL = "aerofacade.pixel"
 META_LETTER = "aerofacade.letter"
 LOCAL_WKT = 'LOCAL_CS["AeroFacade plane",LOCAL_DATUM["Local Datum",0],UNIT["metre",1]]'
 MIN_TIE_POINTS = 100                       # fewer tie points than this: no detection
-MIN_POINTS_IN_REGION = 30                  # a tie-point DEM needs this many points inside the façade box
+MIN_POINTS_IN_REGION = 30                  # a tie-point DEM needs this many points inside the facade box
 MAX_CAMERAS_DEFAULT = 250                  # cameras kept enabled in a work chunk (the best placed ones)
 PREVIEW_MAX_CAMERAS = 120
 EXT = {"png": "png", "jpg": "jpg", "jpeg": "jpg", "tif": "tif", "tiff": "tif"}
@@ -76,7 +76,7 @@ def plane_box(facade, margins):
 
 
 def region_in_chunk(N, facade, margins):
-    """Bounding region of the façade for a work chunk whose transform is `N` (chunk -> plane metres, 4 x 4 numpy).
+    """Bounding region of the facade for a work chunk whose transform is `N` (chunk -> plane metres, 4 x 4 numpy).
 
     Returns (center, size, rot): chunk coordinates of the centre, size in chunk units, 3 x 3 rotation (columns = box axes in chunk axes)."""
     m = margins_for(margins, facade)
@@ -105,12 +105,12 @@ def work_label(site, letter):
 
 
 def rank_cameras(centres, forwards, visible, plane_z, max_cameras=MAX_CAMERAS_DEFAULT, min_front=0.17):
-    """Which cameras to keep for a façade. All arrays are numpy: `centres` (N, 3) in plane coordinates, `forwards` (N, 3) unit viewing
-    directions in plane coordinates, `visible` (N,) fraction of the sample points of the façade seen in the picture (0..1).
+    """Which cameras to keep for a facade. All arrays are numpy: `centres` (N, 3) in plane coordinates, `forwards` (N, 3) unit viewing
+    directions in plane coordinates, `visible` (N,) fraction of the sample points of the facade seen in the picture (0..1).
 
     A camera is kept when it stands on the viewer's side (z > 0), looks toward the wall (angle to the plane normal < 80 degrees) and
     sees part of it; the best `max_cameras` by (visible fraction, how frontal) are returned as sorted indices. If nothing is on the
-    viewer's side (a façade whose normal points the wrong way) every camera that sees it is kept instead."""
+    viewer's side (a facade whose normal points the wrong way) every camera that sees it is kept instead."""
     centres, forwards, visible = np.asarray(centres, float), np.asarray(forwards, float), np.asarray(visible, float)
     front = -forwards[:, 2]
     ok = (plane_z > 0.0) & (front > min_front) & (visible > 0)
@@ -254,15 +254,15 @@ class MetashapeBackend(Backend):
         self.pump = pump or (lambda: None)
         self.max_cameras = int(max_cameras)
         self.depth_downscale = int(depth_downscale)
-        self.depth_max_cameras = int(depth_max_cameras)       # photos used for the depth maps of one façade (spread out)
+        self.depth_max_cameras = int(depth_max_cameras)       # photos used for the depth maps of one facade (spread out)
         self.keep_work_chunks = bool(keep_work_chunks)
-        self.enu = enu_matrix(chunk)                        # chunk -> ENU, frozen now: every façade frame is expressed in it
+        self.enu = enu_matrix(chunk)                        # chunk -> ENU, frozen now: every facade frame is expressed in it
         self._points = None                                 # (N, 3) ENU tie points, read once
         self._cameras = None                                # (M, 3) ENU camera centres
         self._tracks = None                                 # (N,) track id of each tie point of `_points`
         self._cam_tracks = None                             # per aligned camera: array of the track ids it sees
         self._thumbs = {}
-        self._ortho_of = {}                                 # façade letter -> key of the work chunk that holds its orthophoto
+        self._ortho_of = {}                                 # facade letter -> key of the work chunk that holds its orthophoto
         self._tmp = None
         self._site = None
         self._date = None
@@ -328,7 +328,7 @@ class MetashapeBackend(Backend):
         if dm is not None and len(dm.keys()) > 0:
             out["depth_maps"] = (True, "")
         elif aligned >= 3:
-            out["depth_maps"] = (True, "")           # not computed yet: they are computed for the façade area only (a few minutes)
+            out["depth_maps"] = (True, "")           # not computed yet: they are computed for the facade area only (a few minutes)
         else:
             out["depth_maps"] = (False, "There are not enough aligned photos to compute depth maps.")
         pc = chunk.point_cloud
@@ -363,7 +363,7 @@ class MetashapeBackend(Backend):
 
     # ---- Backend: detect ----------------------------------------------------------------------------------
     def detect(self, polygon, progress, cancelled):
-        """Façades inside `polygon` (ENU east/north metres, the frame of the preview). Reading the tie points is done on the main
+        """Facades inside `polygon` (ENU east/north metres, the frame of the preview). Reading the tie points is done on the main
         thread (about 1 s per million points); the detector (numpy) runs in a worker thread while this call pumps `self.pump`."""
         prog = Progress.of(progress, cancelled)
         t0 = time.time()
@@ -390,7 +390,7 @@ class MetashapeBackend(Backend):
         thread.start()
         while thread.is_alive():
             thread.join(0.05)
-            prog(0.25 + 0.75 * state["fraction"], state["text"] or "Looking for façades")
+            prog(0.25 + 0.75 * state["fraction"], state["text"] or "Looking for facades")
             self.pump()
         if state["error"] is not None:
             raise state["error"]
@@ -400,9 +400,9 @@ class MetashapeBackend(Backend):
         except Cancelled:
             raise
         except Exception as exc:                                  # the engine's own orientation stays
-            log("could not check the viewing side of the façades (%s)" % exc)
-        log("detection: %d façade(s) in %.1f s (%d tie points in total)" % (len(facades), time.time() - t0, len(points)))
-        prog(1.0, "%d façade(s) found" % len(facades))
+            log("could not check the viewing side of the facades (%s)" % exc)
+        log("detection: %d facade(s) in %.1f s (%d tie points in total)" % (len(facades), time.time() - t0, len(points)))
+        prog(1.0, "%d facade(s) found" % len(facades))
         return facades
 
     def _camera_tracks(self):
@@ -425,7 +425,7 @@ class MetashapeBackend(Backend):
     def _orient(self, facades, prog):
         """Check, with the tie points themselves, on which side of each wall the photos that SEE it were taken (a camera on the
         far side of a building cannot see its other wall, a plain 'mean camera side' is wrong when the flight goes all around). A
-        façade whose normal points to the wrong side is turned round (origin at the other end, u and n reversed): the picture is
+        facade whose normal points to the wrong side is turned round (origin at the other end, u and n reversed): the picture is
         then the outside view, not mirrored."""
         if not facades or self._tracks is None:
             return
@@ -452,7 +452,7 @@ class MetashapeBackend(Backend):
             f.views = (pos, neg)                              # matches on the viewer's side / on the other side (informative)
             if neg > 2 * pos and neg > 50:
                 self._turn_round(f)
-                log("façade %s turned round: its photos stand on the other side (%d vs %d matches)" % (f.letter, neg, pos))
+                log("facade %s turned round: its photos stand on the other side (%d vs %d matches)" % (f.letter, neg, pos))
 
     @staticmethod
     def _turn_round(f):
@@ -655,7 +655,7 @@ class MetashapeBackend(Backend):
             cam.enabled = bool(cam.transform is not None and cam.key in keep)
         return len(keep)
 
-    # ---- work chunks (one per façade) ---------------------------------------------------------------------
+    # ---- work chunks (one per facade) ---------------------------------------------------------------------
     def _find_work(self, sig):
         for other in self.doc.chunks:
             try:
@@ -669,7 +669,7 @@ class MetashapeBackend(Backend):
         return _meta_get(work, META_STAGE) or ""
 
     def _make_work(self, facade, margins, method, sig, prog):
-        """A copy of the source chunk with the façade plane as its horizontal plane, the bounding region set and only the useful cameras
+        """A copy of the source chunk with the facade plane as its horizontal plane, the bounding region set and only the useful cameras
         enabled. Returns the new chunk."""
         method = Method.from_key(method)
         src = self._src()
@@ -700,7 +700,7 @@ class MetashapeBackend(Backend):
         return work
 
     def _limit_cameras(self, work, N, facade, margins):
-        """Enable only the cameras that look at the façade from the viewer's side (at most self.max_cameras). Returns how many."""
+        """Enable only the cameras that look at the facade from the viewer's side (at most self.max_cameras). Returns how many."""
         box = plane_box(facade, margins)
         Ni = np.linalg.inv(N)
         pts = [Metashape.Vector(tuple((Ni @ np.array([s, t, 0.0, 1.0]))[:3])) for s, t in sample_points(box)]
@@ -756,16 +756,16 @@ class MetashapeBackend(Backend):
                 work = self._find_work(sig)
                 if work is not None and self._stage_of(work) in ("dem", "ortho") and work.elevation is not None:
                     results[f.letter] = (True, "Already built.")
-                    sub(1.0, "Façade %s: already built" % f.letter)
+                    sub(1.0, "Facade %s: already built" % f.letter)
                     continue
                 if work is not None:
                     self._remove_chunk(work)
                 results[f.letter] = self._build_dem(f, margins, method, sig, sub)
             except Cancelled:
-                log("cancelled during the DEM of façade %s" % f.letter)
+                log("cancelled during the DEM of facade %s" % f.letter)
                 break
             except Exception as exc:
-                log("DEM of façade %s failed: %s" % (f.letter, exc))
+                log("DEM of facade %s failed: %s" % (f.letter, exc))
                 results[f.letter] = (False, explain(exc))
         return results
 
@@ -778,9 +778,9 @@ class MetashapeBackend(Backend):
     def _build_dem(self, f, margins, method, sig, prog):
         t0 = time.time()
         m = margins_for(margins, f)
-        prog(0.0, "Façade %s: preparing" % f.letter)
+        prog(0.0, "Facade %s: preparing" % f.letter)
         if method == Method.TIE_POINTS and self._tie_points_in_box(f, m) < MIN_POINTS_IN_REGION:
-            return False, "Too few tie points on this façade to build a surface (try the depth maps method)."
+            return False, "Too few tie points on this facade to build a surface (try the depth maps method)."
         work = self._make_work(f, m, method, sig, prog)
         try:
             box = Metashape.BBox(Metashape.Vector(plane_box(f, m)[:2]), Metashape.Vector(plane_box(f, m)[2:]))
@@ -794,26 +794,26 @@ class MetashapeBackend(Backend):
                 if work.depth_maps is None or len(work.depth_maps.keys()) == 0:
                     enabled = [c for c in work.cameras if c.enabled and c.transform is not None]
                     if not enabled:
-                        raise RuntimeError("No photo looks at this façade.")
+                        raise RuntimeError("No photo looks at this facade.")
                     pick = spread_cameras([list(c.center) for c in enabled], self.depth_max_cameras)
                     keys = [enabled[i].key for i in pick]
-                    self._call(prog, 0.1, 0.85, "Façade %s: computing depth maps for %d photos" % (f.letter, len(keys)), work.buildDepthMaps,
+                    self._call(prog, 0.1, 0.85, "Facade %s: computing depth maps for %d photos" % (f.letter, len(keys)), work.buildDepthMaps,
                                downscale=self.depth_downscale, filter_mode=Metashape.MildFiltering, cameras=keys, reuse_depth=False,
                                max_neighbors=16)
                     lo = 0.85
             else:
                 source = Metashape.DataSource.PointCloudData
                 lo = 0.1
-            self._call(prog, lo, 1.0, "Façade %s: building the surface from the %s" % (f.letter, name), work.buildDem, source_data=source,
+            self._call(prog, lo, 1.0, "Facade %s: building the surface from the %s" % (f.letter, name), work.buildDem, source_data=source,
                        interpolation=Metashape.EnabledInterpolation, region=box, replace_asset=True)
             dem = work.elevation
             if dem is None:
-                raise RuntimeError("Metashape built no surface for this façade.")
+                raise RuntimeError("Metashape built no surface for this facade.")
             _meta_set(work, META_STAGE, "dem")
             _meta_set(work, "aerofacade.method", method.key)
-            log("DEM of façade %s (%s): %dx%d px at %.3f m, heights %.2f..%.2f m, %.1f s" % (f.letter, name, dem.width, dem.height, dem.resolution,
+            log("DEM of facade %s (%s): %dx%d px at %.3f m, heights %.2f..%.2f m, %.1f s" % (f.letter, name, dem.width, dem.height, dem.resolution,
                                                                                            dem.min, dem.max, time.time() - t0))
-            finished(prog, "Façade %s: surface ready" % f.letter)
+            finished(prog, "Facade %s: surface ready" % f.letter)
             return True, "Surface built from the %s (%d x %d, %.1f cm per pixel)." % (name, dem.width, dem.height, dem.resolution * 100.0)
         except BaseException:
             self._remove_chunk(work)
@@ -838,10 +838,10 @@ class MetashapeBackend(Backend):
                     work = self._find_work(sig)
                 results[f.letter] = self._build_ortho(f, margins, work, pixel_m, sub.sub(0.4, 1.0) if work is not None else sub)
             except Cancelled:
-                log("cancelled during the orthophoto of façade %s" % f.letter)
+                log("cancelled during the orthophoto of facade %s" % f.letter)
                 break
             except Exception as exc:
-                log("orthophoto of façade %s failed: %s" % (f.letter, exc))
+                log("orthophoto of facade %s failed: %s" % (f.letter, exc))
                 results[f.letter] = (False, explain(exc))
         return results
 
@@ -851,29 +851,29 @@ class MetashapeBackend(Backend):
         stage, pixel = self._stage_of(work), _meta_get(work, META_PIXEL)
         if stage == "ortho" and pixel and abs(float(pixel) - pixel_m) < 1e-9 and work.orthomosaic is not None:
             self._ortho_of[f.letter] = work.key
-            finished(prog, "Façade %s: orthophoto already built" % f.letter)
+            finished(prog, "Facade %s: orthophoto already built" % f.letter)
             return True, "Already built."
         w, h = geometry.image_size_px(f, m, pixel_m)
         if w * h > geometry.TOO_BIG_MPIX * 1e6:
             return False, "The picture would be %d x %d pixels (%.0f megapixels): use a bigger pixel size." % (w, h, w * h / 1e6)
         box = Metashape.BBox(Metashape.Vector(plane_box(f, m)[:2]), Metashape.Vector(plane_box(f, m)[2:]))
-        self._call(prog, 0.0, 0.95, "Façade %s: building the orthophoto (%d x %d px)" % (f.letter, w, h), work.buildOrthomosaic,
+        self._call(prog, 0.0, 0.95, "Facade %s: building the orthophoto (%d x %d px)" % (f.letter, w, h), work.buildOrthomosaic,
                    surface_data=Metashape.DataSource.ElevationData, blending_mode=Metashape.MosaicBlending, fill_holes=True, region=box,
                    resolution=float(pixel_m), replace_asset=True)
         ortho = work.orthomosaic
         if ortho is None:
-            raise RuntimeError("Metashape built no orthophoto for this façade.")
+            raise RuntimeError("Metashape built no orthophoto for this facade.")
         _meta_set(work, META_STAGE, "ortho")
         _meta_set(work, META_PIXEL, repr(float(pixel_m)))
         self._thumbs.pop(f.letter, None)
         self._ortho_of[f.letter] = work.key
-        log("orthophoto of façade %s: %dx%d px at %.3f m in %.1f s" % (f.letter, ortho.width, ortho.height, ortho.resolution, time.time() - t0))
-        finished(prog, "Façade %s: orthophoto ready" % f.letter)
+        log("orthophoto of facade %s: %dx%d px at %.3f m in %.1f s" % (f.letter, ortho.width, ortho.height, ortho.resolution, time.time() - t0))
+        finished(prog, "Facade %s: orthophoto ready" % f.letter)
         return True, "%d x %d px at %.1f cm." % (ortho.width, ortho.height, pixel_m * 100.0)
 
     # ---- Backend: thumbnail ------------------------------------------------------------------------------------
     def _work_for(self, facade):
-        """The work chunk holding the last orthophoto built for this façade (whatever the method), or None."""
+        """The work chunk holding the last orthophoto built for this facade (whatever the method), or None."""
         key = self._ortho_of.get(facade.letter)
         if key is None:
             return None
@@ -889,7 +889,7 @@ class MetashapeBackend(Backend):
             return self._thumbs[facade.letter]
         work = self._work_for(facade)
         if work is None or work.orthomosaic is None:
-            raise RuntimeError("The orthophoto of façade %s is not built yet." % facade.letter)
+            raise RuntimeError("The orthophoto of facade %s is not built yet." % facade.letter)
         ortho = work.orthomosaic
         factor = max(1.0, ortho.width / float(width))
         path = os.path.join(self.tmp(), "thumb_%s.png" % facade.letter)
@@ -915,17 +915,17 @@ class MetashapeBackend(Backend):
             try:
                 work = self._work_for(f)
                 if work is None or work.orthomosaic is None:
-                    out.append((path, False, "The orthophoto of this façade is not built yet."))
+                    out.append((path, False, "The orthophoto of this facade is not built yet."))
                     continue
                 t0 = time.time()
                 self._export_one(f, work, path, ext, options, sub)
                 log("exported %s (%.1f s, %.1f MB)" % (os.path.basename(path), time.time() - t0, os.path.getsize(path) / 1e6))
                 out.append((path, True, ""))
             except Cancelled:
-                log("cancelled during the export of façade %s" % f.letter)
+                log("cancelled during the export of facade %s" % f.letter)
                 break
             except Exception as exc:
-                log("export of façade %s failed: %s" % (f.letter, exc))
+                log("export of facade %s failed: %s" % (f.letter, exc))
                 out.append((path, False, explain(exc)))
         return out
 
@@ -938,7 +938,7 @@ class MetashapeBackend(Backend):
         comp.tiff_overviews = False
         comp.jpeg_quality = int(options.get("jpeg_quality", 92))
         fmt = {"png": Metashape.ImageFormatPNG, "jpg": Metashape.ImageFormatJPEG, "tif": Metashape.ImageFormatTIFF}[ext]
-        self._call(prog, 0.0, 0.9, "Façade %s: writing %s" % (f.letter, os.path.basename(path)), work.exportRaster, path,
+        self._call(prog, 0.0, 0.9, "Facade %s: writing %s" % (f.letter, os.path.basename(path)), work.exportRaster, path,
                    source_data=Metashape.DataSource.OrthomosaicData, image_format=fmt, image_compression=comp, save_alpha=False,
                    white_background=True, clip_to_boundary=False, save_world=False)
         if not os.path.isfile(path):
@@ -948,7 +948,7 @@ class MetashapeBackend(Backend):
             self._write_georef(f, work, path, pixel)
         if options.get("dxf"):
             self._write_dxf(f, work, path, pixel, options)
-        finished(prog, "Façade %s: done" % f.letter)
+        finished(prog, "Facade %s: done" % f.letter)
 
     # ---- DXF with the picture standing in its vertical plane -------------------------------------------------
     def _dxf_crs(self, options):
@@ -968,7 +968,7 @@ class MetashapeBackend(Backend):
         return Metashape.CoordinateSystem("EPSG::%d" % code), "EPSG:%d (WGS 84 / UTM %d%s)" % (code, zone, "N" if lat >= 0 else "S")
 
     def _write_dxf(self, f, work, path, pixel, options):
-        """`<picture>.dxf`: one IMAGE entity placed in 3D (E, N, height of the output system) so that the picture stands on the façade, at scale.
+        """`<picture>.dxf`: one IMAGE entity placed in 3D (E, N, height of the output system) so that the picture stands on the facade, at scale.
         The image path in the DXF is relative (same folder). Written with `aeroexports.dxfout`, extended with a 3D placement."""
         from ..aeroexports import dxfout
         ortho = work.orthomosaic
@@ -990,7 +990,7 @@ class MetashapeBackend(Backend):
                 "u_vec": tuple((pu - p0) * (pixel / step)), "v_vec": tuple((pv - p0) * (pixel / step))}
         dxf = os.path.splitext(path)[0] + ".dxf"
         dxfout.write_dxf(dxf, [item])
-        log("DXF of façade %s written in %s: %s" % (f.letter, label, os.path.basename(dxf)))
+        log("DXF of facade %s written in %s: %s" % (f.letter, label, os.path.basename(dxf)))
         return dxf
 
     def _write_georef(self, f, work, path, pixel):

@@ -7,7 +7,7 @@
 # Built from steps that were verified in the Citadelle session (planar OrthoProjection matrix, 2D region, DEM from tie points, chunk.region depth crop,
 # ortho from the planar DEM, ortho_view.captureView); the whole script in one go has NOT been run yet. exportRaster does not write vertical planar rasters
 # (tested, silent), so the picture is taken with ortho_view.captureView. Its framing is NOT understood: in the test the capture showed ~3x less
-# ground than ov.scale asked for. Check the picture and adjust ov.scale (px per metre) until the whole façade is in it.
+# ground than ov.scale asked for. Check the picture and adjust ov.scale (px per metre) until the whole facade is in it.
 import json
 import os
 

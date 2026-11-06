@@ -33,7 +33,7 @@ FAKE.app = types.SimpleNamespace(version="2.2.1-selftest", document=types.Simple
                                  addMenuItem=lambda *a, **k: None, messageBox=lambda text: None, update=lambda: None)
 sys.modules["Metashape"] = FAKE
 
-from aerotools import config, i18n, journal  # noqa: E402
+from aerotools import config, journal  # noqa: E402
 GUARD.pin(config)
 from aerotools.qt import QtCore, QtGui, QtWidgets  # noqa: E402
 from aerotools.tools.aerofacade import state as S  # noqa: E402
@@ -45,7 +45,6 @@ from aerotools.tools.aeroexports import controls  # noqa: E402
 controls.screen_area = lambda: QtCore.QRect(0, 0, 1920, 1040)       # a Full HD screen (the offscreen one is small and varies)
 
 journal.print = lambda *args, **kwargs: None
-i18n.set_lang("en", persist=False)
 APP = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 FAILURES = []
 SHOTS = None
@@ -1006,28 +1005,28 @@ def _():
     return arrived and many and ok, "arrived={} updates={} export_page={}".format(arrived, sorted(set(updates))[:6], ok)
 
 
-@case("French: the whole wizard is in French, no text key shows through")
+@case("Texts: every label and button of the wizard is a plain sentence, no text key shows through")
 def _():
-    i18n.set_lang("fr", persist=False)
-    try:
-        window, _backend = new_wizard()
-        show(window)
-        prepare_to(window, S.EXPORT)
-        until(lambda: window.screens[S.EXPORT].stack.currentIndex() == 1, 30)
-        leaks, words = [], 0
-        for index in range(6):
-            for label in window.screens[index].findChildren(QtWidgets.QLabel):
-                if "facade." in label.text():
-                    leaks.append(label.text())
-                words += len(label.text().split())
-        for widget in window.findChildren(QtWidgets.QAbstractButton):
-            if "facade." in widget.text():
-                leaks.append(widget.text())
-        suivant = window.back_button.text() == "Retour"
-        window.close()
-        return not leaks and suivant and words > 100, "leaks={} suivant={} words={}".format(leaks[:3], suivant, words)
-    finally:
-        i18n.set_lang("en", persist=False)
+    import re
+    raw_key = re.compile(r"^[a-z0-9]+([._][A-Za-z0-9]+)+$")             # facade.ui.x, format_png_text
+    window, _backend = new_wizard()
+    show(window)
+    prepare_to(window, S.EXPORT)
+    until(lambda: window.screens[S.EXPORT].stack.currentIndex() == 1, 30)
+    leaks, words = [], 0
+    for index in range(6):
+        for label in window.screens[index].findChildren(QtWidgets.QLabel):
+            text = label.text().strip()
+            if "facade." in text or raw_key.match(text):
+                leaks.append(text)
+            words += len(text.split())
+    for widget in window.findChildren(QtWidgets.QAbstractButton):
+        text = widget.text().strip()
+        if "facade." in text or raw_key.match(text):
+            leaks.append(text)
+    back = window.back_button.text() == "Back"
+    window.close()
+    return not leaks and back and words > 100, "leaks={} back={} words={}".format(leaks[:3], back, words)
 
 
 def render_all(scale):

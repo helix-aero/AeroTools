@@ -171,7 +171,7 @@ def test_detect_in_polygon_filters_progress_and_cancel():
 
 
 def test_synthetic_building_geometry_is_centimetric():
-    """Detected façades against the truth of the FakeBackend: plane offset, direction, length and height."""
+    """Detected facades against the truth of the FakeBackend: plane offset, direction, length and height."""
     fb = FB.FakeBackend(delay=0)
     fs = D.detect_in_polygon(fb.tie_points, [(-5, -20), (75, -20), (75, 22), (-5, 22)], cameras=fb.cameras)
     truth = [t for t in fb.truth if t["kind"] == "wall" and not t["name"].startswith("H")]
@@ -192,13 +192,13 @@ def test_synthetic_building_geometry_is_centimetric():
                 best = f
         if best is not None:
             matched += 1
-            if not t["name"].startswith("N"):                      # the north plane is one façade over three heights
+            if not t["name"].startswith("N"):                      # the north plane is one facade over three heights
                 assert abs(best.height - t["height"]) < 0.2 * t["height"] + 1.0
     assert matched >= 6                                        # S1 S2 S3, the north plane, W, E
-    # the north plane is one façade covering N1 N2 N3
+    # the north plane is one facade covering N1 N2 N3
     north = [f for f in fs if f.facing == "N"][0]
     assert north.length == pytest.approx(66.0, abs=1.5)
-    # the set-back section is its own façade, 2.5 m behind the front
+    # the set-back section is its own facade, 2.5 m behind the front
     south = sorted((f for f in fs if f.facing == "S"), key=lambda f: f.origin[0])
     assert len(south) == 3
     d = abs(G.enu_to_plane(south[0], np.array([south[1].origin]))[0, 2])
