@@ -121,18 +121,38 @@ function Run-Long($label, $exe, [string[]]$arguments) {
 }
 
 
+function Test-PythonHealthy($path) {
+    # Un Python dont ensurepip retrouve son paquet pip. Un Python mis a jour a moitie (fichiers de deux versions) echoue ici.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $path -m ensurepip --version 2>$null | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+
 function Find-SystemPython {
-    # Chemin d'un python.exe 3.10 a 3.13, ou $null.
+    # Chemin d'un python.exe 3.10 a 3.13, ou $null. On prefere un Python en bon etat ; a defaut, le premier trouve
+    # (les secours de l'installeur savent alors s'en accommoder).
     $candidates = @(@('py', '-3.12'), @('py', '-3.11'), @('py', '-3.13'), @('py', '-3.10'), @('python'))
+    $fallback = $null
     foreach ($candidate in $candidates) {
         try {
             $exe = $candidate[0]
             $extra = @($candidate | Select-Object -Skip 1)
             $path = & $exe @extra -c "import sys; print(sys.executable if (3, 10) <= sys.version_info[:2] <= (3, 13) else '')" 2>$null
-            if ($LASTEXITCODE -eq 0 -and $path -and (Test-Path -LiteralPath $path)) { return $path }
+            if ($LASTEXITCODE -eq 0 -and $path -and (Test-Path -LiteralPath $path)) {
+                if (Test-PythonHealthy $path) { return $path }
+                if (-not $fallback) { $fallback = $path }
+            }
         } catch { }
     }
-    return $null
+    return $fallback
 }
 
 
@@ -168,6 +188,38 @@ function Test-EnvPip {
 }
 
 
+function Install-PipFromWheel {
+    # ensurepip echoue si le Python de base est incoherent (mise a jour partielle : il cherche une version du .whl qui n'est
+    # pas celle du dossier). On installe alors pip dans l'environnement depuis le .whl present (sans reseau), quelle que
+    # soit sa version. Idee d'un rapport d'un utilisateur dont le Python 3.13 etait a moitie mis a jour.
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $base = & $EnvPython -c 'import sys; print(sys.base_prefix)' 2>$null | Select-Object -First 1
+    } catch {
+        $base = $null
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    if (-not $base) { return $false }
+    $wheel = Get-ChildItem -Path (Join-Path $base 'Lib\ensurepip\_bundled') -Filter 'pip-*.whl' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if (-not $wheel) { return $false }
+    Say ('  Installing pip from the wheel that comes with Python: ' + $wheel.Name) 'Yellow'
+    $savedPath = $env:PYTHONPATH
+    $env:PYTHONPATH = $wheel.FullName
+    try {
+        Run-Long 'pip installation from the bundled wheel' $EnvPython @('-m', 'pip', 'install', '--no-index', '--disable-pip-version-check', $wheel.FullName)
+    } catch {
+        Say ('  This did not work either: ' + $_.Exception.Message.Split("`n")[0]) 'Yellow'
+        return $false
+    } finally {
+        $env:PYTHONPATH = $savedPath
+    }
+    return (Test-EnvPip)
+}
+
+
 function Repair-EnvPip {
     # Environnement present mais sans pip : on essaie ensurepip ; sinon on met le dossier de cote (rien n'est efface)
     # pour que l'etape suivante le recree proprement.
@@ -179,6 +231,7 @@ function Repair-EnvPip {
         Say ("  ensurepip did not work: " + $_.Exception.Message.Split("`n")[0]) 'Yellow'
     }
     if (Test-EnvPip) { return }
+    if (Install-PipFromWheel) { return }
     $aside = $EnvDir + '_broken_' + (Get-Date -Format 'yyyyMMdd_HHmmss')
     Say "  Setting the broken environment aside: $aside" 'Yellow'
     Move-Item -LiteralPath $EnvDir -Destination $aside -Force
@@ -616,11 +669,15 @@ try {
                 }
             }
             if (-not $DryRun -and -not (Test-EnvPip) -and (Test-EnvPython)) {
-                # Dernier recours 1 : get-pip.py installe pip dans l'environnement.
+                # Dernier recours 1 : le .whl de pip qui accompagne Python (sans reseau).
+                if (Install-PipFromWheel) { Say '  pip was installed in the environment from the wheel that comes with Python.' 'DarkGreen' }
+            }
+            if (-not $DryRun -and -not (Test-EnvPip) -and (Test-EnvPython)) {
+                # Dernier recours 2 : get-pip.py installe pip dans l'environnement.
                 if (Install-PipFromGetPip) { Say '  pip was installed in the environment with get-pip.py.' 'DarkGreen' }
             }
             if (-not $DryRun -and -not (Test-EnvPip)) {
-                # Dernier recours 2 : le pip du Python systeme installera dans l'environnement.
+                # Dernier recours 3 : le pip du Python systeme installera dans l'environnement.
                 $systemPython = if ($python) { $python } else { Find-SystemPython }
                 if ((Test-EnvPython) -and (Enable-SystemPip $systemPython)) {
                     Say '  The environment has no pip on this computer: the pip of the system Python will be used.' 'Yellow'
