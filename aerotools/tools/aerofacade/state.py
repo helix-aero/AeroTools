@@ -32,6 +32,7 @@ class WizardState(object):
         self.ortho_state = {}                     # letter -> (ok, message)
         self.ortho_key = None                     # signature the orthophotos were built for
         self.skipped_build = False                # screen 5 was skipped because every DEM existed
+        self.build_choice = None                  # letters ticked on screen 5 (the walls to build); None = every wall
         self.picture_choice = None                # letters ticked on screen 6 (the ones screen 7 exports); None = every picture that is built
 
     # -- the outline ------------------------------------------------------------------------------
@@ -140,12 +141,30 @@ class WizardState(object):
         self.ortho_key = None
         self.skipped_build = False
         self.picture_choice = None                # other walls or margins: new pictures, everything is ticked again
+        self.build_choice = None
+
+    def build_letters(self):
+        """The walls to build: the kept walls that are ticked on screen 5 (all of them until the operator unticks one)."""
+        return [f.letter for f in self.active() if self.build_choice is None or f.letter in self.build_choice]
+
+    def set_build_choice(self, letters):
+        """Tick exactly these walls on screen 5. Everything ticked is stored as 'no choice'."""
+        wanted = set(letters)
+        self.build_choice = None if wanted >= set(f.letter for f in self.active()) else wanted
 
     def dem_ok_letters(self):
+        """Every kept wall whose surface is built (ticked or not)."""
         return [f.letter for f in self.active() if self.dem_state.get(f.letter, (False, ""))[0]]
 
+    def build_ok_letters(self):
+        """The ticked walls whose surface is built: the only ones the next screens work on."""
+        wanted = set(self.build_letters())
+        return [letter for letter in self.dem_ok_letters() if letter in wanted]
+
     def ortho_ok_letters(self):
-        return [f.letter for f in self.active() if self.ortho_state.get(f.letter, (False, ""))[0]]
+        """The ticked walls whose orthophoto is built."""
+        wanted = set(self.build_letters())
+        return [f.letter for f in self.active() if f.letter in wanted and self.ortho_state.get(f.letter, (False, ""))[0]]
 
     def chosen_letters(self):
         """The pictures to export: the built ones that are ticked on screen 6 (all of them until the operator ticks)."""
@@ -163,7 +182,7 @@ class WizardState(object):
         if step == METHOD:
             return bool(self.method) and self.availability.ok(self.method) and bool(self.active())
         if step == BUILD:
-            return bool(self.dem_ok_letters())
+            return bool(self.build_ok_letters())
         if step == PICTURES:
             return bool(self.chosen_letters())
         return False

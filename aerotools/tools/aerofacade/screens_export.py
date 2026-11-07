@@ -93,6 +93,8 @@ class PicturesScreen(Screen):
         col.addWidget(ui.label(tr("facade.ui.choose_intro")))
         self.choose_count = ui.label("", "aeroSection")
         col.addWidget(self.choose_count)
+        self.skipped_note = ui.label("", "aeroMeta")                 # the walls that were not built (not ticked on screen 5) are not listed
+        col.addWidget(self.skipped_note)
         col.addWidget(ui.label(tr("facade.ui.choose_next"), "aeroMeta"))
         col.addStretch(1)
         row.addWidget(area, 2)
@@ -102,7 +104,7 @@ class PicturesScreen(Screen):
 
     def enter(self):
         st = self.state
-        facades = [f for f in st.active() if f.letter in st.dem_ok_letters()]
+        facades = [f for f in st.active() if f.letter in st.build_ok_letters()]
         if st.ortho_key == st.signature() and st.ortho_ok_letters() and self._thumbs_ready():
             self._show_choose()
             return
@@ -134,7 +136,7 @@ class PicturesScreen(Screen):
         if self._running:
             return False
         st = self.state
-        todo = [f for f in st.active() if f.letter in st.dem_ok_letters() and (letters is None or f.letter in letters)]
+        todo = [f for f in st.active() if f.letter in st.build_ok_letters() and (letters is None or f.letter in letters)]
         if not todo:
             self.build_note.setText(tr("facade.ui.ortho_nothing"))
             return False
@@ -188,7 +190,7 @@ class PicturesScreen(Screen):
         ok = st.ortho_ok_letters()
         self.batch.set_progress(1.0 if not task.was_cancelled and task.error is None else task.fraction, "")
         failed = [f for f in st.active() if f.letter in st.ortho_state and not st.ortho_state[f.letter][0]]
-        everything = len(ok) == len([f for f in st.active() if f.letter in st.dem_ok_letters()])
+        everything = len(ok) == len(st.build_ok_letters())
         if everything and not task.was_cancelled and task.error is None:
             self._show_choose()
         else:
@@ -216,6 +218,9 @@ class PicturesScreen(Screen):
                 self.thumbs.set_checked(previous)
         elif previous:
             self.thumbs.set_checked(previous)
+        skipped = [f.letter for f in st.active() if f.letter not in st.ortho_ok_letters()]
+        self.skipped_note.setText(tr("facade.ui.ortho_skipped_note", letters=", ".join(skipped)) if skipped else "")
+        self.skipped_note.setVisible(bool(skipped))
         self.stack.setCurrentIndex(PAGE_CHOOSE)
         self._checks_changed()
 

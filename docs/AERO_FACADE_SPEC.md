@@ -67,10 +67,22 @@ selected method will take a long time, a gentle notice says so.
 - End: a success message with two buttons: **Exit** and **Continue to build the orthophotos**. Failures are listed per facade with
   a plain-English reason and a Retry.
 
+### Screen 5 — Build: which walls (2026-11-07)
+- Every wall of the list has a **check box** on its left (outside its row), all ticked at first. Only the ticked walls are built (`state.build_letters()`; the choice is
+  `WizardState.build_choice`, `None` = all). The Build button reads "Build n of m wall(s)" when some walls are not ticked, a note says how many are left out, an unticked wall's
+  row says "Not ticked", and with no wall ticked Build is off with a note. The boxes are locked while something is built; a retry and a second Build only do the ticked walls that
+  are not built yet. `can_next(BUILD)` needs one built ticked wall.
+- The next screens only see the ticked walls that are built (`build_ok_letters()`, and `ortho_ok_letters()` / `chosen_letters()` which respect the choice): the orthophotos are built for
+  them, screen 6 lists them with a short note naming the walls left out, screen 7 exports from them. The "surfaces already exist" shortcut (screen 5 skipped) looks at the ticked walls
+  (all of them by default). New walls, or other margins / method (`invalidate_builds`), tick everything again.
+
 ### Screen 6 — Orthophotos
 - The orthophotos are built one wall after the other (a row per wall, as on screen 5), then a small picture of each is listed with a checkbox: tick the pictures to
   export. The ticks are kept in the shared `WizardState` (`picture_choice`, a set of letters; `None` = every built picture; `chosen_letters()`): screen 7 exports exactly
   these, and Back from screen 7 shows the same ticks. Rebuilding the same walls keeps the ticks; other walls or other margins (`invalidate_builds`) tick everything again.
+- Each picture is a compact **card** (small picture, "Wall A", size; about 70 px high, so six fit one above the other in the usual window without a scroll bar), with its **check box
+  on the left, outside the card**, so the box keeps its own background and stays visible when the card is hovered, ticked or not (a click on the card ticks the box too). A ticked
+  card has a green border, an unticked one is dimmed.
 - A normal **Next** button, enabled when at least one picture is ticked. Nothing about the export is on this screen, so it has no scroll bar.
 
 ### Screen 7 — Export settings (last step)

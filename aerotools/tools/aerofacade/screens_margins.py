@@ -221,7 +221,7 @@ class MethodScreen(Screen):
             existing = self.wizard.backend.existing_dems(self.state.active(), self.state.margins_map(), self.state.method)
         except Exception:
             existing = {}
-        letters = self.state.letters()
-        self.state.dem_state = dict((letter, (True, "")) for letter in letters if existing.get(letter))
+        letters = self.state.build_letters()                  # only the walls ticked on screen 5 count (all of them by default)
+        self.state.dem_state = dict((letter, (True, "")) for letter in self.state.letters() if existing.get(letter))
         self.state.skipped_build = bool(letters) and all(existing.get(letter) for letter in letters)
         return S.PICTURES if self.state.skipped_build else S.BUILD

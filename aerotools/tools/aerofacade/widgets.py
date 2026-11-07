@@ -1354,15 +1354,21 @@ class BatchProgress(QtWidgets.QWidget):
     """What is being computed, one row per facade: waiting, running, done or failed (with the plain reason), an overall bar,
     the "please do not touch Metashape" banner while it runs, Cancel, and Retry for the failed ones.
 
-    Signals: `cancel_requested()`, `retry_requested(list of letters)`."""
+    With `show_checks` every row has a check box on its left (outside the card), so the operator can choose which walls to work on.
+
+    Signals: `cancel_requested()`, `retry_requested(list of letters)`, `checks_changed()`."""
 
     cancel_requested = QtCore.Signal()
     retry_requested = QtCore.Signal(object)
+    checks_changed = QtCore.Signal()
 
-    def __init__(self, parent=None, show_retry=True):
+    def __init__(self, parent=None, show_retry=True, show_checks=False):
         super(BatchProgress, self).__init__(parent)
         self._show_retry = show_retry
+        self._show_checks = bool(show_checks)
         self._rows = {}
+        self._wraps = {}
+        self._checks = {}
         self._order = []
         self._running = False
         layout = QtWidgets.QVBoxLayout(self)
@@ -1406,20 +1412,53 @@ class BatchProgress(QtWidgets.QWidget):
 
     # -- rows ---------------------------------------------------------------------------------------
 
-    def set_items(self, facades):
-        """One waiting row per facade (objects with letter and colour)."""
-        for row in self._rows.values():
-            row.setParent(None)
-            row.deleteLater()
-        self._rows, self._order = {}, []
+    def set_items(self, facades, checked=None):
+        """One waiting row per facade (objects with letter and colour). `checked`: the letters whose box is ticked (None = all)."""
+        for wrap in self._wraps.values():
+            wrap.setParent(None)
+            wrap.deleteLater()
+        self._rows, self._wraps, self._checks, self._order = {}, {}, {}, []
         for facade in facades:
             row = _BatchRow(facade.letter, facade.colour)
+            wrap = QtWidgets.QWidget()
+            line = QtWidgets.QHBoxLayout(wrap)
+            line.setContentsMargins(0, 0, 0, 0)
+            line.setSpacing(theme.PAD)
+            if self._show_checks:
+                box = QtWidgets.QCheckBox()
+                box.setCursor(QtCore.Qt.PointingHandCursor)
+                box.setToolTip(tr("facade.ui.batch_check_tip", letter=facade.letter))
+                box.setChecked(checked is None or facade.letter in checked)
+                box.toggled.connect(lambda _on: self.checks_changed.emit())
+                line.addWidget(box)
+                self._checks[facade.letter] = box
+            line.addWidget(row, 1)
             self._rows[facade.letter] = row
+            self._wraps[facade.letter] = wrap
             self._order.append(facade.letter)
-            self.rows.insertWidget(self.rows.count() - 1, row)
+            self.rows.insertWidget(self.rows.count() - 1, wrap)
         self.bar.setValue(0)
         self.line.setFullText("")
         self._sync_buttons()
+
+    def checked_letters(self):
+        """The walls whose box is ticked, in row order (every wall when the rows have no boxes)."""
+        if not self._show_checks:
+            return list(self._order)
+        return [letter for letter in self._order if self._checks[letter].isChecked()]
+
+    def set_checked(self, letters):
+        wanted = set(letters)
+        for letter, box in self._checks.items():
+            box.blockSignals(True)
+            box.setChecked(letter in wanted)
+            box.blockSignals(False)
+        self.checks_changed.emit()
+
+    def set_checks_enabled(self, enabled):
+        """The boxes cannot be changed while something is being built."""
+        for box in self._checks.values():
+            box.setEnabled(bool(enabled))
 
     def set_state(self, letter, state, text=""):
         row = self._rows.get(letter)
@@ -1467,11 +1506,67 @@ class BatchProgress(QtWidgets.QWidget):
 # Thumbnails of the built orthophotos
 # --------------------------------------------------------------------------------------------------
 
-THUMB_SIZE = QtCore.QSize(168, 112)
+THUMB_SIZE = QtCore.QSize(92, 58)                    # a compact picture: six pictures fit one above the other in the usual window
+
+
+class _ThumbCard(QtWidgets.QFrame):
+    """The card of one orthophoto: small picture, "Wall A", size. Clicking it ticks or unticks the box beside it (the box is NOT inside the
+    card: on a card that is hovered or ticked the box would have the colour of the card and could not be seen)."""
+
+    def __init__(self, letter, title, size_text, box):
+        super(_ThumbCard, self).__init__()
+        self.letter, self._box = letter, box
+        self.setObjectName("facadeThumbCard")
+        self.setProperty("on", True)
+        self.setProperty("hover", False)
+        self.setCursor(QtCore.Qt.PointingHandCursor)
+        row = QtWidgets.QHBoxLayout(self)
+        row.setContentsMargins(6, 6, 12, 6)
+        row.setSpacing(theme.PAD + 2)
+        self.picture = QtWidgets.QLabel()
+        self.picture.setFixedSize(THUMB_SIZE)
+        self.picture.setAlignment(QtCore.Qt.AlignCenter)
+        row.addWidget(self.picture)
+        text = QtWidgets.QVBoxLayout()
+        text.setSpacing(1)
+        self.title = ui.label(title, "facadeThumbTitle", wrap=False)
+        self.detail = ui.label(size_text, "aeroMeta", wrap=False)
+        text.addStretch(1)
+        text.addWidget(self.title)
+        text.addWidget(self.detail)
+        text.addStretch(1)
+        row.addLayout(text, 1)
+
+    def _style(self):
+        self.style().unpolish(self)
+        self.style().polish(self)
+        for label in (self.title, self.detail):
+            label.style().unpolish(label)
+            label.style().polish(label)
+
+    def set_on(self, on):
+        self.setProperty("on", bool(on))
+        self._style()
+
+    def enterEvent(self, event):
+        super(_ThumbCard, self).enterEvent(event)
+        self.setProperty("hover", True)
+        self._style()
+
+    def leaveEvent(self, event):
+        super(_ThumbCard, self).leaveEvent(event)
+        self.setProperty("hover", False)
+        self._style()
+
+    def mouseReleaseEvent(self, event):
+        super(_ThumbCard, self).mouseReleaseEvent(event)
+        if event.button() == QtCore.Qt.LeftButton and self._box.isEnabled():
+            self._box.toggle()
 
 
 class OrthoThumbnails(QtWidgets.QWidget):
-    """The orthophotos of the facades, a small picture and a check box each: the checked ones are exported.
+    """The orthophotos of the facades: for each, a check box (on the left, outside its card) and a compact card with a small picture, the
+    name of the wall and its size. The ticked ones are exported.
 
     Signal: `checks_changed()`."""
 
@@ -1479,18 +1574,30 @@ class OrthoThumbnails(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super(OrthoThumbnails, self).__init__(parent)
-        self._facades = {}
+        self._rows = {}                                              # letter -> (check box, card)
+        self._order = []
+        self._images = {}                                            # letter -> QImage of the small picture (tests)
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(theme.PAD)
-        self.list = QtWidgets.QListWidget()
-        self.list.setObjectName("facadeThumbs")
-        self.list.setIconSize(THUMB_SIZE)
-        self.list.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollPerPixel)
-        self.list.setSpacing(2)
-        self.list.setMinimumHeight(180)
-        self.list.itemChanged.connect(lambda _item: self.checks_changed.emit())
-        layout.addWidget(self.list, 1)
+        pane = QtWidgets.QFrame()
+        pane.setObjectName("facadeThumbPane")
+        pane_layout = QtWidgets.QVBoxLayout(pane)
+        pane_layout.setContentsMargins(8, 8, 8, 8)
+        body = QtWidgets.QWidget()
+        self.rows = QtWidgets.QVBoxLayout(body)
+        self.rows.setContentsMargins(0, 0, 0, 0)
+        self.rows.setSpacing(6)
+        self.rows.addStretch(1)
+        self.scroll = QtWidgets.QScrollArea()                        # only shows a bar when many walls do not fit
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.scroll.setStyleSheet("QScrollArea { background: transparent; border: none; } QScrollArea > QWidget > QWidget { background: transparent; }")
+        self.scroll.setWidget(body)
+        self.scroll.setMinimumHeight(180)
+        pane_layout.addWidget(self.scroll)
+        layout.addWidget(pane, 1)
         row = QtWidgets.QHBoxLayout()
         row.setSpacing(theme.PAD)
         row.addWidget(ui.button("facade.ui.select_all", lambda: self.set_all(True), "aeroBtn", width=110))
@@ -1505,30 +1612,44 @@ class OrthoThumbnails(QtWidgets.QWidget):
         painter.setPen(QtGui.QColor(theme.FG_3))
         painter.drawText(pixmap.rect(), QtCore.Qt.AlignCenter, text)
         painter.end()
-        return QtGui.QIcon(pixmap)
+        return pixmap
 
     def set_items(self, facades, checked=True):
-        self.list.blockSignals(True)
-        self.list.clear()
-        self._facades = {}
+        for index in reversed(range(self.rows.count() - 1)):          # the wrappers of the old rows
+            item = self.rows.takeAt(index)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        self._rows, self._order, self._images = {}, [], {}
         for facade in facades:
-            item = QtWidgets.QListWidgetItem(self._placeholder("…"), tr("facade.ui.thumb_title", letter=facade.letter,
-                                                                          length=metres(facade.length),
-                                                                          height=metres(facade.height)))
-            item.setData(LETTER_ROLE, facade.letter)
-            item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
-            item.setCheckState(QtCore.Qt.Checked if checked else QtCore.Qt.Unchecked)
-            self.list.addItem(item)
-            self._facades[facade.letter] = item
-        self.list.blockSignals(False)
+            wrap = QtWidgets.QWidget()
+            line = QtWidgets.QHBoxLayout(wrap)
+            line.setContentsMargins(0, 0, 0, 0)
+            line.setSpacing(theme.PAD)
+            box = QtWidgets.QCheckBox()
+            box.setCursor(QtCore.Qt.PointingHandCursor)
+            box.setToolTip(tr("facade.ui.thumb_check_tip", letter=facade.letter))
+            card = _ThumbCard(facade.letter, tr("facade.ui.row_title", letter=facade.letter),
+                              tr("facade.ui.thumb_size", length=metres(facade.length), height=metres(facade.height)), box)
+            card.setToolTip(tr("facade.ui.thumb_title", letter=facade.letter, length=metres(facade.length), height=metres(facade.height)))
+            card.picture.setPixmap(self._placeholder("…"))
+            box.setChecked(bool(checked))
+            card.set_on(bool(checked))
+            box.toggled.connect(lambda on, c=card: (c.set_on(on), self.checks_changed.emit()))
+            line.addWidget(box)
+            line.addWidget(card, 1)
+            self.rows.insertWidget(self.rows.count() - 1, wrap)
+            self._rows[facade.letter] = (box, card)
+            self._order.append(facade.letter)
         self.checks_changed.emit()
 
     def set_thumbnail(self, letter, array):
-        item = self._facades.get(letter)
-        if item is None:
+        found = self._rows.get(letter)
+        if found is None:
             return
+        card = found[1]
         if array is None:
-            item.setIcon(self._placeholder(tr("facade.ui.thumb_missing")))
+            card.picture.setPixmap(self._placeholder(tr("facade.ui.thumb_missing")))
+            self._images.pop(letter, None)
             return
         image = array_to_qimage(array)
         scaled = QtGui.QPixmap.fromImage(image).scaled(THUMB_SIZE, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
@@ -1537,36 +1658,47 @@ class OrthoThumbnails(QtWidgets.QWidget):
         painter = QtGui.QPainter(frame)
         painter.drawPixmap((THUMB_SIZE.width() - scaled.width()) // 2, (THUMB_SIZE.height() - scaled.height()) // 2, scaled)
         painter.end()
-        item.setIcon(QtGui.QIcon(frame))
+        card.picture.setPixmap(frame)
+        self._images[letter] = frame.toImage()
+
+    def thumbnail_image(self, letter):
+        """The small picture of a wall as a QImage (None while it has none)."""
+        return self._images.get(letter)
 
     def mark_failed(self, letter, text=""):
-        item = self._facades.get(letter)
-        if item is not None:
-            item.setIcon(self._placeholder(tr("facade.ui.thumb_missing")))
-            item.setCheckState(QtCore.Qt.Unchecked)
-            item.setToolTip(text)
+        found = self._rows.get(letter)
+        if found is not None:
+            found[1].picture.setPixmap(self._placeholder(tr("facade.ui.thumb_missing")))
+            found[0].setChecked(False)
+            found[1].setToolTip(text)
+
+    def checkbox(self, letter):
+        return self._rows[letter][0]
+
+    def card(self, letter):
+        return self._rows[letter][1]
 
     def checked_letters(self):
-        return [self.list.item(row).data(LETTER_ROLE) for row in range(self.list.count())
-                if self.list.item(row).checkState() == QtCore.Qt.Checked]
+        return [letter for letter in self._order if self._rows[letter][0].isChecked()]
 
     def set_checked(self, letters):
         wanted = set(letters)
-        self.list.blockSignals(True)
-        for row in range(self.list.count()):
-            item = self.list.item(row)
-            item.setCheckState(QtCore.Qt.Checked if item.data(LETTER_ROLE) in wanted else QtCore.Qt.Unchecked)
-        self.list.blockSignals(False)
+        for letter in self._order:
+            box, card = self._rows[letter]
+            box.blockSignals(True)
+            box.setChecked(letter in wanted)
+            box.blockSignals(False)
+            card.set_on(letter in wanted)
         self.checks_changed.emit()
 
     def set_all(self, checked):
-        self.set_checked([self.list.item(row).data(LETTER_ROLE) for row in range(self.list.count())] if checked else [])
+        self.set_checked(list(self._order) if checked else [])
 
     def count(self):
-        return self.list.count()
+        return len(self._order)
 
     def letters(self):
-        return [self.list.item(row).data(LETTER_ROLE) for row in range(self.list.count())]
+        return list(self._order)
 
 
 # Margin editor and method picker live in their own module; they are part of this module's public face.

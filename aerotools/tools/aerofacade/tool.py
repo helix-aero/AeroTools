@@ -45,8 +45,17 @@ def open_window(backend, parent=None, existing=None):
     return window
 
 
+def reusable(window):
+    """True when the open window can be shown again as it is: a job is running in it, or it works on the chunk that is active now.
+    Otherwise (the user activated another chunk since it opened) it is rebuilt on the active chunk."""
+    try:
+        return bool(window.busy() or window.backend.is_current())
+    except Exception:
+        return False
+
+
 def install():
-    """Open (or bring to the front) the Aero-Facade window on the Metashape project."""
+    """Open (or bring to the front) the Aero-Facade window on the active chunk of the Metashape project."""
     parent = msapi.main_window()
     if parent is None:
         msapi.message_box(i18n.t("tool.no_window"))
@@ -55,12 +64,17 @@ def install():
     try:
         if shown is not None:
             shown.objectName()
-            shown.show()
-            shown.raise_()
-            shown.activateWindow()
-            return
+            if reusable(shown):
+                shown.show()
+                shown.raise_()
+                shown.activateWindow()
+                return
+            journal.write("Aero-Facade: the active chunk changed, the window is rebuilt on it")
+            shown.close()
+            shown.deleteLater()
     except RuntimeError:
         pass
+    _STATE["window"] = None
     try:
         backend = make_backend()
     except ImportError as exc:

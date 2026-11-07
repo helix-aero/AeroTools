@@ -1,5 +1,5 @@
 {
- "built": "2026-11-07T10:42:52",
+ "built": "2026-11-07T10:45:20",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -54,8 +54,8 @@
    "size": 257
   },
   "aerotools/lang/en.py": {
-   "sha256": "dd8548b5bc04edf332fb97dce957597e40c102cb7cf524d83dba822697527fbb",
-   "size": 77221
+   "sha256": "4ee042238a1f2b3190a07ae696e216cf11a1e893b85fb8887277dd83816c5a30",
+   "size": 77822
   },
   "aerotools/msapi.py": {
    "sha256": "b022f749af88c005e8dabbc727c1d6efbd12e7fde105162fa9a904ef784c5721",
@@ -170,8 +170,8 @@
    "size": 104
   },
   "aerotools/tools/aerofacade/backend.py": {
-   "sha256": "ccfa28f636aafaa300ae6df9c6f8a48ea92fb92f6d505b98b4eef5a4f54ebe87",
-   "size": 6943
+   "sha256": "781737e1f5096a3cd070d84226bb6050548bd970feb3dfd29835aded0167c686",
+   "size": 7140
   },
   "aerotools/tools/aerofacade/common.py": {
    "sha256": "794cf74ac966d290e720a433cf6590568b6aa5361e113115f823684de52f2b9e",
@@ -198,24 +198,24 @@
    "size": 14588
   },
   "aerotools/tools/aerofacade/msfacade.py": {
-   "sha256": "bf7f0799a0035ea66f4a9cd9b64120aa6db1b4bb059b76cc9a804a7470a88e0a",
-   "size": 57865
+   "sha256": "19feff2faaeeb9239d19e390e91ec582d490ea100cc5065f20967b7093f493d4",
+   "size": 58224
   },
   "aerotools/tools/aerofacade/screens_base.py": {
    "sha256": "95fa3fc7794dd28de41fb67b9371fde178036746d6e15de68975877f17891e95",
    "size": 2556
   },
   "aerotools/tools/aerofacade/screens_build.py": {
-   "sha256": "0e061ab92d31ca4d29c6c807d0aaf2bf8aa5f42ba42a09756843d7587a9c1571",
-   "size": 9278
+   "sha256": "7a6549f2398631815322850a641ae373a8fc79561c20b4ef28a6e52a9fa827cd",
+   "size": 11252
   },
   "aerotools/tools/aerofacade/screens_export.py": {
-   "sha256": "f3bcf7286b806c8360e123e1678bb3f1bd435149e3878ee2b85373308ef2d4bc",
-   "size": 29195
+   "sha256": "52b1e0c2e913a416baa41450a02b9bfe3be2c1f81303194b59e350942a411ff0",
+   "size": 29603
   },
   "aerotools/tools/aerofacade/screens_margins.py": {
-   "sha256": "16f926da41e02a67d033bff2d4c3d0b96afa7a333ff553b2ec96de60f55050e6",
-   "size": 9305
+   "sha256": "b7cf3bd695b6b7c1346ffab3b94852e44fa891001815a359f2471ebc9cef4ea0",
+   "size": 9408
   },
   "aerotools/tools/aerofacade/screens_search.py": {
    "sha256": "dc02540a965adc403bb41bed97a782ce92d0a7191144e450c72d34c995c9c6be",
@@ -234,24 +234,24 @@
    "size": 23203
   },
   "aerotools/tools/aerofacade/state.py": {
-   "sha256": "a64a5406369c39f08156608aad522b606eaf8949601e3393aa0d0bde395d6858",
-   "size": 9374
+   "sha256": "d312cf22ca15a82084d951551869ca2f48e4eb80bc990e0a21a33911ea0de25d",
+   "size": 10500
   },
   "aerotools/tools/aerofacade/tasks.py": {
    "sha256": "f819d3c398f94f3efcf93b0a5d1412bd647a0c31d8ae92a1d55b6320eece9f28",
    "size": 3490
   },
   "aerotools/tools/aerofacade/theme_facade.py": {
-   "sha256": "c8f0dfc2a92900674cf9138efd4fe05cbf75db47cdcda482cadb84d270a7d119",
-   "size": 4457
+   "sha256": "819be667fa94ea96ce9005361063accd81b0d6bb6130c396bb2b9a33a52def8b",
+   "size": 5169
   },
   "aerotools/tools/aerofacade/tool.py": {
-   "sha256": "3c5046edbcf63467193ae5bd8704f94b3d578cbaa0650554a62cf3454ec477ed",
-   "size": 3322
+   "sha256": "c48605861bb43f5e1050f0431462a0952883f0b07b3f15314a9f8516a2aef21a",
+   "size": 3948
   },
   "aerotools/tools/aerofacade/widgets.py": {
-   "sha256": "acfdc265faf5ebd753f86d8c5fbe84d284a37d5f2773e958416f8ff01bec0b58",
-   "size": 69647
+   "sha256": "17036df9007099e58e7664a89d7f74c4aa173eb386782f7ee7d21400328feee2",
+   "size": 75494
   },
   "aerotools/tools/aerofacade/widgets_heights.py": {
    "sha256": "90292357f29ca0830c992bc8fff46ad751e05d297ac9950577bf25754db3fe4d",
@@ -262,8 +262,8 @@
    "size": 26591
   },
   "aerotools/tools/aerofacade/wizard.py": {
-   "sha256": "b0d5582d1d805ec2774d816aaa40dc00f88f0ed65fd680344637f6f47b6e6041",
-   "size": 16504
+   "sha256": "8ab891b77359e0051e27e8e4f704dacebd899bb5f035a1ae222acd3fe8f0a316",
+   "size": 16642
   },
   "aerotools/tools/aerol3/__init__.py": {
    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -594,8 +594,8 @@
    "size": 15373
   },
   "docs/AERO_FACADE_SPEC.md": {
-   "sha256": "972943bdf015a59fce9f6a062d2e9a75bb21077c7ba1a19cefa2cf45137338ee",
-   "size": 45034
+   "sha256": "aac9d31910c9845727a00ba00b5782198740235360ef8e105b885a002827aede",
+   "size": 46573
   },
   "docs/AERO_FACADE_STUDY.md": {
    "sha256": "dc2679a9d55b298421104e7eee262ce7bf7bb4f68884e85babc45b9bc7e7e6be",

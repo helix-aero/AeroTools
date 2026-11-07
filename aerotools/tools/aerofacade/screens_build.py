@@ -90,17 +90,18 @@ class BuildScreen(Screen):
         col.addWidget(self.note)
         col.addStretch(1)
         outer.addWidget(area, 2)
-        self.batch = BatchProgress(show_retry=False)          # the Build button on the left does the same, once
+        self.batch = BatchProgress(show_retry=False, show_checks=True)     # a box per wall: only the ticked walls are built
         outer.addWidget(self.batch, 3)
         self.batch.cancel_requested.connect(self.cancel_job)
         self.batch.retry_requested.connect(self._retry)
+        self.batch.checks_changed.connect(self._ticks_changed)
 
     # -- wizard hooks -----------------------------------------------------------------------------
 
     def enter(self):
         st = self.state
         facades = st.active()
-        self.batch.set_items(facades)
+        self.batch.set_items(facades, checked=set(st.build_letters()))
         self._shown = {}
         for facade in facades:
             ok, message = st.dem_state.get(facade.letter, (None, ""))
@@ -111,6 +112,11 @@ class BuildScreen(Screen):
         self.intro.setText(tr("facade.ui.build_intro", n=len(facades)))
         self._refresh()
 
+    def _ticks_changed(self):
+        """A box was (un)ticked: the choice lives in the wizard state, the next screens only see the ticked walls."""
+        self.state.set_build_choice(self.batch.checked_letters())
+        self._refresh()
+
     def busy(self):
         return self._running
 
@@ -118,23 +124,55 @@ class BuildScreen(Screen):
         return tr("facade.ui.next_ortho")
 
     def _todo(self, letters=None):
+        """The ticked walls whose surface is not built yet (restricted to `letters` for a retry)."""
         st = self.state
-        return [f for f in st.active() if (letters is None or f.letter in letters) and not st.dem_state.get(f.letter, (False, ""))[0]]
+        ticked = set(st.build_letters())
+        return [f for f in st.active() if f.letter in ticked and (letters is None or f.letter in letters)
+                and not st.dem_state.get(f.letter, (False, ""))[0]]
+
+    def _mark_unticked(self):
+        """A wall that is not ticked and not built says so on its row."""
+        st = self.state
+        ticked = set(st.build_letters())
+        for facade in st.active():
+            letter = facade.letter
+            if st.dem_state.get(letter, (False, ""))[0] or self.batch.state_of(letter) in (STATE_FAILED, STATE_RUNNING):
+                continue
+            if letter not in ticked:
+                self.batch.set_state(letter, STATE_WAITING, tr("facade.ui.not_ticked"))
+            elif self.batch.state_of(letter) == STATE_WAITING:
+                self.batch.set_state(letter, STATE_WAITING)
 
     def _refresh(self):
+        st = self.state
         todo = self._todo()
-        done = len(self.state.dem_ok_letters())
-        self.build_button.setVisible(not self._running and bool(todo))
-        failed_before = any(self.state.dem_state.get(f.letter, (None, ""))[0] is False for f in self.state.active())
-        self.build_button.setText(tr("facade.ui.build_again") if failed_before else tr("facade.ui.build_n", n=len(todo)))
+        ticked, total = len(st.build_letters()), len(st.active())
+        done = len(st.build_ok_letters())
+        if not self._running:
+            self._mark_unticked()
+        self.batch.set_checks_enabled(not self._running)
+        self.build_button.setVisible(not self._running and (bool(todo) or ticked == 0))
+        self.build_button.setEnabled(bool(todo))
+        failed_before = any(st.dem_state.get(f.letter, (None, ""))[0] is False for f in st.active() if f.letter in set(st.build_letters()))
+        if failed_before:
+            self.build_button.setText(tr("facade.ui.build_again"))
+        elif ticked < total:
+            self.build_button.setText(tr("facade.ui.build_n_of", n=len(todo), total=total))
+        else:
+            self.build_button.setText(tr("facade.ui.build_n", n=len(todo)))
         if self._running:
             self.note.setText(tr("facade.ui.build_running"))
+        elif ticked == 0:
+            self.note.setText(tr("facade.ui.build_none_ticked"))
         elif todo:
             self.note.setText(tr("facade.ui.build_left", n=len(todo)) if done else "")
         elif done:
             self.note.setText(tr("facade.ui.build_all_done"))
         else:
             self.note.setText("")
+        if ticked < total and not self._running and ticked > 0:
+            more = tr("facade.ui.build_unticked_note", n=total - ticked, total=total)
+            self.note.setText((self.note.text() + "\n" + more).strip())
         self.note.setVisible(bool(self.note.text()))
         self.wizard.refresh_buttons()
 
@@ -196,9 +234,9 @@ class BuildScreen(Screen):
         if task.was_cancelled and task.error is None:
             self.note.setText(tr("facade.ui.build_cancelled"))
             self.note.setVisible(True)
-        everything = bool(st.active()) and len(st.dem_ok_letters()) == len(st.active())
+        everything = bool(st.build_letters()) and len(st.build_ok_letters()) == len(st.build_letters())
         if everything and not task.was_cancelled and task.error is None:
-            choice = self.wizard.ask(tr("facade.ui.build_done_title"), tr("facade.ui.build_done_text", n=len(st.active())),
+            choice = self.wizard.ask(tr("facade.ui.build_done_title"), tr("facade.ui.build_done_text", n=len(st.build_letters())),
                                      (("exit", "facade.ui.exit"), ("continue", "facade.ui.continue_ortho")))
             if choice == "continue":
                 self.wizard.go(S.PICTURES)

@@ -773,6 +773,178 @@ def _():
     return ok, "live={}".format(live)
 
 
+@case("build: every wall has a check box, all ticked at first; only the ticked walls are built, and only they reach the next steps")
+def _():
+    window, backend = new_wizard()
+    show(window)
+    prepare_to(window, S.BUILD)
+    screen, st = window.screens[S.BUILD], window.state
+    letters = facade_letters(window)
+    boxes = screen.batch._checks
+    all_on = sorted(boxes) == sorted(letters) and all(b.isChecked() for b in boxes.values()) and st.build_choice is None
+    full_text = screen.build_button.text()
+    boxes[letters[1]].setChecked(False)
+    boxes[letters[2]].setChecked(False)
+    chosen = st.build_letters() == [l for l in letters if l not in letters[1:3]] and st.build_choice is not None
+    text = screen.build_button.text()
+    summary = "{} of {}".format(len(letters) - 2, len(letters)) in text and text != full_text
+    unticked_rows = all("Not ticked" in screen.batch._rows[l].status.text() for l in letters[1:3])
+    note = "not ticked" in screen.note.text()
+    window.ask = lambda *a: "continue"
+    screen.start_build()
+    window.wait_idle(60000)
+    pump(100)
+    built = sorted(st.dem_ok_letters()) == sorted(st.build_letters()) and not any(letters[i] in st.dem_state for i in (1, 2))
+    only = {key[0] for key in backend._dems} == set(st.build_letters())                  # the backend was never asked for an unticked wall
+    went = window.current_step() == S.PICTURES
+    pics = window.screens[S.PICTURES]
+    until(lambda: pics.stack.currentIndex() == 1, 60)
+    listed = pics.thumbs.letters() == st.build_letters() and not any(l in pics.thumbs.letters() for l in letters[1:3])
+    said = letters[1] in pics.skipped_note.text() and pics.skipped_note.isVisibleTo(pics)
+    window.next()
+    exported = [f.letter for f in window.screens[S.EXPORT].chosen()] == st.build_letters()
+    window.close()
+    return all_on and chosen and summary and unticked_rows and note and built and only and went and listed and said and exported, \
+        "all_on={} chosen={} summary={} ({!r}) unticked_rows={} note={} built={} only={} went={} listed={} said={} exported={}".format(
+            all_on, chosen, summary, text, unticked_rows, note, built, only, went, listed, said, exported)
+
+
+@case("build: with no wall ticked Build is off and says why; ticking a wall again builds only the missing one; Back keeps the ticks")
+def _():
+    window, backend = new_wizard()
+    show(window)
+    prepare_to(window, S.BUILD)
+    screen, st = window.screens[S.BUILD], window.state
+    letters = facade_letters(window)
+    screen.batch.set_checked([])
+    none = (st.build_letters() == [] and screen.build_button.isVisible() and not screen.build_button.isEnabled()
+            and "Tick at least one wall" in screen.note.text() and not window.next_button.isEnabled())
+    screen.batch.set_checked([letters[0]])
+    window.ask = lambda *a: None
+    screen.start_build()
+    window.wait_idle(60000)
+    pump(100)
+    first = st.dem_ok_letters() == [letters[0]] and window.next_button.isEnabled()
+    screen.batch.set_checked([letters[0], letters[1]])
+    todo = [f.letter for f in screen._todo()] == [letters[1]]                    # the wall that is built is not built again
+    screen.start_build()
+    window.wait_idle(60000)
+    pump(100)
+    second = sorted(st.dem_ok_letters()) == sorted([letters[0], letters[1]])
+    window.back()
+    window.next()
+    kept = sorted(window.screens[S.BUILD].batch.checked_letters()) == sorted([letters[0], letters[1]])
+    window.close()
+    return none and first and todo and second and kept, "none={} first={} todo={} second={} kept={}".format(none, first, todo, second, kept)
+
+
+@case("build: the check boxes cannot be changed while the surfaces are built, and a retry respects the ticks")
+def _():
+    window, backend = new_wizard(delay=0.3, fail={"B": "Not enough depth maps cover this wall."})
+    show(window)
+    prepare_to(window, S.BUILD)
+    screen, st = window.screens[S.BUILD], window.state
+    letters = facade_letters(window)
+    screen.batch.set_checked(letters[:3])
+    window.ask = lambda *a: None
+    screen.start_build()
+    pump(300)
+    locked = screen.batch._running and not any(b.isEnabled() for b in screen.batch._checks.values())
+    window.wait_idle(60000)
+    pump(100)
+    free = all(b.isEnabled() for b in screen.batch._checks.values())
+    failed = st.dem_state.get("B", (True, ""))[0] is False
+    backend.fail = {}
+    screen.start_build()
+    window.wait_idle(60000)
+    pump(100)
+    only_ticked = sorted(st.dem_ok_letters()) == sorted(letters[:3])
+    window.close()
+    return locked and free and failed and only_ticked, "locked={} free={} failed={} only_ticked={} ok={}".format(locked, free, failed, only_ticked, st.dem_ok_letters())
+
+
+@case("pictures: the check box is outside its card and visible whether the card is normal, hovered or unticked; cards are compact, six fit without a scroll bar")
+def _():
+    window, backend = new_wizard()
+    show(window)
+    prepare_to(window, S.PICTURES)
+    pics = window.screens[S.PICTURES]
+    until(lambda: pics.stack.currentIndex() == 1, 30)
+    pump(200)
+    thumbs = pics.thumbs
+    letters = thumbs.letters()
+    outside = all(thumbs.checkbox(l).geometry().right() < thumbs.card(l).geometry().left() for l in letters)
+    heights = [thumbs.card(l).height() for l in letters]
+    compact = max(heights) <= 76
+    fits = not thumbs.scroll.verticalScrollBar().isVisible() and len(letters) >= 5
+
+    def indicator_contrast(letter):
+        """Does the box show something different from the colour right around it? (an invisible box would be one flat colour)"""
+        box = thumbs.checkbox(letter)
+        image = box.grab().toImage()
+        colours = set()
+        for x in range(2, image.width() - 2, 2):
+            for y in range(2, image.height() - 2, 2):
+                colours.add(image.pixel(x, y))
+        return len(colours) >= 3
+    normal = all(indicator_contrast(l) for l in letters)
+    letter = letters[1]
+    APP.sendEvent(thumbs.card(letter), QtCore.QEvent(QtCore.QEvent.Enter))
+    pump(60)
+    hovered = thumbs.card(letter).property("hover") is True and indicator_contrast(letter)
+    thumbs.checkbox(letter).setChecked(False)
+    pump(60)
+    unticked = indicator_contrast(letter) and thumbs.card(letter).property("on") is False
+    APP.sendEvent(thumbs.card(letter), QtCore.QEvent(QtCore.QEvent.Leave))
+    pump(60)
+    left = thumbs.card(letter).property("hover") is False
+    click(thumbs.card(letter), QtCore.QPointF(thumbs.card(letter).width() / 2.0, thumbs.card(letter).height() / 2.0))
+    toggled = thumbs.checkbox(letter).isChecked() and window.state.chosen_letters().count(letter) == 1
+    window.close()
+    return outside and compact and fits and normal and hovered and unticked and left and toggled, \
+        "outside={} heights={} fits={} normal={} hovered={} unticked={} left={} toggled={}".format(
+            outside, heights, fits, normal, hovered, unticked, left, toggled)
+
+
+@case("pictures: card states in screenshots (UI15b normal, UI15c hovered, UI15d unticked)")
+def _():
+    window, backend = new_wizard()
+    show(window)
+    prepare_to(window, S.PICTURES)
+    pics = window.screens[S.PICTURES]
+    until(lambda: pics.stack.currentIndex() == 1, 30)
+    pump(200)
+    thumbs = pics.thumbs
+    letters = thumbs.letters()
+    shot(window, "UI15b_pictures_normal")
+    APP.sendEvent(thumbs.card(letters[1]), QtCore.QEvent(QtCore.QEvent.Enter))
+    pump(80)
+    shot(window, "UI15c_pictures_hover")
+    thumbs.checkbox(letters[1]).setChecked(False)
+    thumbs.checkbox(letters[3]).setChecked(False)
+    pump(80)
+    shot(window, "UI15d_pictures_unticked_hover")
+    APP.sendEvent(thumbs.card(letters[1]), QtCore.QEvent(QtCore.QEvent.Leave))
+    pump(60)
+    shot(window, "UI15e_pictures_unticked")
+    window.close()
+    return True, ""
+
+
+@case("build: screenshot of the walls with some unticked (UI10b)")
+def _():
+    window, backend = new_wizard()
+    show(window)
+    prepare_to(window, S.BUILD)
+    screen = window.screens[S.BUILD]
+    letters = facade_letters(window)
+    screen.batch.set_checked([letters[0], letters[2]])
+    pump(100)
+    shot(window, "UI10b_build_ticks")
+    window.close()
+    return True, ""
+
+
 @case("facades: Delete, Undo and the other keys still work with the handles on")
 def _():
     window, _backend = new_wizard()
@@ -966,7 +1138,7 @@ def _():
     pics = window.screens[S.PICTURES]
     arrived = until(lambda: pics.stack.currentIndex() == 1, 30)
     letters = facade_letters(window)
-    thumbs = pics.thumbs.letters() == letters and all(not pics.thumbs.list.item(r).icon().isNull() for r in range(pics.thumbs.count()))
+    thumbs = pics.thumbs.letters() == letters and all(pics.thumbs.thumbnail_image(l) is not None for l in letters)
     next_on = window.next_button.isVisible() and window.next_button.isEnabled()
     window.next()
     ex = window.screens[S.EXPORT]
@@ -992,14 +1164,14 @@ def _():
     ex = window.screens[S.PICTURES]
     until(lambda: ex.stack.currentIndex() == 1, 30)
     ex.thumbs.set_checked(["A"])
-    first = ex.thumbs.list.item(0).icon().pixmap(240, 240).toImage()
+    first = ex.thumbs.thumbnail_image("A")
     real = backend.thumbnail
     backend.thumbnail = lambda facade: 255 - real(facade)               # what a rebuilt picture would look like
     window.state.ortho_key = None
     ex.start_orthos(None)
     window.wait_idle(60000)
     pump(100)
-    second = ex.thumbs.list.item(0).icon().pixmap(240, 240).toImage()
+    second = ex.thumbs.thumbnail_image("A")
     redrawn = first != second
     kept = ex.thumbs.checked_letters() == ["A"] and window.state.chosen_letters() == ["A"]
     window.close()
@@ -1461,6 +1633,24 @@ def _():
     window.close()
     return stale and current, "stale={} current={}".format(stale, current)
 
+
+@case("window: no frame to drag (fixed-size dialog frame), the size follows the content")
+def _():
+    window, _b = new_wizard()
+    show(window)
+    pump(200)
+    flag = bool(window.windowFlags() & QtCore.Qt.MSWindowsFixedSizeDialogHint)
+    window.close()
+    return flag, "fixed-size frame flag: {}".format(flag)
+
+@case("window: its least height follows the page on show, not the tallest page, so it can be made smaller")
+def _():
+    window, _b = new_wizard()
+    show(window)
+    need = window.layout().minimumHeightForWidth(window.width())
+    floor = window.layout().totalMinimumSize().height()
+    window.close()
+    return need <= floor + 80, "least height {} for a floor of {}".format(need, floor)
 
 @case("wizard: Esc does not close the window; closing during a job cancels it first")
 def _():

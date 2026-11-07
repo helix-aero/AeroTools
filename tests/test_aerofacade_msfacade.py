@@ -357,6 +357,53 @@ def test_project_info_and_availability(world):
     assert av["dense_cloud"] == (True, "") and av["tie_points"][0] is False and "align" in av["tie_points"][1]
 
 
+def test_the_backend_knows_whether_its_chunk_is_still_the_active_one(world):
+    be = msfacade.MetashapeBackend()                         # no chunk given: the active one is pinned
+    assert be.is_current()
+    other = FakeChunk(7, "Other", world.chunk.cameras, world.chunk.tie_points.points)
+    other.doc = world.doc
+    world.doc.chunks.append(other)
+    world.doc.chunk = other                                  # the user activated another chunk in the workspace
+    assert not be.is_current()
+    world.doc.chunk = world.chunk
+    assert be.is_current()
+    world.doc.chunk = None
+    assert not be.is_current()
+
+
+def test_a_work_chunk_of_aero_facade_counts_as_its_source(world):
+    be = msfacade.MetashapeBackend(world.chunk)
+    work = FakeChunk(9, "work", world.chunk.cameras, world.chunk.tie_points.points)
+    work.doc = world.doc
+    work.meta["aerofacade.source"] = str(world.chunk.key)
+    world.doc.chunks.append(work)
+    world.doc.chunk = work
+    assert be.is_current()
+
+
+def test_an_open_window_is_rebuilt_when_another_chunk_became_active():
+    from aerotools.tools.aerofacade import tool
+
+    class Backend(object):
+        def __init__(self, current):
+            self.current = current
+
+        def is_current(self):
+            return self.current
+
+    class Window(object):
+        def __init__(self, current, busy=False):
+            self.backend, self._busy = Backend(current), busy
+
+        def busy(self):
+            return self._busy
+
+    assert tool.reusable(Window(True))
+    assert not tool.reusable(Window(False))
+    assert tool.reusable(Window(False, busy=True))            # a job is running: the window stays as it is
+    assert not tool.reusable(object())                        # a window that cannot answer is not kept
+
+
 def test_read_points_converts_chunk_to_enu_metres(world):
     be = msfacade.MetashapeBackend(world.chunk)
     pts, cams = be.read_points()

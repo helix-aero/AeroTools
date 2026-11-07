@@ -83,6 +83,10 @@ class Backend:
         """{"chunk": label, "site": str, "date": "YYMMDD", "outputs": folder, "crs": str}  (crs: name of the plan-view frame, metres)."""
         raise NotImplementedError
 
+    def is_current(self):
+        """True while the chunk this backend works on is still the active chunk of the project (a window that was left open is rebuilt otherwise)."""
+        return True
+
     def availability(self):
         """{"tie_points": (ok, reason), "depth_maps": (ok, reason), "dense_cloud": (ok, reason)}; reason is plain English, '' when ok.
         `model.Availability.from_dict` wraps it."""
