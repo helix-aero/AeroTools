@@ -85,6 +85,7 @@ class L3Wizard(QtWidgets.QDialog):
         self._step = S.PHOTOS
         self.setWindowTitle(tr("l3.ui.title"))
         self.setModal(False)
+        self.setWindowFlag(QtCore.Qt.MSWindowsFixedSizeDialogHint, True)             # no dragging of the edges: the size follows the content
         self.resize(*self._size())
         root = ui.dark_root(self)
         pad = theme.PAD_L
@@ -105,7 +106,7 @@ class L3Wizard(QtWidgets.QDialog):
         rule.setFixedHeight(1)
         rule.setStyleSheet("background: {}; border: none;".format(theme.BORDER_SOFT))
         layout.addWidget(rule)
-        self.stack = QtWidgets.QStackedWidget()
+        self.stack = controls.CappedStack()
         layout.addWidget(self.stack, 1)
         for screen in self.screens:
             self.stack.addWidget(screen)

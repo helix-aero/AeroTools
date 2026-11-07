@@ -760,6 +760,24 @@ def _():
     return capped and on_screen, "hint {} window {} screen {}".format(box.sizeHint().height(), window.height(), area.height())
 
 
+@case("window: no frame to drag (fixed-size dialog frame), the size follows the content")
+def _():
+    window, _b = new_wizard()
+    show(window)
+    pump(200)
+    flag = bool(window.windowFlags() & QtCore.Qt.MSWindowsFixedSizeDialogHint)
+    window.close()
+    return flag, "fixed-size frame flag: {}".format(flag)
+
+@case("window: its least height follows the page on show, not the tallest page, so it can be made smaller")
+def _():
+    window, _b = new_wizard()
+    show(window)
+    need = window.layout().minimumHeightForWidth(window.width())
+    floor = window.layout().totalMinimumSize().height()
+    window.close()
+    return need <= floor + 80, "least height {} for a floor of {}".format(need, floor)
+
 @case("closing the window while a job runs waits for the job to stop")
 def _():
     window, _b = new_wizard()

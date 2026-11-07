@@ -1,5 +1,5 @@
 {
- "built": "2026-11-07T09:18:49",
+ "built": "2026-11-07T10:42:52",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -82,8 +82,8 @@
    "size": 359
   },
   "aerotools/tools/aeroexports/controls.py": {
-   "sha256": "a776ba3779b932547199b75b7b93eb9ef09bb0c8b2b991887a55a0be7a753775",
-   "size": 16603
+   "sha256": "6706fd5667a2a3efd839cc26e38b342b214388a16cce26e05e18b23dbecf6908",
+   "size": 18514
   },
   "aerotools/tools/aeroexports/crs.py": {
    "sha256": "0084af6e6528e65454d94c595b33aed25b64dc83a1784c11a1e1b069c7159d89",
@@ -334,8 +334,8 @@
    "size": 12296
   },
   "aerotools/tools/aerol3/wizard.py": {
-   "sha256": "34b09853b283d7148a58ac59118ee0eb964303c7efafda66702eb8dc615eac96",
-   "size": 13341
+   "sha256": "cce370a4bfdd2d2402c2c395b59295bfbfaeadb16fe31306109631152d948bc7",
+   "size": 13479
   },
   "aerotools/tools/aerol3/xmpdji.py": {
    "sha256": "bb554834b4c2628faa8b7f1ea093c6f59970031167fce25ba1a0dfe7780e6776",
