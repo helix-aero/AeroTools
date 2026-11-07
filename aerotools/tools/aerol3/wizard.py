@@ -85,7 +85,6 @@ class L3Wizard(QtWidgets.QDialog):
         self._step = S.PHOTOS
         self.setWindowTitle(tr("l3.ui.title"))
         self.setModal(False)
-        self.setWindowFlag(QtCore.Qt.MSWindowsFixedSizeDialogHint, True)             # no dragging of the edges: the size follows the content
         self.resize(*self._size())
         root = ui.dark_root(self)
         pad = theme.PAD_L
@@ -150,7 +149,12 @@ class L3Wizard(QtWidgets.QDialog):
         if not getattr(self, "_fitted", False):
             self._fitted = True
             controls.fit_window(self, margin=SCREEN_MARGIN)
+            QtCore.QTimer.singleShot(0, lambda: controls.follow_content(self))        # after the second measure of fit_window
 
+    def resizeEvent(self, event):
+        super(L3Wizard, self).resizeEvent(event)
+        if getattr(self, "_fitted", False):
+            controls.sync_minimum(self)                         # the least height depends on the width (wrapped text)
     def keyPressEvent(self, event):
         if event.key() in (QtCore.Qt.Key_Escape, QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
             event.ignore()                                  # Esc would close the window, Enter would press a random button
@@ -263,6 +267,8 @@ class L3Wizard(QtWidgets.QDialog):
         self.steps.set_current(step)
         self.screens[step].enter()
         self.refresh_buttons()
+        if getattr(self, "_fitted", False):
+            controls.sync_minimum(self)                         # another page, another least size
         self._keep_on_screen()
 
     def _keep_on_screen(self):

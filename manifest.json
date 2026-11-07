@@ -1,5 +1,5 @@
 {
- "built": "2026-11-07T10:45:20",
+ "built": "2026-11-07T11:19:59",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -82,8 +82,8 @@
    "size": 359
   },
   "aerotools/tools/aeroexports/controls.py": {
-   "sha256": "6706fd5667a2a3efd839cc26e38b342b214388a16cce26e05e18b23dbecf6908",
-   "size": 18514
+   "sha256": "20dd64ca4a7c6286638941baf6cd98e9b6536a311924f15f890e2488f5a214ef",
+   "size": 19681
   },
   "aerotools/tools/aeroexports/crs.py": {
    "sha256": "0084af6e6528e65454d94c595b33aed25b64dc83a1784c11a1e1b069c7159d89",
@@ -242,16 +242,16 @@
    "size": 3490
   },
   "aerotools/tools/aerofacade/theme_facade.py": {
-   "sha256": "819be667fa94ea96ce9005361063accd81b0d6bb6130c396bb2b9a33a52def8b",
-   "size": 5169
+   "sha256": "b84a2f38fd2dcc4904707e8941037b9c76349f0366e6524d566f8a1b86e4ba46",
+   "size": 5630
   },
   "aerotools/tools/aerofacade/tool.py": {
    "sha256": "c48605861bb43f5e1050f0431462a0952883f0b07b3f15314a9f8516a2aef21a",
    "size": 3948
   },
   "aerotools/tools/aerofacade/widgets.py": {
-   "sha256": "17036df9007099e58e7664a89d7f74c4aa173eb386782f7ee7d21400328feee2",
-   "size": 75494
+   "sha256": "1e3c3263a781f537b794cfad94bb76e93a4dd605972c02e79559351876563250",
+   "size": 76129
   },
   "aerotools/tools/aerofacade/widgets_heights.py": {
    "sha256": "90292357f29ca0830c992bc8fff46ad751e05d297ac9950577bf25754db3fe4d",
@@ -262,8 +262,8 @@
    "size": 26591
   },
   "aerotools/tools/aerofacade/wizard.py": {
-   "sha256": "8ab891b77359e0051e27e8e4f704dacebd899bb5f035a1ae222acd3fe8f0a316",
-   "size": 16642
+   "sha256": "34028c5f687b019478e6ab7dc1021ce235399bbf4588a88712588d9e26257bba",
+   "size": 17020
   },
   "aerotools/tools/aerol3/__init__.py": {
    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -334,8 +334,8 @@
    "size": 12296
   },
   "aerotools/tools/aerol3/wizard.py": {
-   "sha256": "cce370a4bfdd2d2402c2c395b59295bfbfaeadb16fe31306109631152d948bc7",
-   "size": 13479
+   "sha256": "6dd9bdcce0d6c03c121a0f27c77afe9a5d800dae3454dce66f9a8540e1927bcb",
+   "size": 13853
   },
   "aerotools/tools/aerol3/xmpdji.py": {
    "sha256": "bb554834b4c2628faa8b7f1ea093c6f59970031167fce25ba1a0dfe7780e6776",

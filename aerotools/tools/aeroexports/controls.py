@@ -344,6 +344,26 @@ def fit_window(dialog, margin=70, again=True):
         QtCore.QTimer.singleShot(0, lambda: fit_window(dialog, margin, again=False))
 
 
+def sync_minimum(dialog):
+    """Makes the least size of the window what its pages really need at its present width. Wrapped text makes the least height depend on the
+    width; when Qt's least size said less than that, Windows stopped the drag at a size Qt did not know and moved the window instead of
+    stopping. With the true least size the drag simply stops at the limit."""
+    layout = dialog.layout()
+    need_h = layout.minimumSize().height()
+    if layout.hasHeightForWidth():
+        need_h = max(need_h, layout.minimumHeightForWidth(dialog.width()))
+    area = screen_area()
+    size = (min(layout.minimumSize().width(), area.width()), min(need_h, area.height()))
+    if (dialog.minimumWidth(), dialog.minimumHeight()) != size:
+        dialog.setMinimumSize(*size)
+
+
+def follow_content(dialog):
+    """From now on the least size of the window follows its content: call `sync_minimum` again from the window's `resizeEvent` and when the
+    page changes. The size constraint of `fit_window` is dropped, it would set the least size again behind our back."""
+    dialog.layout().setSizeConstraint(QtWidgets.QLayout.SetNoConstraint)
+    sync_minimum(dialog)
+
 class WrapText(QtWidgets.QTextEdit):
     """Read-only text that wraps anywhere (a path has no spaces to wrap at), can be selected and copied, and never makes its window wider.
     Looks like a label; `setText` / `text` work like a label's, and the height follows the text."""

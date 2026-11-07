@@ -760,14 +760,20 @@ def _():
     return capped and on_screen, "hint {} window {} screen {}".format(box.sizeHint().height(), window.height(), area.height())
 
 
-@case("window: no frame to drag (fixed-size dialog frame), the size follows the content")
+@case("window: shrinking stops at the true least size and never moves the window")
 def _():
     window, _b = new_wizard()
     show(window)
+    pump(300)
+    top_left = window.pos()
+    window.resize(window.width(), 100)                    # far below the limit, like a drag to the bottom
     pump(200)
-    flag = bool(window.windowFlags() & QtCore.Qt.MSWindowsFixedSizeDialogHint)
+    layout = window.layout()
+    floor = max(layout.minimumSize().height(), layout.minimumHeightForWidth(window.width()) if layout.hasHeightForWidth() else 0)
+    stopped = window.height() >= floor and window.minimumHeight() >= floor - 1
+    still = window.pos() == top_left
     window.close()
-    return flag, "fixed-size frame flag: {}".format(flag)
+    return stopped and still, "height {} floor {} min {} moved {}".format(window.height(), floor, window.minimumHeight(), not still)
 
 @case("window: its least height follows the page on show, not the tallest page, so it can be made smaller")
 def _():

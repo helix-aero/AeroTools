@@ -1634,14 +1634,38 @@ def _():
     return stale and current, "stale={} current={}".format(stale, current)
 
 
-@case("window: no frame to drag (fixed-size dialog frame), the size follows the content")
+@case("walls list: one line per wall, 8 shown at most, the others scroll inside the list")
+def _():
+    from aerotools.tools.aerofacade.model import Facade
+    box = widgets.FacadeList()
+    walls = [Facade.from_frame(chr(65 + i), i, (float(i * 20), 0.0, 0.0), (1.0, 0.0, 0.0), 20.0 + i, 8.0, n=(0.0, -1.0)) for i in range(12)]
+    box.set_facades(walls)
+    box.resize(420, 900)
+    box.show()
+    pump(200)
+    row = box.list.sizeHintForRow(0)
+    one_line = row < 46                                   # the old two-line row was at least 48
+    shown = box.list.viewport().height() // (row + 4)
+    capped = shown <= widgets.LIST_ROWS
+    bar = box.list.verticalScrollBar()
+    scrolls = bar.maximum() > 0
+    box.close()
+    return one_line and capped and scrolls, "row {} px, {} rows shown, scroll max {}".format(row, shown, bar.maximum())
+
+@case("window: shrinking stops at the true least size and never moves the window")
 def _():
     window, _b = new_wizard()
     show(window)
+    pump(300)
+    top_left = window.pos()
+    window.resize(window.width(), 100)                    # far below the limit, like a drag to the bottom
     pump(200)
-    flag = bool(window.windowFlags() & QtCore.Qt.MSWindowsFixedSizeDialogHint)
+    layout = window.layout()
+    floor = max(layout.minimumSize().height(), layout.minimumHeightForWidth(window.width()) if layout.hasHeightForWidth() else 0)
+    stopped = window.height() >= floor and window.minimumHeight() >= floor - 1
+    still = window.pos() == top_left
     window.close()
-    return flag, "fixed-size frame flag: {}".format(flag)
+    return stopped and still, "height {} floor {} min {} moved {}".format(window.height(), floor, window.minimumHeight(), not still)
 
 @case("window: its least height follows the page on show, not the tallest page, so it can be made smaller")
 def _():

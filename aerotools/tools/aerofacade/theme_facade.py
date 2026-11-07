@@ -35,6 +35,21 @@ def stylesheet():
     #aeroPanel QListWidget#facadeThumbs::item:selected, #aeroPanel QListWidget#facadeThumbs::item:selected:!active {{
         background: {ground_3};
     }}
+    #aeroPanel QListWidget#facadeList QScrollBar:vertical {{
+        background: {ground_3};
+        width: 12px;
+        margin: 2px 0;
+        border-radius: 6px;
+    }}
+    #aeroPanel QListWidget#facadeList QScrollBar::handle:vertical {{
+        background: {fg_3};
+        border-radius: 5px;
+        min-height: 30px;
+        margin: 1px;
+    }}
+    #aeroPanel QListWidget#facadeList QScrollBar::handle:vertical:hover {{
+        background: {fg_2};
+    }}
     #aeroPanel QFrame#facadeThumbPane {{
         background: {pane};
         border: 1px solid {border_soft};

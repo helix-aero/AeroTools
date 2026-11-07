@@ -1017,16 +1017,17 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
 # The facade list
 # --------------------------------------------------------------------------------------------------
 
+LIST_ROWS = 8                                           # walls shown at once, the others scroll
 LETTER_ROLE = QtCore.Qt.UserRole + 1
 FACADE_ROLE = QtCore.Qt.UserRole + 2
 
 
 class _FacadeDelegate(QtWidgets.QStyledItemDelegate):
-    """One row: coloured disc with the letter, "Wall A" and the way it faces, then its length and height."""
+    """One line per wall: coloured disc with the letter, "Wall A", its length and height, and on the right the way it faces."""
 
     def sizeHint(self, option, _index):
         fm = QtGui.QFontMetrics(option.font)
-        return QtCore.QSize(220, max(48, fm.height() * 2 + 22))
+        return QtCore.QSize(220, max(36, fm.height() + 16))
 
     def paint(self, painter, option, index):
         facade = index.data(FACADE_ROLE)
@@ -1066,28 +1067,30 @@ class _FacadeDelegate(QtWidgets.QStyledItemDelegate):
         painter.setFont(bold)
         fm = painter.fontMetrics()
         line = fm.height()
-        top = rect.center().y() - line - 1
+        top = rect.center().y() - line / 2.0
         painter.setPen(QtGui.QColor(theme.FG_0))
         name = tr("facade.ui.row_title", letter=facade.letter)
-        painter.drawText(QtCore.QRectF(left, top, width, line), QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter,
-                         fm.elidedText(name, QtCore.Qt.ElideRight, width))
         name_width = fm.horizontalAdvance(name)
+        painter.drawText(QtCore.QRectF(left, top, name_width + 2, line), QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, name)
         small = QtGui.QFont(option.font)
         small.setPointSizeF(max(7.0, small.pointSizeF() * 0.88))
-        painter.setFont(small)
-        painter.setPen(QtGui.QColor(theme.FG_2))
-        fm_small = painter.fontMetrics()
         facing = tr("facade.ui.row_facing", direction=tr(dir_key(facade.facing)))
-        room = width - name_width - 12
-        if room > fm_small.horizontalAdvance(facing[:6]):
-            painter.drawText(QtCore.QRectF(left + name_width + 12, top, room, line), QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter,
-                             fm_small.elidedText(facing, QtCore.Qt.ElideRight, int(room)))
+        fm_small = QtGui.QFontMetrics(small)
+        facing_width = fm_small.horizontalAdvance(facing)
+        size_left = left + name_width + 14
+        facing_left = rect.right() - 8 - facing_width
+        show_facing = facing_left > size_left + 90                      # the size comes first: the direction is dropped when the row is too narrow
         painter.setFont(QtGui.QFont(option.font))
         painter.setPen(QtGui.QColor(theme.FG_1))
         fm = painter.fontMetrics()
         size = tr("facade.ui.row_size_edited" if facade.edited else "facade.ui.row_size", length=metres(facade.length), height=metres(facade.height))
-        painter.drawText(QtCore.QRectF(left, rect.center().y() + 2, width, line), QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter,
-                         fm.elidedText(size, QtCore.Qt.ElideRight, width))
+        size_room = int((facing_left - 12 if show_facing else rect.right() - 8) - size_left)
+        painter.drawText(QtCore.QRectF(size_left, top, size_room, line), QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter,
+                         fm.elidedText(size, QtCore.Qt.ElideRight, size_room))
+        if show_facing:
+            painter.setFont(small)
+            painter.setPen(QtGui.QColor(theme.FG_2))
+            painter.drawText(QtCore.QRectF(facing_left, top, facing_width + 2, line), QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter, facing)
         painter.restore()
 
 
@@ -1123,7 +1126,10 @@ class FacadeList(QtWidgets.QWidget):
         self.list.customContextMenuRequested.connect(self._menu)
         self.list.itemSelectionChanged.connect(self._on_selection)
         self.list.itemDoubleClicked.connect(lambda item: self.activated.emit(item.data(LETTER_ROLE)))
-        self.list.setMinimumHeight(140)
+        self.list.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+        row = max(36, self.list.fontMetrics().height() + 16) + 4         # a row plus the margin the style sheet puts around it
+        self.list.setMinimumHeight(min(140, row * 3))
+        self.list.setMaximumHeight(row * LIST_ROWS + 8)                # more walls than that scroll inside the list
         layout.addWidget(self.list, 1)
         self.empty = ui.label(tr("facade.ui.list_empty"), "facadeEmpty")
         layout.addWidget(self.empty)

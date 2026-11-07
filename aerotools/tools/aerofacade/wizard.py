@@ -121,7 +121,6 @@ class FacadeWizard(QtWidgets.QDialog):
         self._picture_error = ""
         self.setWindowTitle(tr("facade.ui.title"))
         self.setModal(False)
-        self.setWindowFlag(QtCore.Qt.MSWindowsFixedSizeDialogHint, True)             # no dragging of the edges: the size follows the content
         self.resize(*self._size())
         root = ui.dark_root(self)
         pad = theme.PAD_L
@@ -194,7 +193,12 @@ class FacadeWizard(QtWidgets.QDialog):
         if not getattr(self, "_fitted", False):
             self._fitted = True
             controls.fit_window(self, margin=SCREEN_MARGIN)
+            QtCore.QTimer.singleShot(0, lambda: controls.follow_content(self))        # after the second measure of fit_window
 
+    def resizeEvent(self, event):
+        super(FacadeWizard, self).resizeEvent(event)
+        if getattr(self, "_fitted", False):
+            controls.sync_minimum(self)                         # the least height depends on the width (wrapped text)
     def keyPressEvent(self, event):
         if event.key() in (QtCore.Qt.Key_Escape, QtCore.Qt.Key_Return, QtCore.Qt.Key_Enter):
             event.ignore()                                  # Esc would close the window, Enter would press a random button
@@ -329,6 +333,8 @@ class FacadeWizard(QtWidgets.QDialog):
         self.steps.set_current(step)
         self.screens[step].enter()
         self.refresh_buttons()
+        if getattr(self, "_fitted", False):
+            controls.sync_minimum(self)                         # another page, another least size
 
     def next(self):
         screen = self.screen()
