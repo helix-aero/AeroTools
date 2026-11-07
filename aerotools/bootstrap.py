@@ -85,6 +85,7 @@ def install_menu(force=False):
     msapi.add_menu_separator(MENU)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.update")), update_plugins)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.reload")), reload_all)
+    msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.uninstall")), open_uninstall)
     msapi.add_menu_separator(MENU)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.about")), about)
 
@@ -211,6 +212,22 @@ def update_plugins():
     except Exception as exc:
         journal.write("update window failed: {!r}".format(exc))
         msapi.message_box(i18n.t("boot.update_failed", error=repr(exc)))
+
+
+# --------------------------------------------------------------------------
+# Uninstall
+# --------------------------------------------------------------------------
+
+def open_uninstall():
+    """Aero > Uninstall Aero menu: opens the window that removes the launcher (and, if ticked, the settings and the AI environment)."""
+    ensure_on_path()
+    from . import i18n, journal, msapi
+    try:
+        from . import uninstall_dialog
+        uninstall_dialog.show(msapi.main_window())
+    except Exception as exc:
+        journal.write("uninstall window failed: {!r}".format(exc))
+        msapi.message_box(i18n.t("boot.uninstall_failed", error=repr(exc)))
 
 
 # --------------------------------------------------------------------------

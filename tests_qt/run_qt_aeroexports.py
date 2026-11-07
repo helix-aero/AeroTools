@@ -1066,6 +1066,57 @@ def _():
     return not short, "least height below what the text needs: {}".format(short)
 
 
+@case("uninstall window: the menu is ticked and locked, settings and AI environment are optional, nothing is clipped, the result says what is left")
+def _():
+    from aerotools import uninstall, uninstall_dialog
+    base = tempfile.mkdtemp(prefix="aerotools_uninstall_")
+    saved = {name: os.environ.get(name) for name in ("LOCALAPPDATA", "USERPROFILE", "HOME")}
+    try:
+        os.environ.update(LOCALAPPDATA=os.path.join(base, "local"), USERPROFILE=os.path.join(base, "profile"),
+                          HOME=os.path.join(base, "profile"))
+        for path in (os.path.dirname(uninstall.launcher_path()), os.path.join(uninstall.env_dir(), "Scripts")):
+            os.makedirs(path)
+        open(uninstall.launcher_path(), "w").write("# launcher")
+        open(os.path.join(uninstall.env_dir(), "Scripts", "python.exe"), "wb").write(b"x" * 2048)
+        dialog = uninstall_dialog.UninstallDialog()
+        dialog.show()
+        pump(200)
+        boxes = dialog.boxes
+        problems = []
+        if not (boxes["menu"].isChecked() and not boxes["menu"].isEnabled()):
+            problems.append("menu box should be ticked and locked")
+        if boxes["settings"].isChecked() or boxes["env"].isChecked() or not boxes["env"].isEnabled():
+            problems.append("settings and environment should start unticked but available")
+        if dialog.width() != uninstall_dialog.WIDTH:
+            problems.append("width {}".format(dialog.width()))
+        boxes["env"].setChecked(True)
+        dialog._on_go()
+        for _ in range(100):
+            pump(50)
+            if dialog.completed:
+                break
+        pump(200)
+        layout = dialog.layout()
+        need = layout.minimumHeightForWidth(dialog.width())
+        if dialog.height() < need or dialog.minimumHeight() < need:
+            problems.append("window {} / least {} below the {} the text needs".format(dialog.height(), dialog.minimumHeight(), need))
+        if os.path.exists(uninstall.launcher_path()) or os.path.exists(uninstall.env_dir()):
+            problems.append("launcher or environment still there")
+        if "restart Metashape" not in dialog.status.text():
+            problems.append("result text: " + dialog.status.text())
+        if dialog.go_button.isVisible():
+            problems.append("Uninstall button should be gone")
+        dialog.close()
+        return not problems, "; ".join(problems)
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        shutil.rmtree(base, ignore_errors=True)
+
+
 def main():
     pump(30)
     print("-" * 60)

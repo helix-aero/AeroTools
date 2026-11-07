@@ -422,6 +422,25 @@ TEXTS = {
     "update.channel_tip": "Stable branch: the validated version. Dev branch: the stable version plus the latest changes, not yet validated. Every change goes to the dev branch first, then to the stable branch once it is tested.",
     "settings.update_open": "Check for updates",
 
+    # -- Uninstall ---------------------------------------------------------
+    "menu.uninstall": "Uninstall Aero...",
+    "boot.uninstall_failed": "AeroTools: the uninstall window did not open.\n\n{error}",
+    "uninstall.title": "Uninstall Aero",
+    "uninstall.intro": "Removes the Aero menu from Metashape. Your projects are never touched.",
+    "uninstall.menu": "Aero menu",
+    "uninstall.menu_tip": "The launcher that adds the Aero menu at each start. The menu disappears when Metashape restarts.",
+    "uninstall.settings": "My settings and log",
+    "uninstall.settings_tip": "Your choices in every tool, and aerotools.log. Keep them to find everything as it was if you install again.\n{path}",
+    "uninstall.env": "AI detection environment",
+    "uninstall.env_tip": "Python, onnxruntime, torch... used by Aero-GCP. It can be installed again from the Aero-GCP settings.\n{path}",
+    "uninstall.absent": "not found",
+    "uninstall.go": "Uninstall",
+    "uninstall.cancel": "Cancel",
+    "uninstall.close": "Close",
+    "uninstall.working": "Removing {item}...",
+    "uninstall.done": "Done. The Aero menu disappears when you restart Metashape. The AeroTools folder is left as it is:\n{root}",
+    "uninstall.partial": "Could not remove: {items}. They may be in use: close Metashape and delete them by hand.",
+
     # -- Marking diagnostics -----------------------------------------------
     "diag.menu": "Full marking diagnostic...",
     "diag.title": "Marking diagnostic",
