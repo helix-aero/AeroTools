@@ -95,6 +95,12 @@ JPEG + world file, JPEG 2000, ECW, or an AutoCAD drawing, DXF or DWG) and a pixe
 the images with relative paths and crops their white background; a preview window sets the colours and the shading of the DEM picture.
 You can also export in another coordinate system and another height system (geoid grid), or split the export into tiles.
 
+**Aero > Aero-L3** prepares the photos of a **DJI Zenmuse L3** for Metashape: point it at the L3 folder (one flight or a whole mission) and a
+wizard reads the header of every photo, checks them (RTK status, missing partner photo, rotated files, angles that would flip a picture), then
+creates the chunk with the two lens sensors, their calibration, the camera positions and a starting orientation that keeps the pictures from
+coming out flipped, ready for *Align Photos*. It can also align, re-align flipped cameras and optimize. Photos only, no LiDAR.
+See [docs/AERO_L3.md](docs/AERO_L3.md).
+
 Later, **Aero > Check for updates...** brings the latest version from GitHub (with the list of changes and their size).
 The installer asks which detection engine you want (light, precise, or both) and whether to add the retraining tools; the
 Aero-GCP settings can install any of them afterwards with one click.

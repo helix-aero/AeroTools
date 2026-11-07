@@ -65,6 +65,15 @@ TOOLS = [
         "ready": True,
         "reopen": False,
     },
+    {
+        "id": "aerol3",
+        "menu": "Aero-L3",
+        "title": "Aero-L3",
+        "subtitle": "tool.aerol3.subtitle",
+        "shortcut": None,
+        "ready": True,
+        "reopen": False,
+    },
     # The AI detection (formerly AIGCP) is part of Aero-GCP: no menu entry of its own.
 ]
 
