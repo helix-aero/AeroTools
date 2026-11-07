@@ -5,16 +5,17 @@ from . import checks
 from . import plan as plan_module
 
 SECTION = "aerol3"
-FOLDER, FLIGHTS, CHECKS, OPTIONS, RUN = range(5)
-STEP_KEYS = ("folder", "flights", "checks", "options", "run")
+PHOTOS, CHECKS, PROJECT, RUN = range(4)
+STEP_KEYS = ("photos", "checks", "project", "run")
 
 
 class WizardState(object):
     def __init__(self):
-        self.root = ""                       # the folder chosen on screen 1
+        self.root = ""                       # the folder chosen on the Photos screen
         self.scan = None                     # scan.ScanResult
         self.selection = {}                  # {flight key: ticked}
         self.options = plan_module.Options()
+        self.normalise_steps()
         self.analysis = None                 # checks.Analysis of the ticked flights
         self.result = None                   # backend.RunResult
         self.auto_name = ""                  # the chunk name proposed last (a name the operator typed is kept)
@@ -59,15 +60,31 @@ class WizardState(object):
     # -- the buttons ------------------------------------------------------------------------------
 
     def can_next(self, step):
-        if step == FOLDER:
-            return self.has_photos()
-        if step == FLIGHTS:
-            return self.analysis is not None
+        if step == PHOTOS:
+            return self.has_photos() and self.analysis is not None
         if step == CHECKS:
             return self.analysis is not None and self.analysis.ok
-        if step == OPTIONS:
+        if step == PROJECT:
             return self.analysis is not None and self.analysis.ok and bool(self.options.chunk_name.strip())
         return False
+
+    def normalise_steps(self):
+        """The repair of flipped cameras follows the alignment (it has no tick of its own on screen)."""
+        steps = self.options.steps
+        steps["repair"] = bool(steps.get("align"))
+
+    def set_step(self, key, ticked):
+        """Ticks or unticks one step of the chain. Align carries the repair of flipped cameras with it, and what comes after it needs it."""
+        steps = self.options.steps
+        steps[key] = bool(ticked)
+        if key == "align":
+            steps["repair"] = bool(ticked)
+            if not ticked:
+                for later in ("optimize", "dem", "ortho"):
+                    steps[later] = False
+        elif ticked:
+            steps["align"] = True
+            steps["repair"] = True
 
     def steps_to_run(self):
         """Keys of the steps after the creation that are ticked, in order."""
@@ -92,6 +109,7 @@ def load_prefs(state):
         options = plan_module.Options.from_dict(saved)
         options.chunk_name = ""             # the name belongs to a site, not to the machine
         state.options = options
+        state.normalise_steps()
 
 
 def save_prefs(state):

@@ -23,6 +23,20 @@ AGAINST_TRACK_DEG = 120.0         # top of the picture further than this from th
 MRK_POSITION_M = 0.05
 TINY_FLIGHT_PAIRS = 3
 EXAMPLES = 5
+TIP_EXAMPLES = 3
+NO_COUNT = ("no_photos", "mixed_units", "nothing_to_do")
+
+# What each topic checks: it counts as passed when none of its codes shows up as a warning or an error.
+TOPICS = (
+    ("photos", ("not_l3", "mixed_units", "lens", "calibration", "lens_conflict")),
+    ("files", ("size", "orientation", "duplicate_names")),
+    ("pairs", ("unpaired", "pair_gap", "rig_angle")),
+    ("positions", ("no_gps", "position_jump")),
+    ("rtk", ("rtk_not_fixed", "gps_not_rtk", "altitude_type")),
+    ("angles", ("angles_missing", "angles_inconsistent")),
+    ("direction", ("against_track", "lens_side")),
+    ("mrk", ("mrk_missing", "mrk_mismatch")),
+)
 
 
 class Finding(object):
@@ -34,15 +48,28 @@ class Finding(object):
         self.examples = list(examples or [])[:EXAMPLES]
         self.fields = fields
 
-    def text(self):
-        return i18n.t("l3.check." + self.code, n=self.n, total=self.total, **self.fields)
+    def short(self):
+        """The label of the row (a few words)."""
+        return i18n.t("l3.check." + self.code + ".short", n=self.n, total=self.total, **self.fields)
 
     def detail(self):
+        """One sentence that explains the finding."""
+        return i18n.t("l3.check." + self.code + ".detail", n=self.n, total=self.total, **self.fields)
+
+    def examples_text(self):
         """The first few file names concerned, as one line ('' when there are none)."""
         if not self.examples:
             return ""
-        more = ", ..." if self.n > len(self.examples) else ""
-        return ", ".join(self.examples) + more
+        shown = self.examples[:TIP_EXAMPLES]
+        return i18n.t("l3.check.examples", names=", ".join(shown) + (", ..." if self.n > len(shown) else ""))
+
+    def tip(self):
+        """What the small "i" of the row shows: the sentence and the file names."""
+        extra = self.examples_text()
+        return self.detail() + (chr(10) + extra if extra else "")
+
+    def count_text(self):
+        return "" if self.code in NO_COUNT or not self.n else "{:,}".format(int(self.n)).replace(",", " ")
 
     def __repr__(self):
         return "Finding({}, {}, n={})".format(self.level, self.code, self.n)
@@ -73,6 +100,14 @@ class Analysis(object):
         self.plan = plan
         self.findings = findings
         self.summary = summary
+
+    @property
+    def passed(self):
+        """Topics (keys of `TOPICS`) in which nothing was found. Empty when there is no photo to check."""
+        if not self.plan.paths():
+            return []
+        bad = {f.code for f in self.findings if f.level != INFO}
+        return [key for key, codes in TOPICS if not bad & set(codes)]
 
     @property
     def blocking(self):
@@ -231,8 +266,6 @@ def analyse(flights, options=None):
         if not_fixed:
             _add(findings, WARNING, "rtk_not_fixed", len(not_fixed), len(kept), not_fixed, fix=summary.rtk["fix"], flt=summary.rtk["float"],
                  single=summary.rtk["single"] + summary.rtk["none"])
-        elif summary.rtk["fix"]:
-            _add(findings, INFO, "rtk_all_fixed", summary.rtk["fix"], len(kept))
         not_rtk = [r.name for r in kept if r.has_position and (r.gps_status or "").upper() not in ("RTK", "")]
         if not_rtk:
             _add(findings, WARNING, "gps_not_rtk", len(not_rtk), len(kept), not_rtk)
@@ -270,12 +303,9 @@ def analyse(flights, options=None):
         other = orient.nominal_from_gimbal_angles(rec.angles, rec.lens) if spec.rotation_source == "camera" else None
         if other is not None and orient.angle_between(other, spec.rotation) > ANGLE_CROSS_CHECK_DEG:
             cross.append(rec.name)
-    if kept and not by_reason.get("orientation") and not by_reason.get("size"):
-        _add(findings, INFO, "upright", len(kept), len(kept), size="{} x {}".format(*plan.size))
     ready = len(kept) - len(no_angles)
-    if ready:
-        _add(findings, INFO, "orientation_ready", ready, len(kept),
-             source="camera" if all(plan.cameras[r.path].rotation_source == "camera" for r in kept if plan.cameras[r.path].rotation is not None) else "mixed")
+    if ready and not all(plan.cameras[r.path].rotation_source == "camera" for r in kept if plan.cameras[r.path].rotation is not None):
+        _add(findings, INFO, "orientation_ready", ready, len(kept), source="mixed")
     if no_angles:
         _add(findings, WARNING, "angles_missing", len(no_angles), len(kept), no_angles)
     if cross:
@@ -356,8 +386,6 @@ def analyse(flights, options=None):
                 mismatch.append(rec.name)
     if mismatch:
         _add(findings, WARNING, "mrk_mismatch", len(mismatch), len(kept), mismatch)
-    if summary.lidar_flights:
-        _add(findings, INFO, "lidar_present", summary.lidar_flights, len(flights))
     tiny = [f.name for f in flights if sum(1 for r in f.photos if r.lens == orient.LEFT) <= TINY_FLIGHT_PAIRS]
     if tiny:
         _add(findings, INFO, "tiny_flights", len(tiny), len(flights), tiny)
@@ -385,7 +413,7 @@ def default_selection(flights):
 
 
 def flight_row(flight):
-    """What the flights table shows about one flight: a dict with name, photos, pairs, fix (share of RTK fixed photos, 0 to 1), tilt (median tilt
+    """What the flight list shows about one flight: a dict with name, photos, pairs, fix (share of RTK fixed photos, 0 to 1), tilt (median tilt
     from the nadir in degrees or None), mrk, lidar and the UTC time of the first photo."""
     stems = {}
     for rec in flight.photos:

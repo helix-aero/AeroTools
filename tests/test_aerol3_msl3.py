@@ -405,7 +405,7 @@ def test_a_camera_left_turned_or_wrong_is_caught_by_the_check(world):
     step = world.backend._verify(chunk, world.plan, None, types.SimpleNamespace())
     report = world.backend.read_back(chunk, world.plan)
     assert len(report.bad_orientation) == 1 and len(report.bad_rotation) == 1 and len(report.missing) == 1 and report.max_rotation_error > 1.0
-    assert not step.ok and step.text == "The cameras are not as planned." and len(step.lines) >= 3
+    assert not step.ok and step.text == "Cameras differ from the plan" and len(step.lines) >= 3
 
 
 def test_a_chunk_name_that_exists_gets_a_number(world):
@@ -499,7 +499,7 @@ def test_alignment_then_check_finds_nothing_wrong_on_a_good_alignment(world):
     result = run(world, steps=["align", "repair"])
     assert result.ok
     assert result.alignment.aligned == 32 and result.alignment.clean and result.alignment.median < 0.5
-    assert result.step("repair").text == "No flipped camera."
+    assert result.step("repair").text == "None"
     chunk = world.doc.chunks[0]
     kinds = [c[0] for c in chunk.calls]
     assert kinds.count("matchPhotos") == 1 and kinds.count("alignCameras") == 1
@@ -516,7 +516,7 @@ def test_flipped_cameras_are_found_reset_and_aligned_again(world, monkeypatch):
     set_flags(monkeypatch, flip=victims)
     result = run(world, steps=["align", "repair"])
     assert result.alignment.repaired == 6 and result.alignment.clean
-    assert result.step("align").ok and result.step("repair").ok and "6 flipped" in result.step("repair").text
+    assert result.step("align").ok and result.step("repair").ok and "6 re-aligned" in result.step("repair").text
     chunk = world.doc.chunks[0]
     realign = [c[1] for c in chunk.calls if c[0] == "alignCameras"][1]
     assert sorted(realign["cameras"]) == [n for n in sorted(names) if n.rsplit("_", 1)[0] in {v.rsplit("_", 1)[0] for v in victims}]      # both lenses of each shot
@@ -576,7 +576,7 @@ def test_the_quick_test_runs_on_a_copy_that_is_deleted(world):
     assert [c.label for c in world.doc.chunks] == ["L3_TESTSITE_261002"]          # the copy is gone
     chunk = world.doc.chunks[0]
     assert ("copy",) in chunk.calls and [c[0] for c in chunk.calls].count("matchPhotos") == 0       # the original was not aligned
-    assert "aligned 12 of 12" in result.step("quick_test").text
+    assert "12 / 12 photos" in result.step("quick_test").text
     assert result.test.lens_median["L"] < 1.0 and result.test.lens_median["R"] < 1.0
 
 

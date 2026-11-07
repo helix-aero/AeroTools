@@ -1,4 +1,4 @@
-"""Aero-L3: the wizard window. One window, five screens, a step bar on top, Cancel / Back / Next at the bottom.
+"""Aero-L3: the wizard window. One window, four screens, a step bar on top, Cancel / Back / Next at the bottom.
 
 The window talks only to a `Backend` (`backend.py`): `FakeBackend` in tests and screenshots, `msl3.MetashapeL3Backend` inside Metashape. A long
 call runs through `aerofacade.tasks.Task` and the window watches it with a timer: the scan of the folder always runs on a worker thread (it only
@@ -82,7 +82,7 @@ class L3Wizard(QtWidgets.QDialog):
         self._on_progress = None
         self._on_done = None
         self._closing = False
-        self._step = S.FOLDER
+        self._step = S.PHOTOS
         self.setWindowTitle(tr("l3.ui.title"))
         self.setModal(False)
         self.resize(*self._size())
@@ -98,8 +98,7 @@ class L3Wizard(QtWidgets.QDialog):
         self.project_label = controls.ElidedLabel("aeroMeta")
         head.addWidget(self.project_label, 1)
         layout.addLayout(head)
-        self.screens = [screens.FolderScreen(self), screens.FlightsScreen(self), screens.ChecksScreen(self), screens.OptionsScreen(self),
-                        screens.RunScreen(self)]
+        self.screens = [screens.PhotosScreen(self), screens.ChecksScreen(self), screens.ProjectScreen(self), screens.RunScreen(self)]
         self.steps = StepBar([cls.name_key for cls in (type(s) for s in self.screens)])
         layout.addWidget(self.steps)
         rule = QtWidgets.QFrame()
@@ -128,7 +127,7 @@ class L3Wizard(QtWidgets.QDialog):
         self._timer.setInterval(POLL_MS)
         self._timer.timeout.connect(self._poll)
         self._load_project()
-        self.go(S.FOLDER, force=True)
+        self.go(S.PHOTOS, force=True)
 
     # -- size -------------------------------------------------------------------------------------
 
@@ -253,7 +252,7 @@ class L3Wizard(QtWidgets.QDialog):
         return self.screens[self._step]
 
     def go(self, step, force=False):
-        step = max(S.FOLDER, min(S.RUN, step))
+        step = max(S.PHOTOS, min(S.RUN, step))
         if not force and (step == self._step or self.busy()):
             return
         if not force and not self.screens[self._step].leave(step > self._step):
@@ -283,15 +282,15 @@ class L3Wizard(QtWidgets.QDialog):
     def refresh_buttons(self):
         screen = self.screens[self._step] if 0 <= self._step < len(self.screens) else None
         busy = self.busy() or (screen is not None and screen.busy())
-        self.back_button.setEnabled(self._step > S.FOLDER and not busy)
+        self.back_button.setEnabled(self._step > S.PHOTOS and not busy)
         self.back_button.setVisible(screen.show_back() if screen is not None else False)
         if screen is not None:
             self.next_button.setVisible(screen.show_next())
             self.next_button.setText(screen.next_text())
             self.next_button.setEnabled(screen.next_enabled() and not busy)
         leaving = (not busy) and self._step == S.RUN
-        self.cancel_button.setText(tr("l3.ui.cancel_job") if busy else (tr("l3.ui.close") if leaving else tr("l3.ui.cancel")))
-        self.status.setFullText(tr("l3.ui.working") if busy else "")
+        self.cancel_button.setText(tr("l3.ui.close") if leaving else tr("l3.ui.cancel"))
+        self.status.setFullText("")
 
     def _on_cancel(self):
         if self.busy():

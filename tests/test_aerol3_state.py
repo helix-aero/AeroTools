@@ -13,6 +13,7 @@ if HERE not in sys.path:
 import aerol3_synth as synth  # noqa: E402
 from aerotools import config  # noqa: E402
 from aerotools.tools.aerol3 import checks, scan, state as S  # noqa: E402
+from aerotools.tools.aerol3 import backend  # noqa: E402
 from aerotools.tools.aerol3.backend import Cancelled  # noqa: E402
 from aerotools.tools.aerol3.fake_backend import FakeBackend  # noqa: E402
 
@@ -27,13 +28,13 @@ def mission(tmp_path):
 
 def test_the_buttons_follow_the_state(mission):
     state = S.WizardState()
-    assert not state.can_next(S.FOLDER) and not state.can_next(S.FLIGHTS) and not state.can_next(S.RUN)
+    assert not state.can_next(S.PHOTOS) and not state.can_next(S.RUN)
     state.set_scan(mission)
-    assert state.can_next(S.FOLDER) and state.can_next(S.FLIGHTS) and state.can_next(S.CHECKS) and state.can_next(S.OPTIONS)
+    assert state.can_next(S.PHOTOS) and state.can_next(S.CHECKS) and state.can_next(S.PROJECT)
     assert [f.name.split("-")[-1] for f in state.selected_flights()] == ["FLIGHT01", "FLIGHT02"]               # the tiny flight starts unticked
     for key in list(state.selection):
         state.set_selected(key, False)
-    assert state.analysis is None and not state.can_next(S.FLIGHTS)
+    assert state.analysis is None and not state.can_next(S.PHOTOS)
 
 
 def test_the_chunk_name_is_proposed_and_a_typed_name_is_kept(mission):
@@ -44,7 +45,7 @@ def test_the_chunk_name_is_proposed_and_a_typed_name_is_kept(mission):
     state.refresh_analysis()
     assert state.options.chunk_name == "Mine"
     state.options.chunk_name = "  "
-    assert not state.can_next(S.OPTIONS)
+    assert not state.can_next(S.PROJECT)
 
 
 def test_a_blocking_finding_closes_next(mission):
@@ -63,7 +64,7 @@ def test_a_blocking_finding_closes_next(mission):
 
 def test_steps_to_run_adds_the_alignment_when_a_later_step_needs_it():
     state = S.WizardState()
-    assert state.steps_to_run() == ["repair"] or state.steps_to_run() == ["align", "repair"]
+    assert state.steps_to_run() == []                                      # nothing ticked: the chunk only
     state.options.steps = {"align": False, "repair": False, "optimize": True, "dem": False, "ortho": False}
     assert state.steps_to_run() == ["align", "optimize"]
     state.options.steps = {"align": False, "repair": False, "optimize": False, "dem": False, "ortho": False}
@@ -73,6 +74,22 @@ def test_steps_to_run_adds_the_alignment_when_a_later_step_needs_it():
     assert state.steps_to_run() == []
     state.options.steps = {"align": True, "repair": True, "optimize": True, "dem": True, "ortho": True}
     assert state.steps_to_run() == ["align", "repair", "optimize", "dem", "ortho"]
+
+
+def test_ticking_a_step_of_the_chain_ticks_what_it_needs():
+    state = S.WizardState()
+    state.set_step("dem", True)
+    assert state.options.steps["align"] and state.options.steps["repair"] and state.steps_to_run() == ["align", "repair", "dem"]
+    state.set_step("align", False)
+    assert state.steps_to_run() == [] and not state.options.steps["dem"]
+    state.set_step("align", True)
+    assert state.steps_to_run() == ["align", "repair"]
+
+
+def test_the_progress_bar_is_shared_out_between_the_steps():
+    spans = backend.step_spans(["align", "repair", "ortho"])
+    assert [k for k, _lo, _hi in spans] == ["create", "verify", "align", "repair", "ortho"]
+    assert spans[0][1] == 0.0 and abs(spans[-1][2] - 1.0) < 1e-9 and all(a[2] == b[1] for a, b in zip(spans, spans[1:]))
 
 
 def test_choices_are_saved_and_loaded_without_the_name(mission):

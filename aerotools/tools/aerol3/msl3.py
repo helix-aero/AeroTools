@@ -24,12 +24,11 @@ import Metashape
 
 from ... import i18n, journal
 from . import geomcheck, orient, plan as plan_module
-from .backend import STEP_ORDER, Backend, Cancelled, Progress, RunResult, StepResult
+from .backend import STEP_ORDER, STEP_WEIGHTS, Backend, Cancelled, Progress, RunResult, StepResult
 
 TAG = "AeroL3"
 T = i18n.t
 
-STEP_WEIGHTS = {"create": 0.20, "verify": 0.02, "quick_test": 0.12, "align": 0.38, "repair": 0.10, "optimize": 0.08, "dem": 0.06, "ortho": 0.04}
 ALIGN_DOWNSCALE = 1                    # highest accuracy: what worked on the reference project
 KEYPOINT_LIMIT = 60000
 TIEPOINT_LIMIT = 10000

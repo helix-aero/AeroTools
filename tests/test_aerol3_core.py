@@ -444,13 +444,12 @@ def test_a_clean_flight_has_no_warning(tmp_path):
     analysis, _ = analysed(tmp_path, shots=10, heading=120.0, group="B")
     assert analysis.ok
     assert [f.code for f in analysis.findings if f.level != checks.INFO] == []
-    assert analysis.has("upright") and analysis.has("orientation_ready") and analysis.has("rtk_all_fixed") and analysis.has("lidar_present")
+    assert analysis.passed == [key for key, _codes in checks.TOPICS]               # every topic passed: nothing to show but the count
     s = analysis.summary
     assert s.photos == 20 and s.pairs == 10 and s.lenses == ["L", "R"] and s.rtk["fix"] == 20
     assert s.site == "TESTSITE" and s.date == "261002" and checks.default_chunk_name(s) == "L3_TESTSITE_261002"
     assert s.first_utc == datetime.datetime(2026, 10, 2, 6, 49, 54, 442935)          # GPS - 18 s
     assert s.tilt_min == pytest.approx(22.5, abs=1e-6) and s.mean_v_mm == pytest.approx(217.0)
-    assert "Aero" not in analysis.by_code("upright")[0].text() and "6144 x 4096" in analysis.by_code("upright")[0].text()
 
 
 @pytest.mark.parametrize("heading,group", [(120.0, "B"), (300.0, "A"), (10.0, "B"), (200.0, "A")])
@@ -572,7 +571,7 @@ def test_default_selection_never_leaves_nothing_ticked(tmp_path):
 def test_nothing_ticked_gives_a_blocking_message():
     analysis = checks.analyse([])
     assert analysis.has("no_photos") and not analysis.ok
-    assert checks.analyse([]).by_code("no_photos")[0].text().startswith("There is no photo")
+    assert checks.analyse([]).by_code("no_photos")[0].short() == "No photo ticked" and checks.analyse([]).passed == []
 
 
 def test_unpaired_and_unusual_files_produce_messages(tmp_path):
@@ -582,20 +581,24 @@ def test_unpaired_and_unusual_files_produce_messages(tmp_path):
         return kwargs
     analysis, _ = analysed(tmp_path, shots=5, files_for=files_for)
     assert analysis.has("orientation") and analysis.has("unpaired") and analysis.ok
-    assert not analysis.has("upright")                  # the reassuring message is only given when nothing is wrong
-    assert "left out" in analysis.by_code("orientation")[0].text()
-    assert analysis.by_code("orientation")[0].detail().endswith("_LV.JPG")
+    assert "files" not in analysis.passed and "pairs" not in analysis.passed          # a topic with a finding is not passed
+    finding = analysis.by_code("orientation")[0]
+    assert finding.short() == "Rotated by EXIF" and "left out" in finding.detail().lower()
+    assert finding.tip().splitlines()[-1].endswith("_LV.JPG") and finding.count_text() == "1"
 
 
 def test_every_finding_has_a_text(tmp_path):
     from aerotools import i18n
     from aerotools.lang import en
     codes = {"no_photos", "not_l3", "mixed_units", "size", "orientation", "lens", "calibration", "duplicate_names", "unpaired", "unpaired_included", "lens_conflict",
-             "dewarped", "nothing_to_do", "no_gps", "rtk_not_fixed", "rtk_all_fixed", "gps_not_rtk", "altitude_type", "upright", "orientation_ready", "angles_missing",
-             "angles_inconsistent", "oblique", "rig_angle", "pair_gap", "against_track", "lens_side", "position_jump", "mrk_missing", "mrk_mismatch", "lidar_present",
+             "dewarped", "nothing_to_do", "no_gps", "rtk_not_fixed", "gps_not_rtk", "altitude_type", "orientation_ready", "angles_missing",
+             "angles_inconsistent", "oblique", "rig_angle", "pair_gap", "against_track", "lens_side", "position_jump", "mrk_missing", "mrk_mismatch",
              "tiny_flights"}
     for code in codes:
-        assert "l3.check." + code in en.TEXTS
+        short, detail = en.TEXTS["l3.check." + code + ".short"], en.TEXTS["l3.check." + code + ".detail"]
+        assert len(short.split()) <= 6 and detail.count(". ") <= 1 and len(detail) <= 120, code
+    for key, topic_codes in checks.TOPICS:
+        assert "l3.pass." + key in en.TEXTS and set(topic_codes) <= codes
     source = open(os.path.join(os.path.dirname(HERE), "aerotools", "tools", "aerol3", "checks.py"), encoding="utf-8").read()
     import re
     used = set(re.findall(r'_add\(findings, (?:ERROR|WARNING|INFO|ERROR if [^"]*?else WARNING), "(\w+)"', source))

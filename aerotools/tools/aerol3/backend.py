@@ -8,6 +8,18 @@ the tool that imports `Metashape`). `Progress` and `Cancelled` are the ones of A
 from ..aerofacade.backend import Cancelled, Progress  # noqa: F401  (re-exported)
 
 STEP_ORDER = ("create", "verify", "quick_test", "align", "repair", "optimize", "dem", "ortho")
+STEP_WEIGHTS = {"create": 0.20, "verify": 0.02, "quick_test": 0.12, "align": 0.38, "repair": 0.10, "optimize": 0.08, "dem": 0.06, "ortho": 0.04}
+
+
+def step_spans(steps):
+    """[(key, low, high)]: the share of the whole progress bar each step of a run takes (`create` and `verify` always run)."""
+    wanted = [k for k in STEP_ORDER if k in ("create", "verify") or k in steps]
+    total = sum(STEP_WEIGHTS[k] for k in wanted)
+    spans, done = [], 0.0
+    for key in wanted:
+        spans.append((key, done / total, (done + STEP_WEIGHTS[key]) / total))
+        done += STEP_WEIGHTS[key]
+    return spans
 
 
 class StepResult(object):

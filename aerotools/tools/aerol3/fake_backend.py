@@ -2,9 +2,12 @@
 
 from ... import i18n
 from . import geomcheck
-from .backend import STEP_ORDER, Backend, Cancelled, Progress, RunResult, StepResult
+from .backend import STEP_ORDER, Backend, Cancelled, Progress, RunResult, StepResult, step_spans
 
 T = i18n.t
+
+ACTIVITY = {"create": "l3.run.adding", "verify": "l3.run.references", "quick_test": "l3.run.matching", "align": "l3.run.aligning",
+            "repair": "l3.run.realigning", "optimize": "l3.run.optimizing", "dem": "l3.run.depth_maps", "ortho": "l3.run.ortho"}
 
 
 class FakeBackend(Backend):
@@ -28,13 +31,14 @@ class FakeBackend(Backend):
         prog = Progress.of(progress, cancelled)
         self.runs.append((plan, list(steps)))
         result = RunResult()
-        wanted = [k for k in STEP_ORDER if k in ("create", "verify") or k in steps]
+        spans = step_spans(steps)
         result.chunk_label = plan.options.chunk_name or "L3"
         try:
-            for i, key in enumerate(wanted):
-                prog.step(i, len(wanted), T("l3.run.name_" + key))
-                self.pump()
-                prog.check()
+            for key, low, high in spans:
+                for share in (0.2, 0.6):
+                    prog(low + (high - low) * share, T(ACTIVITY[key]))
+                    self.pump()
+                    prog.check()
                 if self.fail == key:
                     result.steps.append(StepResult(key, False, T("l3.run.step_failed", step=T("l3.run.name_" + key), reason="simulated failure")))
                     break
