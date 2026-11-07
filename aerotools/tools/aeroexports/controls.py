@@ -275,6 +275,51 @@ def screen_width():
     return screen_area().width()
 
 
+class CappedStack(QtWidgets.QWidget):
+    """The pages of a wizard, one shown at a time. Only the page on show counts for the size of the window, and never more than the display
+    has: a plain QStackedWidget counts the tallest page whatever is shown, so a window with a long page (22 flights, many walls) could not be made
+    smaller than that page, grew past the bottom of the screen and flooded Metashape with resize warnings while it was dragged.
+    `reserve` is what the rest of the window needs around the stack (title, step bar, buttons)."""
+
+    def __init__(self, reserve=340, margin=70):
+        super(CappedStack, self).__init__()
+        self._reserve, self._margin = reserve, margin
+        self._pages, self._current = [], -1
+        box = QtWidgets.QVBoxLayout(self)
+        box.setContentsMargins(0, 0, 0, 0)
+        self._box = box
+
+    def addWidget(self, page):
+        self._pages.append(page)
+        self._box.addWidget(page)
+        page.setVisible(len(self._pages) - 1 == self._current)
+        return len(self._pages) - 1
+
+    def setCurrentIndex(self, index):
+        if not 0 <= index < len(self._pages):
+            return
+        self._current = index
+        for number, page in enumerate(self._pages):
+            page.setVisible(number == index)
+        self.updateGeometry()
+
+    def currentIndex(self):
+        return self._current
+
+    def currentWidget(self):
+        return self._pages[self._current] if 0 <= self._current < len(self._pages) else None
+
+    def widget(self, index):
+        return self._pages[index] if 0 <= index < len(self._pages) else None
+
+    def count(self):
+        return len(self._pages)
+
+    def sizeHint(self):
+        hint = super(CappedStack, self).sizeHint()
+        area = screen_area()
+        return QtCore.QSize(min(hint.width(), area.width() - self._margin), min(hint.height(), max(300, area.height() - self._margin - self._reserve)))
+
 def fit_window(dialog, margin=70, again=True):
     """Make a window follow what its panels need: its minimum size becomes the layout's (it follows later changes, such as a font
     change), and it opens at least that big and no bigger than the screen. Call it from showEvent; it measures again a moment later,

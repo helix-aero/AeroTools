@@ -1634,6 +1634,24 @@ def _():
     return stale and current, "stale={} current={}".format(stale, current)
 
 
+@case("window: no frame to drag (fixed-size dialog frame), the size follows the content")
+def _():
+    window, _b = new_wizard()
+    show(window)
+    pump(200)
+    flag = bool(window.windowFlags() & QtCore.Qt.MSWindowsFixedSizeDialogHint)
+    window.close()
+    return flag, "fixed-size frame flag: {}".format(flag)
+
+@case("window: its least height follows the page on show, not the tallest page, so it can be made smaller")
+def _():
+    window, _b = new_wizard()
+    show(window)
+    need = window.layout().minimumHeightForWidth(window.width())
+    floor = window.layout().totalMinimumSize().height()
+    window.close()
+    return need <= floor + 80, "least height {} for a floor of {}".format(need, floor)
+
 @case("wizard: Esc does not close the window; closing during a job cancels it first")
 def _():
     window, _backend = new_wizard(delay=0.4)

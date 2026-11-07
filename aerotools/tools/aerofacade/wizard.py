@@ -121,6 +121,7 @@ class FacadeWizard(QtWidgets.QDialog):
         self._picture_error = ""
         self.setWindowTitle(tr("facade.ui.title"))
         self.setModal(False)
+        self.setWindowFlag(QtCore.Qt.MSWindowsFixedSizeDialogHint, True)             # no dragging of the edges: the size follows the content
         self.resize(*self._size())
         root = ui.dark_root(self)
         pad = theme.PAD_L
@@ -144,7 +145,7 @@ class FacadeWizard(QtWidgets.QDialog):
         layout.addWidget(rule)
 
         self.canvas = OrthoCanvas()
-        self.stack = QtWidgets.QStackedWidget()
+        self.stack = controls.CappedStack()
         layout.addWidget(self.stack, 1)
         self.screens = [SearchScreen(self), FacadesScreen(self), MarginsScreen(self), MethodScreen(self), BuildScreen(self),
                         PicturesScreen(self), ExportScreen(self)]
