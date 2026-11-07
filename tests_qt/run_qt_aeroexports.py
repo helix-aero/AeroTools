@@ -1040,6 +1040,32 @@ def _():
     return not bad, "problems: {}".format(bad)
 
 
+@case("resize: Aero-Space, the GCP diagnostic and the busy window declare the least height their wrapped text needs")
+def _():
+    from aerotools.tools.fastgcp import diagnostic_dialog, review_dialog
+    from aerotools.tools.fastspace import dialog as space_dialog
+    result = {"summary": {"observations": 10, "markers": 3, "checked": 3, "photos": 20, "rms_px": 0.5, "median_px": 0.4,
+                          "below_1px": 0.9}, "projections": [], "photos": [], "markers": [], "limit_px": 1.0}
+    makers = {"space": space_dialog.SpaceDialog,
+              "diagnostic": lambda: diagnostic_dialog.DiagnosticDialog(lambda: result, lambda item: None),
+              "busy": lambda: review_dialog.BusyDialog("Applying the changes to the markers")}
+    short = {}
+    for name, make in makers.items():
+        dialog = make()
+        dialog.show()
+        pump(200)
+        layout = dialog.layout()
+        need = layout.minimumHeightForWidth(dialog.width()) if layout.hasHeightForWidth() else layout.minimumSize().height()
+        if dialog.minimumHeight() < need:
+            short[name] = (dialog.minimumHeight(), need)
+        dialog.resize(dialog.width(), 40)                      # as far down as a drag can go
+        pump(100)
+        if dialog.height() < need:
+            short[name + " (shrunk)"] = (dialog.height(), need)
+        dialog.close()
+    return not short, "least height below what the text needs: {}".format(short)
+
+
 def main():
     pump(30)
     print("-" * 60)

@@ -6,6 +6,7 @@ Non-modal window: the list can stay open while you open a photo, fix it, then cl
 
 from ... import i18n, theme, ui
 from ...qt import QtCore, QtWidgets
+from ..aeroexports import controls
 from . import diagnostic
 
 ROLE = QtCore.Qt.UserRole
@@ -61,7 +62,7 @@ def summary_text(result):
     return text
 
 
-class DiagnosticDialog(QtWidgets.QDialog):
+class DiagnosticDialog(controls.FollowsText, QtWidgets.QDialog):
     def __init__(self, compute, opener, parent=None):
         """`compute()` returns the result of diagnostic.analyze; `opener(item)` opens the item's photo."""
         super(DiagnosticDialog, self).__init__(parent)

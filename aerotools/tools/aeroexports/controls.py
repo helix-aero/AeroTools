@@ -364,6 +364,23 @@ def follow_content(dialog):
     dialog.layout().setSizeConstraint(QtWidgets.QLayout.SetNoConstraint)
     sync_minimum(dialog)
 
+
+class FollowsText(object):
+    """Mixin for a dialog (put it before `QDialog`) whose layout has wrapped text: its least height always matches what the text needs,
+    so a drag on its edge stops at the limit instead of moving the window."""
+
+    def showEvent(self, event):
+        super(FollowsText, self).showEvent(event)
+        if not getattr(self, "_follows", False):
+            self._follows = True
+            follow_content(self)
+
+    def resizeEvent(self, event):
+        super(FollowsText, self).resizeEvent(event)
+        if getattr(self, "_follows", False):
+            sync_minimum(self)
+
+
 class WrapText(QtWidgets.QTextEdit):
     """Read-only text that wraps anywhere (a path has no spaces to wrap at), can be selected and copied, and never makes its window wider.
     Looks like a label; `setText` / `text` work like a label's, and the height follows the text."""

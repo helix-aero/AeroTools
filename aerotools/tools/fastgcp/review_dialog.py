@@ -20,6 +20,7 @@ everything goes through review.py and msapi.
 
 from ... import config, i18n, journal, msapi, theme
 from ...qt import QShortcut, QtCore, QtGui, QtWidgets, modifiers
+from ..aeroexports import controls
 from . import adjust_panel, dialogs, imageadjust, photos, review
 
 SECTION = "aigcp"
@@ -337,7 +338,7 @@ class _RefineView(QtWidgets.QWidget):
             painter.end()
 
 
-class BusyDialog(QtWidgets.QDialog):
+class BusyDialog(controls.FollowsText, QtWidgets.QDialog):
     """Small modal "applying" window with a progress bar.
 
     Blocks the review window while the points are placed (no double click on

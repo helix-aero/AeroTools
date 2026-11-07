@@ -24,6 +24,7 @@ import time
 
 from ... import config, i18n, journal, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
+from ..aeroexports import controls
 from . import actions, scanner
 
 POLL_MS = 150
@@ -269,7 +270,7 @@ def drives():
     return found
 
 
-class SpaceDialog(QtWidgets.QDialog):
+class SpaceDialog(controls.FollowsText, QtWidgets.QDialog):
     def __init__(self, parent=None):
         super(SpaceDialog, self).__init__(parent)
         self.setWindowTitle(i18n.t("space.title"))
