@@ -303,6 +303,16 @@ class MetashapeBackend(Backend):
             raise Cancelled()
 
     # ---- Backend: project_info / availability ----------------------------------------------------------
+    def is_current(self):
+        try:
+            active = self.doc.chunk
+            if active is None:
+                return False
+            src = _meta_get(active, "aerofacade.source")         # one of our work chunks stands for its source
+            return str(src or active.key) == str(self._key)
+        except Exception:
+            return False
+
     def project_info(self):
         chunk = self._src()
         from ..aeroexports import naming
