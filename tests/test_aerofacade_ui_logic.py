@@ -183,6 +183,39 @@ def test_a_new_build_ticks_everything_again():
     assert st.picture_choice is None
 
 
+def test_only_the_ticked_walls_are_built_and_reach_the_next_steps():
+    st = S.WizardState()
+    st.set_facades(make_facades(4))
+    assert st.build_letters() == ["A", "B", "C", "D"] and st.build_choice is None          # all ticked at first
+    st.set_build_choice({"A", "C"})
+    assert st.build_letters() == ["A", "C"]
+    st.dem_state = {"A": (True, ""), "B": (True, ""), "C": (False, "no"), "D": (True, "")}
+    assert st.dem_ok_letters() == ["A", "B", "D"]                                           # B and D are built, but not ticked
+    assert st.build_ok_letters() == ["A"] and st.can_next(S.BUILD)
+    st.ortho_state = {"A": (True, ""), "B": (True, ""), "D": (True, "")}
+    assert st.ortho_ok_letters() == ["A"] and st.chosen_letters() == ["A"]
+    st.dem_state = {"B": (True, ""), "D": (True, "")}
+    assert st.build_ok_letters() == [] and not st.can_next(S.BUILD)                         # only unticked walls are built: nothing to go on with
+    st.set_build_choice({"A", "B", "C", "D", "E"})
+    assert st.build_choice is None                                                          # everything ticked is no choice at all
+    st.set_build_choice(set())
+    assert st.build_letters() == []
+
+
+def test_the_ticks_of_screen_5_follow_the_kept_walls_and_are_reset_by_a_new_build():
+    st = S.WizardState()
+    st.set_facades(make_facades(3))
+    st.set_build_choice({"B"})
+    st.facades[1].removed = True
+    assert st.build_letters() == []                                                         # the ticked wall was removed: nothing is ticked any more
+    st.facades[1].removed = False
+    st.apply_margin(["A", "B", "C"], "left", 2.0)
+    assert st.build_choice is None and st.build_letters() == ["A", "B", "C"]
+    st.set_build_choice({"A"})
+    st.set_facades(make_facades(3))
+    assert st.build_choice is None
+
+
 def test_preferences_round_trip(tmp_path, monkeypatch):
     from aerotools import config
     monkeypatch.setattr(config, "settings_dir", lambda: str(tmp_path))

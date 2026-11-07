@@ -35,6 +35,30 @@ def stylesheet():
     #aeroPanel QListWidget#facadeThumbs::item:selected, #aeroPanel QListWidget#facadeThumbs::item:selected:!active {{
         background: {ground_3};
     }}
+    #aeroPanel QFrame#facadeThumbPane {{
+        background: {pane};
+        border: 1px solid {border_soft};
+        border-radius: 8px;
+    }}
+    #aeroPanel QFrame#facadeThumbCard {{
+        background: {ground_2};
+        border: 1px solid {border_faint};
+        border-radius: 8px;
+    }}
+    #aeroPanel QFrame#facadeThumbCard[hover="true"] {{
+        background: {ground_3};
+        border: 1px solid {border_soft};
+    }}
+    #aeroPanel QFrame#facadeThumbCard[on="true"] {{
+        border: 1px solid {green};
+    }}
+    #aeroPanel QFrame#facadeThumbCard[on="false"] QLabel {{
+        color: {fg_3};
+    }}
+    #aeroPanel QLabel#facadeThumbTitle {{
+        color: {fg_0};
+        font-weight: 700;
+    }}
     #aeroPanel QLabel#facadeStepTodo, #aeroPanel QLabel#facadeStepDone, #aeroPanel QLabel#facadeStepCurrent {{
         border-radius: 15px;
         font-family: "{title}";
