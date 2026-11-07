@@ -26,6 +26,15 @@ never touches the Metashape GUI: one window, a wizard in 7 screens (since 2026-1
   Click selects, Shift-click and Ctrl-click multi-select, **right click > Remove** (and the Delete key) removes the selected ones from the
   list (and from the picture), **Undo** brings them back. Removed facades are not processed.
 - A facade can be selected in the list to zoom on it on the picture.
+- **Handles (since 2026-11-07).** The walls are drawn thin and semi-transparent (the selected one a little stronger) so the tie point density picture under them stays
+  readable, with a round **handle at each end** of every wall. Dragging a handle moves that end ALONG the wall's own line only (the line, the orientation and the height never
+  change): the wall is lengthened or shortened, and its length shows live next to it while the mouse is down. Minimum length 1 m (`geometry.MIN_WALL_LENGTH`), maximum 500 m, and the
+  end stays inside the picture; Esc during a drag puts the wall back. Handles keep the same size on the screen at any zoom, are grabbed within 15 px (`HANDLE_HIT_PX`), turn white
+  with a resize cursor when hovered, and come before the left-button pan (right / middle drag, wheel zoom and everything else are unchanged). A click on a handle selects its wall.
+- The edited extent is the wall's extent from then on (`Facade.set_extent`; the detected one is kept in `Facade.detected`, `Facade.edited`): the list shows the new length
+  ("edited"), `state.set_wall_extent` calls `invalidate_builds` (surfaces and pictures built so far are out of date), margins, picture size, bounding regions, the work chunk
+  signature (`msfacade.signature`: origin and length), the georeferencing text and the drawing sheet all read the facade, so they follow. **Reset this wall** (list button) brings the
+  detected extent back; running the detection again replaces the walls, and so the edits. Pure geometry: `geometry.axis_position` and `geometry.moved_end`.
 
 ### Screen 3 — Margins (the area around each plane)
 For the selected facades (or all, with an **Apply to all** switch): how much to take around the detected plane, in metres:

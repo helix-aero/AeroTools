@@ -104,6 +104,48 @@ def filter_points(points_xyz, polygon):
 # Plane frame
 # --------------------------------------------------------------------------
 
+MIN_WALL_LENGTH = 1.0         # metres: by hand, a wall cannot be made shorter than this
+MAX_WALL_LENGTH = 500.0       # ... nor longer than this
+
+
+def axis_position(facade, x, y):
+    """Position (metres, along the wall's own direction, from its start) of the point (x, y) of the plan once projected on the wall's line."""
+    return (x - facade.x0) * facade.ux + (y - facade.y0) * facade.uy
+
+
+def axis_range_in_box(facade, box):
+    """(smin, smax): the positions along the wall's line whose points are inside `box` = (left, bottom, right, top). (0, 0) when the line misses it."""
+    low, high = -math.inf, math.inf
+    left, bottom, right, top = box
+    for start, step, lo, hi in ((facade.x0, facade.ux, left, right), (facade.y0, facade.uy, bottom, top)):
+        if abs(step) < 1e-12:
+            if start < lo or start > hi:
+                return 0.0, 0.0
+            continue
+        a, b = (lo - start) / step, (hi - start) / step
+        low, high = max(low, min(a, b)), min(high, max(a, b))
+    return (low, high) if low <= high else (0.0, 0.0)
+
+
+def moved_end(facade, which, x, y, min_length=MIN_WALL_LENGTH, max_length=MAX_WALL_LENGTH, box=None):
+    """The extent (x0, y0, z0, length) of `facade` once its end `which` ("start" = the left end seen from the front, "end" = the right
+    end) is dragged to the plan point (x, y).
+
+    Only the projection of the point on the wall's own line counts: the line, the orientation and the height never change, the wall is
+    lengthened or shortened. The length stays within [min_length, max_length], and the moved end stays inside `box` (the picture) when given."""
+    s = axis_position(facade, x, y)
+    low, high = (-math.inf, math.inf) if box is None else axis_range_in_box(facade, box)
+    length = facade.length
+    if which == "start":
+        s = max(low, length - max_length, min(s, length - min_length))
+        s = min(s, length - min_length)
+        return (facade.x0 + s * facade.ux, facade.y0 + s * facade.uy, facade.z0 + s * facade.uz, length - s)
+    if which != "end":
+        raise ValueError("an end is 'start' or 'end'")
+    new = max(min_length, min(s, max_length, high))
+    return (facade.x0, facade.y0, facade.z0, new)
+
+
 def plane_axes(facade):
     """(u, v, n) of the facade as three numpy unit vectors."""
     return np.array(facade.u, float), np.array(facade.v, float), np.array(facade.n, float)

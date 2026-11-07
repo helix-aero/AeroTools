@@ -547,6 +547,252 @@ def _():
         one, two, toggled, shift, cleared, removed, back)
 
 
+def press_move_release(widget, points, button=QtCore.Qt.LeftButton, release=True):
+    """A drag through `points` (viewport positions): press on the first, move through the others, release on the last."""
+    mouse(widget, QtCore.QEvent.MouseButtonPress, points[0], button)
+    for point in points[1:]:
+        mouse(widget, QtCore.QEvent.MouseMove, point, QtCore.Qt.NoButton, buttons=button)
+    if release:
+        mouse(widget, QtCore.QEvent.MouseButtonRelease, points[-1], button)
+
+
+def along_wall(canvas, letter, end, pixels, sideways=0.0):
+    """Viewport point `pixels` further along the wall's line than its `end` handle (negative: back toward the wall), `sideways` pixels off it."""
+    a = QtCore.QPointF(canvas.handle_view_point(letter, "start"))
+    b = QtCore.QPointF(canvas.handle_view_point(letter, "end"))
+    dx, dy = b.x() - a.x(), b.y() - a.y()
+    norm = (dx * dx + dy * dy) ** 0.5
+    ux, uy = dx / norm, dy / norm
+    base = b if end == "end" else a
+    sign = 1.0 if end == "end" else -1.0
+    return QtCore.QPointF(base.x() + sign * ux * pixels - uy * sideways, base.y() + sign * uy * pixels + ux * sideways)
+
+
+@case("facades: walls are drawn thin and semi-transparent with a round handle at each end, the selected wall a little stronger")
+def _():
+    window, _backend = new_wizard()
+    show(window)
+    prepare_to(window, S.FACADES)
+    canvas = window.canvas
+    letters = facade_letters(window)
+    on = canvas.handles_enabled() and all(canvas._marks[l].handles["start"].isVisible() and canvas._marks[l].handles["end"].isVisible() for l in letters)
+    mark = canvas._marks[letters[0]]
+    normal = mark.line.pen()
+    window.screens[S.FACADES].list.select([letters[0]])
+    canvas.set_selected([letters[0]])
+    strong = canvas._marks[letters[0]].line.pen()
+    thin = normal.widthF() <= 3.0 and normal.color().alpha() < 200 and strong.color().alpha() > normal.color().alpha() and strong.widthF() > normal.widthF()
+    # the size of a handle on the screen does not depend on the zoom
+    handle = mark.handles["end"]
+
+    def device_width():
+        return handle.deviceTransform(canvas.viewportTransform()).mapRect(handle.boundingRect()).width()
+    before = device_width()
+    canvas.zoom_by(3.0)
+    after = device_width()
+    canvas.fit_all()
+    constant = abs(before - after) < 0.01 and before >= 12.0
+    window.close()
+    return on and thin and constant, "handles={} thin={} (alpha {} -> {}, width {} -> {}) constant={} ({} -> {})".format(
+        on, thin, normal.color().alpha(), strong.color().alpha(), normal.widthF(), strong.widthF(), constant, before, after)
+
+
+@case("facades: hovering a handle highlights it with a resize cursor; a click on a handle selects its wall; the other mouse actions still work")
+def _():
+    window, _backend = new_wizard()
+    show(window)
+    prepare_to(window, S.FACADES)
+    canvas, screen = window.canvas, window.screens[S.FACADES]
+    letters = facade_letters(window)
+    letter = letters[0]
+    viewport = canvas.viewport()
+    spot = QtCore.QPointF(canvas.handle_view_point(letter, "end"))
+    mouse(viewport, QtCore.QEvent.MouseMove, spot + QtCore.QPointF(2, 1), QtCore.Qt.NoButton, buttons=QtCore.Qt.NoButton)
+    grabbed = canvas._hot                                                  # at a corner another wall's handle may sit just as close
+    hot = grabbed is not None and canvas._marks[grabbed[0]].handles[grabbed[1]].hot
+    shape = viewport.cursor().shape()
+    resize = shape in (QtCore.Qt.SizeHorCursor, QtCore.Qt.SizeVerCursor, QtCore.Qt.SizeBDiagCursor, QtCore.Qt.SizeFDiagCursor)
+    far = QtCore.QPointF(canvas.facade_view_point(letter))
+    mouse(viewport, QtCore.QEvent.MouseMove, far, QtCore.Qt.NoButton, buttons=QtCore.Qt.NoButton)
+    left = canvas._hot is None and not canvas._marks[letter].handles["end"].hot
+    owner = canvas.handle_at_view(spot)[0]
+    click(viewport, spot)
+    selected = screen.list.selected_letters() == [owner] and canvas.selected() == [owner]
+    unchanged = not any(f.edited for f in window.state.facades)
+    # wheel zoom and right-button pan are not taken by the handles
+    scale = canvas.scale_now()
+    event = QtGui.QWheelEvent(QtCore.QPointF(100, 100), QtCore.QPointF(100, 100), QtCore.QPoint(0, 0), QtCore.QPoint(0, 120), QtCore.Qt.NoButton,
+                              QtCore.Qt.NoModifier, QtCore.Qt.NoScrollPhase, False)
+    APP.sendEvent(viewport, event)
+    zoomed = canvas.scale_now() > scale
+    bar = canvas.horizontalScrollBar()
+    value = bar.value()
+    drag(viewport, spot, spot + QtCore.QPointF(-40, 0), button=QtCore.Qt.RightButton)         # right drag from ON a handle: pan
+    panned = bar.value() != value
+    value = bar.value()
+    drag(viewport, QtCore.QPointF(8, 8), QtCore.QPointF(60, 8), button=QtCore.Qt.LeftButton)  # left drag on the ground: pan, as before
+    panned_left = bar.value() != value
+    still = not any(f.edited for f in window.state.facades)
+    window.close()
+    return hot and resize and left and selected and unchanged and zoomed and panned and panned_left and still, \
+        "hot={} resize={} ({}) left={} selected={} unchanged={} zoomed={} panned={} panned_left={} still={}".format(
+            hot, resize, shape, left, selected, unchanged, zoomed, panned, panned_left, still)
+
+
+@case("facades: dragging the right end lengthens or shortens the wall along its own line, the length shows live, the builds are invalidated")
+def _():
+    window, _backend = new_wizard()
+    show(window)
+    prepare_to(window, S.FACADES)
+    canvas, screen, st = window.canvas, window.screens[S.FACADES], window.state
+    letter = facade_letters(window)[0]
+    facade = st.facade(letter)
+    x0, y0, line_before, length0 = facade.x0, facade.y0, (facade.ux, facade.uy), facade.length
+    st.dem_state, st.ortho_state, st.ortho_key = {letter: (True, "")}, {letter: (True, "")}, st.signature()
+    viewport = canvas.viewport()
+    metres_per_px = canvas.frame().metres_per_pixel / canvas.scale_now()
+    grab = QtCore.QPointF(canvas.handle_view_point(letter, "end"))
+    target = along_wall(canvas, letter, "end", 60, sideways=25)                 # 60 px further along the line and 25 px off it
+    press_move_release(viewport, [grab, grab + QtCore.QPointF(3, 3), (grab + target) / 2.0, target], release=False)
+    live = canvas._length_label.isVisible() and canvas._length_label.text.endswith(" m")
+    text = canvas._length_label.text
+    mouse(viewport, QtCore.QEvent.MouseButtonRelease, target, QtCore.Qt.LeftButton)
+    gone = not canvas._length_label.isVisible()
+    grew = abs((facade.length - length0) - 60 * metres_per_px) < 0.6 * metres_per_px + 0.05
+    same_line = (facade.x0, facade.y0) == (x0, y0) and (facade.ux, facade.uy) == line_before
+    invalid = st.dem_state == {} and st.ortho_state == {} and st.ortho_key is None
+    shown = "%.1f m" % facade.length in text.replace(",", ".") or abs(float(text.split()[0].replace(",", ".")) - facade.length) < 0.06
+    in_list = ("%.1f" % facade.length) in screen.list.list.item(0).toolTip().replace(",", ".")
+    reselected = screen.list.selected_letters() == [letter] and canvas.selected() == [letter]
+    edited = facade.edited and screen.list.reset_button.isEnabled()
+    window.close()
+    return live and gone and grew and same_line and invalid and shown and in_list and reselected and edited, \
+        "live={} gone={} grew={} ({} -> {}, px {}) same_line={} invalid={} shown={} ({}) in_list={} reselected={} edited={}".format(
+            live, gone, grew, length0, facade.length, metres_per_px, same_line, invalid, shown, text, in_list, reselected, edited)
+
+
+@case("facades: dragging the left end moves the start along the line and keeps the right end; a wall never gets shorter than one metre")
+def _():
+    window, _backend = new_wizard()
+    show(window)
+    prepare_to(window, S.FACADES)
+    canvas, st = window.canvas, window.state
+    letter = facade_letters(window)[0]
+    facade = st.facade(letter)
+    end_before = facade.polyline_xy()[1]
+    viewport = canvas.viewport()
+    grab = QtCore.QPointF(canvas.handle_view_point(letter, "start"))
+    target = along_wall(canvas, letter, "start", -50, sideways=-15)             # 50 px toward the other end
+    press_move_release(viewport, [grab, target])
+    shortened = facade.length < facade.detected[3] - 1.0 and facade.edited
+    kept = abs(facade.polyline_xy()[1][0] - end_before[0]) < 1e-6 and abs(facade.polyline_xy()[1][1] - end_before[1]) < 1e-6
+    # pull the same handle far past the other end
+    grab = QtCore.QPointF(canvas.handle_view_point(letter, "start"))
+    far = along_wall(canvas, letter, "start", -100000)
+    press_move_release(viewport, [grab, far])
+    minimum = abs(facade.length - 1.0) < 1e-9 and abs(facade.polyline_xy()[1][0] - end_before[0]) < 1e-6
+    # lengthen it again through the other end, then Esc during a drag changes nothing
+    length = facade.length
+    grab = QtCore.QPointF(canvas.handle_view_point(letter, "end"))
+    press_move_release(viewport, [grab, along_wall(canvas, letter, "end", 80)], release=False)
+    key(canvas, QtCore.Qt.Key_Escape)
+    mouse(viewport, QtCore.QEvent.MouseButtonRelease, along_wall(canvas, letter, "end", 80), QtCore.Qt.LeftButton)
+    escaped = abs(facade.length - length) < 1e-9 and not canvas.is_dragging_handle()
+    window.close()
+    return shortened and kept and minimum and escaped, "shortened={} kept={} minimum={} ({}) escaped={}".format(shortened, kept, minimum, facade.length, escaped)
+
+
+@case("facades: Reset this wall brings the detected extent back; a new detection replaces the walls; the edited length flows to margins and the build")
+def _():
+    window, backend = new_wizard()
+    show(window)
+    prepare_to(window, S.FACADES)
+    canvas, screen, st = window.canvas, window.screens[S.FACADES], window.state
+    letter = facade_letters(window)[0]
+    facade = st.facade(letter)
+    length0 = facade.length
+    viewport = canvas.viewport()
+    grab = QtCore.QPointF(canvas.handle_view_point(letter, "end"))
+    press_move_release(viewport, [grab, along_wall(canvas, letter, "end", -60)])
+    shorter = facade.length < length0 - 1.0
+    st.dem_state = {letter: (True, "")}
+    screen.list.select([letter])
+    screen.list._on_selection()
+    enabled = screen.list.reset_button.isEnabled()
+    screen.list.reset_button.click()
+    back = abs(facade.length - length0) < 1e-9 and not facade.edited and st.dem_state == {}
+    drawn = abs(canvas._marks[letter].facade.length - length0) < 1e-9
+    off = not screen.list.reset_button.isEnabled()
+    # edit again, go to the margins: the picture size there follows the edited length
+    press_move_release(viewport, [QtCore.QPointF(canvas.handle_view_point(letter, "end")), along_wall(canvas, letter, "end", -60)])
+    edited_length = facade.length
+    window.next()
+    margins = window.screens[S.MARGINS]
+    flows = abs(window.state.facade(letter).length - edited_length) < 1e-9
+    window.back()
+    # a new detection replaces the walls (and forgets the edits)
+    window.state.set_facades([f for f in window.state.facades])
+    window.close()
+    return shorter and enabled and back and drawn and off and flows, "shorter={} enabled={} back={} drawn={} off={} flows={}".format(
+        shorter, enabled, back, drawn, off, flows)
+
+
+@case("facades: step 2 on the tie point density picture, a wall dragged (screenshots UI05b, UI05c)")
+def _():
+    import numpy as np
+    from aerotools.tools.aerofacade import fake_backend as FB
+    window, backend = new_wizard()
+    points, (left, bottom, right, top) = np.asarray(backend.tie_points), FB.EXTENT
+    scale = 1600.0 / max(right - left, top - bottom)
+    width, height = int((right - left) * scale), int((top - bottom) * scale)
+    image = np.zeros((height, width))
+    np.add.at(image, (np.clip(((top - points[:, 1]) * scale).astype(int), 0, height - 1),
+                      np.clip(((points[:, 0] - left) * scale).astype(int), 0, width - 1)), 1.0)
+    image = np.log1p(image)
+    grey = (255.0 * image / max(image.max(), 1e-9)).astype(np.uint8)          # what the Metashape adapter draws for step 1
+    backend.ortho_preview = lambda max_px=1600: (np.dstack([grey, grey, grey]), (left, bottom, right, top))
+    show(window)
+    prepare_to(window, S.FACADES)
+    canvas = window.canvas
+    letters = facade_letters(window)
+    pump(150)
+    shot(window, "UI05b_facades_density_handles")
+    letter = letters[0]
+    window.screens[S.FACADES].list.select([letter])
+    canvas.set_selected([letter])
+    grab = QtCore.QPointF(canvas.handle_view_point(letter, "end"))
+    press_move_release(canvas.viewport(), [grab, along_wall(canvas, letter, "end", -45, sideways=10)], release=False)
+    pump(100)
+    shot(window, "UI05c_facades_density_drag")
+    live = canvas._length_label.isVisible()
+    mouse(canvas.viewport(), QtCore.QEvent.MouseButtonRelease, along_wall(canvas, letter, "end", -45, sideways=10), QtCore.Qt.LeftButton)
+    pump(100)
+    shot(window, "UI05d_facades_density_edited")
+    ok = live and window.state.facade(letter).edited
+    window.close()
+    return ok, "live={}".format(live)
+
+
+@case("facades: Delete, Undo and the other keys still work with the handles on")
+def _():
+    window, _backend = new_wizard()
+    show(window)
+    prepare_to(window, S.FACADES)
+    canvas = window.canvas
+    letters = facade_letters(window)
+    click(canvas.viewport(), QtCore.QPointF(canvas.facade_view_point(letters[1])))
+    key(canvas, QtCore.Qt.Key_Delete)
+    gone = letters[1] not in canvas.letters()
+    key(canvas, QtCore.Qt.Key_Z, "z", QtCore.Qt.ControlModifier)
+    back = letters[1] in canvas.letters() and canvas._marks[letters[1]].handles["end"].isVisible()
+    window.next()
+    off = not canvas.handles_enabled()
+    window.back()
+    on = canvas.handles_enabled()
+    window.close()
+    return gone and back and off and on, "gone={} back={} off_on_next={} on_again={}".format(gone, back, off, on)
+
+
 @case("facades: Remove button and Undo; removed walls are not processed; Next needs at least one wall")
 def _():
     window, backend = new_wizard()

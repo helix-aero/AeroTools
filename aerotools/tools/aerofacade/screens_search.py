@@ -236,12 +236,14 @@ class FacadesScreen(Screen):
         canvas = wizard.canvas
         canvas.facade_clicked.connect(self._from_canvas)
         canvas.command.connect(self._command)
+        canvas.wall_resized.connect(self._wall_resized)
 
     def enter(self):
         canvas = self.wizard.canvas
         self.frame_layout.addWidget(canvas)
         canvas.show()
         canvas.set_draw_enabled(False)
+        canvas.set_handles_enabled(True)
         same = self._version == self.state.version
         self._version = self.state.version
         self.list.set_facades(self.state.facades, keep_log=same)
@@ -294,6 +296,21 @@ class FacadesScreen(Screen):
                 self.list.list.scrollToItem(item)
                 break
 
+    def _wall_resized(self, letter, x0, y0, z0, length):
+        """An end of a wall was dragged: the wall keeps its line and orientation, only its extent changes. Whatever was built is out of
+        date (surfaces, pictures), the list shows the new length, and the walls screen keeps its view."""
+        if self.wizard.current_step() != S.FACADES:
+            return
+        if not self.state.set_wall_extent(letter, x0, y0, z0, length):
+            return
+        canvas = self.wizard.canvas
+        canvas.set_facades(self.list.kept())
+        self.list.select([letter])
+        self.list.refresh()
+        self.list.select([letter])
+        canvas.set_selected([letter])
+        self._after_change()
+
     def _changed(self):
         self.state.invalidate_builds()
         canvas = self.wizard.canvas
@@ -310,4 +327,5 @@ class FacadesScreen(Screen):
 
     def leave(self, forward):
         self.wizard.canvas.set_selected([])
+        self.wizard.canvas.set_handles_enabled(False)
         return True

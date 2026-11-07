@@ -262,6 +262,11 @@ class Facade:
     removed: bool = False
     tilt: float = 0.0           # degrees the wall leans from plumb (informative, the frame itself is exact)
     rms: float = 0.0            # rms distance of the tie points to the plane (m)
+    detected: tuple = None      # (x0, y0, z0, length) as the detector found it; set only while the operator has moved an end by hand
+
+    def __post_init__(self):
+        if self.detected is not None:
+            self.detected = tuple(float(v) for v in self.detected)      # a JSON round trip gives a list
 
     # ---- frame --------------------------------------------------------------------------------------------------
     @property
@@ -307,6 +312,29 @@ class Facade:
         """The wall trace in plan view: [(x, y), (x, y)] (what the UI draws on the orthomosaic)."""
         e = self.end
         return [(self.x0, self.y0), (e[0], e[1])]
+
+    # ---- hand-edited extent -------------------------------------------------------------------------------------
+    def set_extent(self, x0, y0, z0, length):
+        """Move the ends of the wall along its own line: new bottom-left corner and length. The line, the orientation and the height stay.
+        The detected extent is remembered the first time (`reset_extent` brings it back); an extent equal to the detected one forgets it."""
+        if self.detected is None:
+            self.detected = (self.x0, self.y0, self.z0, self.length)
+        self.x0, self.y0, self.z0, self.length = float(x0), float(y0), float(z0), float(length)
+        if all(abs(a - b) < 1e-6 for a, b in zip(self.detected, (self.x0, self.y0, self.z0, self.length))):
+            self.detected = None
+
+    @property
+    def edited(self):
+        """True while the extent differs from the detected one."""
+        return self.detected is not None
+
+    def reset_extent(self):
+        """Back to the detected extent. Returns True when something changed."""
+        if self.detected is None:
+            return False
+        self.x0, self.y0, self.z0, self.length = self.detected
+        self.detected = None
+        return True
 
     @property
     def area(self):

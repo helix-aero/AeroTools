@@ -3,7 +3,8 @@
 This module holds the picture and the lists:
 
 * `OrthoCanvas`      the orthomosaic picture with wheel zoom, middle / right drag pan, the polygon tool of the search area
-                     and the overlay of the facades (colour, letter, hover, selection);
+                     and the overlay of the facades (thin semi-transparent lines, letter, hover, selection, a round handle at
+                     each end to lengthen or shorten a wall);
 * `FacadeList`       the detected facades as rows (swatch, letter, length, height, facing), multi-select, Remove, Undo;
 * `BatchProgress`    waiting / running / done / failed per facade, the "please wait" banner, Cancel and Retry;
 * `OrthoThumbnails`  the built orthophotos with a check box each (export screen).
@@ -18,6 +19,7 @@ import math
 from ... import theme, ui
 from ...qt import QtCore, QtGui, QtWidgets, modifiers
 from ..aeroexports import controls
+from . import geometry
 from .common import POLY_KEYS, STATE_KEYS, dir_key, metres, qt_shortcut, readable_on, tr
 
 MIN_AREA = 1e-9
@@ -25,6 +27,8 @@ CLOSE_PX = 14                                         # a click this close to th
 HIT_PX = 11                                           # a click this close to a facade line selects it
 DRAG_PX = 4                                           # a press that moves less than this is a click, not a drag
 ZOOM_STEP = 1.25
+HANDLE_R = 6                                          # drawn radius of a wall's end handle, in screen pixels (whatever the zoom)
+HANDLE_HIT_PX = 15                                    # a press this close to a handle grabs it (bigger than the drawing: easy at low zoom)
 STATE_WAITING, STATE_RUNNING, STATE_DONE, STATE_FAILED, STATE_CANCELLED = "waiting", "running", "done", "failed", "cancelled"
 
 
@@ -65,6 +69,32 @@ def segment_distance(point, a, b):
         return math.hypot(px - ax, py - ay)
     t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / length2))
     return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+
+def handle_at(handles, point, radius=HANDLE_HIT_PX, prefer=()):
+    """The handle nearest to `point` within `radius`. `handles` = [(letter, end, (x, y))] in the same units as `point`; `prefer` = letters
+    that win a near tie (the selected walls). Returns (letter, end) or None."""
+    best, best_key = None, None
+    for letter, end, (x, y) in handles:
+        distance = math.hypot(point[0] - x, point[1] - y)
+        if distance > radius:
+            continue
+        key = (round(distance / 2.0), 0 if letter in prefer else 1, distance)
+        if best_key is None or key < best_key:
+            best, best_key = (letter, end), key
+    return best
+
+
+def resize_cursor(dx, dy):
+    """Name of the Qt resize cursor that fits a wall drawn along (dx, dy) on the screen: "horizontal", "vertical", "diag_up" (/) or "diag_down" (\\)."""
+    angle = math.degrees(math.atan2(-dy, dx)) % 180.0            # screen y points down: 0 = right, 90 = up
+    if angle < 22.5 or angle >= 157.5:
+        return "horizontal"
+    if angle < 67.5:
+        return "diag_up"
+    if angle < 112.5:
+        return "vertical"
+    return "diag_down"
 
 
 def _orient(a, b, c):
@@ -190,37 +220,120 @@ class _Badge(QtWidgets.QGraphicsItem):
                          self.letter)
 
 
+class _Handle(QtWidgets.QGraphicsItem):
+    """The round grip at one end of a wall. It ignores the view's zoom: always the same size on screen."""
+
+    def __init__(self, colour):
+        super(_Handle, self).__init__()
+        self.colour = QtGui.QColor(colour)
+        self.hot = False
+        self.strong = False
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, True)
+
+    def boundingRect(self):
+        r = HANDLE_R + 5
+        return QtCore.QRectF(-r, -r, 2 * r, 2 * r)
+
+    def paint(self, painter, _option, _widget=None):
+        painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        radius = HANDLE_R + (2 if self.hot else 0)
+        fill = QtGui.QColor(255, 255, 255, 245) if self.hot else QtGui.QColor(self.colour.red(), self.colour.green(), self.colour.blue(),
+                                                                              235 if self.strong else 190)
+        painter.setPen(QtGui.QPen(QtGui.QColor(0, 0, 0, 200) if self.hot else QtGui.QColor(255, 255, 255, 235), 2))
+        painter.setBrush(fill)
+        painter.drawEllipse(QtCore.QPointF(0, 0), radius, radius)
+
+
+class _LengthLabel(QtWidgets.QGraphicsItem):
+    """The length of a wall, written next to it while one of its ends is dragged (always the same size on screen)."""
+
+    def __init__(self):
+        super(_LengthLabel, self).__init__()
+        self.text = ""
+        self.setFlag(QtWidgets.QGraphicsItem.ItemIgnoresTransformations, True)
+        self.setZValue(20)
+        self.setVisible(False)
+
+    def set_text(self, text):
+        self.prepareGeometryChange()
+        self.text = text
+        self.update()
+
+    def _box(self):
+        return QtCore.QRectF(-44, -13, 88, 26)
+
+    def boundingRect(self):
+        return self._box().adjusted(-2, -2, 2, 2)
+
+    def paint(self, painter, _option, _widget=None):
+        painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
+        font = QtGui.QFont(painter.font())
+        font.setBold(True)
+        painter.setFont(font)
+        width = max(60, painter.fontMetrics().horizontalAdvance(self.text) + 20)
+        box = QtCore.QRectF(-width / 2.0, -13, width, 26)
+        painter.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 70), 1))
+        painter.setBrush(QtGui.QColor(20, 20, 20, 225))
+        painter.drawRoundedRect(box, 8, 8)
+        painter.setPen(QtGui.QColor(theme.FG_0))
+        painter.drawText(box, QtCore.Qt.AlignCenter, self.text)
+
+
 class _FacadeMark(object):
-    """The three scene items of one facade: dark halo, coloured line, letter badge."""
+    """The scene items of one facade: a thin, semi-transparent line on a faint halo, the letter badge and a round handle at each end.
+    The selected wall is drawn a little stronger. `set_ends` moves the whole mark (while an end is dragged)."""
 
     def __init__(self, scene, facade, frame):
         self.letter = facade.letter
         self.colour = facade.colour
+        self.facade = facade
         (x0, y0), (x1, y1) = facade.polyline_xy()
         self.a = QtCore.QPointF(*frame.to_pixel(x0, y0))
         self.b = QtCore.QPointF(*frame.to_pixel(x1, y1))
         self.halo = QtWidgets.QGraphicsLineItem(QtCore.QLineF(self.a, self.b))
         self.line = QtWidgets.QGraphicsLineItem(QtCore.QLineF(self.a, self.b))
         self.badge = _Badge(facade.letter, facade.colour)
-        mid = QtCore.QPointF((self.a.x() + self.b.x()) / 2.0, (self.a.y() + self.b.y()) / 2.0)
-        self.badge.setPos(mid)
+        self.handles = {"start": _Handle(facade.colour), "end": _Handle(facade.colour)}
         # the badge stands on the side the wall faces (its normal), so the operator sees which side is the front
         nx, ny = getattr(facade, "nx", 0.0), getattr(facade, "ny", 0.0)
         norm = math.hypot(nx, ny)
+        self.normal = (nx / norm, -ny / norm) if norm > 1e-9 else (0.0, 0.0)      # in picture pixels (y down)
         if norm > 1e-9:
-            self.badge.offset = QtCore.QPointF(nx / norm * 22.0, -ny / norm * 22.0)
-        for item, z in ((self.halo, 10), (self.line, 11), (self.badge, 12)):
+            self.badge.offset = QtCore.QPointF(self.normal[0] * 22.0, self.normal[1] * 22.0)
+        self.set_ends(self.a, self.b)
+        for item, z in ((self.halo, 10), (self.line, 11), (self.badge, 12), (self.handles["start"], 13), (self.handles["end"], 13)):
             item.setZValue(z)
             scene.addItem(item)
         self.style(False, False)
 
+    def set_ends(self, a, b):
+        self.a, self.b = QtCore.QPointF(a), QtCore.QPointF(b)
+        self.halo.setLine(QtCore.QLineF(self.a, self.b))
+        self.line.setLine(QtCore.QLineF(self.a, self.b))
+        self.badge.setPos(QtCore.QPointF((self.a.x() + self.b.x()) / 2.0, (self.a.y() + self.b.y()) / 2.0))
+        self.handles["start"].setPos(self.a)
+        self.handles["end"].setPos(self.b)
+
+    def set_handles_visible(self, visible):
+        for handle in self.handles.values():
+            handle.setVisible(bool(visible))
+
+    def set_hot_handle(self, which):
+        for end, handle in self.handles.items():
+            hot = end == which
+            if handle.hot != hot:
+                handle.hot = hot
+                handle.update()
+
     def remove(self, scene):
-        for item in (self.halo, self.line, self.badge):
+        for item in (self.halo, self.line, self.badge, self.handles["start"], self.handles["end"]):
             scene.removeItem(item)
 
     def style(self, selected, hover):
-        halo = QtGui.QPen(QtGui.QColor(255, 255, 255, 235) if selected else QtGui.QColor(0, 0, 0, 150), 11 if selected else 8)
-        line = QtGui.QPen(QtGui.QColor(self.colour), 6 if (selected or hover) else 4)
+        halo = QtGui.QPen(QtGui.QColor(255, 255, 255, 150) if selected else QtGui.QColor(0, 0, 0, 70), 6 if selected else 4)
+        colour = QtGui.QColor(self.colour)
+        colour.setAlpha(235 if selected else (210 if hover else 150))
+        line = QtGui.QPen(colour, 3.5 if (selected or hover) else 2.5)
         for pen in (halo, line):
             pen.setCosmetic(True)
             pen.setCapStyle(QtCore.Qt.RoundCap)
@@ -228,6 +341,9 @@ class _FacadeMark(object):
         self.line.setPen(line)
         self.badge.hot = bool(selected or hover)
         self.badge.update()
+        for handle in self.handles.values():
+            handle.strong = bool(selected or hover)
+            handle.update()
 
 
 class OrthoCanvas(QtWidgets.QGraphicsView):
@@ -247,6 +363,7 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
     message = QtCore.Signal(str)
     corners_changed = QtCore.Signal(int)
     command = QtCore.Signal(str)                       # "delete" or "undo": keys pressed on the picture when no outline is drawn
+    wall_resized = QtCore.Signal(str, float, float, float, float)     # letter, x0, y0, z0, length: an end of a wall was dragged
 
     def __init__(self, parent=None):
         super(OrthoCanvas, self).__init__(parent)
@@ -282,6 +399,11 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
         self._selected = set()
         self._hover = ""
         self._press = None                             # (view pos, button, moved) while a button is down
+        self._handles_on = False                       # handles at the ends of the walls (the walls screen turns them on)
+        self._drag = None                              # the end being dragged: {"letter", "end", "start" (view pos), "moved", "extent"}
+        self._hot = None                               # (letter, end) of the handle under the mouse
+        self._length_label = _LengthLabel()
+        self._scene.addItem(self._length_label)
         self._panning = False
         self._skip_release = False
         self._build_zoom_buttons()
@@ -588,9 +710,12 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
         for mark in self._marks.values():
             mark.remove(self._scene)
         self._marks = {}
+        self._drag, self._hot = None, None
+        self._length_label.setVisible(False)
         if self._frame is not None:
             for facade in facades:
                 self._marks[facade.letter] = _FacadeMark(self._scene, facade, self._frame)
+                self._marks[facade.letter].set_handles_visible(self._handles_on)
         self._selected = set(letter for letter in self._selected if letter in self._marks)
         if self._hover not in self._marks:
             self._hover = ""
@@ -644,17 +769,127 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
     def scene_to_view(self, px, py):
         return self.mapFromScene(QtCore.QPointF(px, py))
 
+    # -- the handles at the ends of the walls -----------------------------------------------------
+
+    def set_handles_enabled(self, enabled):
+        """Round handles at both ends of every wall: dragging one lengthens or shortens that wall along its own line."""
+        self._handles_on = bool(enabled)
+        for mark in self._marks.values():
+            mark.set_handles_visible(self._handles_on)
+        if not self._handles_on:
+            self._drag, self._hot = None, None
+            self._length_label.setVisible(False)
+        self.viewport().update()
+
+    def handles_enabled(self):
+        return self._handles_on
+
+    def handle_view_point(self, letter, end):
+        """Viewport position (QPoint) of the handle at the "start" or "end" of a wall: for tests and hints."""
+        mark = self._marks.get(letter)
+        if mark is None:
+            return None
+        return self.mapFromScene(mark.a if end == "start" else mark.b)
+
+    def handle_at_view(self, view_pos):
+        """(letter, end) of the handle under the viewport point `view_pos`, or None. All the walls have handles; a selected wall wins a tie."""
+        if not self._handles_on or self.is_drawing():
+            return None
+        points = []
+        for letter, mark in self._marks.items():
+            for end, scene_point in (("start", mark.a), ("end", mark.b)):
+                view = self._to_view(scene_point)
+                points.append((letter, end, (view.x(), view.y())))
+        return handle_at(points, (view_pos.x(), view_pos.y()), prefer=self._selected)
+
+    def is_dragging_handle(self):
+        return self._drag is not None
+
+    def _set_hot(self, hot):
+        if hot == self._hot:
+            return
+        if self._hot is not None and self._hot[0] in self._marks:
+            self._marks[self._hot[0]].set_hot_handle(None)
+        self._hot = hot
+        if hot is not None and hot[0] in self._marks:
+            self._marks[hot[0]].set_hot_handle(hot[1])
+        self.viewport().update()
+
+    def _resize_cursor(self, letter):
+        """The resize cursor of a wall's direction as it shows on the screen."""
+        mark = self._marks.get(letter)
+        a, b = self._to_view(mark.a), self._to_view(mark.b)
+        shape = {"horizontal": QtCore.Qt.SizeHorCursor, "vertical": QtCore.Qt.SizeVerCursor, "diag_up": QtCore.Qt.SizeBDiagCursor,
+                 "diag_down": QtCore.Qt.SizeFDiagCursor}[resize_cursor(b.x() - a.x(), b.y() - a.y())]
+        return QtGui.QCursor(shape)
+
+    def _drag_to(self, view_pos):
+        """Move the dragged end to the mouse (only its position along the wall's line counts) and show the new length."""
+        drag = self._drag
+        mark = self._marks.get(drag["letter"])
+        if mark is None or self._frame is None:
+            return
+        scene_point = self.mapToScene(QtCore.QPoint(int(round(view_pos.x())), int(round(view_pos.y()))))
+        wx, wy = self._frame.to_world(scene_point.x(), scene_point.y())
+        box = (self._frame.left, self._frame.bottom, self._frame.right, self._frame.top)
+        x0, y0, z0, length = geometry.moved_end(mark.facade, drag["end"], wx, wy, box=box)
+        drag["extent"] = (x0, y0, z0, length)
+        facade = mark.facade
+        a = QtCore.QPointF(*self._frame.to_pixel(x0, y0))
+        b = QtCore.QPointF(*self._frame.to_pixel(x0 + length * facade.ux, y0 + length * facade.uy))
+        mark.set_ends(a, b)
+        self._length_label.set_text(tr("facade.ui.wall_length", length=metres(length, 1)))
+        self._length_label.setVisible(True)
+        self._place_label(mark)
+        self.viewport().update()
+
+    def _place_label(self, mark):
+        """Put the length label next to the wall, on the side it does not face, 30 pixels away (a fixed distance on the screen)."""
+        middle = self._to_view(QtCore.QPointF((mark.a.x() + mark.b.x()) / 2.0, (mark.a.y() + mark.b.y()) / 2.0))
+        shifted = QtCore.QPoint(int(round(middle.x() - mark.normal[0] * 32.0)), int(round(middle.y() - mark.normal[1] * 32.0)))
+        self._length_label.setPos(self.mapToScene(shifted))
+
+    def cancel_handle_drag(self):
+        """Esc while an end is dragged: the wall goes back to where it was."""
+        if self._drag is None:
+            return False
+        letter = self._drag["letter"]
+        mark = self._marks.get(letter)
+        self._drag = None
+        self._length_label.setVisible(False)
+        if mark is not None:
+            (x0, y0), (x1, y1) = mark.facade.polyline_xy()
+            mark.set_ends(QtCore.QPointF(*self._frame.to_pixel(x0, y0)), QtCore.QPointF(*self._frame.to_pixel(x1, y1)))
+        self.viewport().setCursor(QtCore.Qt.ArrowCursor)
+        self.viewport().update()
+        return True
+
     # -- mouse and keys ---------------------------------------------------------------------------
 
     def mousePressEvent(self, event):
         self.setFocus(QtCore.Qt.MouseFocusReason)
         pos = event_pos(event)
+        if event.button() == QtCore.Qt.LeftButton and self._press is None:
+            grabbed = self.handle_at_view(pos)
+            if grabbed is not None:                                  # a handle comes before the pan of the left button
+                self._drag = {"letter": grabbed[0], "end": grabbed[1], "start": pos, "moved": False, "extent": None}
+                self._set_hot(grabbed)
+                self.viewport().setCursor(self._resize_cursor(grabbed[0]))
+                event.accept()
+                return
         self._press = (pos, event.button(), False)
         self._panning = False
         event.accept()
 
     def mouseMoveEvent(self, event):
         pos = event_pos(event)
+        if self._drag is not None:
+            drag = self._drag
+            if drag["moved"] or math.hypot(pos.x() - drag["start"].x(), pos.y() - drag["start"].y()) > DRAG_PX:
+                drag["moved"] = True
+                self._drag_to(pos)
+            event.accept()
+            return
         if self._press is not None:
             start, button, moved = self._press
             dx, dy = pos.x() - start.x(), pos.y() - start.y()
@@ -673,15 +908,31 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
             self._cursor = self.mapToScene(pos.toPoint())
             self._refresh_polygon()
         elif self._marks:
-            letter = self.letter_at(pos)
+            grabbed = self.handle_at_view(pos)
+            self._set_hot(grabbed)
+            letter = grabbed[0] if grabbed is not None else self.letter_at(pos)
             if letter != self._hover:
                 self.set_hover(letter)
                 self.facade_hovered.emit(letter)
-            self.viewport().setCursor(QtCore.Qt.PointingHandCursor if letter else
-                                      (QtCore.Qt.CrossCursor if self.is_drawing() else QtCore.Qt.ArrowCursor))
+            if grabbed is not None:
+                self.viewport().setCursor(self._resize_cursor(grabbed[0]))
+            else:
+                self.viewport().setCursor(QtCore.Qt.PointingHandCursor if letter else
+                                          (QtCore.Qt.CrossCursor if self.is_drawing() else QtCore.Qt.ArrowCursor))
         event.accept()
 
     def mouseReleaseEvent(self, event):
+        if self._drag is not None and event.button() == QtCore.Qt.LeftButton:
+            drag, self._drag = self._drag, None
+            event.accept()
+            self._length_label.setVisible(False)
+            if drag["moved"] and drag["extent"] is not None:
+                self.wall_resized.emit(drag["letter"], *[float(v) for v in drag["extent"]])
+            else:                                                    # a click on a handle is a click on its wall
+                ctrl, shift, _alt = modifiers(event)
+                self.facade_clicked.emit(drag["letter"], ctrl, shift)
+            self._set_hot(self.handle_at_view(event_pos(event)))
+            return
         press, self._press = self._press, None
         if press is None or self._skip_release:
             self._skip_release = False
@@ -722,13 +973,17 @@ class OrthoCanvas(QtWidgets.QGraphicsView):
 
     def leaveEvent(self, event):
         super(OrthoCanvas, self).leaveEvent(event)
-        if self._hover and self._press is None:
+        if self._drag is None:
+            self._set_hot(None)
+        if self._hover and self._press is None and self._drag is None:
             self.set_hover("")
             self.facade_hovered.emit("")
 
     def keyPressEvent(self, event):
         key = event.key()
-        if key == QtCore.Qt.Key_Escape and self.cancel_drawing():
+        if key == QtCore.Qt.Key_Escape and self.cancel_handle_drag():
+            event.accept()
+        elif key == QtCore.Qt.Key_Escape and self.cancel_drawing():
             event.accept()
         elif key in (QtCore.Qt.Key_Delete, QtCore.Qt.Key_Backspace) and self._draw_enabled and self._points:
             self.clear_polygon()
@@ -830,7 +1085,7 @@ class _FacadeDelegate(QtWidgets.QStyledItemDelegate):
         painter.setFont(QtGui.QFont(option.font))
         painter.setPen(QtGui.QColor(theme.FG_1))
         fm = painter.fontMetrics()
-        size = tr("facade.ui.row_size", length=metres(facade.length), height=metres(facade.height))
+        size = tr("facade.ui.row_size_edited" if facade.edited else "facade.ui.row_size", length=metres(facade.length), height=metres(facade.height))
         painter.drawText(QtCore.QRectF(left, rect.center().y() + 2, width, line), QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter,
                          fm.elidedText(size, QtCore.Qt.ElideRight, width))
         painter.restore()
@@ -876,8 +1131,10 @@ class FacadeList(QtWidgets.QWidget):
         row.setSpacing(theme.PAD)
         self.remove_button = ui.button("facade.ui.remove", self.remove_selected, "aeroBtn", width=110)
         self.undo_button = ui.button("facade.ui.undo", self.undo, "aeroBtn", width=90)
+        self.reset_button = ui.button("facade.ui.reset_wall", self.reset_selected, "aeroBtn", width=130)
         row.addWidget(self.remove_button)
         row.addWidget(self.undo_button)
+        row.addWidget(self.reset_button)
         row.addStretch(1)
         layout.addLayout(row)
         self.hint = ui.label(tr("facade.ui.list_hint"), "aeroMeta")
@@ -885,7 +1142,9 @@ class FacadeList(QtWidgets.QWidget):
         if not allow_remove:
             self.remove_button.setVisible(False)
             self.undo_button.setVisible(False)
+            self.reset_button.setVisible(False)
             self.hint.setVisible(False)
+        self.reset_button.setToolTip(tr("facade.ui.reset_wall_tip"))
         self.remove_button.setToolTip(tr("facade.ui.remove_tip"))
         self.undo_button.setToolTip(tr("facade.ui.undo_tip"))
         undo = qt_shortcut(self, "Ctrl+Z", self.undo)
@@ -959,6 +1218,8 @@ class FacadeList(QtWidgets.QWidget):
         self.list.setVisible(count > 0)
         has_selection = bool(self.list.selectedItems())
         self.remove_button.setEnabled(has_selection)
+        chosen = set(self.selected_letters())
+        self.reset_button.setEnabled(any(f.edited for f in self._all if f.letter in chosen))
         self.undo_button.setEnabled(self._log.can_undo())
         if has_selection:
             self.remove_button.setText(tr("facade.ui.remove_n", n=len(self.list.selectedItems())))
@@ -971,6 +1232,20 @@ class FacadeList(QtWidgets.QWidget):
             self.selection_changed.emit(self.selected_letters())
 
     # -- removing and undoing ---------------------------------------------------------------------
+
+    def refresh(self):
+        """Redraw the rows (a wall was lengthened or shortened by hand) and keep the selection."""
+        self._rebuild(self.selected_letters())
+
+    def reset_selected(self):
+        """Back to the detected extent for the selected walls. Returns the letters that changed."""
+        if not self._allow_remove:
+            return []
+        changed = [f.letter for f in self._all if f.letter in self.selected_letters() and f.reset_extent()]
+        if changed:
+            self._rebuild(self.selected_letters())
+            self.changed.emit()
+        return changed
 
     def remove_selected(self):
         if not self._allow_remove:

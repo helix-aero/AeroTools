@@ -62,6 +62,22 @@ class WizardState(object):
     def active(self):
         return active(self.facades)
 
+    def set_wall_extent(self, letter, x0, y0, z0, length):
+        """The operator moved an end of a wall: its new extent. Every surface and picture built so far is out of date."""
+        facade = self.facade(letter)
+        if facade is None:
+            return False
+        facade.set_extent(x0, y0, z0, length)
+        self.invalidate_builds()
+        return True
+
+    def reset_walls(self, letters):
+        """Back to the detected extent for these walls. Returns the letters that really changed."""
+        changed = [f.letter for f in self.facades if f.letter in set(letters) and f.reset_extent()]
+        if changed:
+            self.invalidate_builds()
+        return changed
+
     def letters(self):
         return [f.letter for f in self.active()]
 
@@ -106,12 +122,17 @@ class WizardState(object):
 
     def signature(self):
         """What the built DEMs and orthophotos depend on: the kept facades, their margins, the method and the pixel size."""
-        rows = tuple((f.letter, tuple(sorted(self.margins_of(f.letter).to_dict().items()))) for f in self.active())
+        rows = tuple((f.letter, self._extent_of(f), tuple(sorted(self.margins_of(f.letter).to_dict().items()))) for f in self.active())
         return (rows, self.method, round(self.pixel_cm, 4))
 
     def dem_signature(self):
-        rows = tuple((f.letter, tuple(sorted(self.margins_of(f.letter).to_dict().items()))) for f in self.active())
+        rows = tuple((f.letter, self._extent_of(f), tuple(sorted(self.margins_of(f.letter).to_dict().items()))) for f in self.active())
         return (rows, self.method)
+
+    @staticmethod
+    def _extent_of(facade):
+        """Where the wall starts and how long it is (centimetres): a wall edited by hand is another wall for the builds."""
+        return (round(facade.x0, 2), round(facade.y0, 2), round(facade.length, 2))
 
     def invalidate_builds(self):
         self.dem_state = {}
