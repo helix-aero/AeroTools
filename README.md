@@ -106,7 +106,8 @@ The installer asks which detection engine you want (light, precise, or both) and
 Aero-GCP settings can install any of them afterwards with one click.
 
 The installer writes one small launcher into `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Nothing else is touched.
-`install\uninstall_aerotools.bat` removes it.
+**Aero > Uninstall Aero...** removes it (and, if you tick them, your settings and the AI environment);
+`install\uninstall_aerotools.bat` does the same without Metashape.
 
 > [!NOTE]
 > The AI detection runs in a separate, light Python (ONNX Runtime, about 100 MB; no `torch`, no graphics card needed). The same

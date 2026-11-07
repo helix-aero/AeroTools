@@ -1,5 +1,5 @@
 {
- "built": "2026-11-07T14:47:16",
+ "built": "2026-11-07T14:47:58",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -10,8 +10,8 @@
    "size": 4628
   },
   "README.md": {
-   "sha256": "2beab861bebaee0908488a19f7aca8bbf8c2100e68607063c1b739db94d00dc9",
-   "size": 13235
+   "sha256": "6ec947a0c89f6219f0c113c9bda5dcb686468b8645fac389a1a4c5f5bd8e4200",
+   "size": 13359
   },
   "aerotools/__init__.py": {
    "sha256": "780bfaa866388f6697cf805c3b8732af55f7092c82ef67648ff261be143dc5bb",
@@ -618,8 +618,8 @@
    "size": 46051
   },
   "docs/TUTORIAL.md": {
-   "sha256": "3e5877145ae8dc0789148cbab4fd92d9d90bd308ab20e111ee93d3a01728e3f8",
-   "size": 26369
+   "sha256": "6734f330cbd2d56bf21a3fe2d92af54f5eb10e3b90568d21bb1291edc2416dbb",
+   "size": 26428
   },
   "docs/debug_adjust.py": {
    "sha256": "e4e9bbf67b3f33074db3f11c6893f11515a024b12776d9557502528374004a9e",

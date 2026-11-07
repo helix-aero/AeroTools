@@ -28,7 +28,7 @@ You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 3. Restart Metashape. A new **Aero** menu appears.
 4. Open **Aero > Aero-GCP** (shortcut **F8**). The panel docks on the right of the window.
 
-**Aero > Reload AeroTools** re-reads the code without restarting Metashape. `install\uninstall_aerotools.bat` removes the launcher.
+**Aero > Reload AeroTools** re-reads the code without restarting Metashape. **Aero > Uninstall Aero...** removes the launcher (`install\uninstall_aerotools.bat` does too, without Metashape).
 
 > **Note.** The AI detection runs in a separate light Python (ONNX Runtime, about 100 MB): the installer sets it up (the same
 > installer, run it again if needed). The models `models\checker.onnx` and `models\spray.onnx` (and their `.pt` source weights) come with
