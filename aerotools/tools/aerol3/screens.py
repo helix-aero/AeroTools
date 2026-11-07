@@ -93,7 +93,8 @@ class ListScroll(controls.FitScroll):
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Maximum)
 
     def sizeHint(self):
-        return QtCore.QSize(super(ListScroll, self).sizeHint().width(), self.widget().sizeHint().height() + 4)
+        room = max(200, controls.screen_area().height() - 440)          # a long list (22 flights) must not ask for more than the screen has
+        return QtCore.QSize(super(ListScroll, self).sizeHint().width(), min(self.widget().sizeHint().height() + 4, room))
 
 
 class Screen(QtWidgets.QWidget):
@@ -208,6 +209,10 @@ class PhotosScreen(Screen):
         self.rows = {}
         self.all_box = None
         self._building = False
+        self._settle_later = QtCore.QTimer(self)
+        self._settle_later.setSingleShot(True)
+        self._settle_later.setInterval(250)
+        self._settle_later.timeout.connect(self._run_checks)
 
     def enter(self):
         if self.state.root and not self.path.text():
@@ -338,12 +343,31 @@ class PhotosScreen(Screen):
     def _ticked(self, key, on):
         if self._building:
             return
-        self.state.set_selected(key, on)
+        self.state.selection[key] = bool(on)
         self._paint_row(key)
+        self._settle_later.start()                          # the checks are made again once the clicks stop, not once per click
+        self.wizard.refresh_buttons()
+
+    def settle(self):
+        """Makes the checks of the ticked flights now when a click is waiting for them."""
+        if self._settle_later.isActive():
+            self._settle_later.stop()
+            self._run_checks()
+
+    def _run_checks(self):
+        self.state.refresh_analysis()
         self.update_summary()
         self.wizard.refresh_buttons()
 
+    def next_enabled(self):
+        return not self._settle_later.isActive() and super(PhotosScreen, self).next_enabled()
+
+    def leave(self, forward):
+        self.settle()
+        return super(PhotosScreen, self).leave(forward)
+
     def _all_clicked(self):
+        self._settle_later.stop()
         value = self.all_box.isChecked()
         self._building = True
         for key, (box, _frame, _labels) in self.rows.items():

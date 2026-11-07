@@ -401,7 +401,7 @@ def _():
     screen = window.screens[S.PHOTOS]
     boxes = flight_boxes(window)
     boxes["VOLBIAIS"].setChecked(True)
-    pump(40)
+    pump(400)
     with_calibration = screen.summary.text()
     all_ticked = screen.all_box.isChecked()
     click_button(screen.all_box)                         # all ticked: the click unticks them all
@@ -467,7 +467,7 @@ def _():
                and row.count.text() == "" and row.glyph.kind() == "stop" and "one unit only" in row.info.text_tip() and not window.next_button.isEnabled())
     click_button(window.back_button)
     flight_boxes(window)["OTHERL3"].setChecked(False)
-    pump(40)
+    pump(400)
     click_button(window.next_button)
     pump(60)
     fixed = window.next_button.isEnabled() and screen.verdict.text() == "Ready"
@@ -737,6 +737,27 @@ def _():
     ok = result is not None and result.cancelled and screen.headline.text() == "Cancelled" and len(result.steps) < 6 and screen.lines[-1].glyph.kind() == "pending"
     window.close()
     return ok, screen.headline.text()
+
+
+@case("photos: a list of 22 flights never asks for more height than the screen has, and Back to Photos keeps the window on screen")
+def _():
+    from aerotools.tools.aerol3 import screens as SC
+    tall = QtWidgets.QWidget()
+    tall.setMinimumSize(300, 3000)
+    box = SC.ListScroll(tall, preferred=600)
+    area = controls.screen_area()
+    capped = box.sizeHint().height() <= area.height() - 440 + 4
+    window, _b = new_wizard()
+    show(window)
+    scanned(window)
+    click_button(window.next_button)
+    pump(60)
+    window.screens[S.PHOTOS].scroll.widget().setMinimumHeight(3000)          # as tall as 22 rows
+    click_button(window.back_button)
+    pump(120)
+    on_screen = window.height() <= area.height() - W.SCREEN_MARGIN
+    window.close()
+    return capped and on_screen, "hint {} window {} screen {}".format(box.sizeHint().height(), window.height(), area.height())
 
 
 @case("closing the window while a job runs waits for the job to stop")

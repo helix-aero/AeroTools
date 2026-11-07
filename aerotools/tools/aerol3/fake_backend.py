@@ -84,5 +84,5 @@ class FakeBackend(Backend):
         if key == "optimize":
             return StepResult("optimize", True, T("l3.run.optimized"))
         if key == "dem":
-            return StepResult("dem", True, T("l3.run.dem_done", crs="EPSG::32631"))
-        return StepResult("ortho", True, T("l3.run.ortho_done", crs="EPSG::32631"))
+            return StepResult("dem", True, T("l3.run.dem_done", crs="EPSG:32631"))
+        return StepResult("ortho", True, T("l3.run.ortho_done", crs="EPSG:32631"))

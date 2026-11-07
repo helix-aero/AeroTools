@@ -588,11 +588,11 @@ class MetashapeL3Backend(Backend):
         proj, epsg = self._projection(chunk, plan)
         self._call(prog, 0.0, 0.7, T("l3.run.depth_maps"), chunk.buildDepthMaps, downscale=4, filter_mode=Metashape.MildFiltering)
         self._call(prog, 0.7, 1.0, T("l3.run.dem"), chunk.buildDem, source_data=Metashape.DepthMapsData, projection=proj)
-        return StepResult("dem", True, T("l3.run.dem_done", crs=epsg))
+        return StepResult("dem", True, T("l3.run.dem_done", crs=str(epsg).replace("::", ":")))
 
     def _ortho(self, chunk, plan, prog, result):
         proj, epsg = self._projection(chunk, plan)
         kwargs = dict(surface_data=Metashape.ElevationData, blending_mode=Metashape.MosaicBlending, fill_holes=True, refine_seamlines=False,
                       projection=proj)
         self._call(prog, 0.0, 1.0, T("l3.run.ortho"), chunk.buildOrthomosaic, **kwargs)
-        return StepResult("ortho", True, T("l3.run.ortho_done", crs=epsg))
+        return StepResult("ortho", True, T("l3.run.ortho_done", crs=str(epsg).replace("::", ":")))

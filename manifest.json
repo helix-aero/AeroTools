@@ -1,5 +1,5 @@
 {
- "built": "2026-11-07T07:06:52",
+ "built": "2026-11-07T09:18:49",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -282,8 +282,8 @@
    "size": 20408
   },
   "aerotools/tools/aerol3/fake_backend.py": {
-   "sha256": "f30ed86ad94158c0c61ce30f57fb1ca1bd601f0a42e76320f3387fee2daf4965",
-   "size": 4505
+   "sha256": "99ccb62faf0c3798685295bb6d5d77c92282fd17bc4a67ac2291c291ac2aa4e2",
+   "size": 4503
   },
   "aerotools/tools/aerol3/geo.py": {
    "sha256": "47b6d37c7a61b42a00fdade5ad50f1d3ce1aec551c129ba86b0dd986f16ecd6d",
@@ -298,8 +298,8 @@
    "size": 3305
   },
   "aerotools/tools/aerol3/msl3.py": {
-   "sha256": "939dc4bda710688b6cef90f5439999ab02d256634a1c3f32942651f40dc076b2",
-   "size": 28857
+   "sha256": "b3cced1997958a87985836319740b58f4fc4e50648eaad14a8a27102de4d2851",
+   "size": 28905
   },
   "aerotools/tools/aerol3/orient.py": {
    "sha256": "4af98381c523b25abc1a6830a3b5d400c90c729837367d8b25fb14f895c27a7e",
@@ -314,8 +314,8 @@
    "size": 10683
   },
   "aerotools/tools/aerol3/screens.py": {
-   "sha256": "fb1fdd875e7d10434356fef96ba74bde0feae43af2678ddbcd3ffcf4a38b8b26",
-   "size": 36140
+   "sha256": "4ac24af2cde1ecd9a1ff4daf989c3776065d3cc06aac004e7b2e46c8385ca28e",
+   "size": 37221
   },
   "aerotools/tools/aerol3/state.py": {
    "sha256": "bcd89e6b39871c96a47739a138d4216c81a6094708096f1b546dd67bb410cdc5",
@@ -334,8 +334,8 @@
    "size": 12296
   },
   "aerotools/tools/aerol3/wizard.py": {
-   "sha256": "5c19cf16c8788a33daa0d72c499c75ece11dc555b5357383b92affd911b59f3c",
-   "size": 12936
+   "sha256": "34b09853b283d7148a58ac59118ee0eb964303c7efafda66702eb8dc615eac96",
+   "size": 13341
   },
   "aerotools/tools/aerol3/xmpdji.py": {
    "sha256": "bb554834b4c2628faa8b7f1ea093c6f59970031167fce25ba1a0dfe7780e6776",

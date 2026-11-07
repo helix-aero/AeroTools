@@ -262,6 +262,14 @@ class L3Wizard(QtWidgets.QDialog):
         self.steps.set_current(step)
         self.screens[step].enter()
         self.refresh_buttons()
+        self._keep_on_screen()
+
+    def _keep_on_screen(self):
+        """A screen never leaves the window taller or wider than the display."""
+        area = controls.screen_area()
+        width, height = min(self.width(), area.width() - SCREEN_MARGIN), min(self.height(), area.height() - SCREEN_MARGIN)
+        if (width, height) != (self.width(), self.height()):
+            self.resize(width, height)
 
     def next(self):
         screen = self.screen()

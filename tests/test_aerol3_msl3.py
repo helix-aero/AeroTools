@@ -1,4 +1,4 @@
-"""Aero-L3 Metashape adapter, with a small fake Metashape (no Metashape, no Qt, no display).
+﻿"""Aero-L3 Metashape adapter, with a small fake Metashape (no Metashape, no Qt, no display).
 
 The fake keeps what the adapter writes (sensors, calibrations, references, orientation) and aligns cameras by giving them the pose their
 reference angles ask for, except for the cameras a test marks as flipped.
@@ -558,7 +558,7 @@ def test_optimize_dem_and_ortho_call_metashape_with_the_planned_settings(world):
     opt = [c[1] for c in chunk.calls if c[0] == "optimizeCameras"][0]
     assert all(opt["fit_" + k] for k in ("f", "cx", "cy", "k1", "k2", "k3", "p1", "p2"))
     dem = [c[1] for c in chunk.calls if c[0] == "buildDem"][0]
-    assert dem["projection"].crs.code == "EPSG::32631" and "EPSG::32631" in result.step("dem").text           # UTM zone of 5 degrees east
+    assert dem["projection"].crs.code == "EPSG::32631" and "EPSG:32631" in result.step("dem").text           # UTM zone of 5 degrees east
     ortho = [c[1] for c in chunk.calls if c[0] == "buildOrthomosaic"][0]
     assert ortho["refine_seamlines"] is False and ortho["blending_mode"] == "mosaic"
 
@@ -566,7 +566,7 @@ def test_optimize_dem_and_ortho_call_metashape_with_the_planned_settings(world):
 def test_a_projection_can_be_chosen(world):
     world.plan.options.ortho_epsg = "2154"
     result = run(world, steps=["align", "dem"])
-    assert result.step("dem").ok and "EPSG::2154" in result.step("dem").text
+    assert result.step("dem").ok and "EPSG:2154" in result.step("dem").text
 
 
 def test_the_quick_test_runs_on_a_copy_that_is_deleted(world):
