@@ -1,5 +1,5 @@
 {
- "built": "2026-11-07T15:07:15",
+ "built": "2026-11-07T15:14:30",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -10,8 +10,8 @@
    "size": 4628
   },
   "README.md": {
-   "sha256": "6ec947a0c89f6219f0c113c9bda5dcb686468b8645fac389a1a4c5f5bd8e4200",
-   "size": 13359
+   "sha256": "8d1e0dfb6395631257e311ac8ff7e19ce92264cf9b56282205c349cd217df1bd",
+   "size": 13662
   },
   "aerotools/__init__.py": {
    "sha256": "780bfaa866388f6697cf805c3b8732af55f7092c82ef67648ff261be143dc5bb",
@@ -38,12 +38,12 @@
    "size": 10967
   },
   "aerotools/config.py": {
-   "sha256": "27804b5e217ae2c75f36df6b1be2816855553515714380f8c3d9e6c213c2f491",
-   "size": 7887
+   "sha256": "c8ce28b8a648112b3ceb6c776aa8808c8a3f4b5dae52a9e3cc24985351c46af3",
+   "size": 8192
   },
   "aerotools/controls.py": {
-   "sha256": "e12bb8b38457b912a21e9abe42748c86bdda69ba1a8e270b7fbdee2345352361",
-   "size": 20277
+   "sha256": "6a13476c79db931abcd3470cd479487e0d6e4da003b7c87a2dfe24dc5486657b",
+   "size": 20516
   },
   "aerotools/dialogs.py": {
    "sha256": "445c51b9142c215c4d1cb3907f1009bc6ad08be8fbc5e59f79abaa6ace936938",
@@ -62,16 +62,16 @@
    "size": 257
   },
   "aerotools/lang/en.py": {
-   "sha256": "f226719564dcc8d9240125b59abd61ba42723212251e848c94feedcea942a302",
-   "size": 81309
+   "sha256": "97986a1c105238eb2502a7b94f9dfe14611300ad1aea16a77c1a014b44791675",
+   "size": 81493
   },
   "aerotools/msapi.py": {
    "sha256": "b022f749af88c005e8dabbc727c1d6efbd12e7fde105162fa9a904ef784c5721",
    "size": 68986
   },
   "aerotools/plugins_dialog.py": {
-   "sha256": "ae76ca8ba3defc2ac445ae100ef109a94f0e15c886f49ac65a566040a1c9f9b4",
-   "size": 13886
+   "sha256": "772551aec79c15610e254988acc884c7f4b4ec84b44b1982d6c6ebdffcabeaea",
+   "size": 14065
   },
   "aerotools/qt.py": {
    "sha256": "79aad2f8ea5e491e2f7a3311e3e1f1636b51aeed9dc86935721a805231c11eb5",
@@ -490,12 +490,12 @@
    "size": 6770
   },
   "aerotools/uninstall.py": {
-   "sha256": "05d6a85bbb75fe6265513391d0d11321433ea67eaf04728b437f106286a637e5",
-   "size": 3942
+   "sha256": "4112683b0626da1afb292a8ff0fe806d2416080a688899323560d78c4a3143dd",
+   "size": 4259
   },
   "aerotools/uninstall_dialog.py": {
-   "sha256": "e0dc427a0d4d1dc2524cbe34766a760d900e180beeb1f0e7289b43a6d68ab672",
-   "size": 5732
+   "sha256": "cc3d1ba35b0c9508b30ece8fedb2337ee5e17b4bf3e1bf496b3986209b880081",
+   "size": 5625
   },
   "aerotools/update_dialog.py": {
    "sha256": "066e785da212ebd2f1bd597d36eda9ed4307e84b66f8f74ad891ce74cede60e8",
@@ -618,12 +618,12 @@
    "size": 8125
   },
   "docs/DEVELOPMENT.md": {
-   "sha256": "5a107ee544787232357b1364c18cd9433bd43764c13cde1fbfba5d62eaaa4084",
-   "size": 46051
+   "sha256": "b5a14c307d93d4867417e84ffc6cc6e1fa669ad496fdaae3bd350fef7b27fb90",
+   "size": 46980
   },
   "docs/TUTORIAL.md": {
-   "sha256": "6734f330cbd2d56bf21a3fe2d92af54f5eb10e3b90568d21bb1291edc2416dbb",
-   "size": 26428
+   "sha256": "8efe8bddeb5e43b8478d131873cca50589906ec4f1486cf27c0c6f93946a69af",
+   "size": 26929
   },
   "docs/debug_adjust.py": {
    "sha256": "e4e9bbf67b3f33074db3f11c6893f11515a024b12776d9557502528374004a9e",
@@ -638,20 +638,24 @@
    "size": 683
   },
   "install/install_aerotools.bat": {
-   "sha256": "b736b1e035501258d33f520604d14f714e29ec23634cea3ff47e098d39c450d7",
-   "size": 506
+   "sha256": "0149d0ccb9296fe9384dfb4ce87c8533e18001f090c84539504db949e116c08e",
+   "size": 520
   },
   "install/install_all.ps1": {
    "sha256": "415d85c2eed42f13290aa81119e135278d187ba3b11fec224510af357ff68267",
    "size": 39060
+  },
+  "install/install_core.ps1": {
+   "sha256": "e3dfc944d24d237aa985a5a97b413540d2eafce2a418c30dad7f450c8599db2e",
+   "size": 6325
   },
   "install/install_training.bat": {
    "sha256": "759b3e480ac09cb19480c02bc6852b113c3df7b5ef3eca72e9f5197b2fb236bc",
    "size": 530
   },
   "install/make_manifest.py": {
-   "sha256": "f0165445086f013aea699d2a04d7be3fc08696e28b86e4e85871199bfba2a754",
-   "size": 3333
+   "sha256": "3edf52c32dd997c06c4fd82d40f3ab8ce606aed899f9d037c3bb25ab8fca79be",
+   "size": 3602
   },
   "install/uninstall_aerotools.bat": {
    "sha256": "4107b36061341c524c02aa81ced429ff4128b4068b75e2e76cf023ffe5d27f46",
@@ -675,6 +679,49 @@
   }
  },
  "name": "HELIX AERO TOOLS",
+ "packs": [
+  {
+   "id": "fastgcp",
+   "paths": [
+    "aerotools/tools/fastgcp/",
+    "models/"
+   ],
+   "requires": []
+  },
+  {
+   "id": "fastspace",
+   "paths": [
+    "aerotools/tools/fastspace/"
+   ],
+   "requires": []
+  },
+  {
+   "id": "aeroexports",
+   "paths": [
+    "aerotools/tools/aeroexports/",
+    "aerotools/vendor/"
+   ],
+   "requires": []
+  },
+  {
+   "id": "aerofacade",
+   "paths": [
+    "aerotools/tools/aerofacade/"
+   ],
+   "requires": [
+    "aeroexports"
+   ]
+  },
+  {
+   "id": "aerol3",
+   "paths": [
+    "aerotools/tools/aerol3/"
+   ],
+   "requires": [
+    "aerofacade"
+   ]
+  }
+ ],
  "schema": 1,
  "version": "0.2.0"
 }

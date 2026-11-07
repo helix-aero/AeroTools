@@ -1118,6 +1118,100 @@ def _():
         shutil.rmtree(base, ignore_errors=True)
 
 
+@case("install plugins window: cards follow the disk, a tool installs with what it needs, removal is refused then allowed, nothing is clipped")
+def _():
+    import importlib.util
+    from aerotools import config, dialogs, plugins_dialog, updater
+    base = tempfile.mkdtemp(prefix="aerotools_plugins_")
+    remote, local = os.path.join(base, "remote"), os.path.join(base, "local")
+    files = {"aerotools/__init__.py": "__version__ = '9.9.9'", "aerotools/core.py": "print(1)",
+             "aerotools/tools/aeroexports/tool.py": "print(2)", "aerotools/vendor/proj/bin/proj.exe": b"x" * 4096,
+             "aerotools/tools/aerofacade/tool.py": "print(3)", "aerotools/tools/aerol3/tool.py": "print(4)",
+             "aerotools/tools/fastgcp/tool.py": "print(5)", "aerotools/tools/fastspace/tool.py": "print(6)",
+             "models/checker.onnx": b"y" * 8192}
+    saved = (updater.PLUGINS[0]["root"], config.get(updater.SECTION, "base_url"), dialogs.ask)
+    problems = []
+    try:
+        def put(root, name, data):
+            path = os.path.join(root, *name.split("/"))
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            open(path, "wb").write(data if isinstance(data, bytes) else data.encode("utf-8"))
+        spec = importlib.util.spec_from_file_location("make_manifest", os.path.join(ROOT, "install", "make_manifest.py"))
+        maker = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(maker)
+        for name, data in files.items():
+            put(remote, name, data)
+            if config.pack_of(name) == config.CORE:
+                put(local, name, data)
+        maker.write(remote)
+        shutil.copyfile(os.path.join(remote, "manifest.json"), os.path.join(local, "manifest.json"))
+        updater.PLUGINS[0]["root"] = local
+        config.put(updater.SECTION, "base_url", "file:///" + remote.replace(os.sep, "/").lstrip("/"))
+        dialog = plugins_dialog.PluginsDialog()
+        dialog.show()
+
+        def wait(condition, limit=6.0):
+            end = time.time() + limit
+            while time.time() < end and not condition():
+                pump(50)
+            pump(100)
+            return condition()
+
+        if not wait(lambda: dialog.remote is not None and dialog._job is None):
+            problems.append("the tool list never arrived: " + dialog.offline)
+        cards = dialog.cards
+        if any(not card.install.isVisible() or card.remove.isVisible() for card in cards.values()):
+            problems.append("a minimal installation should offer Install only")
+        if "Aero-Exports" not in cards["aerofacade"].status.text():
+            problems.append("Aero-Facade card should say it also installs Aero-Exports: " + cards["aerofacade"].status.text())
+        dialog._on_install("aerofacade")
+        if not wait(lambda: dialog._job is None and updater.tool_installed("aerofacade")):
+            problems.append("Aero-Facade did not install: " + dialog.footer.text())
+        if not (os.path.isfile(os.path.join(local, "aerotools", "tools", "aeroexports", "tool.py"))
+                and os.path.isdir(os.path.join(local, "aerotools", "vendor"))):
+            problems.append("what Aero-Facade requires was not installed")
+        if os.path.exists(os.path.join(local, "models")) or os.path.exists(os.path.join(local, "aerotools", "tools", "fastgcp")):
+            problems.append("a tool nobody asked for was installed")
+        if cards["aerofacade"].install.isVisible() or not cards["aerofacade"].remove.isVisible():
+            problems.append("an installed tool should offer Remove only")
+        shown = []
+        dialogs.inform = lambda parent, title, text: shown.append(text)
+        dialogs.ask = lambda parent, title, text: True
+        dialog._on_remove("aeroexports")
+        if not shown or not updater.tool_installed("aeroexports"):
+            problems.append("Aero-Exports must not be removable while Aero-Facade needs it")
+        dialog._on_remove("aerofacade")
+        wait(lambda: dialog._job is None and not updater.tool_installed("aerofacade"))
+        dialog._on_remove("aeroexports")
+        wait(lambda: dialog._job is None and not updater.tool_installed("aeroexports"))
+        if any(os.path.exists(os.path.join(local, "aerotools", *part)) for part in (("tools", "aeroexports"), ("tools", "aerofacade"), ("vendor",))):
+            problems.append("removal left folders behind")
+        if not os.path.isfile(os.path.join(local, "aerotools", "core.py")):
+            problems.append("the core must stay")
+        layout = dialog.layout()
+        need = layout.minimumHeightForWidth(dialog.width())
+        if dialog.minimumHeight() < need or dialog.height() < need:
+            problems.append("window {} / least {} below the {} the text needs".format(dialog.height(), dialog.minimumHeight(), need))
+        options = plugins_dialog.EngineOptions("Aero-GCP")
+        if options.choice() != ("light", False):
+            problems.append("engine options should start on Light, no retraining: {}".format(options.choice()))
+        options.radios["none"].setChecked(True)
+        pump(50)
+        if options.training.isEnabled() or options.choice() != (None, False):
+            problems.append("without an engine the retraining box must be off")
+        options.radios["both"].setChecked(True)
+        options.training.setChecked(True)
+        if options.choice() != ("both", True):
+            problems.append("engine options choice: {}".format(options.choice()))
+        dialog.close()
+        return not problems, "; ".join(problems)
+    finally:
+        updater.PLUGINS[0]["root"] = saved[0]
+        config.put(updater.SECTION, "base_url", saved[1])
+        dialogs.ask = saved[2]
+        shutil.rmtree(base, ignore_errors=True)
+
+
 def main():
     pump(30)
     print("-" * 60)

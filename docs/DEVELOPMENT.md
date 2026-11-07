@@ -46,7 +46,15 @@ Per-machine settings live in `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`.
 
 1. Declare it in `config.TOOLS` (`id`, `menu`, `title`, `subtitle`, `shortcut`, `ready`, `reopen`). `subtitle` is a text key defined in `aerotools/lang/en.py`.
 2. Create `aerotools/tools/<id>/tool.py` with `install()` and `uninstall()`.
-3. Restart Metashape or use Reload AeroTools. While `ready` is `False`, the menu entry says the tool is not available yet.
+3. Declare its pack in `config.PACKS`: `id` (same as the tool), `paths` (the folders it owns: its package, plus any model or library only it uses), `marker`
+   (its `tool.py`), `requires` (the other packs it imports code from). Everything not owned by a pack is the core, always installed.
+   `tests/test_packs.py` fails if the tool imports a tool it does not require, or if the core imports a tool. Put code shared by several tools in the core
+   (`aerotools/controls.py`, `aerotools/dialogs.py`, `ui.py`), not in another tool.
+4. Run `python install/make_manifest.py`. Users get the tool from **Aero > Install plugins...**; a development copy (`.git`) has every tool.
+5. Restart Metashape or use Reload AeroTools. While `ready` is `False`, the menu entry says the tool is not available yet.
+
+A tool that needs a choice before it installs (Aero-GCP: which AI engine) adds a small options window in `plugins_dialog.py` and, if something has to run once the
+files are there, a `setup` module in its pack (loaded by name: the core never imports a tool).
 
 ## Rules of the road
 

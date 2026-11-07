@@ -59,7 +59,7 @@ class UninstallDialog(controls.FollowsText, QtWidgets.QDialog):
         box.setToolTip(i18n.t("uninstall." + item_id + "_tip", path=(entry["paths"] or [""])[0]))
         present = bool(entry["paths"])
         locked = item_id in uninstall.LOCKED
-        box.setChecked(present and locked)
+        box.setChecked(present and item_id in uninstall.DEFAULT_ON)
         box.setEnabled(present and not locked)
         self.boxes[item_id] = box
         line.addWidget(box, 1)
@@ -69,10 +69,6 @@ class UninstallDialog(controls.FollowsText, QtWidgets.QDialog):
 
     def ids(self):
         return [item_id for item_id, box in self.boxes.items() if box.isChecked()]
-
-    def _fit(self):
-        controls.sync_minimum(self)
-        self.resize(self.width(), max(self.height(), self.minimumHeight()))
 
     def _on_go(self):
         if self._worker is not None or self.completed:
@@ -119,7 +115,7 @@ class UninstallDialog(controls.FollowsText, QtWidgets.QDialog):
         self.go_button.setVisible(False)
         self.close_button.setText(i18n.t("uninstall.close"))
         self.close_button.setEnabled(True)
-        self._fit()
+        self.refit()
 
     def closeEvent(self, event):
         if self._worker is not None:

@@ -9,6 +9,7 @@ import json
 import os
 
 APP_NAME = "AeroTools"
+APP_DIR_NAME = "AeroToolsApp"
 VENDOR = "HELIX AERO"
 
 # Repository root: the folder that contains the "aerotools" package.
@@ -161,6 +162,12 @@ def settings_dir():
 
 def settings_path():
     return os.path.join(settings_dir(), "settings.json")
+
+
+def app_dir():
+    """Where the installer puts the code it downloads (install/install_core.ps1 writes the same path): one writable folder per user."""
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "HELIX", APP_DIR_NAME)
 
 
 # Renamed sections: {new name: old name}. Aero-Exports used to be called "fastexport": the choices already saved

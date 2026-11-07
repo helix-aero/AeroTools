@@ -82,8 +82,10 @@ again. So we wrote a tool for ourselves. It saved us enough time that we decided
 You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 
 1. Click **Download latest stable version** at the top of this page (or **Download latest dev version** to try the newest changes; or clone this repository), and unzip it anywhere you like.
-2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). One installer does everything: it adds the **Aero** menu to Metashape and sets up the AI detection (Python and a light detection engine, about 100 MB, a minute or two). A window shows "Please wait..." with the progress; do not close it.
-3. Restart Metashape. The **Aero** menu is there.
+2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). It installs the **Aero** menu and nothing else (about 1 MB, a few seconds).
+3. Restart Metashape and open **Aero > Install plugins...**: every tool is listed with an **Install** button. Pick the ones you need; each one downloads only its own files
+   (a tool that needs another one brings it, and says so). **Aero-GCP** asks which AI detection you want first (none, light, precise or both).
+   Tools can be updated or removed from the same window.
 
 **Aero > Aero-Space** scans a drive for old Metashape projects and frees disk space: lighten them (you choose what to
 remove: dense clouds, depth maps, orthophotos, with the space each one frees) or delete them, to the Recycle Bin or for good.
@@ -101,13 +103,13 @@ creates the chunk with the two lens sensors, their calibration, the camera posit
 coming out flipped, ready for *Align Photos*. It can also align, re-align flipped cameras and optimize. Photos only, no LiDAR.
 See [docs/AERO_L3.md](docs/AERO_L3.md).
 
-Later, **Aero > Check for updates...** brings the latest version from GitHub (with the list of changes and their size).
-The installer asks which detection engine you want (light, precise, or both) and whether to add the retraining tools; the
-Aero-GCP settings can install any of them afterwards with one click.
+Later, **Aero > Check for updates...** brings the latest version of the installed tools from GitHub (with the list of changes and their size).
+The Aero-GCP settings can add or change the AI detection at any time with one click.
 
-The installer writes one small launcher into `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Nothing else is touched.
-**Aero > Uninstall Aero...** removes it (and, if you tick them, your settings and the AI environment);
-`install\uninstall_aerotools.bat` does the same without Metashape.
+The installer copies the core to `%LOCALAPPDATA%\HELIX\AeroToolsApp` (the tools you install later go there too) and writes one small launcher
+into `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Nothing else is touched.
+**Aero > Uninstall Aero...** removes the launcher and the downloaded code (and, if you tick them, your settings and the AI environment);
+`install\uninstall_aerotools.bat` removes the launcher without Metashape. A development copy (a folder with `.git`) is used where it is: nothing is copied.
 
 > [!NOTE]
 > The AI detection runs in a separate, light Python (ONNX Runtime, about 100 MB; no `torch`, no graphics card needed). The same

@@ -55,6 +55,8 @@ class EngineOptions(QtWidgets.QDialog):
         layout.setContentsMargins(pad, pad, pad, pad)
         layout.setSpacing(theme.PAD)
         layout.addWidget(ui.label(i18n.t("plugins.opt_intro")))
+        self.training = QtWidgets.QCheckBox(i18n.t("plugins.opt_training"))
+        self.training.setToolTip(i18n.t("plugins.opt_tip"))
         self.radios = {}
         for value, key in ENGINE_CHOICES:
             radio = QtWidgets.QRadioButton(i18n.t(key))
@@ -63,8 +65,6 @@ class EngineOptions(QtWidgets.QDialog):
             layout.addWidget(radio)
             self.radios[value] = radio
         self.radios["light"].setChecked(True)
-        self.training = QtWidgets.QCheckBox(i18n.t("plugins.opt_training"))
-        self.training.setToolTip(i18n.t("plugins.opt_tip"))
         layout.addWidget(self.training)
         row = QtWidgets.QHBoxLayout()
         row.setSpacing(theme.PAD)
@@ -200,10 +200,12 @@ class PluginsDialog(controls.FollowsText, QtWidgets.QDialog):
         info = updater.installed_info(self.plugin)
         version = (self.remote or {}).get("version") or info["version"]
         self.version.setText(i18n.t("plugins.version", version=version) if version else "")
+        QtCore.QTimer.singleShot(0, self.refit)
 
     def _say(self, text, kind=None):
         self.footer.setText(text)
         self.footer.setStyleSheet("color: {};".format(theme.ORANGE_BRIGHT) if kind == "error" else "")
+        QtCore.QTimer.singleShot(0, self.refit)
 
     # -- jobs ------------------------------------------------------------------
 

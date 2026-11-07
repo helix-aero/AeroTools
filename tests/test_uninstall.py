@@ -19,6 +19,9 @@ def home(tmp_path, monkeypatch):
     (scripts / "aerotools_launcher.py").write_text("# launcher")
     (scripts / "aerotools_launcher.py.bak").write_text("# old")
     (scripts / "other_script.py").write_text("# someone else's script")
+    code = local / "HELIX" / "AeroToolsApp" / "aerotools"
+    code.mkdir(parents=True)
+    (code / "bootstrap.py").write_text("# core")
     settings = local / "HELIX" / "AeroTools"
     settings.mkdir(parents=True)
     (settings / "settings.json").write_text("{}")
@@ -31,7 +34,7 @@ def home(tmp_path, monkeypatch):
 
 def test_items_list_what_exists_with_sizes(home):
     found = {entry["id"]: entry for entry in uninstall.items()}
-    assert [entry["id"] for entry in uninstall.items()] == ["menu", "settings", "env"]
+    assert [entry["id"] for entry in uninstall.items()] == ["menu", "code", "settings", "env"]
     assert len(found["menu"]["paths"]) == 2
     assert found["env"]["bytes"] == 100
 
@@ -50,6 +53,7 @@ def test_the_menu_is_always_removed_and_the_rest_is_kept_by_default(home):
 def test_settings_and_environment_are_removed_when_asked_and_nothing_else(home):
     result = uninstall.remove(["settings", "env"])
     assert result["removed"] == ["menu", "settings", "env"] and not result["errors"]
+    assert (home / "local" / "HELIX" / "AeroToolsApp" / "aerotools" / "bootstrap.py").exists()       # code not asked for
     assert not (home / "local" / "HELIX" / "AeroTools").exists()
     assert not (home / "profile" / "AIGCP" / "_env").exists()
     assert (home / "profile" / "AIGCP" / "models.txt").exists()
@@ -59,7 +63,19 @@ def test_settings_and_environment_are_removed_when_asked_and_nothing_else(home):
 def test_running_it_twice_is_harmless(home):
     uninstall.remove(["settings", "env"])
     again = uninstall.remove(["settings", "env"])
-    assert again["errors"] == {} and [e["paths"] for e in uninstall.items()] == [[], [], []]
+    assert again["errors"] == {} and [e["paths"] for e in uninstall.items() if e["id"] != "code"] == [[], [], []]
+
+
+def test_the_downloaded_code_goes_without_touching_the_settings_next_to_it(home):
+    result = uninstall.remove(["code"])
+    assert result["removed"] == ["menu", "code"] and not result["errors"]
+    assert not (home / "local" / "HELIX" / "AeroToolsApp").exists()
+    assert (home / "local" / "HELIX" / "AeroTools" / "settings.json").exists()
+
+
+def test_the_downloaded_code_and_the_launcher_are_ticked_by_default():
+    assert uninstall.DEFAULT_ON == ("menu", "code") and set(uninstall.LOCKED) <= set(uninstall.DEFAULT_ON)
+    assert uninstall.ORDER[0] == "menu"
 
 
 def test_a_folder_with_an_unexpected_name_is_never_deleted(home, monkeypatch):

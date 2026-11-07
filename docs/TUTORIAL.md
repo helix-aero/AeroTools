@@ -23,16 +23,18 @@ This tutorial follows the order you will use it in. Every button name is written
 You need Metashape Pro 2.x on Windows. We use it daily with Metashape 2.2.
 
 1. Get this repository (download or clone it) and put it anywhere, for example on a shared drive.
-2. Double-click `CLICK HERE TO INSTALL.bat` (at the root; it runs `install\install_aerotools.bat`). This single installer also sets up the AI detection (about 100 MB, once, with a "Please wait..." display). It writes one small launcher into
-   `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\` and touches nothing else.
-3. Restart Metashape. A new **Aero** menu appears.
-4. Open **Aero > Aero-GCP** (shortcut **F8**). The panel docks on the right of the window.
+2. Double-click `CLICK HERE TO INSTALL.bat` (at the root; it runs `install\install_aerotools.bat`). It installs the Aero menu only (about 1 MB): the core goes to
+   `%LOCALAPPDATA%\HELIX\AeroToolsApp` and one small launcher to `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. It touches nothing else.
+3. Restart Metashape. A new **Aero** menu appears, with **Install plugins...**.
+4. In **Install plugins...** click **Install** on the tools you want. **Aero-GCP** first asks which AI detection to set up (none, light about 100 MB,
+   precise about 3 GB, or both). A tool that needs another one installs it too, and its card says so.
+5. Open **Aero > Aero-GCP** (shortcut **F8**). The panel docks on the right of the window.
 
-**Aero > Reload AeroTools** re-reads the code without restarting Metashape. **Aero > Uninstall Aero...** removes the launcher (`install\uninstall_aerotools.bat` does too, without Metashape).
+**Aero > Reload AeroTools** re-reads the code without restarting Metashape. **Aero > Uninstall Aero...** removes the launcher and the downloaded code, and your settings or the AI environment if you tick them (`install\uninstall_aerotools.bat` removes the launcher without Metashape).
 
-> **Note.** The AI detection runs in a separate light Python (ONNX Runtime, about 100 MB): the installer sets it up (the same
-> installer, run it again if needed). The models `models\checker.onnx` and `models\spray.onnx` (and their `.pt` source weights) come with
-> the download. Retraining ("Refine my model") also needs `torch` (about 3 GB): run `install\install_training.bat` once.
+> **Note.** The AI detection runs in a separate light Python (ONNX Runtime, about 100 MB): Aero-GCP's install step in **Install plugins...** sets it up
+> (or the Aero-GCP settings, later). The models `models\checker.onnx` and `models\spray.onnx` (and their `.pt` source weights) come with
+> Aero-GCP. Retraining ("Refine my model") also needs `torch` (about 3 GB): run `install\install_training.bat` once.
 > See [Troubleshooting](#9-troubleshooting). Everything else works without them.
 
 ![The Aero-GCP panel docked in Metashape: header, play/pause button, AI detection card, active marker, marker table, Residual check and Export buttons](images/panel-overview.png)
@@ -300,6 +302,7 @@ wrong, so the worst pick is set aside and the others are judged again until noth
 | Symptom | What to check |
 |---|---|
 | The **Aero** menu is missing | Double-click `CLICK HERE TO INSTALL.bat` again and restart Metashape. |
+| A tool is missing from the **Aero** menu | It is not installed: **Aero > Install plugins...**, then **Install** on it. |
 | *AI: AIGCP Python not found*, or a box titled *AI detection setup* | The detector runs in its own light Python (ONNX Runtime). The easiest fix is to double-click `CLICK HERE TO INSTALL.bat` again (it sets everything up, about 100 MB). By default Aero-GCP looks for `%USERPROFILE%\AIGCP\_env\Scripts\python.exe`; set the `AIGCP_PYTHON` environment variable, or the `python` key of the `aigcp` section in `settings.json`, to use another one. |
 | *AI: … weights not found* | The two files `checker.pt` and `spray.pt` should be in the `models` folder of the download: copy them back there if you deleted them, or set `models_dir` in the `aigcp` section. |
 | The AI finds nothing | Check that the marker has a 3D position or reference coordinates, that the photos are aligned, and that the *Ignore* list is not hiding the photos you want. |

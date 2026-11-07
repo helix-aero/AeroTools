@@ -465,6 +465,8 @@ TEXTS = {
     "uninstall.intro": "Removes the Aero menu from Metashape. Your projects are never touched.",
     "uninstall.menu": "Aero menu",
     "uninstall.menu_tip": "The launcher that adds the Aero menu at each start. The menu disappears when Metashape restarts.",
+    "uninstall.code": "Downloaded code",
+    "uninstall.code_tip": "The core and the tools Install plugins brought. Install again with the installer if you change your mind.\n{path}",
     "uninstall.settings": "My settings and log",
     "uninstall.settings_tip": "Your choices in every tool, and aerotools.log. Keep them to find everything as it was if you install again.\n{path}",
     "uninstall.env": "AI detection environment",

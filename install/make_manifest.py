@@ -18,7 +18,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from aerotools import updater  # noqa: E402
+from aerotools import config, updater  # noqa: E402
 
 FOLDERS = ("aerotools", "install", "models", "assets")
 DOC_FOLDER = "docs"
@@ -72,8 +72,10 @@ def build(root=ROOT):
     for relative in listing(root):
         digest, size = updater.digest_file(os.path.join(root, *relative.split("/")), relative)
         files[relative] = {"sha256": digest, "size": size}
+    # The packs are listed too: the installer (install_core.ps1, plain PowerShell) copies the files that belong to none of them.
+    packs = [{"id": entry["id"], "paths": entry["paths"], "requires": entry["requires"]} for entry in config.PACKS]
     return {"schema": updater.SCHEMA, "name": "HELIX AERO TOOLS", "version": version(root),
-            "built": datetime.datetime.now().isoformat(timespec="seconds"), "files": files}
+            "built": datetime.datetime.now().isoformat(timespec="seconds"), "packs": packs, "files": files}
 
 
 def write(root=ROOT):

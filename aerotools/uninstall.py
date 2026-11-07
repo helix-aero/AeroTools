@@ -3,11 +3,12 @@
 What can go, each item on its own:
   menu      the launcher in Metashape's scripts folder (and its .bak): this is what puts the Aero menu back at each start.
             Always removed. Metashape cannot take a menu entry away while it runs, so the menu disappears at the next start.
+  code      the code the installer downloaded (%LOCALAPPDATA%\\HELIX\\AeroToolsApp: the core and the tools that were installed)
   settings  the workstation settings and the log (%LOCALAPPDATA%\\HELIX\\AeroTools)
   env       the Python environment of the AI detection (%USERPROFILE%\\AIGCP\\_env, 100 MB to 3 GB)
 
-Never removed: the AeroTools folder itself (the code that is running, possibly a development copy or a shared folder),
-the Python installed on the system, and any Metashape project.
+Never removed: an AeroTools folder that is not the one the installer made (a development copy, a shared folder), the Python
+installed on the system, and any Metashape project.
 
 Only the exact folders above are deleted; each one is checked by name before anything is removed.
 """
@@ -18,9 +19,10 @@ import shutil
 from . import config
 
 LAUNCHER = "aerotools_launcher.py"
-MENU, SETTINGS, ENV = "menu", "settings", "env"
-ORDER = (MENU, SETTINGS, ENV)
+MENU, CODE, SETTINGS, ENV = "menu", "code", "settings", "env"
+ORDER = (MENU, CODE, SETTINGS, ENV)
 LOCKED = (MENU,)                                        # cannot be unticked: without it there is nothing to uninstall
+DEFAULT_ON = (MENU, CODE)                               # ticked when the window opens: both come back with the installer
 
 
 def scripts_dir():
@@ -39,7 +41,7 @@ def env_dir():
 def targets():
     """{id: [paths]}: what each item removes (paths that exist or not)."""
     launcher = launcher_path()
-    return {MENU: [launcher, launcher + ".bak"], SETTINGS: [config.settings_dir()], ENV: [env_dir()]}
+    return {MENU: [launcher, launcher + ".bak"], CODE: [config.app_dir()], SETTINGS: [config.settings_dir()], ENV: [env_dir()]}
 
 
 def folder_size(path):
@@ -67,7 +69,7 @@ def items():
 
 def _safe(item_id, path):
     """A folder is only deleted if its name is the expected one: a wrong environment variable must never reach another folder."""
-    expected = {SETTINGS: config.APP_NAME, ENV: "_env"}.get(item_id)
+    expected = {CODE: config.APP_DIR_NAME, SETTINGS: config.APP_NAME, ENV: "_env"}.get(item_id)
     return expected is None or os.path.basename(os.path.normpath(path)) == expected
 
 

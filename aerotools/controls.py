@@ -380,6 +380,11 @@ class FollowsText(object):
         if getattr(self, "_follows", False):
             sync_minimum(self)
 
+    def refit(self):
+        """Call after a text changed: the least height follows it and the window grows if it is now too short."""
+        sync_minimum(self)
+        self.resize(self.width(), max(self.height(), self.minimumHeight()))
+
 
 class WrapText(QtWidgets.QTextEdit):
     """Read-only text that wraps anywhere (a path has no spaces to wrap at), can be selected and copied, and never makes its window wider.
