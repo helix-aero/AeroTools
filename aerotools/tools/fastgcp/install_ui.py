@@ -8,7 +8,8 @@ close it, and says at the end whether everything went well.
 
 from ... import i18n, journal, ui
 from ...qt import QtWidgets
-from . import dialogs, engines
+from ... import dialogs
+from . import engines
 
 POLL_MS = 1000
 

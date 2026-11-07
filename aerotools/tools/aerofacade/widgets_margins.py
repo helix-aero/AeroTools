@@ -10,7 +10,7 @@
 
 from ... import theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from ..aeroexports import controls
+from ... import controls
 from .common import LINK_KEYS, SIDE_KEYS, metres, tr
 from .model import Margins
 

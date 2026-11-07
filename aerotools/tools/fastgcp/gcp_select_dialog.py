@@ -11,7 +11,8 @@ import threading
 
 from ... import i18n, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from . import dialogs, gcp_select
+from ... import dialogs
+from . import gcp_select
 
 ROLE = QtCore.Qt.UserRole
 WIDTH, HEIGHT = 1060, 640

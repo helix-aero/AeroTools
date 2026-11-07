@@ -24,7 +24,7 @@ import time
 
 from ... import config, i18n, journal, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from ..aeroexports import controls
+from ... import controls
 from . import actions, scanner
 
 POLL_MS = 150
@@ -838,7 +838,7 @@ class SpaceDialog(controls.FollowsText, QtWidgets.QDialog):
                                    bin=scanner.gb(batch["bin"]), failed=len(batch["failed"])))
         self._refresh_summary()
         if batch["failed"]:
-            from ..fastgcp import dialogs
+            from ... import dialogs
             lines = [i18n.t("space.failed_line", name=name, error=error) for name, error in batch["failed"][:15]]
             dialogs.inform(self, i18n.t("space.failed_title"), "\n".join(lines))
 

@@ -86,6 +86,70 @@ def tool(tool_id):
     return None
 
 
+# Packs: what "Aero > Install plugins" installs, one per tool. Everything not listed here is the core (menu, update, shared code,
+# fonts, installer, docs), always present. A pack owns the files under its `paths` (prefixes of the paths in manifest.json).
+#   id        same as the tool it installs
+#   paths     folders (ending with /) the pack owns; the library or model files a tool needs travel with it
+#   marker    a file that exists only when the pack is installed
+#   requires  other packs this one imports code from (tests/test_packs.py checks it against the imports)
+#   setup     optional: module (by name, the core never imports a tool) whose `run(parent, engine, training, confirm)` finishes the
+#             installation once the files are there (Aero-GCP: the AI detection engine)
+CORE = "core"
+PACKS = [
+    {"id": "fastgcp", "paths": ["aerotools/tools/fastgcp/", "models/"], "marker": "aerotools/tools/fastgcp/tool.py",
+     "requires": [], "setup": "aerotools.tools.fastgcp.install_ui"},
+    {"id": "fastspace", "paths": ["aerotools/tools/fastspace/"], "marker": "aerotools/tools/fastspace/tool.py",
+     "requires": []},
+    {"id": "aeroexports", "paths": ["aerotools/tools/aeroexports/", "aerotools/vendor/"],
+     "marker": "aerotools/tools/aeroexports/tool.py", "requires": []},
+    {"id": "aerofacade", "paths": ["aerotools/tools/aerofacade/"], "marker": "aerotools/tools/aerofacade/tool.py",
+     "requires": ["aeroexports"]},
+    {"id": "aerol3", "paths": ["aerotools/tools/aerol3/"], "marker": "aerotools/tools/aerol3/tool.py",
+     "requires": ["aerofacade"]},
+]
+
+
+def pack(pack_id):
+    """Registry entry of a pack, or None."""
+    for entry in PACKS:
+        if entry["id"] == pack_id:
+            return entry
+    return None
+
+
+def pack_of(path):
+    """Pack that owns a file of the manifest (path with /), or CORE. The longest matching prefix wins."""
+    clean = path.replace("\\", "/")
+    best, length = CORE, -1
+    for entry in PACKS:
+        for prefix in entry["paths"]:
+            if clean.startswith(prefix) and len(prefix) > length:
+                best, length = entry["id"], len(prefix)
+    return best
+
+
+def pack_closure(pack_ids):
+    """The packs asked for plus everything they require, requirements first."""
+    order = []
+
+    def visit(pack_id):
+        entry = pack(pack_id)
+        if entry is None or pack_id in order:
+            return
+        for needed in entry["requires"]:
+            visit(needed)
+        order.append(pack_id)
+
+    for pack_id in pack_ids:
+        visit(pack_id)
+    return order
+
+
+def dependents(pack_id):
+    """Packs that require this one (directly or not)."""
+    return [entry["id"] for entry in PACKS if entry["id"] != pack_id and pack_id in pack_closure([entry["id"]])]
+
+
 # --------------------------------------------------------------------------
 # Per-workstation settings
 # --------------------------------------------------------------------------

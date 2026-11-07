@@ -126,7 +126,7 @@ def unscale():
 def cut_off(window):
     """Descriptions of what is cut off in a window: a widget past the right edge of its panel, a panel that needs a horizontal bar,
     or anything past the window's own edge. Empty when all is visible."""
-    from aerotools.tools.aeroexports import controls
+    from aerotools import controls
     problems = []
     for index, area in enumerate(window.findChildren(controls.FitScroll)):
         page = area.widget()
@@ -674,7 +674,8 @@ def _():
 
 @case("large fonts: the export window keeps every widget inside its panel at x1, x1.25, x1.5 and x2 (nothing cut off)")
 def _():
-    from aerotools.tools.aeroexports import controls, plan
+    from aerotools import controls
+    from aerotools.tools.aeroexports import plan
     controls.screen_area = lambda: SCREEN
     results = {}
     try:
@@ -696,7 +697,7 @@ def _():
 
 @case("large fonts: the look window keeps every widget inside its panel at x1, x1.25, x1.5 and x2 (nothing cut off)", needs_numpy=True)
 def _():
-    from aerotools.tools.aeroexports import controls
+    from aerotools import controls
     controls.screen_area = lambda: SCREEN
     results = {}
     try:
@@ -717,7 +718,7 @@ def _():
 
 @case("small screen: a window wider than the screen shrinks to it and scrolls (visible bar) instead of leaving the screen")
 def _():
-    from aerotools.tools.aeroexports import controls
+    from aerotools import controls
     controls.screen_area = lambda: QtCore.QRect(0, 0, 1024, 700)
     try:
         box = open_trap_dialog(preset="cad", scale=2.0, size=None)
@@ -880,7 +881,7 @@ def _():
 
 @case("large fonts: the chunk line stays inside its panel at x1, x1.25, x1.5 and x2, a long name is cut with the full name as tooltip")
 def _():
-    from aerotools.tools.aeroexports import controls
+    from aerotools import controls
     controls.screen_area = lambda: SCREEN
     long_name = "Chunk of the July flight over the harbour and the old town with the second battery " * 3
     results = {}
@@ -1018,7 +1019,7 @@ def _():
 
 @case("large fonts: the raster lines, the coarse-DEM warning and the boundary tick box stay inside their panel at x1 to x2")
 def _():
-    from aerotools.tools.aeroexports import controls
+    from aerotools import controls
     controls.screen_area = lambda: SCREEN
     results = {}
     try:

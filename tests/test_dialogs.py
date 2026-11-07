@@ -1,7 +1,7 @@
 """Custom Yes / No boxes: button order (Windows convention: Yes on the left, No on the right)."""
 
 from aerotools import i18n
-from aerotools.tools.fastgcp import dialogs
+from aerotools import dialogs
 
 
 def test_ask_puts_yes_on_the_left_and_no_on_the_right(monkeypatch):

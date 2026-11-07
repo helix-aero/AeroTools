@@ -42,7 +42,7 @@ from aerotools.tools.aerofacade.fake_backend import FakeBackend  # noqa: E402
 from aerotools.tools.aerofacade import sheetout  # noqa: E402
 from aerotools.tools.aerofacade.model import Margins  # noqa: E402
 
-from aerotools.tools.aeroexports import controls  # noqa: E402
+from aerotools import controls  # noqa: E402
 controls.screen_area = lambda: QtCore.QRect(0, 0, 1920, 1040)       # a Full HD screen (the offscreen one is small and varies)
 
 journal.print = lambda *args, **kwargs: None
@@ -168,7 +168,7 @@ def _parents(widget):
 
 def scroll_bars(window):
     """Vertical scroll bars that are showing on the visible screen (the export settings must not need one at the usual window size)."""
-    from aerotools.tools.aeroexports import controls
+    from aerotools import controls
     return ["a vertical scroll bar shows (page {} > view {})".format(a.widget().height(), a.viewport().height())
             for a in window.findChildren(controls.FitScroll) if a.isVisibleTo(window) and a.verticalScrollBar().isVisible()
             and a.verticalScrollBar().maximum() > 0 and a.parent() is not None and a.parent().isVisibleTo(window)
@@ -178,7 +178,7 @@ def scroll_bars(window):
 def cut_off(window):
     """What is cut off in a window: a scroll page that needs a horizontal bar, a widget past its page's or the window's right edge,
     text in a label that does not fit its box. Empty when all is visible."""
-    from aerotools.tools.aeroexports import controls
+    from aerotools import controls
     problems = []
     for index, area in enumerate(window.findChildren(controls.FitScroll)):
         if not area.isVisibleTo(window):

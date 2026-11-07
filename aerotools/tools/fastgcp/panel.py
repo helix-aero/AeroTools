@@ -1793,7 +1793,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         run(self.grid.viewport().mapToGlobal(pos))
 
     def _confirm(self, text_key, labels):
-        from . import dialogs
+        from ... import dialogs
         shown = ", ".join(labels[:5]) + ("\u2026" if len(labels) > 5 else "")
         return dialogs.ask(self, i18n.t("panel.remove_title"), i18n.t(text_key, n=len(labels), names=shown))
 
@@ -2129,7 +2129,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         """Explain what is missing for the AI detection. With `target` (an engine the installer can
         install), the box offers to install it right away; without, it says what to do."""
         try:
-            from . import dialogs
+            from ... import dialogs
             if target is None:
                 dialogs.inform(self, i18n.t("aigcp.setup_title"), text)
                 return

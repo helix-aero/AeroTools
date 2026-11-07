@@ -35,7 +35,7 @@ sys.modules["Metashape"] = FAKE
 from aerotools import config, journal  # noqa: E402
 GUARD.pin(config)
 from aerotools.qt import QtCore, QtGui, QtWidgets  # noqa: E402
-from aerotools.tools.aeroexports import controls  # noqa: E402
+from aerotools import controls  # noqa: E402
 from aerotools.tools.aerol3 import checks, plan as plan_module, state as S, widgets, wizard as W  # noqa: E402
 from aerotools.tools.aerol3.fake_backend import FakeBackend  # noqa: E402
 import aerol3_synth as synth  # noqa: E402

@@ -186,13 +186,16 @@ def _local_path(plugin, name):
     return os.path.join(plugin["root"], *name.split("/"))
 
 
-def compare(plugin, remote, local=None):
+def compare(plugin, remote, local=None, packs=None):
     """List of changes to go from the state of the disk to the remote manifest.
 
     Each element: {"path", "action": "add" | "replace" | "delete", "size"}.
-    Deletions only concern files that the old local manifest listed."""
+    Deletions only concern files that the old local manifest listed. `packs` (a set of pack ids, "core" included) restricts the
+    comparison to the files of those packs: the others are not installed here, so nothing is missing or out of date."""
     changes = []
     for name in sorted(remote["files"]):
+        if packs is not None and config.pack_of(name) not in packs:
+            continue
         info = remote["files"][name]
         path = _local_path(plugin, name)
         if not os.path.isfile(path):
@@ -206,6 +209,8 @@ def compare(plugin, remote, local=None):
             changes.append({"path": name, "action": "replace", "size": info["size"]})
     if local:
         for name in sorted(set(local["files"]) - set(remote["files"])):
+            if packs is not None and config.pack_of(name) not in packs:
+                continue
             if os.path.isfile(_local_path(plugin, name)):
                 changes.append({"path": name, "action": "delete", "size": 0})
     return changes
@@ -238,7 +243,7 @@ def check(plugin):
     try:
         remote, _raw = remote_manifest(plugin)
         result["remote"] = {"version": str(remote.get("version") or ""), "built": str(remote.get("built") or "")}
-        result["changes"] = compare(plugin, remote, local_manifest(plugin))
+        result["changes"] = compare(plugin, remote, local_manifest(plugin), installed_packs(plugin))
         result["bytes"] = sum(c["size"] for c in result["changes"] if c["action"] != "delete")
         if result["dev"]:
             result["state"] = "dev"
@@ -249,6 +254,115 @@ def check(plugin):
     except Exception as exc:
         result["message"] = repr(exc)
     return result
+
+
+# --------------------------------------------------------------------------
+# Packs: the tools that are installed on this computer
+# --------------------------------------------------------------------------
+
+def is_pack_installed(plugin, pack_id):
+    """True when the marker file of the pack is on disk. A development copy (git) has everything."""
+    entry = config.pack(pack_id)
+    if entry is None:
+        return False
+    return is_dev_copy(plugin) or os.path.isfile(_local_path(plugin, entry["marker"]))
+
+
+def tool_installed(tool_id):
+    """True if a tool of the Aero menu is installed in this AeroTools (the first registered module)."""
+    return is_pack_installed(plugins()[0], tool_id)
+
+
+def installed_packs(plugin):
+    """Set of the installed pack ids, "core" included."""
+    return {config.CORE} | {entry["id"] for entry in config.PACKS if is_pack_installed(plugin, entry["id"])}
+
+
+def pack_files(manifest, pack_id):
+    """{path: info} of the files of a pack in a manifest."""
+    return {name: info for name, info in manifest["files"].items() if config.pack_of(name) == pack_id}
+
+
+def pack_status(plugin, remote=None):
+    """[{"id", "installed", "bytes" (what it weighs, its requirements not counted), "needs" (requirements not installed yet),
+    "update" (files to download to bring the installed pack up to date)}] for every pack, in the order of config.PACKS.
+    `remote` is the remote manifest; without it sizes and updates are unknown (0)."""
+    have = installed_packs(plugin)
+    local = local_manifest(plugin)
+    found = []
+    for entry in config.PACKS:
+        pack_id = entry["id"]
+        files = pack_files(remote, pack_id) if remote else {}
+        update = 0
+        if remote and pack_id in have:
+            update = len(compare(plugin, remote, local, {pack_id}))
+        found.append({"id": pack_id, "installed": pack_id in have, "bytes": sum(i["size"] for i in files.values()),
+                      "needs": [p for p in config.pack_closure([pack_id]) if p != pack_id and p not in have],
+                      "update": update})
+    return found
+
+
+def install_pack(plugin, pack_id, progress=None, cancelled=None):
+    """Download and install a pack with the packs it requires. Returns {"ok", "updated", "error", "packs" (the ones added)}.
+    Nothing is left half-installed: the files are verified before the first one is replaced, and put back if it fails."""
+    entry = config.pack(pack_id)
+    if entry is None:
+        return {"ok": False, "updated": 0, "error": "unknown tool: {}".format(pack_id), "packs": []}
+    if is_dev_copy(plugin):
+        return {"ok": False, "updated": 0, "error": "development copy (git): everything is already there", "packs": []}
+    have = installed_packs(plugin)
+    wanted = config.pack_closure([pack_id])
+    result = apply(plugin, progress=progress, cancelled=cancelled, packs=have | set(wanted))
+    result["packs"] = [p for p in wanted if p not in have] if result["ok"] else []
+    if result["ok"] and not is_pack_installed(plugin, pack_id):
+        result.update(ok=False, error="the files were received but {} is not complete".format(pack_id), packs=[])
+    if result["ok"]:
+        journal.write("Install {}: {}".format(pack_id, ", ".join(result["packs"]) or "already there"))
+    return result
+
+
+def remove_pack(plugin, pack_id):
+    """Delete the files of an installed pack (the ones the manifest lists, then the empty folders). Returns {"ok", "error"}.
+    Refused while another installed pack needs it. Settings, models trained by the user and Metashape projects are never touched."""
+    entry = config.pack(pack_id)
+    if entry is None:
+        return {"ok": False, "error": "unknown tool: {}".format(pack_id)}
+    if is_dev_copy(plugin):
+        return {"ok": False, "error": "development copy (git): nothing is removed"}
+    have = installed_packs(plugin)
+    users = [p for p in config.dependents(pack_id) if p in have]
+    if users:
+        return {"ok": False, "error": "needed by: {}".format(", ".join(users)), "needed_by": users}
+    manifest = local_manifest(plugin) or {"files": {}}
+    errors = []
+    for name in sorted(pack_files(manifest, pack_id)):
+        path = _local_path(plugin, name)
+        try:
+            if os.path.isfile(path):
+                os.remove(path)
+        except OSError as exc:
+            errors.append("{}: {!r}".format(name, exc))
+    for prefix in entry["paths"]:
+        _remove_empty_folders(_local_path(plugin, prefix.rstrip("/")))
+    if errors:
+        journal.write("Remove {}: {}".format(pack_id, "; ".join(errors)))
+        return {"ok": False, "error": "; ".join(errors[:3])}
+    journal.write("Remove {}".format(pack_id))
+    return {"ok": True, "error": ""}
+
+
+def _remove_empty_folders(folder):
+    """Delete the __pycache__ folders and then every empty folder, from the bottom up, starting at `folder` itself."""
+    if not os.path.isdir(folder):
+        return
+    for base, dirs, _names in os.walk(folder, topdown=False):
+        for name in dirs:
+            if name == "__pycache__":
+                shutil.rmtree(os.path.join(base, name), ignore_errors=True)
+        try:
+            os.rmdir(base)
+        except OSError:
+            pass
 
 
 # --------------------------------------------------------------------------
@@ -324,8 +438,9 @@ def _install_file(source, destination, name):
     os.replace(temp, destination)
 
 
-def apply(plugin, changes=None, progress=None, cancelled=None):
-    """Download, verify, then install the latest version. Returns {"ok", "updated", "error"}.
+def apply(plugin, changes=None, progress=None, cancelled=None, packs=None):
+    """Download, verify, then install the latest version of the installed packs (or of `packs`, to install new ones).
+    Returns {"ok", "updated", "error"}.
 
     `progress(done_bytes, total_bytes, text)` is called during the download;
     `cancelled()` returns True when the user cancels (before the replacement phase). Never raises."""
@@ -338,7 +453,7 @@ def apply(plugin, changes=None, progress=None, cancelled=None):
             raise UpdateError("development copy (git): update refused")
         remote, raw = remote_manifest(plugin)
         local = local_manifest(plugin)
-        changes = compare(plugin, remote, local)
+        changes = compare(plugin, remote, local, packs if packs is not None else installed_packs(plugin))
         if not changes:
             _write_state(plugin, remote)
             return {"ok": True, "updated": 0, "error": ""}
@@ -427,7 +542,9 @@ def verify(plugin):
     if manifest is None:
         return 0, ["manifest.json"]
     bad = []
-    for name, info in manifest["files"].items():
+    packs = installed_packs(plugin)
+    files = {name: info for name, info in manifest["files"].items() if config.pack_of(name) in packs}
+    for name, info in files.items():
         path = _local_path(plugin, name)
         try:
             digest, _size = digest_file(path, name)
@@ -436,7 +553,7 @@ def verify(plugin):
             continue
         if digest != info["sha256"]:
             bad.append(name)
-    return len(manifest["files"]), bad
+    return len(files), bad
 
 
 def format_size(count):

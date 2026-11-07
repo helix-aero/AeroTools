@@ -6,7 +6,7 @@ from . import state as S
 from .common import metres, tr
 from . import methods
 from .model import Method
-from ..aeroexports import controls
+from ... import controls
 from .screens_base import Screen, heading, right_panel
 from .widgets import FacadeList, MarginEditor, MethodOption, MethodPicker
 

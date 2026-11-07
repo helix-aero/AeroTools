@@ -18,7 +18,7 @@ import math
 
 from ... import theme, ui
 from ...qt import QtCore, QtGui, QtWidgets, modifiers
-from ..aeroexports import controls
+from ... import controls
 from . import geometry
 from .common import POLY_KEYS, STATE_KEYS, dir_key, metres, qt_shortcut, readable_on, tr
 

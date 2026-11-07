@@ -137,7 +137,7 @@ crashed Metashape before).
 - Tests: `C:\Users\LTB1\AppData\Local\Temp\claude\C--Users-LTB1-Desktop\0e8331c3-9b57-48b0-82bc-f4616d429b51\scratchpad\venv\Scripts\python.exe -m pytest tests -q`
   (829 pass now); after adding files run `python install/make_manifest.py`. Qt harness pattern: `tests_qt/run_qt_aeroexports.py` +
   `tests_qt/_isolation.py` (never touch the real settings; PySide6 offscreen for tests, PySide2 in Metashape; Python 3.9 compatible code).
-- UI: understandable by a 10-year-old, safe for novices, nothing clipped at any font scale (use `aeroexports/controls.py` helpers),
+- UI: understandable by a 10-year-old, safe for novices, nothing clipped at any font scale (use the helpers of `aerotools/controls.py`),
   English texts, the Aero theme (`aerotools/theme.py`, `aerotools/ui.py`).
 - **Only the "Metashape adapter" agent drives Metashape's GUI** (computer-use). The test project is `carro_test_facade.psx` (CARRO,
   724 aligned photos, ~1.1 M tie points, one big white building in the middle), already open in the owner's Metashape: it is a

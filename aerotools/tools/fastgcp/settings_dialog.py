@@ -20,7 +20,8 @@ import os
 
 from ... import i18n, journal, theme
 from ...qt import QtCore, QtGui, QtWidgets
-from . import aigcp, dialogs, engines, training
+from ... import dialogs
+from . import aigcp, engines, training
 from . import install_ui
 from .review_dialog import _exec, _restyle, _styled_root
 

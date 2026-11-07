@@ -20,8 +20,9 @@ everything goes through review.py and msapi.
 
 from ... import config, i18n, journal, msapi, theme
 from ...qt import QShortcut, QtCore, QtGui, QtWidgets, modifiers
-from ..aeroexports import controls
-from . import adjust_panel, dialogs, imageadjust, photos, review
+from ... import controls
+from ... import dialogs
+from . import adjust_panel, imageadjust, photos, review
 
 SECTION = "aigcp"
 THUMB_KEY = "review_thumb"

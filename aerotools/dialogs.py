@@ -5,8 +5,8 @@ fixed width, wrapped text that takes all the height it needs, and the
 panel style. `ask` returns True for Yes, `inform` has a single button.
 """
 
-from ... import i18n, theme
-from ...qt import QtCore, QtWidgets
+from . import i18n, theme
+from .qt import QtCore, QtWidgets
 
 WIDTH = 480          # requested width; the window may be narrower, the text follows
 MIN_WIDTH = 300

@@ -2,7 +2,7 @@
 
 import pytest
 
-from aerotools.tools.aeroexports import controls
+from aerotools import controls
 
 
 @pytest.mark.parametrize("text,low,high,modulo,expected", [

@@ -1,4 +1,4 @@
-"""Aero-Exports: small controls shared by the look window (no numpy here, so they load and test anywhere).
+"""Small controls shared by the windows of the suite (no numpy here, so they load and test anywhere).
 
 - `EditableValue`: the number written next to a slider ("315 degrees (NW)", "80 %"). Double-click it (or Tab to it and press Enter or F2),
   type an exact number, Enter applies it, Esc puts the old value back. A number outside the allowed range is refused on the spot, with the
@@ -7,8 +7,8 @@
 - `slider_row`: a label, a short slider, its editable value and its reset button, placed in one grid row.
 """
 
-from ... import i18n, theme, ui
-from ...qt import QtCore, QtGui, QtWidgets
+from . import i18n, theme, ui
+from .qt import QtCore, QtGui, QtWidgets
 
 RESET_SIZE = 28
 EDIT_WIDTH = 64

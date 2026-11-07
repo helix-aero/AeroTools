@@ -49,7 +49,7 @@ def world(tmp_path, local_appdata, monkeypatch):
         "aerotools/a.py": "print('a2')\n",
         "aerotools/b.py": "print('b')\n",
         "install/run.bat": "@echo off\r\necho hi\r\n",
-        "models/checker.onnx": b"\x00\x01\x02" * 1000,
+        "assets/sample.bin": b"\x00\x01\x02" * 1000,
     })
     config.put(updater.SECTION, "base_url", remote.as_uri())
     plugin = {"id": "aerotools", "title": "T", "repo": "x/y", "root": str(local)}
@@ -76,7 +76,7 @@ def test_compare_lists_adds_replaces_deletes_and_ignores_line_endings(world):
     remote, _raw = updater.remote_manifest(plugin)
     changes = {c["path"]: c["action"] for c in updater.compare(plugin, remote, updater.local_manifest(plugin))}
     assert changes["aerotools/a.py"] == "replace"
-    assert changes["models/checker.onnx"] == "add"
+    assert changes["assets/sample.bin"] == "add"
     assert changes["aerotools/old.py"] == "delete"
     assert "aerotools/b.py" not in changes and "install/run.bat" not in changes
 
@@ -95,7 +95,7 @@ def test_apply_installs_verifies_and_records_the_date(world):
     result = updater.apply(plugin, progress=lambda done, total, text: seen.append((done, total)))
     assert result == {"ok": True, "updated": 4, "error": ""}
     assert (local / "aerotools" / "a.py").read_text() == "print('a2')\n"
-    assert (local / "models" / "checker.onnx").stat().st_size == 3000
+    assert (local / "assets" / "sample.bin").stat().st_size == 3000
     assert not (local / "aerotools" / "old.py").exists()
     assert seen and seen[-1][0] == seen[-1][1]                         # progress goes all the way to the end
     count, bad = updater.verify(plugin)
@@ -120,7 +120,7 @@ def test_a_corrupted_download_touches_nothing(world):
     result = updater.apply(world["plugin"])
     assert result["ok"] is False and "damaged" in result["error"]
     assert (local / "aerotools" / "a.py").read_text() == before
-    assert not (local / "models" / "checker.onnx").exists()
+    assert not (local / "assets" / "sample.bin").exists()
 
 
 def test_a_failure_during_replacement_restores_the_old_files(world, monkeypatch):
@@ -140,7 +140,7 @@ def test_a_failure_during_replacement_restores_the_old_files(world, monkeypatch)
     assert result["ok"] is False and "disk full" in result["error"]
     assert (local / "aerotools" / "a.py").read_text() == "print('a1')\n"
     assert (local / "aerotools" / "old.py").exists()
-    assert not (local / "models" / "checker.onnx").exists()
+    assert not (local / "assets" / "sample.bin").exists()
     assert json.loads((local / "manifest.json").read_text())["files"]["aerotools/old.py"]     # manifest from before
 
 

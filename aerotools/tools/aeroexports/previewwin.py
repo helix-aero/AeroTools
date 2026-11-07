@@ -10,8 +10,9 @@ import numpy as np
 
 from ... import i18n, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from . import controls, look as looks
-from .controls import parse_number  # noqa: F401  (kept here: the tests and older code import it from this module)
+from ... import controls
+from . import look as looks
+from ...controls import parse_number  # noqa: F401  (kept here: the tests and older code import it from this module)
 
 DELAY_MS = 35
 WIDTH, HEIGHT = 1120, 740

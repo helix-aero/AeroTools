@@ -7,9 +7,8 @@ Metashape cannot take a menu entry away while it runs: the window says the menu 
 
 import threading
 
-from . import i18n, journal, theme, ui, uninstall, updater
+from . import controls, i18n, journal, theme, ui, uninstall, updater
 from .qt import QtCore, QtWidgets
-from .tools.aeroexports import controls
 
 POLL_MS = 150
 WIDTH = 520

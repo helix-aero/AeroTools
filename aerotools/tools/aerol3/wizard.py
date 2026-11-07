@@ -10,7 +10,7 @@ import os
 
 from ... import i18n, journal, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from ..aeroexports import controls
+from ... import controls
 from ..aerofacade.tasks import Task, plain_error
 from . import screens, theme_l3
 from . import state as S

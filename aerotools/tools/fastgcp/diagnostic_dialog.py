@@ -6,7 +6,7 @@ Non-modal window: the list can stay open while you open a photo, fix it, then cl
 
 from ... import i18n, theme, ui
 from ...qt import QtCore, QtWidgets
-from ..aeroexports import controls
+from ... import controls
 from . import diagnostic
 
 ROLE = QtCore.Qt.UserRole

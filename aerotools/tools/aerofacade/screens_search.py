@@ -2,7 +2,7 @@
 
 from ... import theme, ui
 from ...qt import QtCore, QtWidgets
-from ..aeroexports import controls
+from ... import controls
 from . import state as S
 from .common import POLY_KEYS, metres, tr
 from .screens_base import Screen, canvas_frame, heading, right_panel, two_columns

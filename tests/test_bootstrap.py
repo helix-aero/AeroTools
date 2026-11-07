@@ -20,7 +20,7 @@ def boot(ms, clean_bootstrap_flags):
 def test_install_menu_is_idempotent(boot, ms):
     assert boot.install_menu() is True
     count = len(ms.app.menu_items)
-    assert count == len(config.TOOLS) + 4
+    assert count == len(config.TOOLS) + 5
     assert boot.install_menu() is False
     assert len(ms.app.menu_items) == count
     labels = [item[0] for item in ms.app.menu_items]
@@ -37,7 +37,8 @@ def test_menu_groups_tools_upkeep_and_about_with_separators(boot, ms):
     assert kinds.count("separator") == 2
     first, second = kinds.index("separator"), len(kinds) - 1 - kinds[::-1].index("separator")
     assert [label for kind, label in order[:first]] == ["Aero/" + entry["menu"] for entry in config.TOOLS]
-    assert [label for _kind, label in order[first + 1:second]] == ["Aero/Check for updates...",
+    assert [label for _kind, label in order[first + 1:second]] == ["Aero/Install plugins...",
+                                                                  "Aero/Check for updates...",
                                                                   "Aero/Reload AeroTools",
                                                                   "Aero/Uninstall Aero..."]
     assert [label for _kind, label in order[second + 1:]] == ["Aero/About"]
@@ -47,7 +48,7 @@ def test_menu_groups_tools_upkeep_and_about_with_separators(boot, ms):
 def test_menu_still_installs_when_separators_are_unavailable(boot, ms, monkeypatch):
     monkeypatch.delattr(type(ms.app), "addMenuSeparator")
     assert boot.install_menu() is True
-    assert len(ms.app.menu_items) == len(config.TOOLS) + 4
+    assert len(ms.app.menu_items) == len(config.TOOLS) + 5
 
 
 def test_install_menu_force_registers_again(boot, ms):

@@ -24,7 +24,8 @@ import traceback
 
 from ... import config, i18n, journal, msapi, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
-from . import controls, crs, external, look as looks, naming, pipeline, plan, preview, projdb, projtool, tiling, vertical
+from ... import controls
+from . import crs, external, look as looks, naming, pipeline, plan, preview, projdb, projtool, tiling, vertical
 
 SECTION = "aeroexports"
 WIDTH, HEIGHT = 1080, 740

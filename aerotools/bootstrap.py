@@ -28,6 +28,7 @@ import sys
 _MENU_FLAG = "_AEROTOOLS_MENU_INSTALLED"
 _LAST_TOOL_FLAG = "_AEROTOOLS_LAST_TOOL"
 _ROOT_FLAG = "_AEROTOOLS_ROOT"
+_TOOLS_FLAG = "_AEROTOOLS_MENU_TOOLS"           # ids of the tools that already have their entry in the menu of this session
 
 MENU = "Aero"
 
@@ -70,19 +71,15 @@ def install_menu(force=False):
         print("[AeroTools] cannot load: {!r}".format(exc))
         return False
 
-    # The menu is added once per Metashape session (the Metashape API cannot remove or rename an entry).
-    added = 0
-    for entry in config.TOOLS:
-        name = entry["menu"]
-        if not entry.get("ready", False):
-            name = "{} {}".format(name, i18n.t("menu.soon"))
-        label = "{}/{}".format(MENU, name)
-        callback = _make_launcher(entry["id"])
-        if msapi.add_menu_item(label, callback, entry.get("shortcut")):
-            added += 1
+    # The menu is added once per Metashape session (the Metashape API cannot remove or rename an entry). Only the tools that are
+    # installed on this computer have an entry; "Install plugins" adds the others as they come.
+    setattr(builtins, _TOOLS_FLAG, set())
+    added = sum(1 for entry in config.TOOLS if add_tool_menu(entry["id"]))
 
-    # Three blocks split by a line: the tools, maintenance (updates, reload), information.
-    msapi.add_menu_separator(MENU)
+    # Three blocks split by a line: the tools, maintenance (install, updates, reload, uninstall), information.
+    if added:
+        msapi.add_menu_separator(MENU)
+    msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.install")), install_plugins)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.update")), update_plugins)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.reload")), reload_all)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.uninstall")), open_uninstall)
@@ -95,6 +92,26 @@ def install_menu(force=False):
             MENU, added, root()
         )
     )
+    return True
+
+
+def add_tool_menu(tool_id):
+    """Adds the menu entry of an installed tool, once per session. Returns True if it was added now. A tool installed while Metashape
+    runs gets its entry at the end of the menu until the next start, when it takes its place."""
+    from . import config, i18n, msapi, updater
+    entry = config.tool(tool_id)
+    shown = getattr(builtins, _TOOLS_FLAG, None)
+    if shown is None:
+        shown = set()
+        setattr(builtins, _TOOLS_FLAG, shown)
+    if entry is None or tool_id in shown or not updater.tool_installed(tool_id):
+        return False
+    name = entry["menu"]
+    if not entry.get("ready", False):
+        name = "{} {}".format(name, i18n.t("menu.soon"))
+    if not msapi.add_menu_item("{}/{}".format(MENU, name), _make_launcher(tool_id), entry.get("shortcut")):
+        return False
+    shown.add(tool_id)
     return True
 
 
@@ -124,6 +141,11 @@ def launch(tool_id, reload=False):
         msapi.message_box(i18n.t("boot.not_ready", title=entry["title"]))
         return False
 
+    from . import updater
+    if not updater.tool_installed(tool_id):
+        msapi.message_box(i18n.t("boot.not_installed", title=entry["title"]))
+        return False
+
     if reload:
         purge_modules()
 
@@ -149,6 +171,19 @@ def launch(tool_id, reload=False):
     if entry.get("reopen", False):
         setattr(builtins, _LAST_TOOL_FLAG, tool_id)
     return True
+
+
+def forget_tool(tool_id):
+    """Closes a tool's windows and forgets its modules: used when the tool is removed while Metashape runs."""
+    prefix = "aerotools.tools.{}".format(tool_id)
+    closer = getattr(sys.modules.get(prefix + ".tool"), "uninstall", None)
+    if callable(closer):
+        try:
+            closer()
+        except Exception:
+            pass
+    for name in [n for n in sys.modules if n == prefix or n.startswith(prefix + ".")]:
+        del sys.modules[name]
 
 
 def purge_modules():
@@ -196,6 +231,22 @@ def reopens(tool_id):
     from . import config
     entry = config.tool(tool_id)
     return bool(entry and entry.get("reopen", False))
+
+
+# --------------------------------------------------------------------------
+# Install plugins
+# --------------------------------------------------------------------------
+
+def install_plugins():
+    """Aero > Install plugins menu: the window that lists the tools and installs or removes them."""
+    ensure_on_path()
+    from . import i18n, journal, msapi
+    try:
+        from . import plugins_dialog
+        plugins_dialog.show(msapi.main_window())
+    except Exception as exc:
+        journal.write("plugins window failed: {!r}".format(exc))
+        msapi.message_box(i18n.t("boot.plugins_failed", error=repr(exc)))
 
 
 # --------------------------------------------------------------------------
