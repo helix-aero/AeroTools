@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.bak
+*.pt
+!models/checker.pt
+!models/spray.pt
+*.onnx
+!models/checker.onnx
+!models/spray.onnx
+diag_*.py
+diag_*.txt
+*.psx
+*.log
+
+install_debug.txt
