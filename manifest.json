@@ -1,5 +1,5 @@
 {
- "built": "2026-11-08T08:17:22",
+ "built": "2026-11-08T08:18:04",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -10,8 +10,8 @@
    "size": 4628
   },
   "README.md": {
-   "sha256": "7ef1603e0797e1d5f27a10a989568540720c51d6597455a57e020cec4a4b9118",
-   "size": 12137
+   "sha256": "579f92a3c06cdf4de8432c424d4d21327dcf0b90db5970e44959f2fb3fb5fbbc",
+   "size": 13141
   },
   "aerotools/__init__.py": {
    "sha256": "bfcc9832ba847d152ef75fe4ca8e551a950a75729d336198262fd1583f78ffa7",
@@ -38,12 +38,12 @@
    "size": 10943
   },
   "aerotools/config.py": {
-   "sha256": "f9c1063d133ea4775778893d20b0d6319f7f474723193b7b849e3bd5b9395311",
-   "size": 6592
+   "sha256": "3ec69b59765077cfc9803dea3ff9f6c79e7ae3a6249e61a8db57025f5a1bff02",
+   "size": 7372
   },
   "aerotools/controls.py": {
-   "sha256": "0ad4543a4a9bdacfbf11ccbe1e87dfdc99511e04046a06151305f8ed47a72ab1",
-   "size": 4263
+   "sha256": "1af89c5e41d358fdcbd44a7ec062f1fcc5d27ffcb73b71c1e9af40da397654ce",
+   "size": 18609
   },
   "aerotools/dialogs.py": {
    "sha256": "445c51b9142c215c4d1cb3907f1009bc6ad08be8fbc5e59f79abaa6ace936938",
@@ -62,12 +62,12 @@
    "size": 257
   },
   "aerotools/lang/en.py": {
-   "sha256": "4d6cbf5773fcef8035ac10402bbd96a73a75ab5463bfb4ee137c70d4e295fdcb",
-   "size": 31533
+   "sha256": "b3248b11e202d760f0dbedab4c8f7af98e3209f160266d6a83ed8b7680b0e1ec",
+   "size": 49144
   },
   "aerotools/msapi.py": {
-   "sha256": "c2deb09dad24d5ff3a0c27a0b22feda607f9b7b8ef973ed4c01a6a03b4a19c13",
-   "size": 55521
+   "sha256": "15a448dad44df0f344303cf3c232aa23bc36ace05636e8e604fc3f1b1b6ba50a",
+   "size": 68971
   },
   "aerotools/plugins_dialog.py": {
    "sha256": "772551aec79c15610e254988acc884c7f4b4ec84b44b1982d6c6ebdffcabeaea",
@@ -88,6 +88,90 @@
   "aerotools/tools/__init__.py": {
    "sha256": "4330bd1c073af4922493e4edb9c26acd7e4c77ca32902aa4eb7db871b81b0adb",
    "size": 87
+  },
+  "aerotools/tools/aeroexports/__init__.py": {
+   "sha256": "730f37d6236e1bdc5da1c0baa9122c2af3af715c7d2dfd8dfb0ef182c0105d17",
+   "size": 359
+  },
+  "aerotools/tools/aeroexports/crs.py": {
+   "sha256": "0084af6e6528e65454d94c595b33aed25b64dc83a1784c11a1e1b069c7159d89",
+   "size": 7010
+  },
+  "aerotools/tools/aeroexports/dialog.py": {
+   "sha256": "453e40b143373ccc295890cf3d32b87f8b65b6b00e785546e37209feaeb52bba",
+   "size": 70887
+  },
+  "aerotools/tools/aeroexports/dxfout.py": {
+   "sha256": "6cf24a70bc1cc9037047f401c483b0af7e107519891241beb74bf8c50f6a5f10",
+   "size": 15823
+  },
+  "aerotools/tools/aeroexports/external.py": {
+   "sha256": "abb17e514d4d3d971bba40986e7b89f083b60f3cf75b5603af7339615fb56d85",
+   "size": 12374
+  },
+  "aerotools/tools/aeroexports/footprint.py": {
+   "sha256": "8003a0ad0f6ec687311dc5623323b0c9ef29062227be06e5cb046af5cbc95bc1",
+   "size": 7598
+  },
+  "aerotools/tools/aeroexports/geotiff.py": {
+   "sha256": "410f9d92c789c81f7dda96882a9cb04cf106b9946599587f851aae1c568e649f",
+   "size": 5439
+  },
+  "aerotools/tools/aeroexports/look.py": {
+   "sha256": "3dfbc2275eecfd39cab65d1f47560a51fa8309c8160c709568024b609f51d713",
+   "size": 6360
+  },
+  "aerotools/tools/aeroexports/naming.py": {
+   "sha256": "190407c9431c3c64f2376b6db31f22ae5a9871ff33a98ae0a17c78a517307f88",
+   "size": 10515
+  },
+  "aerotools/tools/aeroexports/palettes.json": {
+   "sha256": "7bc91a52a8ea1c392aebf6356faffe456739c181d787daf0f825dd65e71038cd",
+   "size": 1565
+  },
+  "aerotools/tools/aeroexports/pipeline.py": {
+   "sha256": "aefb408769e4d4ea7259c7ecbde5f78b117d67351ee10cd5c7a22c53994bb2e1",
+   "size": 19092
+  },
+  "aerotools/tools/aeroexports/plan.py": {
+   "sha256": "950afee730c026cc048c293bcef0e18dd5aef2615040354fb4f197640e044063",
+   "size": 9854
+  },
+  "aerotools/tools/aeroexports/preview.py": {
+   "sha256": "e8a22e39daee6dede4a1d9d17496ff3409dee255013107f371337d484f2b8f7a",
+   "size": 10575
+  },
+  "aerotools/tools/aeroexports/previewwin.py": {
+   "sha256": "6f98ed3859ee45b9004690a898c815ae074131410f3848b8c694e2095a5bb847",
+   "size": 19462
+  },
+  "aerotools/tools/aeroexports/projdb.py": {
+   "sha256": "1f4e5eb1756e54db970161b3e85d5562a7eca16a9b260737ce3c7cfb31209065",
+   "size": 13291
+  },
+  "aerotools/tools/aeroexports/projtool.py": {
+   "sha256": "d5182c8727b9e64454a799f60017316a7d1e0fde000dc06ec7f90c12d473c260",
+   "size": 6145
+  },
+  "aerotools/tools/aeroexports/relief.py": {
+   "sha256": "33ae6f5d41476460b1bcab3e1da03ec48a585116fefc086496a159bd34a482ac",
+   "size": 12906
+  },
+  "aerotools/tools/aeroexports/tiffio.py": {
+   "sha256": "3da747ae6dfe0e3d677e5448f8a45378bd9b6fe24582d4d28cbc3deb5f7781ac",
+   "size": 11204
+  },
+  "aerotools/tools/aeroexports/tiling.py": {
+   "sha256": "30382d7f93fbe5d1fcd03e062a39f0be3c85b30496d36ece82c1ceafc033468c",
+   "size": 14216
+  },
+  "aerotools/tools/aeroexports/tool.py": {
+   "sha256": "2f570c291f7227827dc10017b83837d7312e3b69fbda19a82d5d8aafdac457fb",
+   "size": 832
+  },
+  "aerotools/tools/aeroexports/vertical.py": {
+   "sha256": "8780d1fa3b5fbc127e7b899e381e682464ca92839e3e13c3edc71595a8d94e41",
+   "size": 10866
   },
   "aerotools/tools/fastgcp/__init__.py": {
    "sha256": "7c367809215adad3e6def394edf02fda922f42e7ed84915d037ac055ccac0a7e",
@@ -205,9 +289,29 @@
    "sha256": "6e8cb90952e593c64ffadffabab4889a7765af05f2e1c557f43ccddbb3b8d9c7",
    "size": 26885
   },
+  "aerotools/tools/fastspace/__init__.py": {
+   "sha256": "9df01b38e7717f5cfd19d43034fbcec34380608c208e6034fc9e4f442dfe1c04",
+   "size": 412
+  },
+  "aerotools/tools/fastspace/actions.py": {
+   "sha256": "339f9ee157c6f8d5df09e9c012b21dedb2a99a2777c8389b7ef6bbffa917a8e4",
+   "size": 16338
+  },
+  "aerotools/tools/fastspace/dialog.py": {
+   "sha256": "0d9a5ed0b313e193981212737bfca09268d901803c55684a30f2b3df82c006bb",
+   "size": 40895
+  },
+  "aerotools/tools/fastspace/scanner.py": {
+   "sha256": "9ad6bf42ceab2661e18b6cc26e946fd38087d0eb9495987915f2c0421cd541c7",
+   "size": 16017
+  },
+  "aerotools/tools/fastspace/tool.py": {
+   "sha256": "9c12d1a12cbb5d27c4f86a1f89f5edb2818c53514019b5125dfaaf7d5b72d6fd",
+   "size": 824
+  },
   "aerotools/ui.py": {
-   "sha256": "66082bb44936c96ed3aa898fc3e7b0a21b01e9eaeca3b3dfdf70890c484b6e81",
-   "size": 3854
+   "sha256": "e660fc83f261afabd6156be67d376c74e619e469f98a8459d84a479f6195a758",
+   "size": 6770
   },
   "aerotools/uninstall.py": {
    "sha256": "4112683b0626da1afb292a8ff0fe806d2416080a688899323560d78c4a3143dd",
@@ -224,6 +328,94 @@
   "aerotools/updater.py": {
    "sha256": "bc48141ef226628f882f31b67115c23a4289055a62557d656e5d3f0682fcc8cb",
    "size": 22943
+  },
+  "aerotools/vendor/THIRD_PARTY.txt": {
+   "sha256": "7b3f8da82a0b1575b955a97ce72a974c74b2e664271ca4b0cb38d45dc6c9efcc",
+   "size": 166
+  },
+  "aerotools/vendor/proj/bin/brotlicommon.dll": {
+   "sha256": "4900d7e362cdb563d00dcbe1afcd3e41fb6a8957dd0edea06b9c87ca8642c5ff",
+   "size": 137728
+  },
+  "aerotools/vendor/proj/bin/brotlidec.dll": {
+   "sha256": "9f8d0d678319f33c5f77b09d26a64a61e174603d4f14d9a1d5d85be37759f7e5",
+   "size": 51712
+  },
+  "aerotools/vendor/proj/bin/cct.exe": {
+   "sha256": "5e2aab22713bd5e5d54b65abe5373a5a1a07c70bded6e01d1368e1b7ddeb8d0f",
+   "size": 58880
+  },
+  "aerotools/vendor/proj/bin/cs2cs.exe": {
+   "sha256": "897465c160369fa764a7bf89a58902ee9084bb48669dd977e842d284b518bde4",
+   "size": 58880
+  },
+  "aerotools/vendor/proj/bin/jpeg62.dll": {
+   "sha256": "6abb88a08038a7d2365f1f03f41ef242b7ddec3e1983426b846b62e760fe172a",
+   "size": 677376
+  },
+  "aerotools/vendor/proj/bin/lerc.dll": {
+   "sha256": "46af972397b8fb3a8c3074bf18cedc864c50d71fe8a30ce27c2ba28824f4d3c5",
+   "size": 524800
+  },
+  "aerotools/vendor/proj/bin/libcrypto-3-x64.dll": {
+   "sha256": "78f3fa2edcee9d9e43251272c444368b33effead562164c559103c47728e9955",
+   "size": 5236736
+  },
+  "aerotools/vendor/proj/bin/libcurl.dll": {
+   "sha256": "25d68375d4bd4a07467862a28fec576fa797a5fc511eb404d8f22e7e0c73d20d",
+   "size": 779776
+  },
+  "aerotools/vendor/proj/bin/liblzma.dll": {
+   "sha256": "601857e8037b1356d0dea881c6bf1d302bc483c4373bd311d15d430a5093acaa",
+   "size": 185344
+  },
+  "aerotools/vendor/proj/bin/libsharpyuv.dll": {
+   "sha256": "4e2dd1e89418b84dc25a89bc087ac3d49b7913c941db653742a82b341bfce591",
+   "size": 25088
+  },
+  "aerotools/vendor/proj/bin/libssl-3-x64.dll": {
+   "sha256": "8d36d18b1c93a35e907de83e3eeedcce997dc80e8d5b8022551b7b4804420984",
+   "size": 780800
+  },
+  "aerotools/vendor/proj/bin/libwebp.dll": {
+   "sha256": "8cfc8e80c4616c2e7bd8a7eaf501f9be8ed472040cc5c2b68b06a3acab27bb06",
+   "size": 372736
+  },
+  "aerotools/vendor/proj/bin/proj_9.dll": {
+   "sha256": "6605b1937a24595a64c8d56fcac094291d42c6233f79897755055d191c3b8a62",
+   "size": 3622912
+  },
+  "aerotools/vendor/proj/bin/sqlite3.dll": {
+   "sha256": "058ea7cbb6cb4ee36789a1563fd92b182beb26ce274821362c76bd5070afb376",
+   "size": 2231808
+  },
+  "aerotools/vendor/proj/bin/tiff.dll": {
+   "sha256": "25c15f421cf87c47b366324c63c886133466de27cddd7606ec51c3196456ba0d",
+   "size": 503296
+  },
+  "aerotools/vendor/proj/bin/zlib.dll": {
+   "sha256": "37e7ea97c0c414013f376269064d90a1826c4e831d9e6c259412dc6e8befe903",
+   "size": 90624
+  },
+  "aerotools/vendor/proj/bin/zstd.dll": {
+   "sha256": "abb454a3aa95864a7dd19a25c7b501e773e56d5eb90973e9f10cbaa58b0b7690",
+   "size": 659968
+  },
+  "aerotools/vendor/proj/data/files.geojson": {
+   "sha256": "46f26c830faa164af9ef9ef51a7325a9d3800eb12ad4b1661c1d3143af7becc3",
+   "size": 331044
+  },
+  "aerotools/vendor/proj/data/grid_ops.json": {
+   "sha256": "129569c565905a86a29998b76925fcf80753b809c336e8e97d49b4fca4d741c5",
+   "size": 8600
+  },
+  "aerotools/vendor/proj/share/proj/proj.db": {
+   "sha256": "37165492257d87ad504c0f7097b96f3bd504d1238bed292ecb73273ab5ae4ebf",
+   "size": 10280960
+  },
+  "aerotools/vendor/proj/share/proj/proj.ini": {
+   "sha256": "b95ebf0d007339244483d65d571cd887a51806e2bd2c1ab7f47b897d25320d65",
+   "size": 2435
   },
   "assets/fonts/Manrope-VariableFont_wght.ttf": {
    "sha256": "2b7a1ebc80c79246faa1b6e7093c7b91de2a4ceedb9b9a2b2fa05cf9bf8c77cd",
@@ -242,12 +434,12 @@
    "size": 15373
   },
   "docs/DEVELOPMENT.md": {
-   "sha256": "96b8e10a67b79ecc75dc10bf3b457600be22138414fad0852d6e1e26ee058e61",
-   "size": 20143
+   "sha256": "876e5f04e56bea1860338d8f71eecc1fb6ebf2e6b4c0eb4bcbec5d79a5a39f1f",
+   "size": 46832
   },
   "docs/TUTORIAL.md": {
-   "sha256": "8601b7ef61bdec8723bf819f86a8532a9b0c1e991d8464b603b9f93f7cc592a5",
-   "size": 21150
+   "sha256": "0646bb1a22a73029e8384a5a6cfcdda06efda7f7e563c5b82a0309df39a716d5",
+   "size": 26630
   },
   "docs/debug_adjust.py": {
    "sha256": "c593d74a3b1007171208e5c67f7c66cf2963a54d5e6de6aaf4fdb02f6ca11454",
@@ -305,6 +497,21 @@
    "paths": [
     "aerotools/tools/fastgcp/",
     "models/"
+   ],
+   "requires": []
+  },
+  {
+   "id": "fastspace",
+   "paths": [
+    "aerotools/tools/fastspace/"
+   ],
+   "requires": []
+  },
+  {
+   "id": "aeroexports",
+   "paths": [
+    "aerotools/tools/aeroexports/",
+    "aerotools/vendor/"
    ],
    "requires": []
   }

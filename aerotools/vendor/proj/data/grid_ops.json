@@ -1,0 +1,530 @@
+{
+ "ar_ign_GEOIDE-Ar16.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "at_bev_GEOID_BESSEL_Oesterreich.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "at_bev_GEOID_GRS80_Oesterreich.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "au_ga_AGQG_20201120.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "au_ga_AUSGeoid09_V1.01.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "au_ga_AUSGeoid2020_20180201.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "be_ign_hBG18.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "ca_nrc_CGG2013ai08.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "ca_nrc_CGG2013an83.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "ca_nrc_CGG2013i08.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "ca_nrc_CGG2013n83.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "ca_nrc_HT2_1997.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "ca_nrc_HT2_2002v70.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "ch_swisstopo_chgeo2004_ETRS89_LHN95.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "ch_swisstopo_chgeo2004_ETRS89_LN02.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "cz_cuzk_CR-2005.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "de_bkg_gcg2016.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "dk_sdfe_dnn.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "dk_sdfe_fvr09.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "dk_sdfe_gvr2000.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "dk_sdfe_gvr2016.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "dk_sdfi_dklat_2022.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": true,
+  "ops": 6
+ },
+ "dk_sdfi_dklat_2023.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": true,
+  "ops": 6
+ },
+ "dk_sdfi_dkmsl_2022.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": true,
+  "ops": 6
+ },
+ "dk_sdfi_dkmsl_2023.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": true,
+  "ops": 6
+ },
+ "dk_sdfi_dvr90_2002.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "dk_sdfi_dvr90_2013.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "dk_sdfi_dvr90_2023.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "dk_sdfi_gllat_2023.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": true,
+  "ops": 6
+ },
+ "dk_sdfi_glmsl_2023.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": true,
+  "ops": 6
+ },
+ "es_ign_egm08-rednap-canarias.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "es_ign_egm08-rednap.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fi_nls_fin2000.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fi_nls_fin2023n2000.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_RAC23.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_RAF18.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_RAF20.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_RAGTBT2016.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_RALD2016.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_RALDW842016.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_RALS2016.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_RAMART2016.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_RAMG2016.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_RAR07_bl.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_RASPM2018.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_gg10_sbv2.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_gg10_smv2.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_ggg00_lsv2.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_ggg00_mgv2.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_ggg00_sbv2.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_ggg00_smv2.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_ggg00v2.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_ggguy15.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_ggm00v2.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "fr_ign_ggm23v2.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "hu_bme_geoid2014.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "is_lmi_Icegeoid_ISN2004.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "is_lmi_Icegeoid_ISN2016.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "is_lmi_Icegeoid_ISN93.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "jp_gsi_jpgeo2024.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "lv_lgia_lv14.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "mx_inegi_ggm10.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "nc_dittt_RANC15.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 3
+ },
+ "nc_dittt_Ranc08_Circe.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "nl_nsgi_bongeo2004.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "nl_nsgi_nlgeo2018.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "no_kv_CD_above_Ell_ETRS89_v2023b.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": true,
+  "ops": 6
+ },
+ "no_kv_HREF2018B_NN2000_EUREF89.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "no_kv_Svalbard_EUREF89_SVD2024.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "no_kv_arcgp-2006-sk.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "no_kv_href2008a.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "nz_linz_nzgeoid2009.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "nz_linz_nzgeoid2016.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "pl_gugik_geoid2011-PL-KRON86-NH.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "pl_gugik_geoid2021-PL-EVRF2007-NH.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "pt_dgt_GeodPT08.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "se_lantmateriet_SWEN17_RH2000.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "si_gurs_SLO-VRP2016-Koper.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "sk_gku_Slovakia_ETRS89h_to_EVRF2007.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "uk_os_OSGM15_Belfast.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "uk_os_OSGM15_GB.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "uk_os_OSGM15_Malin.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "us_nga_egm08_25.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "us_nga_egm96_15.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "us_noaa_g2012bs0.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "us_noaa_g2018p0.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "us_noaa_g2018u0.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ },
+ "za_cdngi_sageoid2010.tif": {
+  "inv": true,
+  "multiplier": 1.0,
+  "flip": false,
+  "ops": 5
+ }
+}

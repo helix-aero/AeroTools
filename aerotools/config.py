@@ -39,6 +39,24 @@ TOOLS = [
         "ready": True,
         "reopen": True,
     },
+    {
+        "id": "fastspace",
+        "menu": "Aero-Space",
+        "title": "Aero-Space",
+        "subtitle": "tool.fastspace.subtitle",
+        "shortcut": None,
+        "ready": True,
+        "reopen": False,
+    },
+    {
+        "id": "aeroexports",
+        "menu": "Aero-Exports",
+        "title": "Aero-Exports",
+        "subtitle": "tool.aeroexports.subtitle",
+        "shortcut": None,
+        "ready": True,
+        "reopen": False,
+    },
     # The AI detection (formerly AIGCP) is part of Aero-GCP: no menu entry of its own.
 ]
 
@@ -63,6 +81,10 @@ CORE = "core"
 PACKS = [
     {"id": "fastgcp", "paths": ["aerotools/tools/fastgcp/", "models/"], "marker": "aerotools/tools/fastgcp/tool.py",
      "requires": [], "setup": "aerotools.tools.fastgcp.install_ui"},
+    {"id": "fastspace", "paths": ["aerotools/tools/fastspace/"], "marker": "aerotools/tools/fastspace/tool.py",
+     "requires": []},
+    {"id": "aeroexports", "paths": ["aerotools/tools/aeroexports/", "aerotools/vendor/"],
+     "marker": "aerotools/tools/aeroexports/tool.py", "requires": []},
 ]
 
 
@@ -129,6 +151,7 @@ def app_dir():
 # Renamed sections: {new name: old name}. When a tool is renamed, the choices already saved are copied to the new section at
 # the first read, leaving the old one untouched (going back loses nothing).
 LEGACY_SECTIONS = {
+    "aeroexports": "fastexport",
 }
 
 

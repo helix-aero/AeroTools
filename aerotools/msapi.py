@@ -1597,6 +1597,308 @@ def reset_photo_filter():
 
 
 # --------------------------------------------------------------------------
+# Orthomosaic and DEM export
+# --------------------------------------------------------------------------
+
+_TIFF_COMPRESSION = {"none": "TiffCompressionNone", "lzw": "TiffCompressionLZW", "jpeg": "TiffCompressionJPEG",
+                     "deflate": "TiffCompressionDeflate", "packbits": "TiffCompressionPackbits"}
+EXIF_DATE_SAMPLE = 60
+
+
+def document_path():
+    """Path of the .psx of the open document, or "" as long as it is not saved."""
+    doc = document()
+    try:
+        return str(doc.path or "") if doc is not None else ""
+    except Exception:
+        return ""
+
+
+def _raster_of(chk, name):
+    """(resolution in meters, width, height) of chk.orthomosaic / chk.elevation, or None if it does not exist."""
+    try:
+        item = getattr(chk, name)
+        if item is None:
+            return None
+        return float(item.resolution), int(item.width), int(item.height)
+    except Exception:
+        return None
+
+
+def _box_of(chk, name):
+    """(left, bottom, right, top) of chk.orthomosaic / chk.elevation in the units of their projection, or None."""
+    try:
+        item = getattr(chk, name)
+        return (float(item.left), float(item.bottom), float(item.right), float(item.top)) if item is not None else None
+    except Exception:
+        return None
+
+
+def default_raster(chk, name):
+    """The raster Metashape exports (and shows in normal font in the Workspace pane): {"key", "label", "width", "height",
+    "resolution"} for `chk.orthomosaic` / `chk.elevation`, or None. A chunk can hold several; this property is the default one."""
+    try:
+        item = getattr(chk, name)
+        if item is None:
+            return None
+        return {"key": int(item.key), "label": str(item.label), "width": int(item.width), "height": int(item.height),
+                "resolution": float(item.resolution)}
+    except Exception:
+        return None
+
+
+def raster_count(chk, name):
+    """How many DEMs (`elevations`) or orthomosaics (`orthomosaics`) the chunk holds; 0 when unknown."""
+    try:
+        return len(getattr(chk, name))
+    except Exception:
+        return 0
+
+
+def boundary_count(chk):
+    """Number of shapes of the chunk that cut the exported rasters (boundary type OuterBoundary or InnerBoundary), or None when
+    it cannot be read. Metashape's `exportRaster` clips to them by default (`clip_to_boundary`)."""
+    try:
+        count = 0
+        for shape in chk.shapes:
+            if not str(shape.boundary_type).endswith("NoBoundary"):
+                count += 1
+        return count
+    except Exception:
+        return None
+
+
+def raster_signature(chk):
+    """Cheap fingerprint of what the export window shows: the chunk, its default DEM and orthomosaic (key, size, resolution) and the
+    number of shapes. Read by a timer, so no iteration over the shapes and no export. None for a missing chunk."""
+    if chk is None:
+        return None
+    parts = [chunk_key(chk)]
+    for name in ("elevation", "orthomosaic"):
+        item = default_raster(chk, name)
+        parts.append(None if item is None else (item["key"], item["width"], item["height"], round(item["resolution"], 9)))
+    try:
+        parts.append(len(chk.shapes))
+    except Exception:
+        parts.append(None)
+    return tuple(parts)
+
+
+def raster_info(chk=None):
+    """What can be exported from this chunk: {"ortho": (res, w, h) or None, "dem": ..., "box_ortho": (l, b, r, t) or
+    None, "box_dem": ..., "crs": text, "dates": [...]}.
+
+    `dates`: EXIF dates of a sample of photos (the file name takes the flight date from them)."""
+    chk = chk if chk is not None else chunk()
+    info = {"ortho": None, "dem": None, "box_ortho": None, "box_dem": None, "crs": "", "dates": [], "crs_object": None,
+            "crs_ortho": None, "crs_dem": None, "center": None,
+            "dem_default": None, "ortho_default": None, "n_dems": 0, "n_orthos": 0, "boundaries": None}
+    if chk is None:
+        return info
+    info["dem_default"] = default_raster(chk, "elevation")
+    info["ortho_default"] = default_raster(chk, "orthomosaic")
+    info["n_dems"] = raster_count(chk, "elevations")
+    info["n_orthos"] = raster_count(chk, "orthomosaics")
+    info["boundaries"] = boundary_count(chk)
+    info["ortho"] = _raster_of(chk, "orthomosaic")
+    info["dem"] = _raster_of(chk, "elevation")
+    info["box_ortho"] = _box_of(chk, "orthomosaic")
+    info["box_dem"] = _box_of(chk, "elevation")
+    for getter in (lambda: chk.orthomosaic.projection.crs, lambda: chk.elevation.crs, lambda: chk.crs):
+        try:
+            crs = getter()
+            if crs is not None and str(crs.name):
+                info["crs"] = str(crs.name)
+                info["crs_object"] = crs
+                break
+        except Exception:
+            continue
+    # Each raster has its own CRS: an orthomosaic in degrees (WGS 84) can coexist with a DEM in meters (CC42), and its
+    # extent is only readable in its CRS.
+    for kind, name in (("ortho", "orthomosaic"), ("dem", "elevation")):
+        info["crs_" + kind] = None
+        try:
+            crs = getattr(chk, name).projection.crs
+            if crs is not None and str(crs.name):
+                info["crs_" + kind] = crs
+        except Exception:
+            pass
+    info["geographic_ortho"] = info["crs_ortho"] is not None and is_geographic(info["crs_ortho"])
+    info["geographic_dem"] = info["crs_dem"] is not None and is_geographic(info["crs_dem"])
+    info["center"] = _center_lonlat(info["crs_ortho"] or info["crs_dem"] or info["crs_object"], info["box_ortho"] or info["box_dem"])
+    try:
+        cameras = list(chk.cameras)
+        for camera in cameras[::max(1, len(cameras) // EXIF_DATE_SAMPLE)]:
+            try:
+                text = camera.photo.meta["Exif/DateTimeOriginal"]
+            except Exception:
+                continue
+            if text:
+                info["dates"].append(str(text))
+    except Exception:
+        pass
+    return info
+
+
+def dem_range(chk=None):
+    """(minimum, maximum) height of the chunk's DEM from Metashape's own statistics (`Elevation.min` / `.max`), or None.
+    Used for the legend of the DEM preview; the caller checks it against the data (preview.Preview), so a surprise here is harmless."""
+    chk = chk if chk is not None else chunk()
+    try:
+        elevation = chk.elevation
+        return float(elevation.min), float(elevation.max)
+    except Exception:
+        return None
+
+
+def _center_lonlat(crs, box):
+    """(longitude, latitude) of the extent center, in degrees, or None."""
+    if crs is None or not box:
+        return None
+    try:
+        left, bottom, right, top = box
+        point = Metashape.CoordinateSystem.transform(Metashape.Vector(((left + right) / 2.0, (bottom + top) / 2.0, 0.0)), crs,
+                                                     Metashape.CoordinateSystem("EPSG::4326"))
+        return float(point[0]), float(point[1])
+    except Exception:
+        return None
+
+
+def target_crs(horizontal_epsg):
+    """Horizontal output CRS `EPSG::n`, or None if Metashape refuses it. Without a vertical system: Metashape then exports
+    ellipsoidal heights, and the altitudes are computed by AeroTools (see tools/aeroexports/vertical.py)."""
+    try:
+        return Metashape.CoordinateSystem("EPSG::%d" % horizontal_epsg)
+    except Exception:
+        return None
+
+
+def project_epsg(crs):
+    """EPSG code (integer) of the project's horizontal CRS, or None (custom CRS, no code)."""
+    try:
+        part = horizontal_part(crs)
+        text = str(part.authority) if part is not None else ""
+        number = text.replace("EPSG::", "").replace("EPSG:", "")
+        return int(number) if text.startswith("EPSG") and number.isdigit() else None
+    except Exception:
+        return None
+
+
+def is_geographic(crs):
+    """True if the horizontal of this CRS is in degrees (longitude / latitude): a pixel in centimeters makes no sense there."""
+    try:
+        part = horizontal_part(crs)
+        return part is not None and str(part.wkt).lstrip().upper().startswith("GEOGCS")
+    except Exception:
+        return False
+
+
+def horizontal_part(crs):
+    """Horizontal part of a compound CRS (the PROJCS / GEOGCS of the COMPD_CS); the CRS itself if it is not compound, None if unreadable."""
+    try:
+        wkt = str(crs.wkt)
+        if not wkt.lstrip().upper().startswith("COMPD_CS"):
+            return crs
+        starts = [wkt.find(tag) for tag in ("PROJCS[", "GEOGCS[") if wkt.find(tag) >= 0]
+        start = min(starts)
+        depth, quoted = 0, False
+        for i in range(wkt.index("[", start), len(wkt)):
+            char = wkt[i]
+            if char == '"':
+                quoted = not quoted
+            elif not quoted and char == "[":
+                depth += 1
+            elif not quoted and char == "]":
+                depth -= 1
+                if depth == 0:
+                    return Metashape.CoordinateSystem(wkt[start:i + 1])
+    except Exception:
+        pass
+    return None
+
+
+def transform_box(box, source, target):
+    """Extent (left, bottom, right, top) from one CRS to another: envelope of the four corners, or None.
+
+    Only the plane matters for an extent: if the full conversion fails (geoid grid missing, for example), it is
+    redone without the altitudes. The reason for the last failure stays in `transform_box.last_error`."""
+    transform_box.last_error = ""
+    left, bottom, right, top = box
+    pairs = [(source, target)]
+    flat = (horizontal_part(source), horizontal_part(target))
+    if None not in flat and flat != pairs[0]:
+        pairs.append(flat)
+    for src, dst in pairs:
+        try:
+            corners = [Metashape.CoordinateSystem.transform(Metashape.Vector((x, y, 0.0)), src, dst)
+                       for x, y in ((left, bottom), (right, bottom), (right, top), (left, top))]
+            xs, ys = [float(c[0]) for c in corners], [float(c[1]) for c in corners]
+            return min(xs), min(ys), max(xs), max(ys)
+        except Exception as exc:
+            transform_box.last_error = str(exc) or repr(exc)
+    return None
+
+
+transform_box.last_error = ""
+
+
+def snapped_box(box, pixel):
+    """Extent (left, bottom, right, top) widened to multiples of `pixel`: the export grid falls on
+    round coordinates and each pixel measures exactly `pixel`."""
+    left, bottom, right, top = box
+    return (math.floor(left / pixel + 1e-9) * pixel, math.floor(bottom / pixel + 1e-9) * pixel,
+            math.ceil(right / pixel - 1e-9) * pixel, math.ceil(top / pixel - 1e-9) * pixel)
+
+
+def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progress=None, crs=None, clip_to_boundary=True):
+    """Write the orthomosaic (kind "ortho") or the DEM (kind "dem") to `path`. Returns (ok, error message).
+
+    `spec`: a setting from tools/aeroexports/plan.py. Without `pixel` (or without `box`), Metashape keeps its own grid.
+    With `pixel` (in projection units, for example 0.03) and `box` (extent of the raster), the pixel measures
+    exactly `pixel` and the grid is aligned on multiples of `pixel`: observed on Metashape 2.2.1,
+    where `resolution=0.5` gave 0.49996 (ground meters) while `resolution_x/y=0.5` gives exactly 0.5.
+    `crs`: output CRS (see target_crs); `box` is then expressed in that CRS (see transform_box).
+    `clip_to_boundary`: cut the export to the chunk's "boundary" shapes (OuterBoundary / InnerBoundary). Always passed to
+    Metashape (never its implied default): without it a DEM can lose more than half of its pixels without anyone noticing.
+    `progress(percent)` is called during the computation."""
+    try:
+        compression = Metashape.ImageCompression()
+        compression.tiff_big = bool(big)
+        compression.tiff_tiled = bool(spec.get("tiled", True))
+        compression.tiff_overviews = bool(spec.get("overviews", False))
+        compression.tiff_compression = getattr(Metashape.ImageCompression,
+                                               _TIFF_COMPRESSION[spec.get("compression", "lzw")])
+        compression.jpeg_quality = int(spec.get("quality") or 90)
+        jpeg = spec.get("image") == "jpeg"
+        arguments = {
+            "path": path,
+            "source_data": Metashape.ElevationData if kind == "dem" else Metashape.OrthomosaicData,
+            "image_format": (Metashape.ImageFormatJP2 if spec.get("image") == "jp2"
+                             else Metashape.ImageFormatJPEG if jpeg else Metashape.ImageFormatTIFF),
+            "image_compression": compression,
+            "save_world": bool(spec.get("world", False)),
+            "save_alpha": bool(spec.get("alpha", False)),
+            "white_background": bool(spec.get("white", False)),
+            "split_in_blocks": False,
+            "clip_to_boundary": bool(clip_to_boundary),
+        }
+        if pixel and box:
+            left, bottom, right, top = snapped_box(box, float(pixel))
+            arguments["region"] = Metashape.BBox(Metashape.Vector((left, bottom)), Metashape.Vector((right, top)))
+            arguments["resolution_x"] = arguments["resolution_y"] = float(pixel)
+        if crs is not None:
+            projection = Metashape.OrthoProjection()
+            projection.crs = crs
+            arguments["projection"] = projection
+        if progress is not None:
+            arguments["progress"] = progress
+        chk.exportRaster(**arguments)
+        return True, ""
+    except Exception as exc:
+        return False, str(exc) or repr(exc)
+
+
+# --------------------------------------------------------------------------
 # Menu
 # --------------------------------------------------------------------------
 

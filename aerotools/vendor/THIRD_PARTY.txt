@@ -1,0 +1,3 @@
+Third party programs shipped in aerotools/vendor (details in each folder)
+
+  proj/    PROJ 9.8.1 (cs2cs, cct, proj.db) - MIT licence - coordinate systems and heights

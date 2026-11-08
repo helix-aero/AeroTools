@@ -102,3 +102,8 @@ def test_no_legacy_section_means_no_new_section(local_appdata, renamed):
     _write_settings({"fastgcp": {"x": 1}})
     assert config.get("alpha", "mode") is None
     assert _read_settings() == {"fastgcp": {"x": 1}}
+
+
+def test_aero_exports_keeps_the_choices_saved_under_its_first_name(local_appdata):
+    _write_settings({"fastexport": {"cad_format": "dwg"}})
+    assert config.get("aeroexports", "cad_format") == "dwg"
