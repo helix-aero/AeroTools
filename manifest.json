@@ -1,5 +1,5 @@
 {
- "built": "2026-11-09T15:35:56",
+ "built": "2026-11-09T15:40:14",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -18,7 +18,7 @@
    "size": 8268
   },
   "aerotools/__init__.py": {
-   "sha256": "f5aead2b795ddef223d5b8e910c47d3ac28c93c3f5fbc7ceb194fefccd1c422d",
+   "sha256": "3ddefdd3df5c6167bd8b9d2323ee96b5071ca48697c648acfcee9f5ad9ca6bed",
    "size": 590
   },
   "aerotools/assets/ui/arrow_down.png": {
@@ -597,5 +597,5 @@
   }
  ],
  "schema": 1,
- "version": "0.3.0"
+ "version": "0.3.1"
 }
