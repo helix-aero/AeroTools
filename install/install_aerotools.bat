@@ -1,7 +1,8 @@
 @echo off
 setlocal
 title AeroTools - installation
-rem Installs the Aero menu in Metashape, nothing else (about 1 MB). The tools are picked afterwards in Metashape,
+rem Installs the Aero menu in Metashape and the code the tools share, nothing else (about 1 MB on the stable version,
+rem about 26 MB on the dev version). The tools are picked afterwards in Metashape,
 rem with Aero > Install plugins...; the AI detection of Aero-GCP is set up from there too.
 rem Root = parent folder of install\ (without a trailing backslash).
 for %%I in ("%~dp0..") do set "AT_ROOT=%%~fI"

@@ -1,0 +1,1 @@
+liblzma, the library of XZ Utils, is in the public domain (COPYING of XZ Utils 5.4.7, https://tukaani.org/xz/).

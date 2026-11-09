@@ -1,4 +1,4 @@
-"""Aero-Exports: PROJ 9 (binaries embedded in aerotools/vendor/proj) for coordinate and altitude conversions.
+"""PROJ 9 (binaries embedded in aerotools/vendor/proj) for coordinate and altitude conversions, shared by the tools.
 
 PROJ is the reference for geodetic conversions (QGIS, GDAL, IGN): the computation is left to it, without going through pyproj (no tie
 to the version of Metashape's Python). `cs2cs` (CRS change) and `cct` (a given operation, here the vertical shift
@@ -11,23 +11,65 @@ of a grid) are called as subprocesses, with a single call per batch of points.
 """
 
 import os
+import sqlite3
 import subprocess
 
 import numpy as np
 
-VENDOR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "vendor", "proj"))
+VENDOR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor", "proj")
 CHUNK = 100000                       # points per call
 NO_WINDOW = 0x08000000               # CREATE_NO_WINDOW (Windows)
+
+
+# Recognition list: lower-case PROJ datum names (proper names, kept as PROJ writes them) of the modern geocentric frames.
+MODERN_GLOBAL = ("reseau geodesique francais 1993", "european terrestrial reference", "etrs89", "etrf", "world geodetic system 1984",
+                 "wgs 84", "international terrestrial reference", "itrf", "sirgas", "geocentric datum of australia 2020", "gda2020",
+                 "national spatial reference system 2011", "nad83(2011)", "new zealand geodetic datum 2000", "nzgd2000",
+                 "japanese geodetic datum 2011", "jgd2011")
+
+_db_cache = {}
 
 
 class ProjError(Exception):
     """Readable failure of a PROJ call."""
 
 
+def proj_db():
+    """Read-only connection to the embedded proj.db (EPSG, IGNF and others)."""
+    path = os.path.join(VENDOR, "share", "proj", "proj.db")
+    if path not in _db_cache:
+        _db_cache[path] = sqlite3.connect("file:%s?mode=ro" % path.replace("\\", "/"), uri=True, check_same_thread=False)
+    return _db_cache[path]
+
+
+def datum_family(name):
+    """"global" for the equivalent modern geocentric frames, otherwise the datum name itself (no equivalence)."""
+    low = (name or "").lower()
+    return "global" if any(word in low for word in MODERN_GLOBAL) else low
+
+
+def frame_of(code):
+    """{"code2d", "datum", "name", "family"} of the frame of an EPSG CRS (projected or geographic), or None."""
+    code = str(code).replace("EPSG:", "").replace("EPSG::", "")
+    row = proj_db().execute(
+        "select g.code, g.datum_code, d.name from projected_crs p join geodetic_crs g on g.auth_name=p.geodetic_crs_auth_name "
+        "and g.code=p.geodetic_crs_code join geodetic_datum d on d.auth_name=g.datum_auth_name and d.code=g.datum_code "
+        "where p.auth_name='EPSG' and p.code=?", (code,)).fetchone()
+    if row is None:
+        row = proj_db().execute("select g.code, g.datum_code, d.name from geodetic_crs g join geodetic_datum d on d.auth_name="
+                                "g.datum_auth_name and d.code=g.datum_code where g.auth_name='EPSG' and g.code=?", (code,)).fetchone()
+    if row is None:
+        return None
+    return {"code2d": row[0], "datum": row[1], "name": row[2], "family": datum_family(row[2])}
+
+
 def geographic_epsg(horizontal_epsg):
-    """Geographic CRS of the same frame as `horizontal_epsg` (from the PROJ database): the one in which the grids are queried."""
-    from . import projdb
-    return projdb.geographic_epsg(horizontal_epsg)
+    """Code of the 2D geographic CRS of the frame of a projected CRS (the one in which the grids are queried); 4326 if unknown."""
+    frame = frame_of(horizontal_epsg) if os.path.isfile(os.path.join(VENDOR, "share", "proj", "proj.db")) else None
+    try:
+        return int(frame["code2d"]) if frame else 4326
+    except (TypeError, ValueError):
+        return 4326
 
 
 class Proj(object):

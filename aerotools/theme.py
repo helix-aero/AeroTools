@@ -56,6 +56,8 @@ ORANGE = "#ff5210"
 ORANGE_BRIGHT = "#ff7a3c"
 ORANGE_DEEP = "#b83504"
 
+BLUE = "#4aa8ff"                # state colour (rapid orbits); never an accent
+
 
 LOGO_0 = "#163056"
 LOGO_1 = "#139168"

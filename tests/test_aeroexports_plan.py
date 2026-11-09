@@ -280,3 +280,47 @@ def test_every_shared_widget_the_export_window_asks_ui_for_exists():
     defined = set(re.findall(r"^(?:def|class) (\w+)", shared, re.M)) | set(re.findall(r"^(\w+) *=", shared, re.M))
     missing = [name for name in sorted(wanted) if name not in defined]
     assert missing == []
+
+
+# -- tiled exports and the "already exists" guard --------------------------------------------------------
+
+def _touch_all(folder, names):
+    os.makedirs(folder, exist_ok=True)
+    for name in names:
+        open(os.path.join(folder, name), "wb").write(b"x")
+
+
+def test_tiles_already_delivered_are_found_by_the_overwrite_guard(tmp_path):
+    folder = str(tmp_path)
+    _touch_all(folder, ["ClientA_300704_50cm_R01C01_ortho.tif", "ClientA_300704_50cm_R01C02_ortho.tif",
+                        "ClientA_300704_50cm_R01C01_dtm.tif"])
+    jobs = plan.build_jobs("ClientA", DAY, {"ortho": 0.5}, "full", folder, version=1)
+    assert plan.existing_files(jobs, "full") == []                                      # without tiling: other names, nothing to overwrite
+    found = plan.existing_files(jobs, "full", tiled=True)
+    assert [os.path.basename(p) for p in found] == ["ClientA_300704_50cm_R01C01_ortho.tif",
+                                                    "ClientA_300704_50cm_R01C02_ortho.tif"]
+
+
+def test_a_new_tiled_version_does_not_reuse_a_version_delivered_as_tiles(tmp_path):
+    folder = str(tmp_path)
+    _touch_all(folder, ["ClientA_300704_50cm_R01C01_ortho.tif"])
+    assert plan.build_jobs("ClientA", DAY, {"ortho": 0.5}, "full", folder, tiled=True)[0].name == "ClientA_300704_50cm_v2_ortho.tif"
+    assert plan.build_jobs("ClientA", DAY, {"ortho": 0.5}, "full", folder)[0].name == "ClientA_300704_50cm_ortho.tif"
+    _touch_all(folder, ["ClientA_300704_50cm_v2_R02C03_ortho.tif"])
+    assert plan.build_jobs("ClientA", DAY, {"ortho": 0.5}, "full", folder, tiled=True)[0].version == 3
+
+
+def test_tiles_of_a_cad_export_are_seen_in_the_asset_folders(tmp_path):
+    folder = str(tmp_path)
+    _touch_all(os.path.join(folder, "00_Assets", "ortho"), ["ClientA_300704_10cm_R01C01_ortho.jp2"])
+    jobs = plan.build_jobs("ClientA", DAY, {"ortho": 0.1}, "cad", folder, tiled=True)
+    assert jobs[0].version == 2
+    first = plan.build_jobs("ClientA", DAY, {"ortho": 0.1}, "cad", folder, version=1)
+    assert [os.path.basename(p) for p in plan.existing_files(first, "cad", tiled=True)] == ["ClientA_300704_10cm_R01C01_ortho.jp2"]
+
+
+def test_untiled_only_changes_real_tile_names():
+    assert plan.untiled("ClientA_300704_50cm_R01C02_ortho.tif") == "ClientA_300704_50cm_ortho.tif"
+    assert plan.untiled("ClientA_300704_50cm_v2_R101C007_dtm.tif") == "ClientA_300704_50cm_v2_dtm.tif"
+    assert plan.untiled("ClientA_300704_50cm_ortho.tif") == "ClientA_300704_50cm_ortho.tif"
+    assert plan.untiled("R01C02_notes.txt") == "R01C02_notes.txt"

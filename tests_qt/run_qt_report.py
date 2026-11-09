@@ -532,6 +532,24 @@ def main():
     check_pdf("PDF without any error", noerr, 2)
     msapi.marker_errors = fake_errors_factory(markers)
 
+    # 5b. Control points (used in the adjustment) and check points: the RMS cards are the check points', with a tag in the table
+    for index, marker in enumerate(markers):
+        marker.reference.enabled = index % 4 != 0
+    mixed = os.path.join(OUT, "report_control_and_check_{}.pdf".format(BINDING))
+    mixed_data = report.collect_data(chunk)
+    check("control / check: both groups counted", mixed_data["stats"]["n_check"] > 0 and mixed_data["stats"]["n_control"] > 0)
+    report.build_pdf(mixed_data, mixed, images)
+    check_pdf("PDF with control and check points", mixed, 3)
+    for marker in markers:
+        marker.reference.enabled = True
+    nocheck = os.path.join(OUT, "report_no_check_points_{}.pdf".format(BINDING))
+    nocheck_data = report.collect_data(chunk)
+    check("control only: no check point", nocheck_data["stats"]["n_check"] == 0)
+    report.build_pdf(nocheck_data, nocheck, images)
+    check_pdf("PDF with control points only", nocheck, 3)
+    for marker in markers:
+        del marker.reference.enabled
+
     # 6. export_pdf end to end (dialogs replaced)
     target = os.path.join(OUT, "export_end_to_end_{}.pdf".format(BINDING))
     messages = []

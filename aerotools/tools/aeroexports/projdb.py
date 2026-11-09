@@ -18,67 +18,18 @@ import json
 import math
 import os
 import re
-import sqlite3
 
-from . import projtool
+from ... import projtool
 
 DATA = os.path.join(projtool.VENDOR, "data", "files.geojson")
 OPS = os.path.join(projtool.VENDOR, "data", "grid_ops.json")      # PROJ operations of each grid (taken with projinfo 9.8.1)
 GRID_TYPE = "VERTICAL_OFFSET_GEOGRAPHIC_TO_VERTICAL"
 ELLIPSOID_ID = "ellipsoid"
-# Recognition list: lower-case PROJ datum names (proper names, kept as PROJ writes them) of the modern geocentric frames.
-MODERN_GLOBAL = ("reseau geodesique francais 1993", "european terrestrial reference", "etrs89", "etrf", "world geodetic system 1984",
-                 "wgs 84", "international terrestrial reference", "itrf", "sirgas", "geocentric datum of australia 2020", "gda2020",
-                 "national spatial reference system 2011", "nad83(2011)", "new zealand geodetic datum 2000", "nzgd2000",
-                 "japanese geodetic datum 2011", "jgd2011")
-
-_db_cache = {}
 _grids_cache = {}
-
-
-def _db():
-    path = os.path.join(projtool.VENDOR, "share", "proj", "proj.db")
-    if path not in _db_cache:
-        _db_cache[path] = sqlite3.connect("file:%s?mode=ro" % path.replace("\\", "/"), uri=True, check_same_thread=False)
-    return _db_cache[path]
 
 
 def available():
     return os.path.isfile(os.path.join(projtool.VENDOR, "share", "proj", "proj.db")) and os.path.isfile(DATA)
-
-
-# --------------------------------------------------------------------------------------------------
-# Frames
-# --------------------------------------------------------------------------------------------------
-
-def datum_family(name):
-    """"global" for the equivalent modern geocentric frames, otherwise the datum name itself (no equivalence)."""
-    low = (name or "").lower()
-    return "global" if any(word in low for word in MODERN_GLOBAL) else low
-
-
-def frame_of(code):
-    """{"code2d", "datum", "name", "family"} of the frame of an EPSG CRS (projected or geographic), or None."""
-    code = str(code).replace("EPSG:", "").replace("EPSG::", "")
-    row = _db().execute(
-        "select g.code, g.datum_code, d.name from projected_crs p join geodetic_crs g on g.auth_name=p.geodetic_crs_auth_name "
-        "and g.code=p.geodetic_crs_code join geodetic_datum d on d.auth_name=g.datum_auth_name and d.code=g.datum_code "
-        "where p.auth_name='EPSG' and p.code=?", (code,)).fetchone()
-    if row is None:
-        row = _db().execute("select g.code, g.datum_code, d.name from geodetic_crs g join geodetic_datum d on d.auth_name="
-                            "g.datum_auth_name and d.code=g.datum_code where g.auth_name='EPSG' and g.code=?", (code,)).fetchone()
-    if row is None:
-        return None
-    return {"code2d": row[0], "datum": row[1], "name": row[2], "family": datum_family(row[2])}
-
-
-def geographic_epsg(horizontal_epsg):
-    """Code of the 2D geographic CRS of the frame of a projected CRS (the one in which the grids are queried); 4326 if unknown."""
-    frame = frame_of(horizontal_epsg) if available() else None
-    try:
-        return int(frame["code2d"]) if frame else 4326
-    except (TypeError, ValueError):
-        return 4326
 
 
 # --------------------------------------------------------------------------------------------------
@@ -165,7 +116,7 @@ def match(frame, grid):
     """"exact" (same datum), "equivalent" (another realisation of the same modern geocentric frame) or None. See the header."""
     if frame is None:
         return None
-    source = frame_of(grid["source"])
+    source = projtool.frame_of(grid["source"])
     if source is None:
         return None
     if source["datum"] == frame["datum"]:
@@ -182,7 +133,7 @@ def verticals_for(horizontal_epsg, lon=None, lat=None, max_size=None):
     A grid of another equivalent datum (RAC23, made for RGF93 v2b, with an RGF93 v1 CRS) is only offered if no grid of the
     exact datum gives the same altitude (RAC09 already gives NGF-IGN78): two realisations are not mixed when there is a choice.
     `max_size` (bytes): leaves out large files. Grids whose vertical CRS is a depth (axis pointing down) are left out."""
-    frame = frame_of(horizontal_epsg)
+    frame = projtool.frame_of(horizontal_epsg)
     exact, equivalent = [], []
     for grid in grids():
         if lon is not None and lat is not None and not inside(grid["bbox"], lon, lat):
@@ -222,14 +173,14 @@ def utm_zone(lon):
 def candidates(lon=None, lat=None, text=None, limit=40):
     """[(code, name)] of EPSG projected CRS: without text, those that cover (lon, lat) from the most precise to the widest, then the
     UTM WGS 84 / ETRS89 zones of the place; with text, those whose name contains the text or whose code is the number typed."""
-    db = _db()
+    db = projtool.proj_db()
     text = (text or "").strip()
     if text:
         digits = text.replace("EPSG:", "").strip()
         rows = db.execute(_BASE_SQL + " and (p.name like ? or p.code = ?) group by p.code order by p.name limit ?",
                           ("%" + text + "%", digits if digits.isdigit() else "-", limit * 3)).fetchall()
         if lon is not None and lat is not None:
-            rows.sort(key=lambda r: (not inside((r[2], r[3], r[4], r[5]), lon, lat), datum_family(r[6]) != "global", r[1]))
+            rows.sort(key=lambda r: (not inside((r[2], r[3], r[4], r[5]), lon, lat), projtool.datum_family(r[6]) != "global", r[1]))
         return [(int(r[0]), r[1]) for r in rows[:limit]]
     if lon is None or lat is None:
         return []
@@ -238,7 +189,7 @@ def candidates(lon=None, lat=None, text=None, limit=40):
     for code, name, west, south, east, north, datum in rows:
         if inside((west, south, east, north), lon, lat):
             size = area_of((west, south, east, north)) if west <= east else 1e9
-            rank = (datum_family(datum) != "global", size)           # modern frames first, then from the most precise to the widest
+            rank = (projtool.datum_family(datum) != "global", size)           # modern frames first, then from the most precise to the widest
             if code not in found or rank < found[code][0]:
                 found[code] = (rank, name)
     ranked = sorted(found.items(), key=lambda item: (item[1][0], item[1][1]))

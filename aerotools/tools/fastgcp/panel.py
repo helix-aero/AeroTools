@@ -522,7 +522,7 @@ class _LinkFrame(QtWidgets.QFrame):
         try:
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(self._url))
         except Exception as exc:
-            journal.write("FastGCP: banner link: {!r}".format(exc))
+            journal.write("Aero-GCP: banner link: {!r}".format(exc))
         super(_LinkFrame, self).mousePressEvent(event)
 
 
@@ -1318,7 +1318,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         try:
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(GITHUB_URL))
         except Exception as exc:
-            journal.write("FastGCP: GitHub link: {!r}".format(exc))
+            journal.write("Aero-GCP: GitHub link: {!r}".format(exc))
 
     # ------------------------------------------------------------------
     # Theme
@@ -1388,7 +1388,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
             self._set_log_open(bool(state.option("show_log")), persist=False)
         except Exception as exc:
-            journal.write("FastGCP: reading the settings: {!r}".format(exc))
+            journal.write("Aero-GCP: reading the settings: {!r}".format(exc))
 
     def _set_option(self, key, value):
         state = self._state
@@ -1397,7 +1397,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         try:
             state.set_option(key, value)
         except Exception as exc:
-            journal.write("FastGCP: setting {} not saved: {!r}".format(key, exc))
+            journal.write("Aero-GCP: setting {} not saved: {!r}".format(key, exc))
 
     def _on_check(self, key, checked):
         self._set_option(key, bool(checked))
@@ -1427,7 +1427,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._apply_toggle(running)
         # The Ctrl+Z shortcut (tool.py) follows the state of the tool.
         history.notify()
-        journal.write("FastGCP {}".format("active" if running else "paused"))
+        journal.write("Aero-GCP {}".format("active" if running else "paused"))
 
     # ------------------------------------------------------------------
     # Settings window (the gear)
@@ -1442,7 +1442,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 self._fit_log_height()
                 self._scroll_log_to_end()
         except Exception as exc:
-            journal.write("FastGCP: Settings window: {!r}".format(exc))
+            journal.write("Aero-GCP: Settings window: {!r}".format(exc))
 
     # ------------------------------------------------------------------
     # Current marker
@@ -1504,7 +1504,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 self._filter_photos(marker)
             return True
         except Exception as exc:
-            journal.write("FastGCP: marker {} not activated: {!r}".format(label, exc))
+            journal.write("Aero-GCP: marker {} not activated: {!r}".format(label, exc))
             return False
 
     @staticmethod
@@ -1565,7 +1565,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 self._refresh_row(state.active_label())
             self._update_undo_button()
         except Exception as exc:
-            journal.write("FastGCP: errors not refreshed: {!r}".format(exc))
+            journal.write("Aero-GCP: errors not refreshed: {!r}".format(exc))
 
     def refresh_rows(self, labels=None, settle=False):
         """Reread the rows of these markers (X/Y/Z errors, projections); None = the whole table.
@@ -1588,7 +1588,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                     self._refresh_row(label)
                 self._update_undo_button()
         except Exception as exc:
-            journal.write("FastGCP: rows not refreshed: {!r}".format(exc))
+            journal.write("Aero-GCP: rows not refreshed: {!r}".format(exc))
 
     def _filter_photos(self, marker):
         state = self._state
@@ -1600,12 +1600,12 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             if msapi.select_marker(msapi.chunk(), marker):
                 state.last_selected_label = msapi.marker_label(marker)
         except Exception as exc:
-            journal.write("FastGCP: Reference selection: {!r}".format(exc))
+            journal.write("Aero-GCP: Reference selection: {!r}".format(exc))
         try:
             from . import photos
             photos.filter_for_marker(state, marker, force=True)
         except Exception as exc:
-            journal.write("FastGCP: photos filter: {!r}".format(exc))
+            journal.write("Aero-GCP: photos filter: {!r}".format(exc))
         self.update_active_card()
 
     # ------------------------------------------------------------------
@@ -1641,7 +1641,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 self.refresh_markers()
                 bar.setValue(position)             # the table is not made to jump while it is being read
         except Exception as exc:
-            journal.write("FastGCP: table follow-up: {!r}".format(exc))
+            journal.write("Aero-GCP: table follow-up: {!r}".format(exc))
 
     def refresh_markers(self):
         """Reread the markers of the current chunk. Never raises."""
@@ -1650,7 +1650,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         try:
             self._rebuild_list()
         except Exception as exc:
-            journal.write("FastGCP: marker reread: {!r}".format(exc))
+            journal.write("Aero-GCP: marker reread: {!r}".format(exc))
             try:
                 self.set_status(i18n.t("panel.status.reread_failed"))
             except Exception:
@@ -1821,9 +1821,9 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self.refresh_rows(labels, settle=True)
             self.update_active_card()
             self.set_status(i18n.t("panel.removed_projections", n=total, k=len(found)))
-            journal.write("FastGCP: {} projection(s) removed on {} marker(s)".format(total, len(found)))
+            journal.write("Aero-GCP: {} projection(s) removed on {} marker(s)".format(total, len(found)))
         except Exception as exc:
-            journal.write("FastGCP: removal of the projections: {!r}".format(exc))
+            journal.write("Aero-GCP: removal of the projections: {!r}".format(exc))
         finally:
             busy.close()
 
@@ -1843,9 +1843,9 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self.refresh_markers()
             self.update_active_card()
             self.set_status(i18n.t("panel.removed_markers", n=len(gone)))
-            journal.write("FastGCP: {} marker(s) removed: {}".format(len(gone), ", ".join(gone)))
+            journal.write("Aero-GCP: {} marker(s) removed: {}".format(len(gone), ", ".join(gone)))
         except Exception as exc:
-            journal.write("FastGCP: removal of the markers: {!r}".format(exc))
+            journal.write("Aero-GCP: removal of the markers: {!r}".format(exc))
 
     def _on_search(self, _text):
         self.refresh_markers()
@@ -1921,7 +1921,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             journal.write("Current marker: {}".format(label))
             self._filter_photos(marker)
         except Exception as exc:
-            journal.write("FastGCP: marker choice: {!r}".format(exc))
+            journal.write("Aero-GCP: marker choice: {!r}".format(exc))
 
     # ------------------------------------------------------------------
     # Undo
@@ -1948,7 +1948,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             from . import marking
             marking.redo_last(state)
         except Exception as exc:
-            journal.write("FastGCP: redo: {!r}".format(exc))
+            journal.write("Aero-GCP: redo: {!r}".format(exc))
         self._update_undo_button()
 
     def _on_undo_clicked(self):
@@ -1959,7 +1959,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             from . import marking
             marking.undo_last(state)
         except Exception as exc:
-            journal.write("FastGCP: undo: {!r}".format(exc))
+            journal.write("Aero-GCP: undo: {!r}".format(exc))
         self._update_undo_button()
 
     # ------------------------------------------------------------------
@@ -1990,7 +1990,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self._qc_dialog = qc_dialog.show(self, self._qc_data, self._on_qc_open, self._open_diagnostic,
                                              getattr(self, "_qc_dialog", None))
         except Exception as exc:
-            journal.write("FastGCP: residual check: {!r}".format(exc))
+            journal.write("Aero-GCP: residual check: {!r}".format(exc))
 
     def _on_qc_open(self, item):
         """Double-click in the window: the marker, and its worst photo when it is a high residual."""
@@ -2019,11 +2019,11 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 if msapi.set_marker_enabled(point["marker"], on):
                     count += 1 if on else 0
             msapi.refresh()
-            journal.write("FastGCP: check markers ticked: {} (before: {})".format(
+            journal.write("Aero-GCP: check markers ticked: {} (before: {})".format(
                 ", ".join(sorted(wanted)), ", ".join(before)))
             return count, ""
         except Exception as exc:
-            journal.write("FastGCP: ticking the check markers: {!r}".format(exc))
+            journal.write("Aero-GCP: ticking the check markers: {!r}".format(exc))
             return 0, repr(exc)
 
     def _open_adjust(self, _checked=False):
@@ -2033,7 +2033,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self._adjust_dialog = gcp_select_dialog.show(self, self._adjust_collect, self._adjust_apply,
                                                          getattr(self, "_adjust_dialog", None))
         except Exception as exc:
-            journal.write("FastGCP: adjustment of the check markers: {!r}".format(exc))
+            journal.write("Aero-GCP: adjustment of the check markers: {!r}".format(exc))
 
     def _open_diagnostic(self, _checked=False):
         """Window of the full marking diagnostic (see diagnostic.py)."""
@@ -2046,7 +2046,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             self._diag_dialog = diagnostic_dialog.show(
                 self, compute, self._on_diag_open, getattr(self, "_diag_dialog", None))
         except Exception as exc:
-            journal.write("FastGCP: marking diagnostic: {!r}".format(exc))
+            journal.write("Aero-GCP: marking diagnostic: {!r}".format(exc))
 
     def _on_diag_open(self, item):
         """A diagnostic item: current marker, then the photo concerned if it is known."""
@@ -2062,7 +2062,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 from . import photos
                 photos.zoom_on_marker(self._state, marker, camera, force=True)
         except Exception as exc:
-            journal.write("FastGCP: opening from the diagnostic: {!r}".format(exc))
+            journal.write("Aero-GCP: opening from the diagnostic: {!r}".format(exc))
 
     def _on_qc_pick(self, label, open_worst, _checked=False):
         """A click in the menu: current marker; for a residual, opens the worst photo."""
@@ -2080,7 +2080,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 photos.zoom_on_marker(state, marker, worst[0], force=True)
                 self.set_status(i18n.t("qc.opened", label=label))
         except Exception as exc:
-            journal.write("FastGCP: choice in the check: {!r}".format(exc))
+            journal.write("Aero-GCP: choice in the check: {!r}".format(exc))
 
     # ------------------------------------------------------------------
     # AI detection
@@ -2138,7 +2138,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 install_ui.run(self, target, confirm=False)
                 self.update_aigcp()
         except Exception as exc:
-            journal.write("FastGCP: AI setup message: {!r}".format(exc))
+            journal.write("Aero-GCP: AI setup message: {!r}".format(exc))
 
     def open_review(self):
         """Open the review window of the points of the last detection. Never raises."""
@@ -2146,14 +2146,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             from . import review_dialog
             self._review_dialog = review_dialog.show(self._state, self, self._review_dialog)
         except Exception as exc:
-            journal.write("FastGCP: AI points review: {!r}".format(exc))
+            journal.write("Aero-GCP: AI points review: {!r}".format(exc))
 
     def close_review(self):
         try:
             from . import review_dialog
             review_dialog.close(self._review_dialog)
         except Exception as exc:
-            journal.write("FastGCP: closing the AI review: {!r}".format(exc))
+            journal.write("Aero-GCP: closing the AI review: {!r}".format(exc))
         self._review_dialog = None
 
     def selected_labels(self):
@@ -2169,21 +2169,21 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         try:
             aigcp.start(self._state, labels=self.selected_labels())
         except Exception as exc:
-            journal.write("FastGCP: AI detection: {!r}".format(exc))
+            journal.write("Aero-GCP: AI detection: {!r}".format(exc))
         self.update_aigcp()
 
     def _on_aigcp_cancel(self, _checked=False):
         try:
             aigcp.abort(self._state)
         except Exception as exc:
-            journal.write("FastGCP: cancelling the detection: {!r}".format(exc))
+            journal.write("Aero-GCP: cancelling the detection: {!r}".format(exc))
         self.update_aigcp()
 
     def _on_aigcp_clear(self, _checked=False):
         try:
             aigcp.clear(self._state)
         except Exception as exc:
-            journal.write("FastGCP: clearing the proposals: {!r}".format(exc))
+            journal.write("Aero-GCP: clearing the proposals: {!r}".format(exc))
         self.update_aigcp()
 
     # ------------------------------------------------------------------

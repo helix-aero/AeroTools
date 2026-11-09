@@ -248,8 +248,3 @@ def next_free_version(folder, planned_names, listing=None):
 def check_path_length(folder, names):
     """List the full paths that are too long for Windows (> MAX_PATH_SAFE)."""
     return [os.path.join(folder, n) for n in names if len(os.path.join(os.path.abspath(folder), n)) > MAX_PATH_SAFE]
-
-
-def outputs_folder(psx_path):
-    """Output folder: ``Outputs`` next to the .psx (not created here)."""
-    return os.path.join(os.path.dirname(os.path.abspath(psx_path)), "Outputs")

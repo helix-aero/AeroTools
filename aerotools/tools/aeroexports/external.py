@@ -134,6 +134,24 @@ def gm_script(src, dst, ratio=ECW_RATIO):
                       "UNLOAD_ALL"]) + "\n"
 
 
+# What each program reads, measured with Global Mapper 26 and AutoCAD 2023 on a folder named "Etang ... (with accents)":
+#   Global Mapper  UTF-8 (with or without BOM); the ANSI code page is NOT understood: the file is not found
+#   AutoCAD        the ANSI code page of Windows, or UTF-8 with a BOM; UTF-8 without BOM is not understood
+# Written in ASCII with "replace", as it used to be, an accent became "?" and neither program found the file.
+GM_SCRIPT_ENCODING = "utf-8"
+
+
+def acad_script_encoding(text):
+    """Encoding for an AutoCAD script: the Windows ANSI code page when the text fits in it (what every AutoCAD reads; pure ASCII
+    is then written as it always was), otherwise UTF-8 with a BOM."""
+    ansi = "mbcs" if os.name == "nt" else "cp1252"
+    try:
+        text.encode(ansi)
+        return ansi
+    except (UnicodeError, LookupError):
+        return "utf-8-sig"
+
+
 def _wait(process, timeout, tick=None):
     """Wait for a process to end while yielding to the interface. Returns True if finished, False on timeout."""
     started = time.time()
@@ -151,7 +169,7 @@ def _run_gm(gm_exe, script_text, dst, tick=None):
     """Run Global Mapper on a script and check the file produced. Returns (ok, message)."""
     with tempfile.TemporaryDirectory(prefix="aero_gm_") as work:
         script = os.path.join(work, "run.gms")
-        with open(script, "w", encoding="ascii", errors="replace") as handle:
+        with open(script, "w", encoding=GM_SCRIPT_ENCODING) as handle:
             handle.write(script_text)
         try:
             process = subprocess.Popen([gm_exe, script], cwd=work)
@@ -227,7 +245,7 @@ def _run_core(core, dxf, script_text, tick=None):
     """Run accoreconsole on `dxf` with the script; returns the text printed by AutoCAD ("" on failure)."""
     with tempfile.TemporaryDirectory(prefix="aero_acad_") as work:
         script = os.path.join(work, "run.scr")
-        with open(script, "w", encoding="ascii", errors="replace", newline="\n") as handle:
+        with open(script, "w", encoding=acad_script_encoding(script_text), newline="\n") as handle:
             handle.write(script_text)
         output = os.path.join(work, "out.txt")
         with open(output, "wb") as sink:

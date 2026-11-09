@@ -42,7 +42,7 @@ SKIP_DIRS = {"$recycle.bin", "system volume information", "windows", "program fi
 PART_NAME = re.compile(r"^(?P<name>[A-Za-z_]+?)(\.\d+)?$")
 WORKERS = 8
 
-FREE, OPEN, STALE = "free", "open", "stale"
+FREE, OPEN, STALE, UNKNOWN = "free", "open", "stale", "unknown"   # UNKNOWN: the lock file could not be examined (treated as open)
 INTERNAL_PRODUCTS = ("elevation", "orthomosaic")           # DEM and orthomosaic built in Metashape
 EXPORT_EXTS = {".tif", ".tiff", ".ecw", ".jp2", ".img", ".asc", ".las", ".laz", ".dxf", ".dwg", ".xyz", ".e57",
                ".ply", ".obj"}
@@ -106,7 +106,8 @@ class Project(object):
 
     @property
     def in_use(self):
-        return self.lock == OPEN
+        """Open in a Metashape, or impossible to tell (the lock file could not be examined): never treated as free."""
+        return self.lock in (OPEN, UNKNOWN)
 
     @property
     def internal_products(self):
@@ -285,21 +286,28 @@ def delete_impact(projects):
 
 
 def lock_state(files_dir):
-    """FREE (no lock), OPEN (open in a Metashape), STALE (lock left behind after a crash).
+    """FREE (no lock), OPEN (open in a Metashape), STALE (lock left behind after a crash), UNKNOWN (the lock file could not be
+    examined: network error, path too long...: handled like OPEN, never like FREE).
 
     Metashape keeps its `lock` file open as long as the project is open: it cannot then be opened
-    for writing. A `lock` that can be opened is a leftover of a dead session."""
+    for writing. A `lock` that can be opened is a leftover of a dead session. Only "the file is not there" means FREE."""
     lock = os.path.join(files_dir, "lock")
-    if not os.path.exists(lock):
+    try:
+        os.stat(lock)
+    except (FileNotFoundError, NotADirectoryError):
         return FREE
+    except OSError:
+        return UNKNOWN
     try:
         with open(lock, "r+b"):
             pass
         return STALE
     except PermissionError:
         return OPEN
-    except OSError:
+    except FileNotFoundError:                    # removed between the two calls
         return FREE
+    except OSError:
+        return UNKNOWN
 
 
 def lock_owner(files_dir):

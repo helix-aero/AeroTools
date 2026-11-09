@@ -1,3 +1,4 @@
-Third party programs shipped in aerotools/vendor (details in each folder)
+Third party programs shipped in aerotools/vendor. THIRD_PARTY.md at the root of the repository lists them with their licences.
 
-  proj/    PROJ 9.8.1 (cs2cs, cct, proj.db) - MIT licence - coordinate systems and heights
+  proj/    PROJ 9.8.1 (cs2cs, cct, proj.db) - MIT style licence - coordinate systems and heights
+           the libraries of proj/bin and the licence text of each one: proj/licenses/

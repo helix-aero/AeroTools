@@ -264,11 +264,59 @@ def scroll_page(content, preferred=0, cap=0):
 
 
 def screen_area():
-    """Room the screen leaves to a window (QRect); a generous default when Qt cannot say."""
+    """Room the screen leaves to a window (QRect), taskbar excluded: the screen that holds the Metashape main window, the primary one when
+    that is not known; a generous default when Qt cannot say."""
     try:
+        areas = available_areas()
+        host = host_rect(None)
+        if host is not None and len(areas) > 1:
+            x, y, w, h = areas[area_for(host, areas)]
+            return QtCore.QRect(x, y, w, h)
         return QtWidgets.QApplication.primaryScreen().availableGeometry()
     except Exception:
         return QtCore.QRect(0, 0, 1920, 1040)
+
+
+def available_areas():
+    """The usable area (taskbar excluded) of every screen, the primary one first, as (x, y, width, height) tuples."""
+    out = []
+    for screen in QtWidgets.QApplication.screens():
+        g = screen.availableGeometry()
+        out.append((g.x(), g.y(), g.width(), g.height()))
+    return out or [(0, 0, 1920, 1040)]
+
+
+def host_rect(window=None):
+    """The frame (x, y, width, height) of the Metashape main window: the top window above `window` when it has a parent, else the main
+    window found among the top windows. None when there is none."""
+    top = None
+    try:
+        parent = window.parentWidget() if window is not None else None
+        top = parent.window() if parent is not None else None
+        if top is None:
+            for widget in QtWidgets.QApplication.topLevelWidgets():
+                if isinstance(widget, QtWidgets.QMainWindow) and widget.isVisible():
+                    top = widget
+                    break
+        if top is None:
+            return None
+        g = top.normalGeometry() if top.isMinimized() else top.frameGeometry()
+        return (g.x(), g.y(), g.width(), g.height())
+    except Exception:
+        return None
+
+
+def area_for(rect, areas):
+    """Index of the area (x, y, w, h) that holds the centre of `rect`, else the nearest one; 0 without area. Pure."""
+    if not areas:
+        return 0
+    cx, cy = rect[0] + rect[2] / 2.0, rect[1] + rect[3] / 2.0
+    best, best_gap = 0, None
+    for index, (x, y, w, h) in enumerate(areas):
+        gap = max(x - cx, 0, cx - (x + w)) ** 2 + max(y - cy, 0, cy - (y + h)) ** 2
+        if best_gap is None or gap < best_gap:
+            best, best_gap = index, gap
+    return best
 
 
 def screen_width():

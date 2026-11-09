@@ -57,7 +57,7 @@ def install():
     panel.update_aigcp()
     panel.refresh_markers()
     trigger = "click" if marking.PLAIN_CLICK_PLACES else "Shift + click"
-    journal.write("FastGCP started: Qt {}, Metashape {}; {} in the photo view, or {}".format(
+    journal.write("Aero-GCP started: Qt {}, Metashape {}; {} in the photo view, or {}".format(
         qt.BINDING, msapi.app_version() or "unknown version", trigger, HOTKEY
     ))
 

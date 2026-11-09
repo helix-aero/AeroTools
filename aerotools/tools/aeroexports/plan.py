@@ -14,6 +14,7 @@ Presets:
 
 import collections
 import os
+import re
 
 from . import dxfout, naming
 
@@ -101,6 +102,28 @@ def cad_dxf_name(version, fmt="dxf"):
     return "%s%s.%s" % (CAD_BASENAME, "_v%d" % version if version > 1 else "", fmt)
 
 
+_TILED = re.compile(r"^(.*)_R\d{2,3}C\d{2,3}_(ortho|dtm)(\.[A-Za-z0-9]+)$", re.I)
+
+
+def untiled(name):
+    """Name of the whole-image file that a tile belongs to: SITE_260704_3cm_R01C02_ortho.tif -> SITE_260704_3cm_ortho.tif.
+    A name that is not a tile comes back as it is. Tiles carry their token just before the type (see naming.py)."""
+    match = _TILED.match(name)
+    return match.group(1) + "_" + match.group(2) + match.group(3) if match else name
+
+
+def with_tiles(names):
+    """`names` plus the whole-image name of each tile among them: what a folder listing looks like when the tiles of an export
+    count as that export (tiled export: its files are the tiles, not the whole-image name)."""
+    out = list(names)
+    for name in names:
+        head, tail = os.path.split(name)
+        whole = untiled(tail)
+        if whole != tail:
+            out.append(head + "/" + whole if head else whole)
+    return out
+
+
 def listing_of(folder):
     """Relative paths (forward slashes, lower case) of all the files under `folder`: for next_free_version."""
     found = []
@@ -111,7 +134,7 @@ def listing_of(folder):
 
 
 def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listing=None, native=(),
-               cad=None, version=None, dem_picture=False):
+               cad=None, version=None, dem_picture=False, tiled=False):
     """List of the files to write.
 
     `wanted`: {"ortho": pixel size in metres, "dem": ...} for what is ticked (the others are absent).
@@ -121,6 +144,8 @@ def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listi
     (with a GeoTIFF, the name would be that of the DTM itself).
     `version`: imposed number (1 = overwrite); otherwise the smallest one for which none of the planned files already exists
     in `folder` (the orthomosaic and the DTM of one export share the same number).
+    `tiled`: the export is cut into tiles; the tiles already in the folder (..._R01C02_ortho.tif) then count as the files of that
+    export, so a version already delivered as tiles is not taken for a free one.
     """
     kinds = [kind for kind in KINDS if wanted.get(kind)]
     if not kinds:
@@ -166,14 +191,33 @@ def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listi
         return names
 
     if version is None:
-        version = naming.next_free_version(folder, planned, listing=listing if listing is not None else
-                                           (listing_of(folder) if is_cad and os.path.isdir(folder) else None))
+        found = listing if listing is not None else (
+            listing_of(folder) if (is_cad or tiled) and os.path.isdir(folder) else None)
+        if tiled and found is not None:
+            found = with_tiles(found)
+        version = naming.next_free_version(folder, planned, listing=found)
     jobs = []
     for kind in kinds:
         spec = spec_for(preset_key, kind, cad)
         name, path, extra = locate(kind, version)
         jobs.append(Job(kind, name, path, wanted[kind], spec, version, kind in native, extra))
     return jobs
+
+
+def existing_files(jobs, preset_key, cad=None, tiled=False):
+    """What an export of `jobs` would overwrite: the planned files that exist, plus, when the export is `tiled`, the tiles of the
+    same names already on disk (they are not in `planned_files`, whose names are those of the whole images)."""
+    found = [path for path in planned_files(jobs, preset_key, cad) if os.path.exists(path)]
+    if tiled:
+        for path in planned_files(jobs, preset_key, cad):
+            folder, name = os.path.split(path)
+            try:
+                listed = os.listdir(folder)
+            except OSError:
+                continue
+            found.extend(os.path.join(folder, other) for other in sorted(listed)
+                         if untiled(other) != other and untiled(other).lower() == name.lower())
+    return found
 
 
 def planned_files(jobs, preset_key, cad=None):

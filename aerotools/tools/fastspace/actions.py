@@ -72,8 +72,21 @@ def same_path(a, b):
     return bool(a) and bool(b) and os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
 
 
+def recheck_lock(project):
+    """Read the lock again, now. The state noted by the scan may be hours old (30 projects on a network disk, another PC opens one
+    meanwhile). Returns the state found; the project takes it when it says "busy", or when the lock is gone."""
+    state = scanner.lock_state(project.files_dir)
+    if state in (scanner.OPEN, scanner.UNKNOWN) or (state == scanner.FREE and project.lock != scanner.FREE):
+        project.lock = state
+        if state != scanner.FREE and not project.lock_owner:
+            project.lock_owner = scanner.lock_owner(project.files_dir)
+    return state
+
+
 def refusal(project):
     """Reason why this project is left alone ("" if it can be touched)."""
+    if project.lock == scanner.UNKNOWN:
+        return "the lock file cannot be read (network or disk error): treated as open"
     if project.in_use:
         return "open in a Metashape (lock file held)"
     if not project.orphan and same_path(project.path, current_document_path()):
@@ -204,7 +217,7 @@ def log_action(action, mode, project, ok, message="", size=0):
             writer.writerow([datetime.datetime.now().isoformat(timespec="seconds"), action, mode, project.path,
                              int(size), "yes" if ok else "no", message])
     except Exception as exc:
-        journal.write("Fast Space: journal not written: {!r}".format(exc))
+        journal.write("Aero-Space: journal not written: {!r}".format(exc))
 
 
 # --------------------------------------------------------------------------
@@ -312,6 +325,70 @@ def check_snapshots(before, after, items=scanner.DEFAULT_ITEMS):
     return None
 
 
+BACKUP_MARK = "_AeroSpace_backup_"
+BACKUP_FILES = "description_files"
+BACKUP_FILE_MAX = 100 * 1024 * 1024          # a "description file" bigger than this is not one: refuse to guess
+BACKUP_TOTAL_MAX = 400 * 1024 * 1024
+BACKUP_EXTS = (".zip", ".xml")
+BACKUP_NOTE = """Safety copy made by Aero-Space before it lightened the project.
+
+What is here: the project file ({psx}.bak) and, in the folder {files}, the small description files of the project
+with their sub-folders.
+To go back (only if the project no longer opens, or opens wrongly): close Metashape, copy the contents of {files}
+into the .files folder of the project (same sub-folders, replacing the files of the same name), and rename {psx}.bak
+to {psx}.
+The dense clouds, depth maps and orthophotos that were removed are not in this copy (that was the aim): they can be
+rebuilt in Metashape from the photos.
+This folder is never deleted by Aero-Space: remove it yourself once the lightened project works.
+"""
+
+
+def _listed(folder):
+    try:
+        return sorted(os.scandir(folder), key=lambda entry: entry.name)
+    except OSError:
+        return []
+
+
+def _metadata_files(files_dir):
+    """The small description files that Metashape rewrites when it saves: the zips and xml directly in the .files folder, in each
+    chunk folder (numbered) and in each frame folder (numbered), not in the folders of the dense cloud, depth maps, tie points..."""
+    folders = [files_dir]
+    chunks = [entry.path for entry in _listed(files_dir) if entry.is_dir(follow_symlinks=False) and entry.name.isdigit()]
+    frames = [entry.path for chunk in chunks for entry in _listed(chunk)
+              if entry.is_dir(follow_symlinks=False) and entry.name.isdigit()]
+    folders += chunks + frames
+    return [entry.path for folder in folders for entry in _listed(folder)
+            if entry.is_file(follow_symlinks=False) and entry.name.lower().endswith(BACKUP_EXTS)]
+
+
+def safety_copy(project, now=None):
+    """Copy the .psx and its small description files before Metashape is allowed to write the project. Returns the folder, which sits
+    next to the project (a backup sits beside its project, never inside it) and is never deleted by us. Raises SpaceError if the copy cannot
+    be made: the project is then left as it is."""
+    now = now or datetime.datetime.now()
+    stem = os.path.splitext(os.path.basename(project.path))[0]
+    root = os.path.join(os.path.dirname(project.path), "{}{}{}".format(stem, BACKUP_MARK, now.strftime("%Y%m%d_%H%M%S")))
+    try:
+        sources = _metadata_files(project.files_dir)
+        sizes = [os.path.getsize(path) for path in sources]
+        total = os.path.getsize(project.path) + sum(sizes)
+        if total > BACKUP_TOTAL_MAX or any(size > BACKUP_FILE_MAX for size in sizes):
+            raise SpaceError("the description files are unexpectedly large ({:.0f} MB)".format(total / 1048576.0))
+        os.makedirs(root)
+        shutil.copy2(project.path, os.path.join(root, os.path.basename(project.path) + ".bak"))
+        for path in sources:                                # not under a name ending in ".files": the scan would list it as an orphan
+            target = os.path.join(root, BACKUP_FILES, os.path.relpath(path, project.files_dir))
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            shutil.copy2(path, target)
+        with open(os.path.join(root, "RESTORE.txt"), "w", encoding="utf-8") as handle:
+            handle.write(BACKUP_NOTE.format(psx=os.path.basename(project.path), files=BACKUP_FILES))
+    except (OSError, SpaceError) as exc:
+        shutil.rmtree(root, ignore_errors=True)
+        raise SpaceError(i18n.t("space.err_backup", error=exc))
+    return root
+
+
 def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
     """Lighten a project: removes what `items` asks for (dense, depth, ortho). Returns {ok, freed, in_bin, error, steps}.
 
@@ -319,7 +396,7 @@ def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
     `progress(text)` announces each step."""
     items = tuple(item for item in scanner.ITEMS if item in items)
     progress = progress or (lambda text: None)
-    result = {"ok": False, "freed": 0, "in_bin": 0, "error": "", "steps": []}
+    result = {"ok": False, "freed": 0, "in_bin": 0, "error": "", "steps": [], "backup": ""}
 
     def step(text):
         result["steps"].append(text)
@@ -338,6 +415,11 @@ def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
     if not items:
         result["error"] = "nothing to remove: no box ticked"
         return result
+    seen_busy = project.in_use
+    state = recheck_lock(project)
+    if state in (scanner.OPEN, scanner.UNKNOWN):
+        result["error"] = refusal(project) + ("" if seen_busy else " (since the scan)")
+        return result
     before = project.removable(items)
     try:
         if project.lock == scanner.STALE:
@@ -353,6 +435,9 @@ def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
         snap_before = snapshot(document)
         document = None
         gc.collect()
+        step("safety copy")
+        result["backup"] = safety_copy(project)
+        journal.write("Aero-Space: safety copy of {} in {}".format(project.name, result["backup"]))
         step("cleaning the project")
         document = _open(project.path, False)
         for chunk in document.chunks:
@@ -391,10 +476,20 @@ def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
 def delete_project(project, mode, force=False):
     """Delete the project (.psx and .files only), or the orphan folder. Returns {ok, freed, in_bin, error}.
 
-    `force`: the user confirmed despite a lock held by another Metashape; only the project
-    open in this Metashape is still refused."""
+    The lock is read again here, not taken from the scan. A project that is open now, or that the scan saw open and the user did not
+    confirm, is refused.
+    `force`: the user confirmed THIS project despite a lock held by another Metashape (the "Confirm delete" screen); it only counts
+    for a project that the scan saw open. The project open in this Metashape is always refused."""
     result = {"ok": False, "freed": 0, "in_bin": 0, "error": ""}
-    reason = delete_refusal(project) if force else refusal(project)
+    reason = delete_refusal(project)
+    if not reason:
+        seen_busy = project.in_use
+        state = recheck_lock(project)
+        busy_now = state in (scanner.OPEN, scanner.UNKNOWN)
+        if (seen_busy or busy_now) and not (force and seen_busy):
+            reason = refusal(project) if project.in_use else "open in a Metashape (lock file held)"
+            if not seen_busy:
+                reason += " (opened since the scan)"
     if reason:
         result["error"] = reason
         return result

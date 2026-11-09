@@ -373,13 +373,17 @@ def test_newest_version_wins(tmp_path):
     assert external._newest([str(old), str(new)]) == str(new)
 
 
-def test_a_file_left_by_an_earlier_export_never_passes_for_the_new_one(tmp_path):
+def test_a_file_put_in_place_replaces_the_one_already_there(tmp_path):
     from aerotools.tools.aeroexports import pipeline
     old = tmp_path / "SITE_260610_5cm_ortho.tif"
-    old.write_bytes(b"old export of another chunk")
-    pipeline._clear_stale(str(old))
-    assert not old.exists()
-    pipeline._clear_stale(str(old))                       # nothing there: no error
+    old.write_bytes(b"old export")
+    new = tmp_path / "staged.tif"
+    new.write_bytes(b"new export")
+    pipeline._commit(str(new), str(old))
+    assert old.read_bytes() == b"new export" and not new.exists()
+    with pytest.raises(pipeline.Failure, match="Cannot overwrite"):
+        pipeline._commit(str(tmp_path / "missing.tif"), str(old))
+    assert old.read_bytes() == b"new export"
 
 
 def test_an_old_file_is_not_taken_for_a_new_export_that_wrote_nothing(tmp_path):
@@ -390,4 +394,4 @@ def test_an_old_file_is_not_taken_for_a_new_export_that_wrote_nothing(tmp_path):
     env.export = lambda *args, **kwargs: (True, "")        # Metashape writes nothing (no data)
     with pytest.raises(pipeline.Failure):
         pipeline.run(fake_context(tmp_path, env, "full"), jobs, lambda f, t: None)
-    assert not stale.exists()
+    assert stale.read_bytes() == b"left by an export of another chunk"      # never taken for the new one, and not destroyed

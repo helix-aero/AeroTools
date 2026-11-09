@@ -27,7 +27,9 @@ AeroTools/
     qt.py              PySide2 / PySide6 compatibility
     theme.py           colours, fonts, stylesheets
     tools/
-      fastgcp/         session, tool, panel, marking, photos, history, dataset, detection, report
+      fastgcp/         Aero-GCP: session, tool, panel, marking, photos, history, dataset, detection, report
+      fastspace/       Aero-Space: scan, lighten or delete old projects
+      aeroexports/     Aero-Exports: ortho and DEM exports, AutoCAD drawing, colours
   assets/fonts/
   install/             launcher template, installer, uninstaller
   tests/               pytest tests, no Metashape needed
@@ -49,9 +51,15 @@ Per-machine settings live in `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`.
 3. Declare its pack in `config.PACKS`: `id` (same as the tool), `paths` (the folders it owns: its package, plus any model or library only it uses), `marker`
    (its `tool.py`), `requires` (the other packs it imports code from). Everything not owned by a pack is the core, always installed.
    `tests/test_packs.py` fails if the tool imports a tool it does not require, or if the core imports a tool. Put code shared by several tools in the core
-   (`aerotools/controls.py`, `aerotools/dialogs.py`, `ui.py`), not in another tool.
+   (`aerotools/controls.py`, `aerotools/dialogs.py`, `ui.py`, `pdfkit.py`), not in another tool.
+   Other core files of this kind: `projtool.py`, `outputdir.py` and a shared library (`aerotools/vendor/proj` is core, the PROJ catalogue files
+   `vendor/proj/data/` belong to the tool that reads them).
+   `tests/test_tool_independence.py` fails if a tool whose `requires` is empty imports another tool.
 4. Run `python install/make_manifest.py`. Users get the tool from **Aero > Install plugins...**; a development copy (`.git`) has every tool.
 5. Restart Metashape or use Reload AeroTools. While `ready` is `False`, the menu entry says the tool is not available yet.
+6. Document it: one page `docs/tools/<tool-name>.md` (what it does, numbered steps, what each option does, troubleshooting), its screenshots in
+   `docs/images/<tool-name>/`, and one row in the tools table of `README.md`. `docs/tools/aero-gcp.md` is the model to copy. Screenshots show
+   the window only (no title bar, no project path, no client or server name). `tests/test_docs_links.py` fails on a link to a file or a heading that does not exist.
 
 A tool that needs a choice before it installs (Aero-GCP: which AI engine) adds a small options window in `plugins_dialog.py` and, if something has to run once the
 files are there, a `setup` module in its pack (loaded by name: the core never imports a tool).
@@ -210,7 +218,7 @@ registry and the usual folders, or pointed at by the user):
   A failed mask export only adds a warning.
 - The native ortho export is cropped to the data (a few thousand pixels a side on a large ortho) and not to the orthomosaic box: the placement in the DXF is read from
   the GeoTIFF itself (`geotiff.py`). When the grid is imposed (other CRS, tiles) the native pixel is rounded to 0.1 mm.
-- Coordinate systems and heights, worldwide (`projdb.py`, `projtool.py`, `vertical.py`, `tiffio.py`, `crs.py`; engine in `aerotools/vendor/proj`):
+- Coordinate systems and heights, worldwide (`projdb.py`, `vertical.py`, `tiffio.py`, `crs.py`, and `aerotools/projtool.py` in the core, which the other tools use too; engine in `aerotools/vendor/proj`):
   Metashape only reprojects XY (`exportRaster` to a plain `EPSG::n`, heights come out ellipsoidal in that system's frame). The altitude is
   computed by PROJ 9.8.1 (embedded `cs2cs` + `cct`, MIT, copied from the QGIS 4.0.3 build; no pyproj, no dependency on Metashape's Python):
   `H = h - N` with the grid imposed as `+inv +proj=vgridshift +multiplier=1`, applied to the DEM tile by tile (own TIFF reader/rewriter,

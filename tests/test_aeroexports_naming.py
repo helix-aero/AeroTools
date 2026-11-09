@@ -4,6 +4,7 @@ import os
 
 import pytest
 
+from aerotools import outputdir
 from aerotools.tools.aeroexports import naming
 
 
@@ -111,7 +112,7 @@ def test_check_path_length(tmp_path):
 
 
 def test_outputs_folder_next_to_psx():
-    assert naming.outputs_folder(r"C:\p\site\a.psx") == os.path.join(os.path.abspath(r"C:\p\site"), "Outputs")
+    assert outputdir.outputs_folder(r"C:\p\site\a.psx") == os.path.join(os.path.abspath(r"C:\p\site"), "Outputs")
 
 
 def test_stem_of_handles_double_extension():

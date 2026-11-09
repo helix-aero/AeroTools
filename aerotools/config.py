@@ -5,8 +5,12 @@ each PC keeps its own ticked boxes.
 """
 
 import copy
+import datetime
 import json
 import os
+import tempfile
+import threading
+import time
 
 APP_NAME = "AeroTools"
 APP_DIR_NAME = "AeroToolsApp"
@@ -72,7 +76,8 @@ def tool(tool_id):
 # Packs: what "Aero > Install plugins" installs, one per tool. Everything not listed here is the core (menu, update, shared code,
 # fonts, installer, docs), always present. A pack owns the files under its `paths` (prefixes of the paths in manifest.json).
 #   id        same as the tool it installs
-#   paths     folders (ending with /) the pack owns; the library or model files a tool needs travel with it
+#   paths     folders (ending with /) the pack owns; the library or model files a tool needs travel with it. What several tools use
+#             (PROJ engine in aerotools/vendor/proj, PDF drawing kit, Outputs folder) is core: no tool imports another tool.
 #   marker    a file that exists only when the pack is installed
 #   requires  other packs this one imports code from (tests/test_packs.py checks it against the imports)
 #   setup     optional: module (by name, the core never imports a tool) whose `run(parent, engine, training, confirm)` finishes the
@@ -83,7 +88,7 @@ PACKS = [
      "requires": [], "setup": "aerotools.tools.fastgcp.install_ui"},
     {"id": "fastspace", "paths": ["aerotools/tools/fastspace/"], "marker": "aerotools/tools/fastspace/tool.py",
      "requires": []},
-    {"id": "aeroexports", "paths": ["aerotools/tools/aeroexports/", "aerotools/vendor/"],
+    {"id": "aeroexports", "paths": ["aerotools/tools/aeroexports/", "aerotools/vendor/proj/data/"],
      "marker": "aerotools/tools/aeroexports/tool.py", "requires": []},
 ]
 
@@ -166,30 +171,84 @@ def _migrate_legacy_sections(data):
     return changed
 
 
+# A settings file that cannot be read for a moment (antivirus, OneDrive, a second writer) must not be taken for an empty one: the next
+# write would then replace every saved choice by the single key being saved.
+READ_TRIES = 4                       # a writer reads this many times before it gives up
+READ_PAUSE_S = 0.05                  # grows with each try
+_WRITE_LOCK = threading.RLock()      # the update thread and the interface both write the settings
+
+
+def _read_settings(tries=1):
+    """(data, state): state is "ok", "absent" (no file), "unreadable" (the file could not be opened: locked, network...) or
+    "corrupt" (it opened but is not a settings object). `tries` > 1 retries after a pause: a lock is often short."""
+    state = "unreadable"
+    for attempt in range(max(1, tries)):
+        try:
+            with open(settings_path(), "r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            if isinstance(data, dict):
+                return data, "ok"
+            state = "corrupt"
+        except FileNotFoundError:
+            return {}, "absent"
+        except ValueError:                   # json.JSONDecodeError and UnicodeDecodeError
+            state = "corrupt"
+        except OSError:
+            state = "unreadable"
+        if attempt + 1 < tries:
+            time.sleep(READ_PAUSE_S * (attempt + 1))
+    return {}, state
+
+
 def load_settings():
-    """Settings of the workstation. Never raises: a broken file gives empty settings."""
-    try:
-        with open(settings_path(), "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-        if not isinstance(data, dict):
-            return {}
-    except Exception:
+    """Settings of the workstation. Never raises: a broken file gives empty settings (`put` does not write over it)."""
+    data, state = _read_settings()
+    if state != "ok":
         return {}
     if _migrate_legacy_sections(data):
         save_settings(data)
     return data
 
 
-def save_settings(data):
-    """Writes the settings. Returns True if the write succeeded."""
+def _write_settings(data):
+    """Write through a temporary file of its own name (two writers never share one) and replace the settings in one step."""
+    tmp = ""
     try:
         os.makedirs(settings_dir(), exist_ok=True)
-        tmp = settings_path() + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as handle:
-            json.dump(data, handle, indent=2, ensure_ascii=False)
+        handle, tmp = tempfile.mkstemp(prefix="settings.", suffix=".tmp", dir=settings_dir())
+        with os.fdopen(handle, "w", encoding="utf-8") as out:
+            json.dump(data, out, indent=2, ensure_ascii=False)
         os.replace(tmp, settings_path())
         return True
     except Exception:
+        if tmp:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        return False
+
+
+def save_settings(data):
+    """Writes the settings. Returns True if the write succeeded."""
+    with _WRITE_LOCK:
+        return _write_settings(data)
+
+
+def _keep_corrupt_copy():
+    """Copy the unreadable settings file beside it (settings.json.corrupt-<date>.bak). True if the copy exists."""
+    path = settings_path()
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    target = "{}.corrupt-{}.bak".format(path, stamp)
+    number = 1
+    while os.path.exists(target):
+        number += 1
+        target = "{}.corrupt-{}-{}.bak".format(path, stamp, number)
+    try:
+        with open(path, "rb") as source, open(target, "wb") as copy_out:
+            copy_out.write(source.read())
+        return True
+    except OSError:
         return False
 
 
@@ -204,10 +263,21 @@ def get(section_name, key, default=None):
 
 
 def put(section_name, key, value):
-    data = load_settings()
-    current = data.get(section_name)
-    if not isinstance(current, dict):
-        current = {}
-        data[section_name] = current
-    current[key] = value
-    return save_settings(data)
+    """Save one choice. Read, change, write, under a lock; never over a file that could not be read.
+
+    A file that stays locked after a few tries is left alone (False: the choice is not saved, and nothing is lost). A file that is
+    really corrupt is first copied to settings.json.corrupt-<date>.bak, then replaced."""
+    with _WRITE_LOCK:
+        data, state = _read_settings(READ_TRIES)
+        if state == "unreadable":
+            return False
+        if state == "corrupt":
+            if not _keep_corrupt_copy():
+                return False
+            data = {}
+        current = data.get(section_name)
+        if not isinstance(current, dict):
+            current = {}
+            data[section_name] = current
+        current[key] = value
+        return _write_settings(data)

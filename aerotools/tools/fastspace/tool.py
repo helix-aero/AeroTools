@@ -15,7 +15,7 @@ def install():
     theme.load_fonts(QtGui)
     from . import dialog
     _STATE["dialog"] = dialog.show(window, _STATE["dialog"])
-    journal.write("Fast Space opened")
+    journal.write("Aero-Space opened")
 
 
 def uninstall():

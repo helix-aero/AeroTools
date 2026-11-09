@@ -463,6 +463,8 @@ class SpaceDialog(controls.FollowsText, QtWidgets.QDialog):
     def _state_of(self, project, here):
         if project.orphan:
             return i18n.t("space.state_orphan")
+        if project.lock == scanner.UNKNOWN:
+            return i18n.t("space.state_unknown")
         if project.in_use:
             return i18n.t("space.state_here") if actions.same_path(project.path, here) else i18n.t("space.state_open")
         if project.lock == scanner.STALE:
@@ -659,7 +661,7 @@ class SpaceDialog(controls.FollowsText, QtWidgets.QDialog):
             target = path if os.path.exists(path) else folder
             QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(target))
         except Exception as exc:
-            journal.write("Fast Space: opening the journal: {!r}".format(exc))
+            journal.write("Aero-Space: opening the journal: {!r}".format(exc))
 
     # -- actions --------------------------------------------------------------------
 
@@ -695,7 +697,7 @@ class SpaceDialog(controls.FollowsText, QtWidgets.QDialog):
     @staticmethod
     def _reveal(project):
         if not actions.reveal(project.path):
-            journal.write("Fast Space: cannot open Explorer on {}".format(project.path))
+            journal.write("Aero-Space: cannot open Explorer on {}".format(project.path))
 
     def _on_lighten(self, projects=None):
         picked = [p for p in (self._checked() if projects is None else projects) if not p.orphan and not actions.refusal(p)]
@@ -736,9 +738,9 @@ class SpaceDialog(controls.FollowsText, QtWidgets.QDialog):
             names = ", ".join(p.name for p in risky[:5]) + (ELLIPSIS if len(risky) > 5 else "")
             text += "\n\n" + i18n.t("space.confirm_delete_risk", names=names,
                            size=scanner.gb(sum(p.internal_products for p in risky)))
-        self._confirm_and_run("delete", picked, text)
+        self._confirm_and_run("delete", picked, text, forced=busy)
 
-    def _confirm_and_run(self, kind, picked, text, choices=None):
+    def _confirm_and_run(self, kind, picked, text, choices=None, forced=()):
         if kind == "lighten":
             # Metashape deletes its own files when it saves: no recycle bin possible.
             dialog = ConfirmDialog(self, text, False, "space.mode_recycle_none", choices)
@@ -750,11 +752,11 @@ class SpaceDialog(controls.FollowsText, QtWidgets.QDialog):
         items = list(dialog.items)
         if kind == "lighten":
             config.put(SECTION, "items", items)
-        journal.write("Fast Space: {} of {} project(s), mode {}{}".format(
+        journal.write("Aero-Space: {} of {} project(s), mode {}{}".format(
             kind, len(picked), dialog.mode, ", " + "+".join(items) if kind == "lighten" else ""))
         self._batch = {"kind": kind, "mode": dialog.mode, "todo": list(picked), "total": len(picked), "done": 0,
                        "freed": 0, "bin": 0, "ok": 0, "failed": [], "thread": None, "current": None, "sizes": {},
-                       "items": items}
+                       "items": items, "forced": {id(p) for p in forced}}
         self.bar.setRange(0, len(picked))
         self.bar.setValue(0)
         self.bar.setVisible(True)
@@ -792,7 +794,8 @@ class SpaceDialog(controls.FollowsText, QtWidgets.QDialog):
             batch["current"] = None
         else:
             mode = batch["mode"]
-            worker = _Worker(lambda _w, p=project: actions.delete_project(p, mode, force=True))
+            confirmed = id(project) in batch["forced"]        # only the projects the user saw as open and confirmed
+            worker = _Worker(lambda _w, p=project: actions.delete_project(p, mode, force=confirmed))
             batch["thread"] = worker
             worker.start()
 
@@ -800,7 +803,8 @@ class SpaceDialog(controls.FollowsText, QtWidgets.QDialog):
         outcome = outcome or {}
         ok = bool(outcome.get("ok"))
         size = batch["sizes"].get(id(project), 0)
-        actions.log_action(batch["kind"], batch["mode"], project, ok, outcome.get("error", ""), size)
+        note = outcome.get("error", "") or ("safety copy: " + outcome["backup"] if outcome.get("backup") else "")
+        actions.log_action(batch["kind"], batch["mode"], project, ok, note, size)
         batch["done"] += 1
         if ok:
             batch["ok"] += 1
@@ -852,7 +856,7 @@ class SpaceDialog(controls.FollowsText, QtWidgets.QDialog):
             try:
                 self._step_batch()
             except Exception as exc:
-                journal.write("Fast Space: batch interrupted: {!r}".format(exc))
+                journal.write("Aero-Space: batch interrupted: {!r}".format(exc))
                 self._batch = None
                 self.bar.setVisible(False)
                 self.status.setText(repr(exc))
@@ -878,7 +882,7 @@ class SpaceDialog(controls.FollowsText, QtWidgets.QDialog):
         try:
             self._scan_finished(worker.result)
         except Exception as exc:
-            journal.write("Fast Space: showing the scan: {!r}".format(exc))
+            journal.write("Aero-Space: showing the scan: {!r}".format(exc))
         self._refresh_buttons()
 
     def closeEvent(self, event):

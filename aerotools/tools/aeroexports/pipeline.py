@@ -15,7 +15,8 @@ import os
 import shutil
 import tempfile
 
-from . import crs, dxfout, external, footprint, geotiff, look as looks, naming, plan, projtool, relief, tiling, vertical
+from ... import projtool
+from . import crs, dxfout, external, footprint, geotiff, look as looks, naming, plan, relief, tiling, vertical
 
 TMP_NAME = ".aeroexports_tmp"
 
@@ -68,8 +69,20 @@ def encoder(ctx):
     return "metashape"
 
 
-def _convert(ctx, post, src, dst):
-    """GeoTIFF -> JPEG 2000 / ECW. Raises Failure."""
+def _convert(ctx, post, src, dst, work=None):
+    """GeoTIFF -> JPEG 2000 / ECW. The converter writes in a new folder (`work`, or next to `dst`) and the result replaces
+    `dst` only if it worked: a conversion that fails (licence, disk full) keeps the previous file of that name. Raises Failure."""
+    part_dir = tempfile.mkdtemp(prefix="conv", dir=work or os.path.dirname(os.path.abspath(dst)))
+    part = os.path.join(part_dir, os.path.basename(dst))
+    try:
+        _convert_to(ctx, post, src, part)
+        _commit(part, dst)
+    finally:
+        shutil.rmtree(part_dir, ignore_errors=True)
+
+
+def _convert_to(ctx, post, src, dst):
+    """The conversion itself, to the file `dst` (which does not exist yet). Raises Failure."""
     if post == "ecw":
         if not ctx.tools.get("gm"):
             raise Failure("ECW: Global Mapper not found")
@@ -164,14 +177,14 @@ def _record(ctx, raw, layer, final):
             "pixel": (info["pixel"][0], info["pixel"][1])}
 
 
-def _clear_stale(path):
-    """Delete the file about to be written (the user already agreed to overwrite it). Otherwise a tile or a raster that Metashape
-    does not write (no data) would be taken for the new one when a file of the same name is still there. Raises Failure."""
+def _commit(staged, final):
+    """Put a finished file at its final place. The file already there (the previous deliverable of the same name, which the
+    user agreed to overwrite) is replaced in one step, so it is never lost when the export fails before this point.
+    `staged` is in the work folder, on the same volume. Raises Failure (the old file is then untouched)."""
     try:
-        if os.path.isfile(path):
-            os.remove(path)
+        os.replace(staged, final)
     except OSError as exc:
-        raise Failure("Cannot overwrite %s: %s" % (os.path.basename(path), exc))
+        raise Failure("Cannot overwrite %s: %s" % (os.path.basename(final), exc))
 
 
 def run_job(ctx, job, work, report, result, images):
@@ -188,6 +201,7 @@ def run_job(ctx, job, work, report, result, images):
         os.makedirs(os.path.dirname(extra["view_path"]), exist_ok=True)
     date_text = naming.format_date(ctx.date, ctx.date_style)
     pixel_text = "%g" % round(float(job.pixel_m), 4)
+    skipped = []                                          # final names of the tiles without data
     for index, (token, tile_box) in enumerate(tiles):
         def sub(percent, index=index):
             report((index + max(0.0, min(100.0, float(percent))) / 100.0) / len(tiles))
@@ -196,20 +210,24 @@ def run_job(ctx, job, work, report, result, images):
         raw_spec = dict(spec, ext="tif") if post else dict(spec)
         if is_cad and job.kind == plan.DEM:
             final = os.path.join(folder, _named(ctx, job, job.kind, "tif", token))
-            raw = final
         elif post:
             final = os.path.join(folder, _named(ctx, job, job.kind, spec["ext"], token))
-            raw = os.path.join(work, os.path.splitext(os.path.basename(final))[0] + ".tif")
         else:
             final = os.path.join(folder, _named(ctx, job, job.kind, direct_ext, token))
-            raw = final
         metashape_jp2 = post in ("jp2", "cad") and spec["ext"] == "jp2" and encoder(ctx) == "metashape"
         if metashape_jp2:
             raw_spec = dict(spec, image="jp2", ext="jp2")
-            raw = final
+        # `direct`: the file Metashape writes is the deliverable itself. It is written in the work folder and only moved to its place
+        # once everything that follows (heights, pictures) has worked: a failure then leaves nothing under the final name (a DEM
+        # still in ellipsoidal heights, say), and the previous deliverable of the same name is not touched.
+        direct = not post or metashape_jp2
+        if direct:
+            raw = os.path.join(work, os.path.basename(final))
+        else:
+            raw = os.path.join(work, os.path.splitext(os.path.basename(final))[0] + ".tif")
         # No progress callback: Metashape would call it in the middle of its computation (maybe from another thread) and touching
         # a Qt bar at that moment crashes Metashape ("Recursive repaint detected"). The bar moves between files.
-        _clear_stale(raw)           # a file left by an earlier export (maybe of another chunk) must never pass for this one
+        # The work folder is new: no file left by an earlier export (maybe of another chunk) can pass for this one.
         ctx.native = True
         try:
             ok, error = ctx.export(ctx.chunk, job.kind, raw_spec, raw, pixel, tile_box, big=_big(ctx, job), progress=None,
@@ -221,29 +239,49 @@ def run_job(ctx, job, work, report, result, images):
             raise Failure(error or "Metashape did not write the file")
         if not os.path.isfile(raw):
             if len(tiles) > 1:
+                skipped.append(final)
                 continue                                  # tile without data: nothing to write
             raise Failure("Metashape did not write the file")
         result.tiles += 1
         if job.kind == plan.DEM and ctx.vertical:
-            _to_altitude(ctx, raw, sub)
+            try:
+                _to_altitude(ctx, raw, sub)
+            except Failure as exc:
+                ctx.log("{} not written: {} (nothing was left in the Outputs folder)".format(os.path.basename(final), exc))
+                raise
         if post and not metashape_jp2:
-            _convert(ctx, spec["post"] if post != "cad" else spec["ext"], raw, final)
-        result.files.append((final, os.path.getsize(final)))
-        for name in plan.aux_names(os.path.basename(final), spec):
-            side = os.path.join(folder, name)
-            if os.path.isfile(side):
-                result.files.append((side, os.path.getsize(side)))
+            _convert(ctx, spec["post"] if post != "cad" else spec["ext"], raw, final, work)
+        position = len(result.files)
         if is_cad and job.kind == plan.ORTHO:
-            source = raw if raw != final else None
-            if source is None:
+            if direct:
                 raise Failure("Image without a source GeoTIFF: cannot place it")
-            record = _record(ctx, source, dxfout.layer_name(date_text, pixel_text, "ortho"), final)
-            _clip_ortho(ctx, source, work, record, result)
+            record = _record(ctx, raw, dxfout.layer_name(date_text, pixel_text, "ortho"), final)
+            _clip_ortho(ctx, raw, work, record, result)
             images.append(record)
         if job.kind == plan.DEM and extra.get("view_path"):       # CAD, or the coloured picture asked next to a JP2 / ECW export
             _dem_image(ctx, job, raw, token, work, date_text, pixel_text, result, images if is_cad else None)
-        if post and raw != final and os.path.isfile(raw):
+        if direct:
+            _commit(raw, final)
+            for name in plan.aux_names(os.path.basename(final), spec):      # .jgw / .prj of a JPEG: written next to the file
+                side = os.path.join(work, name)
+                if os.path.isfile(side):
+                    _commit(side, os.path.join(folder, name))
+        else:
             os.remove(raw)
+        # the files of this tile, listed before the picture of the DEM (written by _dem_image) as they always were
+        written = [(final, os.path.getsize(final))]
+        for name in plan.aux_names(os.path.basename(final), spec):
+            side = os.path.join(folder, name)
+            if os.path.isfile(side):
+                written.append((side, os.path.getsize(side)))
+        result.files[position:position] = written
+    for name in skipped:                                  # the export went through: a tile of an older export that has no data now
+        if os.path.isfile(name):                          # would be an orphan next to the new ones
+            try:
+                os.remove(name)
+                ctx.log("{}: no data this time, the older tile was removed".format(os.path.basename(name)))
+            except OSError:
+                ctx.log("{}: no data this time, the older tile could not be removed".format(os.path.basename(name)))
 
 
 def _to_altitude(ctx, raw, sub):
@@ -329,7 +367,7 @@ def _dem_image(ctx, job, dem_tif, token, work, date_text, pixel_text, result, im
         raise Failure(message)
     view_final = os.path.join(os.path.dirname(extra["view_path"]), _named(ctx, job, plan.DEM, extra["view_ext"], token))
     # the coloured relief is an RGB GeoTIFF: it follows the same path as the orthomosaic (GDAL first, or Global Mapper)
-    _convert(ctx, extra["view_ext"], view_tif, view_final)
+    _convert(ctx, extra["view_ext"], view_tif, view_final, work)
     result.files.append((view_final, os.path.getsize(view_final)))
     if images is not None:
         record = _record(ctx, view_tif, dxfout.layer_name(date_text, pixel_text, "dem"), view_final)
@@ -359,14 +397,14 @@ def run(ctx, jobs, progress):
                     images)
         progress(1.0, "")
         if ctx.preset == plan.CAD:
-            _write_cad(ctx, jobs, images, result)
+            _write_cad(ctx, jobs, images, result, work)
         ctx.failed = ""
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return result
 
 
-def _write_cad(ctx, jobs, images, result):
+def _write_cad(ctx, jobs, images, result, work):
     """TOPO.dxf (and TOPO.dwg): all the images in place, relative paths."""
     if not images:
         raise Failure("No image to place in the drawing")
@@ -377,7 +415,8 @@ def _write_cad(ctx, jobs, images, result):
     for item in images:
         entries.append({"layer": item["layer"], "file": dxfout.relative_path(item["path"], dxf), "size_px": item["size_px"],
                         "insert": item["insert"], "pixel": item["pixel"], "clip": item.get("clip")})
-    dxfout.write_dxf(dxf, entries)
+    staged = dxfout.write_dxf(os.path.join(work, os.path.basename(dxf)), entries)      # the relative paths are those of the final folder
+    _commit(staged, dxf)
     result.dxf = dxf
     result.files.append((dxf, os.path.getsize(dxf)))
     core = ctx.tools.get("acad")
@@ -388,8 +427,16 @@ def _write_cad(ctx, jobs, images, result):
             raise Failure("DWG: AutoCAD not found")
         dwg = os.path.join(ctx.folder, plan.cad_dxf_name(version, "dwg"))
         ctx.failed = os.path.basename(dwg)
-        ok, message = external.dxf_to_dwg(core, dxf, dwg, tick=ctx.tick)
-        if not ok:
-            raise Failure(message)
+        # AutoCAD writes under another name, in the SAME folder (it stores the image paths relative to the drawing's folder, which
+        # must stay the final one); the previous DWG stays until the new one is complete.
+        part = os.path.join(ctx.folder, TMP_NAME + "_" + os.path.basename(dwg))
+        try:
+            ok, message = external.dxf_to_dwg(core, dxf, part, tick=ctx.tick)
+            if not ok:
+                raise Failure(message)
+            _commit(part, dwg)
+        finally:
+            if os.path.isfile(part):
+                os.remove(part)
         result.dwg = dwg
         result.files.append((dwg, os.path.getsize(dwg)))

@@ -1,6 +1,7 @@
 # AeroTools: installs the Aero menu in Metashape, and nothing else.
 #
-#   1. copies the core (menu, update, shared code: about 1 MB) from this folder to %LOCALAPPDATA%\HELIX\AeroToolsApp
+#   1. copies the core (menu, update, shared code: about 1 MB on the stable version, about 26 MB on the dev version) from this folder
+#      to %LOCALAPPDATA%\HELIX\AeroToolsApp
 #   2. adds the launcher to Metashape's scripts folder, so the Aero menu comes back at each start
 #
 # The tools are not installed here: in Metashape, Aero > Install plugins... lists them and downloads only the ones you pick.

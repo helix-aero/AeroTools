@@ -25,9 +25,13 @@ import datetime
 import math
 import os
 import re
-import unicodedata
 
-from ... import i18n, journal, msapi, theme
+from ... import i18n, journal, msapi, pdfkit
+from ...pdfkit import (A4_H, A4_W, CARD, DOT, EM_DASH, FAINT, GREEN, GREEN_DEEP, GRID, INK, INK_2, LINE, MARGIN, MUTED, ORANGE, PAPER,
+                       PT_TO_DEVICE, SITE_TEXT, SITE_URL, TABLE_HEAD_H, TABLE_TOP, WARN_BG, WARN_TEXT, safe_name)
+from ...pdfkit import Canvas as _Canvas, Style as _Style, card_title as _card_title, empty_note as _empty_note
+from ...pdfkit import gradient_brush as _gradient_brush, kpi_card as _kpi_card, nice_top as _nice_top, remove as _remove
+from ...pdfkit import rule as _rule, tick_decimals as _tick_decimals, typo as _typo
 from ...qt import QtCore, QtGui, QtWidgets
 from . import review
 
@@ -35,35 +39,12 @@ from . import review
 # Constants
 # --------------------------------------------------------------------------
 
-DPI = 300
-PT_TO_DEVICE = DPI / 72.0           # the painter works in points (1/72 inch)
-MARGIN = 40.0
 BAR_LIMIT = 20                      # bars of the error chart
 THRESHOLD_FACTOR = 2.0              # highlighted when the value is > 2 x RMS
 MIN_FOR_THRESHOLD = 3               # no threshold with fewer than 3 measurements
 CROP_W, CROP_H = 330, 220           # thumbnail around the projection, in image pixels
 CROP_ZOOM = 3                       # thumbnail magnification
 ROW_H = 15.0                        # height of a table row
-TEXT_SCALE = 10                     # text is drawn at 10x then scaled down
-
-# Report palette: always light, whatever the theme of the panel.
-INK = "#111214"
-INK_2 = "#2b2e33"
-MUTED = "#5d6067"
-FAINT = "#8c8e96"
-PAPER = "#f6f6f4"
-CARD = "#ffffff"
-LINE = "#dcdcd6"
-GRID = "#ebebe6"
-WARN_BG = "#fde3d8"
-WARN_TEXT = "#b83504"
-GREEN = theme.GREEN
-GREEN_DEEP = theme.GREEN_DEEP
-ORANGE = theme.ORANGE
-
-EM_DASH = "—"
-MINUS = "−"
-DOT = "·"
 
 
 # --------------------------------------------------------------------------
@@ -82,20 +63,6 @@ def fmt_m(value, decimals=3):
     """"0.123 m" or a dash."""
     text = fmt_num(value, decimals)
     return text if text == EM_DASH else text + " m"
-
-
-def _typo(text):
-    """Typographic minus sign for running text."""
-    return MINUS + text[1:] if text and text[0] == "-" else text
-
-
-def safe_name(text, default="Chunk"):
-    """Safe file name: ASCII, no spaces or special characters."""
-    text = unicodedata.normalize("NFKD", str(text or ""))
-    text = text.encode("ascii", "ignore").decode("ascii")
-    text = re.sub(r"[^A-Za-z0-9._-]+", "_", text).strip("._-")
-    text = re.sub(r"_+", "_", text)
-    return text[:60] or default
 
 
 def suggested_filename(chunk_label, ext=".pdf", today=None, kind=None):
@@ -215,6 +182,14 @@ def _rms(values):
     return math.sqrt(sum(v * v for v in values) / len(values))
 
 
+def _group_rms(markers):
+    """RMS of a group of markers: {"n": markers with an error, "x", "y", "z", "xy", "total"} (None where nothing to average)."""
+    rms = {axis: _rms([m[axis] for m in markers]) for axis in ("x", "y", "z", "total")}
+    xy = math.sqrt(rms["x"] ** 2 + rms["y"] ** 2) if rms["x"] is not None and rms["y"] is not None else None
+    return {"n": sum(1 for m in markers if m["total"] is not None), "x": rms["x"], "y": rms["y"], "z": rms["z"], "xy": xy,
+            "total": rms["total"]}
+
+
 def _median(values):
     ordered = sorted(values)
     if not ordered:
@@ -255,6 +230,7 @@ def collect_data(chunk, today=None):
             "projections": count,
             "pointed": count > 0,
             "ref": _reference_xyz(marker),
+            "enabled": msapi.marker_enabled(marker),     # True: control point (used in the adjustment), False: check point, None: unknown
         })
 
     totals = [m["total"] for m in markers if m["total"] is not None]
@@ -274,7 +250,15 @@ def collect_data(chunk, today=None):
             return None
         return THRESHOLD_FACTOR * value
 
+    control = _group_rms([m for m in markers if m["enabled"] is True])
+    check = _group_rms([m for m in markers if m["enabled"] is False])
     stats = {
+        "n_control": sum(1 for m in markers if m["enabled"] is True),
+        "n_check": sum(1 for m in markers if m["enabled"] is False),
+        "control_n": control["n"], "control_rms_x": control["x"], "control_rms_y": control["y"], "control_rms_z": control["z"],
+        "control_rms_xy": control["xy"], "control_rms_total": control["total"],
+        "check_n": check["n"], "check_rms_x": check["x"], "check_rms_y": check["y"], "check_rms_z": check["z"],
+        "check_rms_xy": check["xy"], "check_rms_total": check["total"],
         "n_markers": len(markers),
         "n_pointed": sum(1 for m in markers if m["pointed"]),
         "n_with_error": len(totals),
@@ -373,271 +357,6 @@ def write_csv(data, path):
 
 
 # --------------------------------------------------------------------------
-# Drawing tools
-# --------------------------------------------------------------------------
-
-def _font_families():
-    try:
-        return set(QtGui.QFontDatabase.families())
-    except Exception:
-        pass
-    try:
-        return set(QtGui.QFontDatabase().families())
-    except Exception:
-        return set()
-
-
-def _font_styles(family):
-    try:
-        return list(QtGui.QFontDatabase.styles(family))
-    except Exception:
-        pass
-    try:
-        return list(QtGui.QFontDatabase().styles(family))
-    except Exception:
-        return []
-
-
-class _Style(object):
-    """Fonts of the report. One instance per PDF."""
-
-    # Weights: 0 normal, 1 medium, 2 semi-bold, 3 bold.
-    FAUX_STROKE = (0.010, 0.020, 0.032, 0.044)   # x size, if Qt only has one weight
-
-    def __init__(self):
-        try:
-            title_family, _text_family = theme.load_fonts(QtGui)
-        except Exception:
-            title_family = "Segoe UI"
-        self.display_family = title_family
-        self.real_weights = len(_font_styles("Rubik")) > 1
-        families = _font_families()
-        self.body_family = "Segoe UI"
-        for name in ("Segoe UI", "Helvetica Neue", "Arial", "DejaVu Sans"):
-            if name in families:
-                self.body_family = name
-                break
-        self._cache = {}
-
-    def body_font(self, px, bold=False):
-        font = QtGui.QFont(self.body_family)
-        font.setPixelSize(max(1, int(round(px * TEXT_SCALE))))
-        font.setBold(bool(bold))
-        font.setHintingPreference(QtGui.QFont.PreferNoHinting)
-        return font
-
-    def display_font(self, px, weight):
-        """(font, stroke width in points)."""
-        font = QtGui.QFont(self.display_family)
-        font.setPixelSize(max(1, int(round(px * TEXT_SCALE))))
-        font.setHintingPreference(QtGui.QFont.PreferNoHinting)
-        weight = max(0, min(3, int(weight)))
-        if self.real_weights:
-            # Real Rubik: stay one step below the names to stay close to the Qt5 rendering.
-            font.setWeight((QtGui.QFont.Normal, QtGui.QFont.Medium,
-                            QtGui.QFont.Medium, QtGui.QFont.DemiBold)[weight])
-            return font, 0.0
-        font.setWeight(QtGui.QFont.Normal)
-        return font, px * self.FAUX_STROKE[weight]
-
-    def advance(self, text, px, kind, weight):
-        key = (text, round(px, 2), kind, weight)
-        value = self._cache.get(key)
-        if value is None:
-            if kind == "display":
-                font, _stroke = self.display_font(px, weight)
-            else:
-                font = self.body_font(px, weight >= 2)
-            metrics = QtGui.QFontMetricsF(font)
-            getter = getattr(metrics, "horizontalAdvance", None) or metrics.width
-            value = getter(text) / float(TEXT_SCALE)
-            self._cache[key] = value
-        return value
-
-
-def _qcolor(color, alpha=1.0):
-    result = QtGui.QColor(color)
-    if alpha < 1.0:
-        result.setAlphaF(alpha)
-    return result
-
-
-def _nice_top(value, divisions=4):
-    """(top, step) of an axis that starts at 0 and covers `value`."""
-    if value is None or value <= 0:
-        return 1.0, 0.25
-    raw = value / float(divisions)
-    magnitude = 10 ** math.floor(math.log10(raw))
-    step = magnitude * 10
-    for factor in (1, 2, 2.5, 5, 10):
-        if factor * magnitude >= raw - 1e-12:
-            step = factor * magnitude
-            break
-    top = step * math.ceil(value / step - 1e-9)
-    return top, step
-
-
-def _tick_decimals(step):
-    for decimals in range(0, 5):
-        if abs(step * 10 ** decimals - round(step * 10 ** decimals)) < 1e-9:
-            return decimals
-    return 4
-
-
-class _Canvas(object):
-    """A QPainter and the drawing primitives of the report (units: points)."""
-
-    def __init__(self, painter, style):
-        self.p = painter
-        self.st = style
-
-    # -- text -------------------------------------------------------------
-
-    def width(self, text, px, kind="body", weight=1, spacing=0.0):
-        text = str(text)
-        if spacing:
-            return sum(self.st.advance(ch, px, kind, weight) + spacing for ch in text)
-        return self.st.advance(text, px, kind, weight)
-
-    def text(self, x, y, text, px, color=INK, kind="body", weight=1, align="l",
-             alpha=1.0, spacing=0.0):
-        """Writes `text` with the baseline at `y`. Returns the width."""
-        text = str(text)
-        if not text:
-            return 0.0
-        width = self.width(text, px, kind, weight, spacing)
-        if align == "r":
-            x -= width
-        elif align == "c":
-            x -= width / 2.0
-        if spacing:
-            cursor = x
-            for ch in text:
-                self._draw(cursor, y, ch, px, color, kind, weight, alpha)
-                cursor += self.st.advance(ch, px, kind, weight) + spacing
-        else:
-            self._draw(x, y, text, px, color, kind, weight, alpha)
-        return width
-
-    def _draw(self, x, y, text, px, color, kind, weight, alpha):
-        p = self.p
-        col = _qcolor(color, alpha)
-        shrink = 1.0 / TEXT_SCALE
-        if kind == "display":
-            font, stroke = self.st.display_font(px, weight)
-            path = QtGui.QPainterPath()
-            path.addText(QtCore.QPointF(0.0, 0.0), font, text)
-            transform = QtGui.QTransform()
-            transform.translate(x, y)
-            transform.scale(shrink, shrink)
-            path = transform.map(path)
-            if stroke > 0:
-                pen = QtGui.QPen(col, stroke)
-                pen.setJoinStyle(QtCore.Qt.RoundJoin)
-                p.setPen(pen)
-            else:
-                p.setPen(QtCore.Qt.NoPen)
-            p.setBrush(col)
-            p.drawPath(path)
-            return
-        p.save()
-        p.translate(x, y)
-        p.scale(shrink, shrink)
-        p.setFont(self.st.body_font(px, weight >= 2))
-        p.setPen(col)
-        p.drawText(QtCore.QPointF(0.0, 0.0), text)
-        p.restore()
-
-    def link(self, x, y, text, px, url, kind="body", weight=1, align="l"):
-        """Makes the text already written with the baseline at `y` clickable (PDF link).
-
-        An invisible QTextDocument carries the anchor: Qt turns it into a link annotation. The
-        area follows the system font, within a few points of the font of the written text.
-        """
-        text = str(text)
-        width = self.width(text, px, kind, weight)
-        if align == "r":
-            x -= width
-        elif align == "c":
-            x -= width / 2.0
-        font = QtGui.QFont(self.st.body_family)
-        font.setPixelSize(max(1, int(round(px))))
-        doc = QtGui.QTextDocument()
-        doc.setDefaultFont(font)
-        doc.setDocumentMargin(0)
-        doc.setHtml('<a href="{}">{}</a>'.format(url, text))
-        p = self.p
-        p.save()
-        p.translate(x, y - QtGui.QFontMetricsF(font).ascent())
-        p.setOpacity(0.0)
-        doc.drawContents(p)
-        p.restore()
-
-    def fit(self, text, px, max_width, kind="body", weight=1):
-        """Shortens `text` with an ellipsis to fit in `max_width`."""
-        text = str(text)
-        if self.width(text, px, kind, weight) <= max_width:
-            return text
-        while len(text) > 1 and self.width(text + "…", px, kind, weight) > max_width:
-            text = text[:-1]
-        return text.rstrip() + "…"
-
-    def wrap(self, text, px, max_width, kind="body", weight=1, max_lines=3):
-        """Splits `text` into lines of width `max_width` (at most `max_lines`)."""
-        lines, current = [], ""
-        for word in str(text).split():
-            trial = (current + " " + word).strip()
-            if current and self.width(trial, px, kind, weight) > max_width:
-                lines.append(current)
-                current = word
-            else:
-                current = trial
-        if current:
-            lines.append(current)
-        if len(lines) > max_lines:
-            lines = lines[:max_lines]
-            lines[-1] = self.fit(lines[-1] + " …", px, max_width, kind, weight)
-        return lines
-
-    # -- shapes -----------------------------------------------------------
-
-    def rect(self, x, y, w, h, fill=None, line=None, radius=0.0, line_w=0.6, alpha=1.0):
-        p = self.p
-        p.setPen(QtGui.QPen(_qcolor(line), line_w) if line else QtCore.Qt.NoPen)
-        p.setBrush(_qcolor(fill, alpha) if fill else QtCore.Qt.NoBrush)
-        if radius:
-            p.drawRoundedRect(QtCore.QRectF(x, y, w, h), radius, radius)
-        else:
-            p.drawRect(QtCore.QRectF(x, y, w, h))
-
-    def card(self, x, y, w, h, radius=7.0):
-        self.rect(x, y, w, h, fill=CARD, line=LINE, radius=radius)
-
-    def line(self, x1, y1, x2, y2, color=LINE, width=0.6, dash=None, alpha=1.0):
-        pen = QtGui.QPen(_qcolor(color, alpha), width)
-        if dash:
-            pen.setDashPattern([float(d) for d in dash])
-        pen.setCapStyle(QtCore.Qt.FlatCap)
-        self.p.setPen(pen)
-        self.p.drawLine(QtCore.QPointF(x1, y1), QtCore.QPointF(x2, y2))
-
-    def circle(self, cx, cy, r, fill=None, line=None, line_w=0.6, alpha=1.0, dash=None):
-        p = self.p
-        if line:
-            pen = QtGui.QPen(_qcolor(line), line_w)
-            if dash:
-                pen.setDashPattern([float(d) for d in dash])
-            p.setPen(pen)
-        else:
-            p.setPen(QtCore.Qt.NoPen)
-        p.setBrush(_qcolor(fill, alpha) if fill else QtCore.Qt.NoBrush)
-        p.drawEllipse(QtCore.QPointF(cx, cy), r, r)
-
-    def image(self, image, x, y, w, h):
-        self.p.drawImage(QtCore.QRectF(x, y, w, h), image)
-
-
-# --------------------------------------------------------------------------
 # Page elements
 # --------------------------------------------------------------------------
 
@@ -659,21 +378,6 @@ def _footer(cv, W, H, page, total):
 
 def _page_background(cv, W, H):
     cv.rect(0, 0, W, H, fill=PAPER)
-
-
-def _gradient_brush(x0, y0, x1, y1):
-    gradient = QtGui.QLinearGradient(x0, y0, x1, y1)
-    gradient.setColorAt(0.0, QtGui.QColor(theme.LOGO_0))
-    gradient.setColorAt(0.5, QtGui.QColor(theme.LOGO_1))
-    gradient.setColorAt(1.0, QtGui.QColor(theme.LOGO_2))
-    return QtGui.QBrush(gradient)
-
-
-def _rule(cv, W, height=3.0):
-    """Logo gradient rule at the top of the page."""
-    cv.p.setPen(QtCore.Qt.NoPen)
-    cv.p.setBrush(_gradient_brush(0, height, W, 0))
-    cv.p.drawRect(QtCore.QRectF(0, 0, W, height))
 
 
 def _page_title(cv, W, data, title, subtitle=None):
@@ -714,13 +418,30 @@ def _draw_band(cv, W, data):
         x += cell_w
 
 
-def _kpi_card(cv, x, y, w, h, label, value, sub=None, accent=GREEN):
-    cv.card(x, y, w, h)
-    cv.rect(x, y + 12, 3, h - 24, fill=accent, radius=1.5)
-    cv.text(x + 14, y + 19, label.upper(), 6.8, MUTED, "body", 2, spacing=1.0)
-    cv.text(x + 14, y + 44, value, 20, INK, "display", 2)
-    if sub:
-        cv.text(x + 14, y + 58, cv.fit(sub, 7.8, w - 26), 7.8, MUTED)
+def _control_sub(stats, key):
+    """Second line of a check-point RMS card: the control points' value, said as such."""
+    if not stats["control_n"] or stats["control_rms_" + key] is None:
+        return i18n.t("report.kpi.no_control")
+    return i18n.t("report.kpi.control_value", value=fmt_m(stats["control_rms_" + key]))
+
+
+def _rms_cards(s):
+    """The two RMS cards of the summary. With control / check flags: the RMS of the CHECK points (not used in the adjustment, so
+    an independent measure) with the control points' RMS under it, or a plain statement that there are no check points. Without the
+    flags (unreadable): the RMS of all the markers, labelled so."""
+    if not (s["n_control"] or s["n_check"]):
+        xy = None
+        if s["rms_x"] is not None and s["rms_y"] is not None:
+            xy = "X {}  {}  Y {}".format(fmt_m(s["rms_x"]), DOT, fmt_m(s["rms_y"]))
+        z_sub = (i18n.t("report.kpi.rms_z_sub", value=fmt_m(s["rms_total"])) if s["rms_total"] is not None else None)
+        return [(i18n.t("report.kpi.rms_xy_all"), fmt_m(s["rms_xy"]), xy, GREEN),
+                (i18n.t("report.kpi.rms_z_all"), fmt_m(s["rms_z"]), z_sub, GREEN)]
+    if not s["check_n"]:
+        none = i18n.t("report.kpi.no_check")
+        return [(i18n.t("report.kpi.check_xy"), fmt_m(None), none, GREEN),
+                (i18n.t("report.kpi.check_z"), fmt_m(None), none, GREEN)]
+    return [(i18n.t("report.kpi.check_xy"), fmt_m(s["check_rms_xy"]), _control_sub(s, "xy"), GREEN),
+            (i18n.t("report.kpi.check_z"), fmt_m(s["check_rms_z"]), _control_sub(s, "z"), GREEN)]
 
 
 def _draw_kpis(cv, x, y, w, data):
@@ -732,24 +453,21 @@ def _draw_kpis(cv, x, y, w, data):
         pct = i18n.t("report.kpi.pointed_sub",
                      pct=int(round(100.0 * s["n_pointed"] / s["n_markers"])))
     mean = s["mean_projections"]
-    xy = None
-    if s["rms_x"] is not None and s["rms_y"] is not None:
-        xy = "X {}  {}  Y {}".format(fmt_m(s["rms_x"]), DOT, fmt_m(s["rms_y"]))
-    z_sub = (i18n.t("report.kpi.rms_z_sub", value=fmt_m(s["rms_total"]))
-             if s["rms_total"] is not None else None)
     worst = s["worst_label"]
     worst_hot = (s["worst_total"] is not None and s["threshold_total"] is not None
                  and s["worst_total"] > s["threshold_total"])
+    markers_sub = (i18n.t("report.kpi.markers_split", control=s["n_control"], check=s["n_check"])
+                   if (s["n_control"] or s["n_check"]) else i18n.t("report.kpi.markers_sub"))
+    rms_xy, rms_z = _rms_cards(s)
     cards = [
-        (i18n.t("report.kpi.markers"), str(s["n_markers"]),
-         i18n.t("report.kpi.markers_sub"), GREEN),
+        (i18n.t("report.kpi.markers"), str(s["n_markers"]), markers_sub, GREEN),
         (i18n.t("report.kpi.pointed"), "{} / {}".format(s["n_pointed"], s["n_markers"]),
          pct or None, GREEN),
         (i18n.t("report.kpi.projections"), str(s["total_projections"]),
          i18n.t("report.kpi.projections_sub", mean=fmt_num(mean, 1))
          if mean is not None else None, GREEN),
-        (i18n.t("report.kpi.rms_xy"), fmt_m(s["rms_xy"]), xy, GREEN),
-        (i18n.t("report.kpi.rms_z"), fmt_m(s["rms_z"]), z_sub, GREEN),
+        rms_xy,
+        rms_z,
         (i18n.t("report.kpi.worst"), fmt_m(s["worst_total"]), worst,
          ORANGE if worst_hot else GREEN),
     ]
@@ -757,16 +475,6 @@ def _draw_kpis(cv, x, y, w, data):
         col, row = index % 3, index // 3
         _kpi_card(cv, x + col * (cw + gap), y + row * (h + gap), cw, h, label, value, sub, accent)
     return 2 * h + gap
-
-
-def _card_title(cv, x, y, title, subtitle=None):
-    cv.text(x + 14, y + 22, title, 11.5, INK, "display", 2)
-    if subtitle:
-        cv.text(x + 14, y + 35, subtitle, 7.6, MUTED)
-
-
-def _empty_note(cv, x, y, w, h, text=None):
-    cv.text(x + w / 2.0, y + h / 2.0 + 3, text or i18n.t("report.empty"), 8.5, FAINT, align="c")
 
 
 def _bar_chart(cv, x, y, w, h, data):
@@ -912,6 +620,17 @@ def _axis_rms_chart(cv, x, y, w, h, data):
         cv.text(left + bw + 4, cy + 2.6, fmt_num(value), 7.4, MUTED)
 
 
+def _rms_note(s):
+    """First line of the note: what the RMS values are made of (check points, control points, or all markers)."""
+    if not (s["n_control"] or s["n_check"]):
+        return i18n.t("report.note.errors_all")
+    if s["check_n"]:
+        return i18n.t("report.note.errors_check")
+    if s["control_n"]:
+        return i18n.t("report.note.errors_no_check", xy=fmt_m(s["control_rms_xy"]), z=fmt_m(s["control_rms_z"]))
+    return i18n.t("report.note.errors_all")
+
+
 def _note_card(cv, x, y, w, h, data):
     s = data["stats"]
     cv.card(x, y, w, h)
@@ -922,7 +641,7 @@ def _note_card(cv, x, y, w, h, data):
             second = i18n.t("report.note.threshold", value=fmt_m(s["threshold_total"]))
         else:
             second = i18n.t("report.note.no_threshold")
-        lines = [i18n.t("report.note.errors"), second]
+        lines = [_rms_note(s), second]
     cv.text(x + 14, y + 20, i18n.t("report.note.title").upper(), 6.8, MUTED, "body", 2,
             spacing=1.0)
     for i, line in enumerate(lines):
@@ -953,8 +672,6 @@ def _page_summary(cv, W, H, data, page, total):
 # Table
 # --------------------------------------------------------------------------
 
-TABLE_TOP = 78.0
-TABLE_HEAD_H = 24.0
 HIST_H = 176.0
 
 
@@ -1003,7 +720,8 @@ def _draw_table(cv, x, y, w, rows, stats, first_index):
         cv.text(edge, y + 15.5, head, 7.0, MUTED, "body", 2, align="r")
     thresholds = (stats["threshold_x"], stats["threshold_y"], stats["threshold_z"],
                   stats["threshold_total"])
-    id_w = (cols[0] - col_w[0]) - (x + pad) - 6
+    id_right = (cols[0] - col_w[0]) - 8.0
+    id_w = id_right - (x + pad) - 40.0                  # room for the "check" / "control" tag at the end of the cell
     for i, m in enumerate(rows):
         ry = y + TABLE_HEAD_H + i * ROW_H
         if (first_index + i) % 2 == 1:
@@ -1011,6 +729,9 @@ def _draw_table(cv, x, y, w, rows, stats, first_index):
         base = ry + ROW_H - 4.6
         muted = not m["pointed"]
         cv.text(x + pad, base, cv.fit(m["label"], 8.2, id_w), 8.2, FAINT if muted else INK, "body", 1)
+        tag = {True: "report.table.control", False: "report.table.check"}.get(m.get("enabled"))
+        if tag:
+            cv.text(id_right, base, i18n.t(tag), 6.8, MUTED, align="r")
         values = (m["x"], m["y"], m["z"], m["total"])
         for edge, value, thr in zip(cols[:4], values, thresholds):
             text = _typo(fmt_num(value))
@@ -1253,9 +974,6 @@ AI_HEAD_H = 42.0                    # marker title + two lines of information
 AI_THUMB_PX = 160                   # side of the painted thumbnail, in pixels
 AI_FALLBACK_PX = 96                 # region read from the photo when the crop no longer exists
 AI_RED = "#ff4a2e"
-SITE_URL = "https://helix.aero"
-SITE_TEXT = "helix.aero"
-A4_W, A4_H = 595.28, 841.89
 
 
 def _ai_columns(width):
@@ -1528,19 +1246,7 @@ def ai_sections(state, data=None):
 # --------------------------------------------------------------------------
 
 def _new_writer(path, title):
-    writer = QtGui.QPdfWriter(path)
-    try:
-        writer.setPageSize(QtGui.QPageSize(QtGui.QPageSize.A4))
-    except Exception:
-        writer.setPageSize(QtGui.QPagedPaintDevice.A4)
-    try:
-        writer.setPageMargins(QtCore.QMarginsF(0.0, 0.0, 0.0, 0.0))
-    except Exception:
-        pass
-    writer.setResolution(DPI)
-    writer.setTitle(title)
-    writer.setCreator("AeroTools Aero-GCP (HELIX AERO)")
-    return writer
+    return pdfkit.new_writer(path, title, "AeroTools Aero-GCP (HELIX AERO)")
 
 
 def page_count(data, images=None):
@@ -1600,13 +1306,6 @@ def build_pdf(data, path, images=None):
         _remove(tmp)
         raise
     return pages
-
-
-def _remove(path):
-    try:
-        os.remove(path)
-    except OSError:
-        pass
 
 
 # --------------------------------------------------------------------------

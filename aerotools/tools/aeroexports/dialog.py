@@ -22,10 +22,10 @@ import tempfile
 import threading
 import traceback
 
-from ... import config, i18n, journal, msapi, theme, ui
+from ... import config, i18n, journal, msapi, outputdir, projtool, theme, ui
 from ...qt import QtCore, QtGui, QtWidgets
 from ... import controls
-from . import crs, external, look as looks, naming, pipeline, plan, preview, projdb, projtool, tiling, vertical
+from . import crs, external, look as looks, naming, pipeline, plan, preview, projdb, tiling, vertical
 
 SECTION = "aeroexports"
 WIDTH, HEIGHT = 1080, 740
@@ -1199,17 +1199,17 @@ class ExportDialog(QtWidgets.QDialog):
                 if self.cards[kind].button.isChecked() and self._pixel(kind) > 0}
 
     def _folder(self):
-        return naming.outputs_folder(self._psx) if self._psx else ""
+        return outputdir.outputs_folder(self._psx) if self._psx else ""
 
     def _plan(self, version=1):
         """List of the files for a version number (1 = base names; None = first free number)."""
         wanted = self._wanted()
         return plan.build_jobs(self.site.text().strip(), self._date, wanted, self.preset.currentData(), self._folder(),
                                native={k for k in wanted if self._is_native(k)}, cad=self._cad(),
-                               version=version, dem_picture=self._picture_wanted())
+                               version=version, dem_picture=self._picture_wanted(), tiled=bool(self._tile_m()))
 
     def _existing(self, jobs):
-        return [path for path in plan.planned_files(jobs, self.preset.currentData(), self._cad()) if os.path.exists(path)]
+        return plan.existing_files(jobs, self.preset.currentData(), self._cad(), tiled=bool(self._tile_m()))
 
     def _refresh_names(self, *_args):
         for kind in plan.KINDS:

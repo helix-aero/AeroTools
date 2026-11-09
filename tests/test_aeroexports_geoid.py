@@ -7,7 +7,8 @@ import struct
 import numpy as np
 import pytest
 
-from aerotools.tools.aeroexports import crs, projdb, projtool, tiffio, vertical
+from aerotools import projtool
+from aerotools.tools.aeroexports import crs, projdb, tiffio, vertical
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RAC23 = os.path.join(HERE, "data", "fr_ign_RAC23.tif")
@@ -111,8 +112,8 @@ def test_the_list_never_offers_a_grid_that_does_not_cover_the_project():
 
 
 def test_frames_and_xy_candidates_come_from_the_proj_database():
-    assert projdb.frame_of(3942)["family"] == "global" and projdb.frame_of(2056)["family"] != "global"
-    assert projdb.geographic_epsg(3942) == 4171 and projdb.geographic_epsg(9842) == 9782 and projdb.geographic_epsg(32632) == 4326
+    assert projtool.frame_of(3942)["family"] == "global" and projtool.frame_of(2056)["family"] != "global"
+    assert projtool.geographic_epsg(3942) == 4171 and projtool.geographic_epsg(9842) == 9782 and projtool.geographic_epsg(32632) == 4326
     corsica = [code for code, _name in projdb.candidates(*CORSICA, limit=12)]
     assert {3942, 9842, 2154, 32632}.issubset(set(corsica)) and corsica.index(3942) < corsica.index(32632)
     assert [code for code, _n in projdb.candidates(*CORSICA, text="lambert-93")][:1] == [2154]
