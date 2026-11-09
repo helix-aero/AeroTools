@@ -1,14 +1,14 @@
 """Start and stop of FastGCP. This is the entry point called by the Aero menu.
 
-`install()` is idempotent: relaunching from the menu closes the previous
-instance cleanly (event filter, timer, shortcut, dock) before opening a new
-one. Without this, each relaunch would stack one more click filter on the
-Qt application.
+`install()` opens the panel once: from the menu again, it only brings the open
+panel to the front. `uninstall()` (the cross of the panel) closes it cleanly
+(event filter, timer, shortcut, dock), so a later start begins from nothing.
 """
 
 from ... import i18n, journal, msapi, qt, theme
 from ...qt import QShortcut, QtCore, QtGui, QtWidgets
 from . import aigcp, history, marking, photos, session as session_mod
+from .session import DOCK_NAME
 
 TICK_MS = 400
 POLL_TICKS = 5                        # the panel table is compared with Metashape every 5 ticks (2 s)
@@ -18,15 +18,35 @@ UNDO_KEY = "Ctrl+Z"
 REDO_KEYS = ("Ctrl+Y", "Ctrl+Shift+Z")
 
 
-def install():
-    """Open (or reopen) FastGCP."""
-    uninstall()
+def _alive(widget):
+    if widget is None:
+        return False
+    try:
+        widget.objectName()
+    except RuntimeError:
+        return False
+    return True
 
+
+def install():
+    """Open FastGCP, or bring the open panel to the front: there is never a second one."""
     state = session_mod.current()
     window = msapi.main_window()
     if window is None:
         msapi.message_box(i18n.t("tool.no_window"))
         return
+
+    if _alive(state.panel):
+        state.panel.show()
+        state.panel.raise_()
+        return
+
+    # A panel left by an earlier load of the code (its session is gone, the dock is not).
+    uninstall()
+    for stale in window.findChildren(QtWidgets.QDockWidget, DOCK_NAME):
+        window.removeDockWidget(stale)
+        stale.setParent(None)
+        stale.deleteLater()
 
     theme.load_fonts(QtGui)
 

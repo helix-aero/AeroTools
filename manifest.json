@@ -1,5 +1,5 @@
 {
- "built": "2026-11-09T08:46:47",
+ "built": "2026-11-09T15:35:56",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -38,8 +38,8 @@
    "size": 2497
   },
   "aerotools/bootstrap.py": {
-   "sha256": "21ce3bceda34eb2a7685f3e8b911b177e84246ced6e87d0971f905299fd2942f",
-   "size": 10943
+   "sha256": "201e3259e1b1a09f6ab31a7ba8297d95f33784b554c53a53d32692f4ee49d606",
+   "size": 11156
   },
   "aerotools/config.py": {
    "sha256": "1982a68769a7be23f89b72c9a32604b70084eaa5eeb33033828a350536f7a862",
@@ -66,8 +66,8 @@
    "size": 257
   },
   "aerotools/lang/en.py": {
-   "sha256": "3166fea13a58d544748112e0ac72ef340bdcf7d7ff56f3d3aacaae23b3788306",
-   "size": 50128
+   "sha256": "3e0650113d653e467320a3dc41f532ecee4891f7ae9680b6ad534a48206358df",
+   "size": 50169
   },
   "aerotools/msapi.py": {
    "sha256": "15a448dad44df0f344303cf3c232aa23bc36ace05636e8e604fc3f1b1b6ba50a",
@@ -254,8 +254,8 @@
    "size": 13818
   },
   "aerotools/tools/fastgcp/panel.py": {
-   "sha256": "36f82719d8e13e900a8138fe8ad94165838e71f3fcb2dbe3042b7f4152567c3b",
-   "size": 91615
+   "sha256": "bcd17d3011f938b11d383ed97fe48911402f819f94b9c6548211fe64d3da3fb6",
+   "size": 93179
   },
   "aerotools/tools/fastgcp/photos.py": {
    "sha256": "b6bb7282daad79d0c1e4e1659e807f4565ebe1471ab7dd8688a03c4f32a3897b",
@@ -282,8 +282,8 @@
    "size": 42382
   },
   "aerotools/tools/fastgcp/session.py": {
-   "sha256": "b1906bae57c295e6d5f9885075d987859412af2add7e0f7703534dd97e971da1",
-   "size": 6128
+   "sha256": "105feb44c127039f972c20139b76c3e64095c73372326a8d612a808638535b77",
+   "size": 6238
   },
   "aerotools/tools/fastgcp/settings_dialog.py": {
    "sha256": "68bf9c3164806e5b86b4399d6c7091501828c11a8d44943d61e05c483cb44ba1",
@@ -294,8 +294,8 @@
    "size": 8337
   },
   "aerotools/tools/fastgcp/tool.py": {
-   "sha256": "0eceb051ddeb961e1e27b0ff638448bae5e593701b8f9a49aa4ecdcaed56984e",
-   "size": 7476
+   "sha256": "fb4b6355ae57df3b6bd7570138d715ead8af23bdf04c8e907b0cb9529c0a6117",
+   "size": 8080
   },
   "aerotools/tools/fastgcp/training.py": {
    "sha256": "6e8cb90952e593c64ffadffabab4889a7765af05f2e1c557f43ccddbb3b8d9c7",

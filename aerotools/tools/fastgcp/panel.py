@@ -29,6 +29,7 @@ import time
 from ... import config, i18n, journal, msapi, svgpath, theme
 from ...qt import QtCore, QtGui, QtWidgets
 from . import aigcp, history, qc
+from .session import DOCK_NAME
 
 SITE_URL = "https://helix.aero"
 SITE_NAME = "helix.aero"
@@ -415,6 +416,20 @@ def _gear_pixmap(color):
             painter.drawPath(path)
         return _paint(GEAR_ICON, GEAR_ICON, draw)
     return _cached(("gear", color), build)
+
+
+CLOSE_ICON = 14
+
+
+def _close_pixmap(color):
+    """Thin cross (close the panel)."""
+    def build():
+        def draw(painter):
+            painter.setPen(_pen(color, 1.6))
+            painter.drawLine(QtCore.QPointF(3.5, 3.5), QtCore.QPointF(10.5, 10.5))
+            painter.drawLine(QtCore.QPointF(10.5, 3.5), QtCore.QPointF(3.5, 10.5))
+        return _paint(CLOSE_ICON, CLOSE_ICON, draw)
+    return _cached(("close", color), build)
 
 
 UNDO_ICON = 18
@@ -863,7 +878,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         # Chunk name displayed after the progress (set by tool.py).
         self._chunk_name = ""
 
-        self.setObjectName("AeroFastGcpDock")
+        self.setObjectName(DOCK_NAME)
         # The custom header acts as the bar: the native bar disappears.
         self.setTitleBarWidget(QtWidgets.QWidget())
         self._root = self._build_root()
@@ -943,7 +958,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         banner.setObjectName("aeroBanner")
         row = QtWidgets.QHBoxLayout(banner)
         row.setContentsMargins(theme.PAD_L, theme.PAD, theme.PAD_L, theme.PAD)
-        row.setSpacing(theme.PAD_L)
+        row.setSpacing(0)
         logo = QtWidgets.QLabel()
         pixmap = QtGui.QPixmap(os.path.join(config.ROOT, "assets", "logo", LOGO_FILE))
         if pixmap.isNull():
@@ -955,14 +970,36 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             pixmap.setDevicePixelRatio(LOGO_SCALE)
             logo.setPixmap(pixmap)
         logo.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
-        row.addWidget(logo, 0)
+        # Logo and cross sit in two columns of the same width: the line between them is centred.
+        row.addWidget(self._banner_side(logo, QtCore.Qt.AlignLeft), 0)
         self.ad = _ElidedLabel("aeroMeta")
-        self.ad.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.ad.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
         self.ad.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
         self.ad.set_full_text(i18n.t("panel.ad", site=SITE_NAME))
         row.addWidget(self.ad, 1)
+        self.close_button = self._round_button(self._on_close_clicked)
+        self.close_button.setEnabled(True)
+        self.close_button.setToolTip(i18n.t("panel.close_tip"))
+        row.addWidget(self._banner_side(self.close_button, QtCore.Qt.AlignRight), 0)
         outer.addWidget(banner)
         return holder
+
+    @staticmethod
+    def _banner_side(widget, align):
+        side = QtWidgets.QWidget()
+        side.setFixedWidth(LOGO_WIDTH)
+        layout = QtWidgets.QHBoxLayout(side)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(widget, 0, align | QtCore.Qt.AlignVCenter)
+        return side
+
+    def _on_close_clicked(self):
+        """The cross closes Aero-GCP: marking, timer and shortcuts stop, the panel disappears."""
+        from ... import bootstrap
+        from . import tool
+        journal.write("Aero-GCP closed")
+        bootstrap.forget_last("fastgcp")
+        tool.uninstall()
 
     def _build_header(self):
         """Title on the left, on the right: Undo, Redo, settings (gear)."""
@@ -1329,6 +1366,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         try:
             self._apply_toggle(self._running)
             self.more_button.setIcon(QtGui.QIcon(_gear_pixmap(theme.FG_2)))
+            self.close_button.setIcon(QtGui.QIcon(_close_pixmap("#4a4d52")))     # on the light banner
             self.github_button.setIcon(QtGui.QIcon(_github_pixmap(theme.FG_2)))
             self.undo_button.setIcon(_undo_icon())
             self.redo_button.setIcon(_undo_icon(mirror=True))
