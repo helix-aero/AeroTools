@@ -147,9 +147,15 @@ TEXTS = {
     "report.kpi.pointed_sub": "{pct}% of markers",
     "report.kpi.projections": "Projections",
     "report.kpi.projections_sub": "{mean} per marker",
-    "report.kpi.rms_xy": "RMS XY",
-    "report.kpi.rms_z": "RMS Z",
+    "report.kpi.markers_split": "{control} control, {check} check points",
+    "report.kpi.rms_xy_all": "RMS XY, all markers",
+    "report.kpi.rms_z_all": "RMS Z, all markers",
     "report.kpi.rms_z_sub": "Total RMS {value}",
+    "report.kpi.check_xy": "RMS XY, check points",
+    "report.kpi.check_z": "RMS Z, check points",
+    "report.kpi.control_value": "Control points: {value}",
+    "report.kpi.no_control": "No control points",
+    "report.kpi.no_check": "No check points in this project",
     "report.kpi.worst": "Largest error",
     "report.empty": "No measurement available",
     "report.bar.title": "Total error per marker",
@@ -157,12 +163,12 @@ TEXTS = {
     "report.bar.sub_top": "Top {shown} errors out of {total} markers",
     "report.bar.legend_total": "Total error",
     "report.bar.legend_over": "Beyond 2 × RMS",
-    "report.bar.legend_rms": "RMS {value}",
+    "report.bar.legend_rms": "RMS, all markers {value}",
     "report.scatter.title": "Horizontal scatter",
     "report.scatter.sub": "X error on the horizontal axis, Y error on the vertical axis",
-    "report.scatter.legend_rms": "RMS XY {value}",
+    "report.scatter.legend_rms": "RMS XY, all markers {value}",
     "report.scatter.unit": "in meters",
-    "report.axis.title": "RMS by axis",
+    "report.axis.title": "RMS by axis, all markers",
     "report.axis.xy": "XY",
     "report.axis.total": "Total",
     "report.note.title": "How to read",
@@ -170,12 +176,17 @@ TEXTS = {
     "report.note.none_2": (
         "Markers have no reference or have not been triangulated yet."
     ),
-    "report.note.errors": (
-        "Errors in meters: offset between each marker's estimated position "
-        "and its reference."
+    "report.note.errors_check": (
+        "In meters. The RMS of the cards is the check points' (not used in the adjustment); control points' RMS is under it."
+    ),
+    "report.note.errors_no_check": (
+        "No check points: no independent accuracy. Control points (used in the adjustment): RMS XY {xy}, Z {z}."
+    ),
+    "report.note.errors_all": (
+        "In meters. RMS of all the markers: control and check points are not told apart here."
     ),
     "report.note.threshold": (
-        "In orange: error above 2 × RMS ({value} for the total error)."
+        "In orange: error above 2 × the RMS of all markers ({value} for the total error)."
     ),
     "report.note.no_threshold": (
         "Fewer than 3 markers with an error: no highlight threshold."
@@ -192,6 +203,8 @@ TEXTS = {
     "report.table.z": "Error Z (m)",
     "report.table.total": "Total (m)",
     "report.table.proj": "Proj.",
+    "report.table.control": "control",
+    "report.table.check": "check",
     "report.table.legend": (
         "In orange: value beyond 2 × the column RMS. "
         "Markers without projections: dash."

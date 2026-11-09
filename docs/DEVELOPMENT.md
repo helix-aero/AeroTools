@@ -27,7 +27,7 @@ AeroTools/
     qt.py              PySide2 / PySide6 compatibility
     theme.py           colours, fonts, stylesheets
     tools/
-      fastgcp/         session, tool, panel, marking, photos, history, dataset, detection, report
+      fastgcp/         Aero-GCP: session, tool, panel, marking, photos, history, dataset, detection, report
   assets/fonts/
   install/             launcher template, installer, uninstaller
   tests/               pytest tests, no Metashape needed
@@ -49,9 +49,13 @@ Per-machine settings live in `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`.
 3. Declare its pack in `config.PACKS`: `id` (same as the tool), `paths` (the folders it owns: its package, plus any model or library only it uses), `marker`
    (its `tool.py`), `requires` (the other packs it imports code from). Everything not owned by a pack is the core, always installed.
    `tests/test_packs.py` fails if the tool imports a tool it does not require, or if the core imports a tool. Put code shared by several tools in the core
-   (`aerotools/controls.py`, `aerotools/dialogs.py`, `ui.py`), not in another tool.
+   (`aerotools/controls.py`, `aerotools/dialogs.py`, `ui.py`, `pdfkit.py`), not in another tool.
+   `tests/test_tool_independence.py` fails if a tool whose `requires` is empty imports another tool.
 4. Run `python install/make_manifest.py`. Users get the tool from **Aero > Install plugins...**; a development copy (`.git`) has every tool.
 5. Restart Metashape or use Reload AeroTools. While `ready` is `False`, the menu entry says the tool is not available yet.
+6. Document it: one page `docs/tools/<tool-name>.md` (what it does, numbered steps, what each option does, troubleshooting), its screenshots in
+   `docs/images/<tool-name>/`, and one row in the tools table of `README.md`. `docs/tools/aero-gcp.md` is the model to copy. Screenshots show
+   the window only (no title bar, no project path, no client or server name). `tests/test_docs_links.py` fails on a link to a file or a heading that does not exist.
 
 A tool that needs a choice before it installs (Aero-GCP: which AI engine) adds a small options window in `plugins_dialog.py` and, if something has to run once the
 files are there, a `setup` module in its pack (loaded by name: the core never imports a tool).

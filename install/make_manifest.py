@@ -23,8 +23,8 @@ from aerotools import config, updater  # noqa: E402
 FOLDERS = ("aerotools", "install", "models", "assets")
 DOC_FOLDER = "docs"
 DOC_EXTENSIONS = (".md", ".py")
-TOP_FILES = ("README.md", "LICENSE", "CLICK HERE TO INSTALL.bat")
-MODELS = {"checker.pt", "checker.onnx", "spray.pt", "spray.onnx"}
+TOP_FILES = ("README.md", "LICENSE", "THIRD_PARTY.md", "CLICK HERE TO INSTALL.bat")
+MODELS = {"checker.pt", "checker.onnx", "spray.pt", "spray.onnx", "NOTICE.txt"}
 SKIP_FOLDERS = {"__pycache__", ".git", ".pytest_cache"}
 SKIP_SUFFIXES = (".pyc", ".pyo", ".bak", ".tmp", ".aeroupd", ".log")
 SKIP_NAMES = {"manifest.json", "Thumbs.db", ".DS_Store"}

@@ -686,3 +686,72 @@ def test_explain_gives_readable_text():
     assert "Write denied" in report._explain(PermissionError())
     assert report._explain(RuntimeError("boom")) == "boom"
     assert report._explain(RuntimeError()) == "RuntimeError"
+
+
+# --------------------------------------------------------------------------
+# RMS of the control points and of the check points, told apart
+# --------------------------------------------------------------------------
+
+def flag(world, uses):
+    """Say, marker by marker, whether it is a control point (True: used in the adjustment) or a check point (False)."""
+    for marker, used in zip(world.markers, uses):
+        marker.reference.enabled = used
+
+
+def test_control_and_check_points_have_their_own_rms(world):
+    flag(world, [True, True, False, True, False])               # GCP01, 02, 04 control; GCP03, 05 check
+    data = report.collect_data(world)
+    assert [m["enabled"] for m in data["markers"]] == [True, True, False, True, False]
+    s = data["stats"]
+    assert (s["n_control"], s["n_check"]) == (3, 2)
+    assert (s["control_n"], s["check_n"]) == (2, 2)             # GCP04 has no error
+    control_x, check_x = [0.010, -0.020], [0.030, 0.200]
+    assert s["control_rms_x"] == pytest.approx(math.sqrt(sum(v * v for v in control_x) / 2))
+    assert s["check_rms_x"] == pytest.approx(math.sqrt(sum(v * v for v in check_x) / 2))
+    assert s["check_rms_xy"] == pytest.approx(math.hypot(s["check_rms_x"], s["check_rms_y"]))
+    assert s["check_rms_z"] == pytest.approx(math.sqrt((0.020 ** 2 + 0.300 ** 2) / 2))
+    assert s["check_rms_xy"] > 3 * s["control_rms_xy"]           # the point of it: the check points are the honest ones
+    assert s["rms_x"] == pytest.approx(math.sqrt(sum(v * v for v in (0.010, -0.020, 0.030, 0.200)) / 4))   # all markers: unchanged
+
+
+def test_the_rms_cards_show_the_check_points_and_name_the_control_points(world):
+    flag(world, [True, True, False, True, False])
+    stats = report.collect_data(world)["stats"]
+    (label_xy, value_xy, sub_xy, _a), (label_z, value_z, sub_z, _b) = report._rms_cards(stats)
+    assert "check points" in label_xy and "check points" in label_z
+    assert value_xy.startswith("0.") and value_xy != "0.015 m"
+    assert value_xy == report.fmt_m(stats["check_rms_xy"]) and value_z == report.fmt_m(stats["check_rms_z"])
+    assert sub_xy == "Control points: " + report.fmt_m(stats["control_rms_xy"])
+    assert sub_z == "Control points: " + report.fmt_m(stats["control_rms_z"])
+
+
+def test_without_check_points_the_report_says_so_in_plain_words(world):
+    flag(world, [True] * 5)
+    stats = report.collect_data(world)["stats"]
+    assert stats["n_check"] == 0 and stats["check_rms_xy"] is None
+    cards = report._rms_cards(stats)
+    assert [card[1] for card in cards] == [report.fmt_m(None)] * 2
+    assert all(card[2] == "No check points in this project" for card in cards)
+    note = report._rms_note(stats)
+    assert note.startswith("No check points") and report.fmt_m(stats["control_rms_xy"]) in note
+
+
+def test_a_check_point_rms_is_never_taken_from_the_control_points(world):
+    flag(world, [False] * 5)                                     # only check points
+    stats = report.collect_data(world)["stats"]
+    cards = report._rms_cards(stats)
+    assert cards[0][1] == report.fmt_m(stats["rms_xy"]) and cards[0][2] == "No control points"
+
+
+def test_when_the_flags_cannot_be_read_the_rms_is_labelled_as_all_markers(world):
+    stats = report.collect_data(world)["stats"]                  # the fake markers carry no flag
+    assert stats["n_control"] == stats["n_check"] == 0
+    labels = [card[0] for card in report._rms_cards(stats)]
+    assert labels == ["RMS XY, all markers", "RMS Z, all markers"]
+    assert "all the markers" in report._rms_note(stats)
+
+
+def test_the_all_markers_rms_of_the_charts_says_so():
+    from aerotools import i18n
+    for key in ("report.bar.legend_rms", "report.scatter.legend_rms", "report.axis.title"):
+        assert "all markers" in i18n.t(key, value="0.1 m")

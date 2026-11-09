@@ -1,0 +1,22 @@
+Detection models shipped in this folder
+
+  checker.pt, checker.onnx   Aero-GCP checkerboard target detector ("Aero V1.0")
+  spray.pt,   spray.onnx     Aero-GCP spray-mark target detector ("Aero V1.0")
+
+What they are
+  YOLO11n models, fine-tuned by HELIX AERO from the yolo11n.pt weights of Ultralytics, with the Ultralytics training code.
+  The .onnx files are the same two models converted to ONNX.
+  The images used for the fine-tuning are not part of this repository.
+
+Third-party licence
+  The files carry the metadata written by Ultralytics: author "Ultralytics", licence "AGPL-3.0 License
+  (https://ultralytics.com/license)".
+  Ultralytics offers YOLO11 under two licences: the GNU AGPL-3.0, or the Ultralytics Enterprise License.
+  See https://www.ultralytics.com/license
+  Read it before you reuse these weights outside AeroTools.
+
+Packages installed on demand for detection (not part of this repository, each under its own licence):
+  numpy, onnxruntime, opencv-python-headless, torch, torchvision, ultralytics, onnx.
+  The ultralytics package is under the GNU AGPL-3.0.
+
+More: THIRD_PARTY.md at the root of the repository.

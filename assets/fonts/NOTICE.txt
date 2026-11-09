@@ -1,0 +1,4 @@
+Fonts shipped in this folder (SIL Open Font License 1.1; the licence texts are next to the fonts)
+
+  Manrope  Copyright 2019 The Manrope Project Authors (https://github.com/sharanda/manrope)  - OFL-Manrope.txt
+  Rubik    Copyright 2015 The Rubik Project Authors (https://github.com/googlefonts/rubik)  - OFL-Rubik.txt
