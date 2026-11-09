@@ -167,6 +167,8 @@ class Session(object):
         self.aigcp_log = []
 
 
+DOCK_NAME = "AeroFastGcpDock"          # object name of the panel: finds it again after a reload of the code
+
 _SESSION = None
 
 

@@ -347,6 +347,7 @@ TEXTS = {
     "redo.failed": "Redo failed",
     "redo.done": "Redone: {label}",
     "panel.ad": "Complex flights made easy",
+    "panel.close_tip": "Close Aero-GCP",
 
     # -- Storage folder ----------------------------------------------------
     "settings.open_folder": "Open",

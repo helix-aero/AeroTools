@@ -224,6 +224,12 @@ def reload_all():
     return True
 
 
+def forget_last(tool_id):
+    """A panel closed by the user is not reopened by "Reload AeroTools"."""
+    if getattr(builtins, _LAST_TOOL_FLAG, None) == tool_id:
+        setattr(builtins, _LAST_TOOL_FLAG, None)
+
+
 def reopens(tool_id):
     """True if "Reload AeroTools" must reopen this tool (a panel, not a one-off window).
 
