@@ -58,6 +58,14 @@ Contact: François Menassé - info@helix.corsica
 We map with drones and we use Metashape every day. AeroTools is the part of our own tooling that we share. It adds an **Aero**
 menu to Metashape, with one entry per tool.
 
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=0VZGlWiIFQA">
+    <img alt="Watch the Aero-GCP demo on YouTube" src="https://img.youtube.com/vi/0VZGlWiIFQA/maxresdefault.jpg" width="640">
+  </a>
+  <br>
+  <sub>Aero-GCP demo (YouTube)</sub>
+</p>
+
 ![The Aero-GCP panel docked in Metashape](docs/images/aero-gcp/02-panel-overview.png)
 
 ## Tools
