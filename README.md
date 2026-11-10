@@ -1,9 +1,15 @@
 <p align="center">
-  <br>
-  <a href="https://github.com/helix-aero/AeroTools/archive/refs/heads/main.zip"><img alt="Download latest stable version" src="https://img.shields.io/badge/%E2%AC%87%20Download-latest%20stable%20version-1eca59?style=for-the-badge&labelColor=06241a"></a>
-  <br>
-  <a href="https://github.com/helix-aero/AeroTools/archive/refs/heads/dev.zip"><img alt="Download latest dev version" src="https://img.shields.io/badge/%F0%9F%A7%AA%20Download-latest%20dev%20version-ff4fa3?style=for-the-badge&labelColor=3a0a24"></a>
-  <br>
+  <a href="https://www.youtube.com/watch?v=0VZGlWiIFQA"><img alt="Watch the Aero-GCP demo video (4 min)" src="docs/images/aero-gcp/08-demo-video.png" width="800"></a>
+</p>
+
+<table align="center" width="800">
+  <tr>
+    <td align="left"><a href="https://github.com/helix-aero/AeroTools/archive/refs/heads/main.zip"><img alt="Download latest stable version" src="https://img.shields.io/badge/%E2%AC%87%20Download-latest%20stable%20version-1eca59?style=for-the-badge&labelColor=06241a" width="380"></a></td>
+    <td align="right"><a href="https://github.com/helix-aero/AeroTools/archive/refs/heads/dev.zip"><img alt="Download latest dev version" src="https://img.shields.io/badge/%F0%9F%A7%AA%20Download-latest%20dev%20version-ff4fa3?style=for-the-badge&labelColor=3a0a24" width="355"></a></td>
+  </tr>
+</table>
+
+<p align="center">
   <sub>Dev = the newest changes, still being tested. Stable = the validated version.</sub>
 </p>
 
@@ -57,14 +63,6 @@ Contact: François Menassé - info@helix.corsica
 
 We map with drones and we use Metashape every day. AeroTools is the part of our own tooling that we share. It adds an **Aero**
 menu to Metashape, with one entry per tool.
-
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=0VZGlWiIFQA">
-    <img alt="Watch the Aero-GCP demo on YouTube" src="https://img.youtube.com/vi/0VZGlWiIFQA/maxresdefault.jpg" width="640">
-  </a>
-  <br>
-  <sub>Aero-GCP demo (YouTube)</sub>
-</p>
 
 ![The Aero-GCP panel docked in Metashape](docs/images/aero-gcp/02-panel-overview.png)
 

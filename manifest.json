@@ -1,5 +1,5 @@
 {
- "built": "2026-11-10T12:10:16",
+ "built": "2026-11-10T12:22:06",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "977edb99e23dbabe9d6b379d891657c9a8e41b02fc0ff0c263f106746acaaeac",
@@ -10,8 +10,8 @@
    "size": 4628
   },
   "README.md": {
-   "sha256": "029ec72783303f532a2aae37d4b26d70abf537577519ee22f17b39d6b86a0dbd",
-   "size": 8266
+   "sha256": "429ca8e6dfc48d467acb9467b74bd1f50fc04609451bce0edb66bb930263c6fd",
+   "size": 8311
   },
   "THIRD_PARTY.md": {
    "sha256": "29a7a914d285bb15a492c08d56df3d01c56a2b8ce5484a9a43dca1d050087af8",
