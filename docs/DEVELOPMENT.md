@@ -28,6 +28,8 @@ AeroTools/
     theme.py           colours, fonts, stylesheets
     tools/
       fastgcp/         Aero-GCP: session, tool, panel, marking, photos, history, dataset, detection, report
+      fastspace/       Aero-Space: scan, lighten or delete old projects
+      aeroexports/     Aero-Exports: ortho and DEM exports, AutoCAD drawing, colours
   assets/fonts/
   install/             launcher template, installer, uninstaller
   tests/               pytest tests, no Metashape needed
@@ -50,6 +52,8 @@ Per-machine settings live in `%LOCALAPPDATA%\HELIX\AeroTools\settings.json`.
    (its `tool.py`), `requires` (the other packs it imports code from). Everything not owned by a pack is the core, always installed.
    `tests/test_packs.py` fails if the tool imports a tool it does not require, or if the core imports a tool. Put code shared by several tools in the core
    (`aerotools/controls.py`, `aerotools/dialogs.py`, `ui.py`, `pdfkit.py`), not in another tool.
+   Other core files of this kind: `projtool.py`, `outputdir.py` and a shared library (`aerotools/vendor/proj` is core, the PROJ catalogue files
+   `vendor/proj/data/` belong to the tool that reads them).
    `tests/test_tool_independence.py` fails if a tool whose `requires` is empty imports another tool.
 4. Run `python install/make_manifest.py`. Users get the tool from **Aero > Install plugins...**; a development copy (`.git`) has every tool.
 5. Restart Metashape or use Reload AeroTools. While `ready` is `False`, the menu entry says the tool is not available yet.
@@ -76,6 +80,7 @@ python -m pytest tests -q
 `tests/` uses fake `Metashape` and Qt modules, so it runs anywhere.
 `tests_qt/run_qt_selftest.py` sends real mouse events through the real click filter. Run it with Metashape's own Python
 (`python\python.exe` in the Metashape folder) and with a Python that has PySide6.
+`tests_qt/run_qt_aeroexports.py` does the same for Aero-Exports (both windows, DEM card, pixel field, layout at several font scales, coordinate trap); it needs numpy for the preview cases.
 
 ## Texts and formats
 
@@ -173,6 +178,254 @@ detection covers all of them (one selected marker: the active one). Buttons: **R
 - Limits: the review keeps only the last detection; at most 200 photos per marker and 3000 per run, a marker needs a 3D position and an aligned photo. Measured by script
   on pins the model had never seen (60 per type, lot 2 validation, estimate shifted by 0 and 40 px): 98 to 100 % within 3 px.
   The guard is covered by tests but not measured on real roof false positives yet.
+
+## Aero-Exports
+
+Aero-Exports was first called "Fast Export" (package `fastexport`). The package, the tool id and the settings section are now all
+`aeroexports`. Migration: `config.load_settings` copies an old `fastexport` section of `settings.json` to `aeroexports` when that
+one does not exist yet (the old section is left in place, so nothing is lost; test in `tests/test_config.py`).
+
+`aerotools/tools/aeroexports/`: `naming.py` (short names, `Outputs` folder, versions; ported from the research prototype,
+31 tests), `plan.py` (presets and the list of files to write, pure), `dialog.py` (the window), `tool.py`. The Metashape side is
+`msapi.raster_info` and `msapi.export_raster` (`Chunk.exportRaster`). Measured on Metashape 2.2.1 on a real project:
+- `resolution=0.5` is meters on the ground and gave a 0.49996 pixel in the projection (CC42); `resolution_x/y=0.5` plus a
+  `region` snapped outward to multiples of the pixel gives exactly 0.5 and an aligned origin, for the ortho and the DEM
+  (same grid, so they line up). A pixel size left untouched exports on Metashape's own grid (no region, no resampling).
+- Compression: LZW keeps the alpha band, `TiffCompressionJPEG` writes YCbCr JPEG (no alpha, so the quick view uses a white
+  background), the DEM is Float32 + Deflate with nodata -32767. A JPEG export writes a `.jgw` and a `.prj` (compound CRS with the geoid).
+- A region with no data writes no file (matters for tiling).
+- The GeoTIFF carries the horizontal CRS only, the geoid is in the `.prj` of the JPEG.
+Formats and external tools (`pipeline.py`, `external.py`, `dxfout.py`, `plan.py`; nothing is hard-coded, programs are found in the
+registry and the usual folders, or pointed at by the user):
+- ECW: Global Mapper script `EXPORT_RASTER ... TYPE=ECW TARGET_COMPRESSION=10` (works from a script with the user's licence, Global Mapper 26;
+  GDAL cannot write ECW without a Hexagon OEM key).
+- JPEG 2000: QGIS GDAL `JP2OpenJPEG QUALITY=5`, else Global Mapper `TYPE=JPEG2000`, else Metashape's own `ImageFormatJP2`.
+  Measured on the ortho of a real project (RGB, 48.6 MB raw): ECW 10:1 = 4.6 MB, 36.8 dB; ECW 20:1 = 2.8 MB, 34.5 dB; JP2 GDAL q5 = 5.2 MB, 42.4 dB;
+  JP2 GDAL q3 = 3.3 MB, 38.4 dB; JP2 Global Mapper 20:1 = 4.4 MB, 41.4 dB; Metashape JP2 = 13 MB, 55.2 dB. PSNR favours JPEG 2000 at equal
+  size; visual comparison is left to the user. GDAL cannot decode ECW (no plugin): ECW was decoded back with Global Mapper to measure it.
+- DXF: written by hand (R2000, no library). AutoCAD wants plot style objects, ByBlock/ByLayer linetypes and the empty VPORT/VIEW/UCS/DIMSTYLE
+  tables. Checked with `accoreconsole.exe /i TOPO.dxf /s script` (`-IMAGE R *` then `-IMAGE ?`): 0 audit errors, JPEG 2000 and ECW both
+  "loaded and relinked" through relative paths; ezdxf `recover` reads it with no error. Not checked: the AutoCAD window itself.
+- DWG: `_SAVEAS 2018` in accoreconsole from the DXF.
+- DEM in a drawing: GeoTIFF float kept in `00_Assets/DTM` plus a colour image for the layer, made in-house by `relief.py` (numpy, no GDAL):
+  Metashape's default DEM palette (read from the legend of the Ortho tab: blue low, red high, linear between the DEM min and max) times a
+  hillshade (Horn, light from the north-west at 45 degrees, strength 0.8; checked against `gdaldem hillshade`: mean difference 1.4/255), white
+  where there is no data. The nodata value is read from the file.
+- Clip (option "Crop white background", on by default): each IMAGE entity gets a polygonal clip boundary (group 71 = 2, vertices in pixels, closed,
+  display flags 7, clipping on) computed by `footprint.py` from a coarse mask (alpha of a small uncompressed RGBA export of the ortho by Metashape,
+  about 800 px; valid pixels of the DEM), outline = first to last data pixel of each row, simplified, grown by one mask pixel so no data is cut.
+  The image files are not changed. AutoCAD 2023 (accoreconsole) loads the DXF with the clip without error; not checked: the clip drawn in the window.
+  A failed mask export only adds a warning.
+- The native ortho export is cropped to the data (a few thousand pixels a side on a large ortho) and not to the orthomosaic box: the placement in the DXF is read from
+  the GeoTIFF itself (`geotiff.py`). When the grid is imposed (other CRS, tiles) the native pixel is rounded to 0.1 mm.
+- Coordinate systems and heights, worldwide (`projdb.py`, `vertical.py`, `tiffio.py`, `crs.py`, and `aerotools/projtool.py` in the core, which the other tools use too; engine in `aerotools/vendor/proj`):
+  Metashape only reprojects XY (`exportRaster` to a plain `EPSG::n`, heights come out ellipsoidal in that system's frame). The altitude is
+  computed by PROJ 9.8.1 (embedded `cs2cs` + `cct`, MIT, copied from the QGIS 4.0.3 build; no pyproj, no dependency on Metashape's Python):
+  `H = h - N` with the grid imposed as `+inv +proj=vgridshift +multiplier=1`, applied to the DEM tile by tile (own TIFF reader/rewriter,
+  Deflate output, georeferencing tags copied). Our own bilinear reader recomputes the same lattice and the export stops if PROJ and our
+  reader differ by more than 1 cm; 5 random pixels are also recomputed without the lattice (5 mm).
+  Why PROJ imposed and not automatic: PROJ's automatic choice for RGF93 v1 in Corsica is RAC23, not RAC09 (23 cm on one point).
+  Why not Metashape: measured on 2.2.1, it picks the grid by datum name (RAC09 and RAC23 give the same value), ignores RAC23 with RGF93 v2b
+  (heights stay ellipsoidal, no error) and refuses EGM96 with a French system.
+  Catalogue: `proj.db` (EPSG, read-only through sqlite3) for the systems and their frames; `vendor/proj/data/files.geojson` (PROJ-data
+  index: url, size, SHA-256, extent, source and target CRS of the 160 vertical grids) for the heights; `grid_ops.json` = what `projinfo`
+  says about each grid (7 are depth surfaces: PROJ flips the vertical axis, never offered). Grids live in `%LOCALAPPDATA%/HELIX/AeroTools/Geoid`
+  (nothing is read from Metashape's folders), verified by SHA-256, downloaded from cdn.proj.org only.
+  Pairing (`projdb.verticals_for`): a grid is offered when its source frame is the datum of the chosen XY system, or an equivalent
+  geocentric modern realization (ETRS89, WGS 84, ITRF, RGF93, GDA2020, NAD83(2011)...) when no exact grid gives the same height system
+  (RAC09 stays with RGF93 v1, RAC23 with v2b). A system on a local datum (Bessel, Clarke, NTF, CH1903+...) only gets the ellipsoidal height:
+  subtracting an ETRS89 grid from Bessel heights would be wrong by metres (a 3D datum transformation through PROJ would lift that).
+  Checks: 111 grids under 1.5 MB downloaded and compared with PROJ: our reader differs by less than 0.001 mm; RAC09 matches Metashape's
+  own heights to 0.3 mm on a real project; GTG registration (PixelIsPoint, tie point = node) measured against PROJ (0.03 mm).
+
+### DEM look and preview window
+
+`look.py` (the setting), `palettes.json` (palettes as data), `preview.py` (model of a small DEM, numpy only), `previewwin.py` (the window).
+- A `Look` is `palette, shading (none | sun | lights4 | slope), azimuth, altitude, strength, stretch (auto | full | custom), low, high`. It is saved
+  in `settings.json` (section `aeroexports`, key `dem_look`), and `relief.render` paints the DXF/DWG DEM image with that same look: what the
+  preview shows is what lands in AutoCAD. The default look is the one the export always had (Metashape palette, sun from 315 degrees at 45,
+  strength 0.8, full range), except along the data border (see below).
+- Palettes: the package file `palettes.json` (metashape, relief, rainbow, gray, viridis, terrain, hot), plus an optional `palettes.json` in the
+  settings folder (same format, same id replaces). A broken palette is skipped, never fatal. The Metashape ramp was read from the legend of
+  Metashape's Ortho tab; `Elevation.palette` exists in the API (2.2.1) and could be used to check it, see the open points below.
+- The preview works on a small DEM (about 1000 px on the long side): the DEM already exported next to the project when it is not older than
+  the `.psx`, otherwise `preview.fetch_small` asks Metashape for a low-resolution export (no progress callback: a Qt call inside Metashape's
+  export crashed it). `reduce` averages the valid pixels of each k x k square tile by tile. Legend labels come from `Elevation.min/.max`
+  (`msapi.dem_range`) when the small DEM stays within 1 % of them, else from the small DEM.
+- Repainting a 1000 x 1000 DEM takes 6 to 120 ms (measured on three real DEMs: sun 33 to 87 ms, four lights 54 to 122 ms, palette only 13 to
+  33 ms); one 35 ms timer keeps only the latest request, no thread. Without numpy the button is greyed out with an explanation.
+- A coloured DEM picture can also be written next to a JPEG 2000 or ECW export (`plan.PICTURE_PRESETS`, option on the DEM card).
+- No-data pixels are filled from their data neighbours before the slope is computed (`relief.fill_for_shading`). Filling them with the lowest
+  height drew a dark line along every border of the data (visible on a real DEM); only the pixels touching no data changed.
+- Tests: `tests/test_aeroexports_look*.py`, `test_aeroexports_preview.py`; `python -B tests_qt\run_qt_aeroexports.py` runs the window, the DEM
+  card and the pixel field with real Qt events, without Metashape (14 cases, PySide6 here, also meant for Metashape's PySide2).
+
+### Window layout (two panels), coordinate trap, shared controls
+
+`controls.py` holds what both windows share (no numpy: it loads and is tested anywhere).
+- **Two panels** (`dialog.py`): left = what to export (Ortho and DEM cards, DEM look line) and the coordinates; right = format, image type,
+  options, file names, then the result line and the buttons, which stay in view under the right panel. Each panel is a `controls.FitScroll`:
+  it reports its content's size as its minimum, so the window's minimum (`controls.fit_window`: `SetMinimumSize` on the layout, measured at
+  `showEvent` and again once the first layout is done) always follows the fonts and the Windows display scaling. A panel only scrolls when the
+  screen is too small (the cap per panel comes from the screen), and then the bars are wide and easy to see. Long texts (file names, folder,
+  result) are `controls.WrapText` (wrap anywhere, selectable, never widens the window); combos use `AdjustToMinimumContentsLength`.
+  Real Metashape at 125-150 % scaling clipped the first version: the harness now checks every widget stays inside its panel (see below).
+- **Look window** (`previewwin.py`): the picture and its legend on the left, the settings on the right (short sliders). `controls.EditableValue`
+  is the number next to a slider: double-click it (or Tab to it, Enter / F2) to type an exact number, Enter applies, Esc cancels, a number out of range
+  is refused with a red frame and the range in the tooltip (a compass wraps: 360 is 0). `controls.reset_button` puts one control back to its default
+  (greyed when it already is); "Back to the Metashape look" resets all.
+- **Raster in degrees** (`dialog._sync_auto_crs`): Metashape answers "Empty raster" to a pixel in cm on a geographic raster, and a drawing needs metres.
+  When a ticked raster is geographic (`info["geographic_ortho" / "geographic_dem"]`, per raster since an ortho in WGS 84 can sit next to a DEM
+  in CC42) and the user has not chosen a system, "Export in" is preselected: the DEM's own projected system, else `projdb.best_projected`
+  (first catalogue system for the place that is not in feet / swapped axes). A short orange notice says why, or (user picked "Same as the project")
+  what to pick. Unticking the raster in degrees gives back "Same as the project". Exporting a drawing, tiles or a pixel in cm from a raster in
+  degrees without a projected system is refused in words before any file is written (`_degrees_blocks`).
+- The error line names the file that really failed: `pipeline.Context.failed` is set before each file (and for TOPO.dxf / .dwg).
+- Tests: `python -B tests_qt\run_qt_aeroexports.py` (41 cases) includes the layout at x1, x1.25, x1.5 and x2 font scale for both windows
+  (`rescale` grows every font, `cut_off` lists any widget past its panel's right edge or the window's) and a small 1024 px screen.
+  Offscreen Qt has no real DPI scaling, so this is an approximation of 125-200 %; the real check is Metashape on a scaled display.
+
+### Always the right chunk
+
+The window is not modal, so the active chunk can change in Metashape while it is open. Rule: everything the window does belongs to ONE
+chunk, the one named on the first line of the left panel ("Chunk: <label>", an `ElidedLabel`: a long name is cut with "..." and the
+full name is the tooltip).
+- `refresh()` pins the chunk with what it reads from it: `self._chunk`, `self._pin = (project path, chunk key)`, `self._info`
+  (`msapi.raster_info(chunk)`, boxes, systems, dates). The preview (`fetch_small`, `dem_range`), the export (`pipeline.Context.chunk`,
+  the clip mask) and the job names all use that chunk and that info, never a fresh `msapi.chunk()`. `refresh()` also drops the preview
+  and the planned jobs; the preview signature contains the chunk key.
+- `_follow_chunk()` compares the pin with the current project and active chunk. It runs when the window becomes active again
+  (`changeEvent`), before the look window opens (`_preview_model`) and before an export (`_on_export`). If they differ it calls
+  `refresh()` and writes "The active chunk changed: now working on <label>" on the status line, and the action stops there: nothing is
+  previewed or exported on a chunk the user has not seen. It does nothing during an export (the pinned chunk is exported to the end,
+  whatever is active meanwhile).
+- The journal says which chunk is exported ("Aero-Exports: export of chunk <label>") and when the window follows another one.
+- A DEM already exported next to the project is reused for the preview only if `preview.belongs_to` agrees: same size in pixels, same
+  pixel and same extent (two pixels) as the pinned chunk's DEM, besides the file being newer than the project. If it does not, a small
+  export is asked from Metashape instead. The pipeline deletes a file about to be rewritten before exporting it (the user agreed to
+  overwrite), so a file left by an earlier export is never taken for the new one when Metashape writes nothing (empty tile).
+- Tests: `tests/test_aeroexports_preview.py` (`belongs_to`), `tests/test_aeroexports_cad.py` (stale files), and the Qt harness
+  (two fake chunks with different boxes, dates and systems: switch between refresh and export, switch during an export, preview, the
+  header at x1 to x2 font scales). Not covered offscreen: the real activation event (an offscreen window is never active; the harness calls
+  `_follow_chunk()` as `changeEvent` does) and Metashape's real `Chunk.key`.
+
+### Which raster, and the boundary clip
+
+Measured live on Metashape 2.2.1 (three real chunks of one project), with read-only console probes:
+- A chunk can hold several DEMs and orthomosaics. `chunk.elevation` / `chunk.orthomosaic` are the default ones (the non-italic entries of the
+  Workspace pane; a double-click makes another one the default), `chunk.elevations` / `chunk.orthomosaics` list all, and `exportRaster`
+  exports the default one. The window therefore targets the default raster only (no choice list) and says which it is under each card:
+  "Default DEM: 5200 x 6400 px, 1.25 cm/px." plus "(1 of 4 DEMs: double-click another one in the Workspace pane to make it the default)".
+  A default DEM more than 10 times coarser than the default ortho (`COARSE_RATIO`; a chunk whose default DEM was 50 cm/px next to a 0.8 cm ortho)
+  gets an orange line "The default DEM is coarse (50 cm/px)".
+- `Chunk.exportRaster(clip_to_boundary=True)` is Metashape's default: the export is cut to the chunk's shapes of boundary type OuterBoundary or
+  InnerBoundary. One outer boundary left 19.9 % valid pixels in a DEM instead of 51.9 % without the clip; shapes of type NoBoundary cut nothing;
+  no shape, no difference. Nothing in the file says it happened, so `msapi.export_raster(..., clip_to_boundary=)` now passes the value on every
+  call, never the implicit default.
+- The setting: a tick box "Clip to the chunk's boundary shapes", shown only when `msapi.boundary_count(chunk)` finds boundary shapes (a guarded loop,
+  done at `refresh()` and when a click needs the exact count). Off by default (the export covers the whole default DEM, as seen in Metashape; ticking it cuts to the shapes), saved as `clip_to_boundary_shapes` in the settings. The same value
+  (`ExportDialog._boundary_clip()`) goes to the small DEM of the preview (`preview.fetch_small(clip=)`), to every raster export and to the mask
+  export that draws the "Crop white background" polygon (`pipeline.Context.clip_boundary`). The look window says when its picture is clipped.
+  A DEM already exported next to the project is reused for the preview only when the chunk has no boundary shape (`boundaries == 0`): with shapes,
+  or when the count could not be read, the file may have been written with the other setting, so a small export is made.
+
+### The window follows Metashape by itself
+
+A `QTimer` (`WATCH_MS` = 400 ms) calls `_watch_tick`: only while the window is visible, no export runs and none of our windows (look window,
+"already exists" question) is open on top. It compares `msapi.raster_signature(active chunk)` (chunk key, default DEM and ortho as key / size / resolution,
+number of shapes: nothing heavy, no loop over the shapes, no export) with the one taken at `refresh()`. A change calls `refresh()` and writes one line:
+"The active chunk changed: now working on <name>", "The default DEM changed", "The default orthomosaic changed" or "The boundary shapes of the chunk
+changed". An error while reading Metashape is journalled, never raised. A click on Export or on the look button also checks (with the exact boundary
+count) and stops after the refresh, as before. The activation event is still handled but nothing relies on it.
+
+### Journal lines for diagnosis
+
+`ExportDialog._describe()`: chunk label and key, default DEM and ortho used (key, label, size, pixel), how many of each the chunk holds, number of boundary
+shapes, `clip_to_boundary`. It is written when the window follows a change, before a preview ("preview of ...; DEM footprint: 51.9 % of the pixels have data",
+the valid fraction of the small DEM) and before an export ("export of ..."); the pipeline adds "DEM footprint: x % of the pixels have data
+(clip_to_boundary=...)" when it draws the clip of the DEM image. So a wrong crop can be diagnosed from `aerotools.log` alone.
+Tests: `tests/test_aeroexports_plan.py` (flag, default rasters, signature), `test_aeroexports_clip_pipeline.py` (flag on every export, including the
+mask), `test_aeroexports_preview.py`, and the Qt harness (tick box, flags on preview / export / journal, raster lines, real timer, no refresh during an
+export, layout at x1 to x2). Only a real Metashape shows whether `boundary_type` strings, `Chunk.key` and the timer behave as in the fakes.
+
+### AutoCAD speed: what was measured
+
+AutoCAD cannot be driven by hand here, so the images were compared through `accoreconsole` (AutoCAD 2023): a DXF with one IMAGE, then
+`-PLOT` to PDF, either of the whole image ("extents", zoomed out) or of a 20 x 15 m window at full resolution. This is a proxy: it exercises
+AutoCAD's own image reader and resolution selection, not the interactive display cache. Script (one blank line after the first `Y` keeps the
+layout name; the output path must not go through a shell that eats backslashes):
+
+```
+-PLOT / Y / (blank) / DWG To PDF.pc3 / ISO A1 (841.00 x 594.00 MM) / M / L / N / E (or W, then two corners) / F / C / Y / . / Y / A / out.pdf / N / Y
+```
+
+One large ortho (about 70 Mpx) and the same picture enlarged three times on each side (about 640 Mpx), JPEG-compressed in each format,
+seconds for the whole plot (AutoCAD start included, about 0.2 to 1.3 s):
+
+| 643 Mpx image                                     | whole image | 20 x 15 m window | size   |
+|---------------------------------------------------|-------------|------------------|--------|
+| ECW 10:1 (Global Mapper)                          | 3.5         | 1.8              | 13 MB  |
+| JPEG 2000, GDAL q5, 1024 tiles (what we write)    | 12.4        | 3.7              | 32 MB  |
+| JPEG 2000, 4096 tiles                             | 11.4        | 3.1              | 36 MB  |
+| JPEG 2000 written by Global Mapper                | 10.4        | 3.5              | 11 MB  |
+| JPEG 2000, no GML box                             | 11.5        | 3.5              | 32 MB  |
+| JPEG 2000, RPCL + tile-parts + PLT/TLM            | 20.6        | 5.8              | 32 MB  |
+| JPEG 2000, 256 pixel tiles                        | over 300    | not run          | 31 MB  |
+| TIFF tiled 256, JPEG, with internal overviews     | 11.6        | 6.1              | 54 MB  |
+| TIFF tiled 256, JPEG, without overviews           | 11.5        | 6.9              | 35 MB  |
+
+On the 71 Mpx image: ECW 1.9 / 2.0 s, JPEG 2000 4.1 / 2.2 s, TIFF 1.4 to 1.7 / 2.3 s (whole / window).
+
+- ECW is the only format whose cost does not grow with the size of the image: 3.5x faster than our JPEG 2000 zoomed out and 2x in a window.
+- TIFF internal overviews are ignored by AutoCAD (11.6 s with, 11.5 s without); tiled TIFF is no better than JPEG 2000. So no TIFF option.
+- JPEG 2000 parameters give 10 to 15 % at best; small tiles are catastrophic (256 px: no answer after 300 s). Never write small JP2 tiles.
+- A polygon clip costs 0.6 to 0.7 s on the 643 Mpx JPEG 2000 and 0.1 s on the ECW. An open clip polygon makes AutoCAD reject the whole DXF
+  ("Xdata wasn't read", drawing discarded): `dxfout.closed_polygon` now closes any polygon.
+- What is not known: how it feels in the AutoCAD window (pan and zoom with the display cache), and what Global Mapper's own DXF contains.
+  The lag is not claimed to be fixed; ECW is the best candidate.
+
+5-minute protocol, in AutoCAD, on one real project (needs Global Mapper for ECW):
+1. Export the same project three times into three folders with the CAD preset: Images = ECW, Images = JPEG 2000, and (for reference) your
+   Global Mapper DXF of the same ortho.
+2. Open each `TOPO.dxf`, same machine, same AutoCAD window size. Type `ZOOM` `E` and note how long the picture takes to settle.
+3. Zoom to a street-sized window (about 100 m), then pan with the middle button for ten seconds: note if the picture trails the mouse.
+4. Type `REGEN` and count seconds. Optionally `-IMAGE` `?` shows the format and path of each image.
+5. Report for each file: zoom extents (s), regen (s), pan (smooth / trailing). If ECW is smooth and JPEG 2000 trails, make ECW the default.
+
+### Open points (not verified)
+
+- The preview window was run offscreen with PySide6 only; not yet opened inside Metashape.
+- The time of the low-resolution DEM export by Metashape is not measured (the preview itself takes 6 to 120 ms once the DEM is read).
+- The Metashape palette ramp was not compared with Metashape's own colouring. It can be: `chunk.exportRaster(source_data=ElevationData,
+  raster_transform=RasterTransformPalette)` should give Metashape's coloured DEM, and `chunk.elevation.palette` its exact stops.
+- The white-border mask was checked on a real Metashape RGBA export (202 x 241 px, tiled, LZW, alpha 0 / 255; `tests/data/`), but the real
+  small mask export (`MASK_SPEC`, uncompressed strips) was not run in Metashape this time.
+
+## Aero-Space
+
+`aerotools/tools/fastspace/`: `scanner.py` (no Qt, no Metashape) finds `.psx` and orphan `.files` folders and measures them
+(`<name>.files/<chunk>/<frame>/<part>[.N]/`: `dense_cloud`, `depth_maps`, `point_cloud` = tie points, `elevation`, `orthomosaic`...;
+a scan of tens of projects, hundreds of gigabytes in all, takes about 1 s once the file system is cached). An open project is detected by its
+`.files/lock`: Metashape keeps it open, so opening it for writing fails (PermissionError); one we can open is a stale lock.
+The `orthomosaic[.N]` folder holds the orthophotos (`images*.zip`, the rectified photos: about 90 % of the orthomosaic data
+in a scan of tens of projects) next to the small mosaic tiles; the scanner counts them apart (`ortho_photos`), and `Orthomosaic.removeOrthophotos()`
+removes them (verified on a copy: space freed, mosaic and DEM intact, project re-opens). `lighten(project, mode, items=...)` takes any of
+`dense`, `depth`, `ortho`; the window's Lighten screen lets the user tick them and shows the space each one frees.
+`actions.py`: `lighten` goes through the Metashape API so the project stays consistent (`Document.open`, `chunk.remove` of the
+dense clouds (`chunk.point_clouds`) and the depth map sets (`chunk.depth_maps_sets`), `save`, then a read-only re-open that checks
+cameras and markers did not change). Measured on a copy: Metashape erases its own files on `save` (about 2 GB to about 1 GB). So lightening is
+always permanent. Sending the folders to the bin first does not work: `chunk.remove` then raises `Can't open file dense_cloud.zip`
+and the project keeps ghost dense clouds. A possible later step: hard-link the folders and copy the small metadata zips to a
+side folder before the API call, then send that folder to the bin. `delete_project` only ever removes the `.psx` and its `.files`, so exported files next to the project are never touched
+(`test_delete_keeps_every_file_next_to_the_project`). `scanner.measure_kept` counts those files for the **Kept** column (same
+folder plus one level of sub-folders, at most 5000 entries, cached per folder because several projects can share one),
+and `Project.at_risk` flags a project that holds a built DEM or ortho (`elevation`, `orthomosaic`) with no exported raster or
+cloud (`EXPORT_EXTS`) found there. `delete_project` can use the bin (`SHFileOperationW` with
+`FOF_ALLOWUNDO`; Windows asks itself when something is too big for the bin). `delete_project` removes the `.psx` first, then the
+`.files` folder (a failure leaves a visible orphan). Permanent deletion needs the typed word `DELETE`. `lighten` runs in the main
+thread (the API does not work elsewhere); scanning and deleting run in a worker. Actions are logged to
+`%LOCALAPPDATA%\HELIX\AeroTools\fastspace\log.csv`. Tests use a fake Metashape document (`tests/test_fastspace.py`); the
+Metashape API part was checked on a copy in the Metashape console; the window itself should be tried on a copy before real work.
 
 ## Engines and installation
 

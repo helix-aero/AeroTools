@@ -49,6 +49,17 @@ def big_button(text_key, handler, kind="aeroBtn", width=0, **fields):
     return widget
 
 
+def combo(parent=None):
+    """Drop-down list in the style of the dark windows."""
+    box = QtWidgets.QComboBox(parent)
+    box.setObjectName("aeroCombo")
+    box.setProperty("arrow", True)
+    box.setCursor(QtCore.Qt.PointingHandCursor)
+    box.setFocusPolicy(QtCore.Qt.NoFocus)
+    box.setMinimumHeight(36)
+    return box
+
+
 def dark_root(dialog):
     """Like `styled_root`, with the dark background of the Settings windows."""
     root = styled_root(dialog)
@@ -72,6 +83,73 @@ def tile(caption=""):
     layout.addWidget(number)
     layout.addWidget(title)
     return frame, number, title
+
+
+MARKS = {"ok": ("\u2713", theme.GREEN_BRIGHT), "error": ("\u2715", theme.ORANGE_BRIGHT)}
+
+
+class Mark(QtWidgets.QLabel):
+    """Small green tick (success) or orange cross (failure) in front of a status text."""
+
+    def __init__(self, size=16):
+        super(Mark, self).__init__()
+        self.setFixedWidth(size + 4)
+        self.setAlignment(QtCore.Qt.AlignCenter)
+        self._size = size
+        self.setVisible(False)
+
+    def show_kind(self, kind):
+        symbol, color = MARKS.get(kind, ("", ""))
+        self.setText(symbol)
+        self.setStyleSheet("color: {}; font-size: {}px; font-weight: 700; background: transparent;".format(
+            color, self._size))
+        self.setVisible(bool(symbol))
+
+
+class SelectAllEdit(QtWidgets.QLineEdit):
+    """Input field whose whole text is selected as soon as it is entered (click or Tab): typing replaces the value."""
+
+    def focusInEvent(self, event):
+        super(SelectAllEdit, self).focusInEvent(event)
+        QtCore.QTimer.singleShot(0, self.selectAll)         # after the click, which would otherwise place the cursor
+
+    def mousePressEvent(self, event):
+        entering = not self.hasFocus()
+        super(SelectAllEdit, self).mousePressEvent(event)
+        if entering:
+            QtCore.QTimer.singleShot(0, self.selectAll)
+
+
+class OptionCard(QtWidgets.QFrame):
+    """An option: a button (radio or checkbox) in a frame that turns green once chosen (orange if `danger`).
+
+    The whole frame is clickable. `grid` is used to place other elements next to the button (column 1 onwards)."""
+
+    def __init__(self, button, danger=False):
+        super(OptionCard, self).__init__()
+        self.setObjectName("aeroOption")
+        self.setProperty("on", False)
+        self.setProperty("danger", bool(danger))
+        self.button = button
+        self.grid = QtWidgets.QGridLayout(self)
+        self.grid.setContentsMargins(14, 12, 14, 12)
+        self.grid.setHorizontalSpacing(theme.PAD)
+        self.grid.setVerticalSpacing(theme.PAD_S)
+        self.grid.addWidget(button, 0, 0)
+        button.toggled.connect(self.sync)
+
+    def sync(self, checked=None):
+        self.setProperty("on", bool(self.button.isChecked() if checked is None else checked))
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def mousePressEvent(self, event):
+        if self.button.isEnabled():
+            if isinstance(self.button, QtWidgets.QRadioButton):
+                self.button.setChecked(True)
+            else:
+                self.button.toggle()
+        super(OptionCard, self).mousePressEvent(event)
 
 
 TABLE_STYLE = """

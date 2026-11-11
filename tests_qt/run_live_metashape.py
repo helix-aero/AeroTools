@@ -177,6 +177,154 @@ def check_windows():
 
 
 # --------------------------------------------------------------------------------------------------------------------------------
+# 2. Aero-Exports on the chunk of the open project
+# --------------------------------------------------------------------------------------------------------------------------------
+
+def exportable_chunk():
+    from aerotools import msapi
+    best = None
+    for chunk in Metashape.app.document.chunks:
+        try:
+            info = msapi.raster_info(chunk)
+        except Exception:
+            continue
+        if info.get("ortho") and info.get("dem"):
+            return chunk, info
+        if best is None and (info.get("ortho") or info.get("dem")):
+            best = (chunk, info)
+    return best if best else (None, None)
+
+
+@guarded
+def check_exports():
+    section("Aero-Exports")
+    from aerotools import config, msapi, updater
+    if not updater.tool_installed("aeroexports"):
+        P("SKIP", "aeroexports", "not in this tree")
+        return
+    from aerotools import projtool
+    from aerotools.tools.aeroexports import crs as crs_module, external, pipeline, plan
+    chunk, info = exportable_chunk()
+    if chunk is None:
+        P("SKIP", "aeroexports", "no chunk with an orthomosaic or a DEM in the open project")
+        return
+    P("INFO", "chunk", "{} (ortho {}, dem {})".format(chunk.label, info.get("ortho"), info.get("dem")))
+    wanted = {kind: 0.5 for kind in plan.KINDS if info.get(kind)}
+    tools = {"gm": external.find_global_mapper(""), "acad": external.find_autocad(""), "gdal": external.find_gdal("")}
+    P("INFO", "external programs", ", ".join("{}={}".format(k, bool(v)) for k, v in sorted(tools.items())))
+    day = datetime.date(2026, 11, 9)
+    target = msapi.target_crs(3942)                          # RGF93 v1 / CC42: the project is in degrees, the window asks for a projected system
+    check("projected target system available", target is not None)
+    heights = "ellipsoidal heights (the height grids are downloaded by the window, not tested here)"
+    P("INFO", "export in", "EPSG:3942, " + heights)
+
+    def context(folder, preset, export=None):
+        return pipeline.Context(chunk, info, folder, "LIVE", day, preset, export or msapi.export_raster, tools=dict(tools),
+                                crs=target, tile_m=None, cad={}, snap=msapi.snapped_box, transform=msapi.transform_box,
+                                vertical=None, proj=projtool.Proj(geoid_dir=crs_module.own_dir()), epsg=3942, clip_boundary=True)
+
+    folder = os.path.join(TMP, "Outputs")
+    for preset in ("quick", "jpeg"):
+        out = os.path.join(folder, preset)
+        jobs = plan.build_jobs("LIVE", day, wanted, preset, out)
+        started = time.time()
+        try:
+            result = pipeline.run(context(out, preset), jobs, lambda fraction, text: process_events(0.0))
+        except Exception as exc:
+            P("FAIL", "export " + preset, repr(exc))
+            _out.write(traceback.format_exc() + "\n")
+            continue
+        names = tree_files(out)
+        P("INFO", "export {} files".format(preset), "{} in {:.0f} s".format(", ".join(names), time.time() - started))
+        check("export {}: one file per job".format(preset), all(os.path.isfile(job.path) and os.path.getsize(job.path) > 0 for job in jobs))
+        check("export {}: no work folder left".format(preset), not any(".aeroexports_tmp" in name for name in names))
+    if tools["gdal"] or tools["gm"]:
+        out = os.path.join(folder, "jp2")
+        jobs = plan.build_jobs("LIVE", day, {k: v for k, v in wanted.items() if k == "ortho"} or wanted, "jp2", out)
+        try:
+            pipeline.run(context(out, "jp2"), jobs, lambda fraction, text: process_events(0.0))
+            check("export jp2", all(os.path.isfile(job.path) and os.path.getsize(job.path) > 0 for job in jobs), ", ".join(tree_files(out)))
+        except Exception as exc:
+            P("FAIL", "export jp2", repr(exc))
+    else:
+        P("SKIP", "export jp2", "no GDAL or Global Mapper")
+    # A failing export must leave the earlier delivery as it was.
+    out = os.path.join(folder, "quick")
+    jobs = plan.build_jobs("LIVE", day, wanted, "quick", out, version=1)
+    before = {name: os.path.getsize(os.path.join(out, name)) for name in tree_files(out)}
+
+    def failing(*_args, **_kwargs):
+        raise RuntimeError("simulated failure of the export")
+    try:
+        pipeline.run(context(out, "quick", export=failing), jobs, lambda fraction, text: None)
+        P("FAIL", "failing export", "no error raised")
+    except Exception:
+        after = {name: os.path.getsize(os.path.join(out, name)) for name in tree_files(out)}
+        check("failing export leaves the earlier files untouched", after == before, "{} -> {}".format(sorted(before), sorted(after)))
+
+
+# --------------------------------------------------------------------------------------------------------------------------------
+# 3. Aero-Space on a throw-away project
+# --------------------------------------------------------------------------------------------------------------------------------
+
+@guarded
+def check_space():
+    section("Aero-Space")
+    from aerotools import updater
+    if not updater.tool_installed("fastspace"):
+        P("SKIP", "aerospace", "not in this tree")
+        return
+    from aerotools.tools.fastspace import actions, scanner
+    folder = os.path.join(TMP, "space")
+    os.makedirs(folder)
+    path = os.path.join(folder, "SPACE_TEST.psx")
+    document = Metashape.Document()
+    document.save(path)
+    chunk = document.addChunk()
+    chunk.label = "test"
+    document.save()
+    files_dir = os.path.join(folder, "SPACE_TEST.files")
+    leftover = os.path.join(files_dir, "0", "0", "depth_maps")
+    os.makedirs(leftover)
+    with open(os.path.join(leftover, "depth.bin"), "wb") as handle:
+        handle.write(b"0" * 200000)
+    document = None
+    gc.collect()
+    project = scanner.measure_project(path)
+    P("INFO", "scan", "state lock {}, removable {} bytes".format(project.lock, project.removable(scanner.DEFAULT_ITEMS)))
+    check("scan finds the project", project is not None and not project.orphan)
+
+    # An open project is refused: Metashape holds the lock while the document is open.
+    opened = Metashape.Document()
+    opened.open(path)
+    state = scanner.lock_state(files_dir)
+    check("lock seen while the project is open", state in (scanner.OPEN,), state)
+    refused = actions.lighten(scanner.measure_project(path), actions.PERMANENT)
+    check("lighten refuses an open project", not refused["ok"] and bool(refused["error"]), refused["error"][:100])
+    gone = actions.delete_project(scanner.measure_project(path), actions.PERMANENT)
+    check("delete refuses an open project", not gone["ok"] and os.path.isfile(path), gone["error"][:100])
+    opened = None
+    gc.collect()
+    time.sleep(0.5)
+
+    state = scanner.lock_state(files_dir)
+    check("lock released after closing", state != scanner.OPEN, state)
+    project = scanner.measure_project(path)
+    result = actions.lighten(project, actions.PERMANENT, progress=lambda text: process_events(0.0))
+    P("INFO", "lighten", "ok {} freed {} backup {} error {}".format(result["ok"], result["freed"], result["backup"], result["error"][:120]))
+    check("lighten ok", result["ok"], result["error"])
+    check("leftover folder removed", not os.path.exists(leftover))
+    backup = result.get("backup") or ""
+    check("safety copy written", bool(backup) and os.path.isfile(os.path.join(backup, "RESTORE.txt"))
+          and os.path.isfile(os.path.join(backup, os.path.basename(path) + ".bak")), backup)
+    reopened = Metashape.Document()
+    reopened.open(path, read_only=True)
+    check("chunk kept by the lightening", len(reopened.chunks) == 1 and reopened.chunks[0].label == "test")
+    reopened = None
+    gc.collect()
+
+
+# --------------------------------------------------------------------------------------------------------------------------------
 
 def main():
     document = Metashape.app.document
@@ -187,6 +335,8 @@ def main():
     check_modules(aerotools)
     check_menu()
     check_windows()
+    check_exports()
+    check_space()
     section("The open project was not touched")
     document = Metashape.app.document
     check("same path", (document.path or "(unsaved project)") == title)

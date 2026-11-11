@@ -26,6 +26,7 @@ EXCLUDED_DIRS = {"vendor", "__pycache__"}
 # (path relative to the repository root, name of the variable the list is assigned to). The strings
 # inside such an assignment are lists of words that recognise real-world data; they are not scanned.
 ALLOWED_RECOGNITION_LISTS = {
+    ("aerotools/tools/aeroexports/naming.py", "GENERIC_TOKENS"),
 }
 
 # Accented letters and guillemets.

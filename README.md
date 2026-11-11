@@ -71,6 +71,8 @@ menu to Metashape, with one entry per tool.
 | Tool | What it does | Documentation |
 |---|---|---|
 | **Aero-GCP** | Mark ground control points by hand, or let an AI propose the marks and review them. Check the marking, choose the control markers, export a PDF report. | [Aero-GCP guide](docs/tools/aero-gcp.md) |
+| **Aero-Space** | Scan a drive for old Metashape projects, then lighten or delete them to free disk space. | [Aero-Space guide](docs/tools/aero-space.md) |
+| **Aero-Exports** | Export the orthomosaic and the DEM with short file names, in several formats, pixel sizes and coordinate systems. | [Aero-Exports guide](docs/tools/aero-exports.md) |
 
 ## Install
 

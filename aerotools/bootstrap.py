@@ -86,6 +86,7 @@ def install_menu(force=False):
     msapi.add_menu_separator(MENU)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.about")), about)
 
+    arrange_menu()
     setattr(builtins, _MENU_FLAG, True)
     print(
         "[AeroTools] menu \"{}\" installed ({} tool(s)) - root {}".format(
@@ -112,7 +113,18 @@ def add_tool_menu(tool_id):
     if not msapi.add_menu_item("{}/{}".format(MENU, name), _make_launcher(tool_id), entry.get("shortcut")):
         return False
     shown.add(tool_id)
+    arrange_menu()
     return True
+
+
+def arrange_menu():
+    """Tools first (in the order of the registry), then maintenance, then information: also for a tool installed during the session."""
+    from . import config, i18n, msapi
+    tools = [e["menu"] + (" " + i18n.t("menu.soon") if not e.get("ready", False) else "") for e in config.TOOLS]
+    maintenance = [i18n.t(key) for key in ("menu.install", "menu.update", "menu.reload", "menu.uninstall")]
+    done = msapi.arrange_menu(MENU, [tools, maintenance, [i18n.t("menu.about")]])
+    msapi.add_logo_button(MENU, os.path.join(root(), "assets", "logo", "helix-aero-AERO-blanc-512px.png"), i18n.t("menu.logo_tip"))
+    return done
 
 
 def _make_launcher(tool_id):
