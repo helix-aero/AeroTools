@@ -61,6 +61,15 @@ TOOLS = [
         "ready": True,
         "reopen": False,
     },
+    {
+        "id": "aerol3",
+        "menu": "Aero-L3",
+        "title": "Aero-L3",
+        "subtitle": "tool.aerol3.subtitle",
+        "shortcut": None,
+        "ready": True,
+        "reopen": False,
+    },
     # The AI detection (formerly AIGCP) is part of Aero-GCP: no menu entry of its own.
 ]
 
@@ -90,6 +99,8 @@ PACKS = [
      "requires": []},
     {"id": "aeroexports", "paths": ["aerotools/tools/aeroexports/", "aerotools/vendor/proj/data/"],
      "marker": "aerotools/tools/aeroexports/tool.py", "requires": []},
+    {"id": "aerol3", "paths": ["aerotools/tools/aerol3/"], "marker": "aerotools/tools/aerol3/tool.py",
+     "requires": []},
 ]
 
 

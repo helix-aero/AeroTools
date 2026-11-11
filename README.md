@@ -73,6 +73,7 @@ menu to Metashape, with one entry per tool.
 | **Aero-GCP** | Mark ground control points by hand, or let an AI propose the marks and review them. Check the marking, choose the control markers, export a PDF report. | [Aero-GCP guide](docs/tools/aero-gcp.md) |
 | **Aero-Space** | Scan a drive for old Metashape projects, then lighten or delete them to free disk space. | [Aero-Space guide](docs/tools/aero-space.md) |
 | **Aero-Exports** | Export the orthomosaic and the DEM with short file names, in several formats, pixel sizes and coordinate systems. | [Aero-Exports guide](docs/tools/aero-exports.md) |
+| **Aero-L3** | Turn the photos of a DJI Zenmuse L3 into a Metashape chunk ready to align: both lenses, positions with their accuracy, and a starting orientation that keeps the pictures from coming out flipped. | [Aero-L3 guide](docs/tools/aero-l3.md) |
 
 ## Install
 

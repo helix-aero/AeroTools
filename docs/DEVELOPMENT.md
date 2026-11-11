@@ -30,6 +30,7 @@ AeroTools/
       fastgcp/         Aero-GCP: session, tool, panel, marking, photos, history, dataset, detection, report
       fastspace/       Aero-Space: scan, lighten or delete old projects
       aeroexports/     Aero-Exports: ortho and DEM exports, AutoCAD drawing, colours
+      aerol3/          Aero-L3
   assets/fonts/
   install/             launcher template, installer, uninstaller
   tests/               pytest tests, no Metashape needed
