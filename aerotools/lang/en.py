@@ -13,6 +13,7 @@ TEXTS = {
     # -- Aero menu and Metashape boxes (bootstrap.py, tool.py) -------------
     "menu.reload": "Reload AeroTools",
     "menu.about": "About",
+    "menu.logo_tip": "HELIX AERO tools",
     "menu.soon": "(coming soon)",
     "boot.unknown_tool": "AeroTools: unknown tool \"{tool}\".",
     "boot.not_ready": "{title} is not available yet.",

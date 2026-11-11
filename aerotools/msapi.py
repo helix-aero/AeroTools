@@ -1927,6 +1927,97 @@ def add_menu_separator(menu):
         return False
 
 
+def arrange_menu(title, groups):
+    """Puts the entries of the menu `title` in the order of `groups` (lists of labels, one separator between two lists).
+
+    Metashape's API only appends entries, so a tool installed while it runs would land after "About". The menu is a
+    plain Qt menu: its actions are taken out and put back in the wanted order. Entries not listed keep their place after
+    the listed ones. Returns True if the menu was found."""
+    try:
+        window = main_window()
+        if window is None:
+            return False
+        menu = None
+        for action in window.menuBar().actions():
+            if action.menu() is not None and action.text().replace("&", "") == title:
+                menu = action.menu()
+                break
+        if menu is None:
+            return False
+        actions = list(menu.actions())
+        separators = [a for a in actions if a.isSeparator()]
+        by_text = {}
+        for action in actions:
+            if not action.isSeparator():
+                by_text.setdefault(action.text().replace("&", ""), action)
+        ordered, used = [], set()
+        for index, labels in enumerate(groups):
+            block = [by_text[label] for label in labels if label in by_text]
+            if not block:
+                continue
+            if ordered:
+                ordered.append(separators.pop(0) if separators else None)
+            ordered.extend(block)
+            used.update(id(a) for a in block)
+        rest = [a for a in actions if not a.isSeparator() and id(a) not in used]
+        for action in actions:
+            menu.removeAction(action)
+        for action in ordered + rest:
+            if action is None:
+                menu.addSeparator()
+            else:
+                menu.addAction(action)
+        return True
+    except Exception:
+        return False
+
+
+LOGO_BUTTON = "AeroLogoButton"
+
+
+def add_logo_button(title, image, tooltip="", height=16):
+    """A small button with the logotype at the right end of Metashape's menu bar, opening the menu `title` (the tools list).
+
+    Added once: a button left by a previous code load is replaced. Returns True if it is in place."""
+    try:
+        from .qt import QtGui
+        window = main_window()
+        if window is None:
+            return False
+        bar = window.menuBar()
+        menu = None
+        for action in bar.actions():
+            if action.menu() is not None and action.text().replace("&", "") == title:
+                menu = action.menu()
+                break
+        if menu is None:
+            return False
+        for old in window.findChildren(QtWidgets.QToolButton, LOGO_BUTTON):
+            old.setParent(None)
+            old.deleteLater()
+        pixmap = QtGui.QPixmap(image)
+        if pixmap.isNull():
+            return False
+        pixmap = pixmap.scaledToHeight(height * 2, QtCore.Qt.SmoothTransformation)
+        pixmap.setDevicePixelRatio(2.0)
+        button = QtWidgets.QToolButton(bar)
+        button.setObjectName(LOGO_BUTTON)
+        button.setIcon(QtGui.QIcon(pixmap))
+        button.setIconSize(QtCore.QSize(int(pixmap.width() / 2), height))
+        button.setToolTip(tooltip)
+        button.setAutoRaise(True)
+        button.setCursor(QtCore.Qt.PointingHandCursor)
+        button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        button.setMenu(menu)
+        button.setStyleSheet("QToolButton{border:0;padding:2px 10px;}QToolButton::menu-indicator{image:none;}"
+                             "QToolButton:hover{background:rgba(30,202,89,0.18);}")
+        bar.setCornerWidget(button, QtCore.Qt.TopRightCorner)
+        button.show()
+        return True
+    except Exception:
+        return False
+
+
 def message_box(text):
     try:
         Metashape.app.messageBox(text)

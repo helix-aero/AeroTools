@@ -10,5 +10,5 @@ Tools:
   - aigcp    : automatic target detection (upcoming, see detection.py).
 """
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 __all__ = ["bootstrap", "config", "i18n", "theme", "journal", "msapi"]
