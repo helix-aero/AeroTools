@@ -25,6 +25,7 @@ alone. It is reported too (it is wasted space).
 
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -49,6 +50,8 @@ EXPORT_EXTS = {".tif", ".tiff", ".ecw", ".jp2", ".img", ".asc", ".las", ".laz", 
 KEPT_CAP = 5000                                            # at most this many entries read per project folder
 KEPT_SHOWN = 6
 _KEPT_CACHE = {}
+_KEPT_LOCKS = {}                                         # one lock per folder: its projects are measured by 8 threads
+_KEPT_GUARD = threading.Lock()
 
 
 class Kept(object):
@@ -59,8 +62,20 @@ class Kept(object):
         self.dirs = 0
         self.size = 0
         self.exports = False                               # an exported DEM / orthomosaic / cloud file is there
+        self.export_names = []                             # lower-case relative names of those files
+        self.projects = 0                                  # .psx files in the folder (to tell whose export it is)
         self.partial = False                               # folder too large, counting stopped
         self.biggest = []                                  # [(bytes, relative path)]
+
+    def covers(self, project):
+        """Is there an export that can be this project's? With a single project in the folder, any export is; with several, the
+        file (or the sub-folder it sits in) must carry the project's name: an export next to project B says nothing about A."""
+        if not self.export_names:
+            return False
+        if self.projects <= 1:
+            return True
+        stem = os.path.splitext(project.name)[0].lower()
+        return any(stem in name for name in self.export_names)
 
 
 class Project(object):
@@ -116,8 +131,8 @@ class Project(object):
 
     @property
     def at_risk(self):
-        """Deleting this project loses a DEM or orthomosaic that is not found exported anywhere next to it."""
-        return not self.orphan and self.internal_products > 0 and not self.kept.exports
+        """Deleting this project loses a DEM or orthomosaic with no export that can be its own next to it."""
+        return not self.orphan and self.internal_products > 0 and not self.kept.covers(self)
 
     def folders(self, count=3):
         """The `count` folders that precede the project, from the farthest to the nearest."""
@@ -238,11 +253,20 @@ def _is_project_part(name):
 
 
 def measure_kept(folder):
-    """Files left next to the projects in `folder` (the .psx and .files of the projects are not counted)."""
+    """Files left next to the projects in `folder` (the .psx and .files of the projects are not counted).
+
+    Computed once per folder even when several threads ask at the same time (the projects of a folder are consecutive jobs)."""
     key = os.path.normcase(folder)
-    cached = _KEPT_CACHE.get(key)
-    if cached is not None:
+    with _KEPT_GUARD:
+        lock = _KEPT_LOCKS.setdefault(key, threading.Lock())
+    with lock:
+        cached = _KEPT_CACHE.get(key)
+        if cached is None:
+            cached = _KEPT_CACHE[key] = _measure_kept(folder)
         return cached
+
+
+def _measure_kept(folder):
     kept = Kept()
     found = []
     seen = 0
@@ -256,6 +280,8 @@ def measure_kept(folder):
                 break
             name = entry.name
             if _is_project_part(name):
+                if depth == 0 and name.lower().endswith(".psx"):
+                    kept.projects += 1
                 continue
             try:
                 if entry.is_dir(follow_symlinks=False):
@@ -271,15 +297,15 @@ def measure_kept(folder):
             found.append((size, prefix + name))
             if os.path.splitext(name)[1].lower() in EXPORT_EXTS:
                 kept.exports = True
+                kept.export_names.append((prefix + name).lower())
     found.sort(reverse=True)
     kept.biggest = found[:KEPT_SHOWN]
-    _KEPT_CACHE[key] = kept
     return kept
 
 
 def delete_impact(projects):
     """(files kept, bytes kept, projects at risk) if `projects` are deleted."""
-    kepts = {id(p.kept): p.kept for p in projects if not p.orphan}
+    kepts = {os.path.normcase(os.path.dirname(p.path)): p.kept for p in projects if not p.orphan}      # one count per folder
     files = sum(kept.files for kept in kepts.values())
     size = sum(kept.size for kept in kepts.values())
     return files, size, [p for p in projects if p.at_risk]
@@ -396,7 +422,9 @@ def scan(root, progress=None, cancelled=None):
     cancelled = cancelled or (lambda: False)
     progress = progress or (lambda done, total, text: None)
     started = time.time()
-    _KEPT_CACHE.clear()
+    with _KEPT_GUARD:
+        _KEPT_CACHE.clear()
+        _KEPT_LOCKS.clear()
     psx, orphans = find(root, cancelled, on_found=lambda path: progress(0, 0, path))
     jobs = [("psx", p) for p in psx] + [("orphan", d) for d in orphans]
     results = []

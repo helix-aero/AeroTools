@@ -91,16 +91,19 @@ def _install_from(root, local):
 def test_a_copy_downloaded_from_the_dev_branch_follows_dev_for_its_updates(tmp_path):
     result = _install_from(_tiny_root(tmp_path, "AeroTools-dev"), tmp_path / "local")
     assert result.returncode == 0, result.stdout + result.stderr
-    settings = json.loads((tmp_path / "local" / "HELIX" / "AeroTools" / "settings.json").read_text(encoding="utf-8"))
-    assert settings["update"]["channel"] == "dev"
+    hint = tmp_path / "local" / "HELIX" / "AeroToolsApp" / "channel.txt"       # read by updater.channel() (tests/test_updater.py)
+    assert hint.read_text(encoding="utf-8").strip() == "dev"
+    assert not (tmp_path / "local" / "HELIX" / "AeroTools" / "settings.json").exists()     # the installer never creates the settings
 
 
-def test_a_copy_from_the_stable_branch_sets_no_channel_and_an_existing_choice_is_kept(tmp_path):
+def test_a_copy_from_the_stable_branch_sets_no_channel_and_the_settings_are_left_byte_for_byte(tmp_path):
     local = tmp_path / "local"
     assert _install_from(_tiny_root(tmp_path, "AeroTools-main"), local).returncode == 0
-    assert not (local / "HELIX" / "AeroTools" / "settings.json").exists()
+    assert not (local / "HELIX" / "AeroToolsApp" / "channel.txt").exists()
     settings = local / "HELIX" / "AeroTools" / "settings.json"
     settings.parent.mkdir(parents=True)
-    settings.write_text(json.dumps({"theme": "x", "update": {"channel": "main"}}), encoding="utf-8")
+    raw = (b'{"theme":"x",\r\n "update": {"channel": "main"}, "deep": {"a": {"b": {"c": {"d": {"e": {"f": {"g": {"h": {"i": 1}}}}}}}}},'
+           b' "accent": "\xc3\xa9"}')
+    settings.write_bytes(raw)
     assert _install_from(_tiny_root(tmp_path, "AeroTools-dev"), local).returncode == 0
-    assert json.loads(settings.read_text(encoding="utf-8")) == {"theme": "x", "update": {"channel": "main"}}
+    assert settings.read_bytes() == raw

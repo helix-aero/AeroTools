@@ -35,7 +35,7 @@ TOPICS = (
     ("rtk", ("rtk_not_fixed", "gps_not_rtk", "altitude_type")),
     ("angles", ("angles_missing", "angles_inconsistent")),
     ("direction", ("against_track", "lens_side")),
-    ("mrk", ("mrk_missing", "mrk_mismatch")),
+    ("mrk", ("mrk_missing", "mrk_mismatch", "mrk_unreadable")),
 )
 
 
@@ -370,6 +370,9 @@ def analyse(flights, options=None):
     no_mrk = [f.name for f in flights if not f.has_mrk]
     if no_mrk:
         _add(findings, WARNING, "mrk_missing", len(no_mrk), len(flights), no_mrk)
+    bad_mrk = [f.name for f in flights if getattr(f, "mrk_ignored", 0)]
+    if bad_mrk:                                           # a MRK that could not be read must not pass for "no disagreement"
+        _add(findings, WARNING, "mrk_unreadable", len(bad_mrk), len(flights), bad_mrk)
     summary.mrk_flights = len(flights) - len(no_mrk)
     summary.lidar_flights = sum(1 for f in flights if f.lidar_files)
     shots = [s for f in flights for s in f.mrk_shots]

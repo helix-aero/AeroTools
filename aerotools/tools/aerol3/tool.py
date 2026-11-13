@@ -4,7 +4,7 @@
 `msl3.MetashapeL3Backend` (imported only here, lazily); the tests and the screenshots hand their own `Backend` (`FakeBackend`) to `open_window`.
 """
 
-from ... import i18n, journal, msapi, theme
+from ... import i18n, journal, msapi, theme, uikit
 from ...qt import QtGui
 
 _STATE = {"window": None}
@@ -35,10 +35,7 @@ def open_window(backend, parent=None, existing=None):
         window = None
     if window is None:
         window = wizard.L3Wizard(backend, parent)
-        window.fit_to_fonts()
-    window.show()
-    window.raise_()
-    window.activateWindow()
+    window.present()
     return window
 
 
@@ -46,15 +43,13 @@ def install():
     """Open (or bring to the front) the Aero-L3 window."""
     parent = msapi.main_window()
     if parent is None:
-        msapi.message_box(i18n.t("tool.no_window"))
+        uikit.error(None, i18n.t("l3.ui.title"), i18n.t("tool.no_window"))
         return
     shown = _STATE.get("window")
     try:
         if shown is not None:
             shown.objectName()
-            shown.show()
-            shown.raise_()
-            shown.activateWindow()
+            shown.present()
             return
     except RuntimeError:
         pass
@@ -62,11 +57,11 @@ def install():
         backend = make_backend()
     except ImportError as exc:
         journal.write("Aero-L3: Metashape adapter missing: {!r}".format(exc))
-        msapi.message_box(i18n.t("l3.ui.backend_missing", error=str(exc)))
+        uikit.error(parent, i18n.t("l3.ui.title"), i18n.t("l3.ui.backend_missing", error=str(exc)))
         return
     except Exception as exc:
         journal.write("Aero-L3: cannot start: {!r}".format(exc))
-        msapi.message_box(i18n.t("l3.ui.no_backend"))
+        uikit.error(parent, i18n.t("l3.ui.title"), i18n.t("l3.ui.no_backend"))
         return
     theme.load_fonts(QtGui)
     _STATE["window"] = open_window(backend, parent, _STATE.get("window"))

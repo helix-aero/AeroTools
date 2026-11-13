@@ -26,14 +26,14 @@ import math
 import os
 import re
 
-from ... import i18n, journal, msapi, pdfkit
+from ... import i18n, journal, msapi, pdfkit, uikit
 from ...pdfkit import (A4_H, A4_W, CARD, DOT, EM_DASH, FAINT, GREEN, GREEN_DEEP, GRID, INK, INK_2, LINE, MARGIN, MUTED, ORANGE, PAPER,
                        PT_TO_DEVICE, SITE_TEXT, SITE_URL, TABLE_HEAD_H, TABLE_TOP, WARN_BG, WARN_TEXT, safe_name)
 from ...pdfkit import Canvas as _Canvas, Style as _Style, card_title as _card_title, empty_note as _empty_note
 from ...pdfkit import gradient_brush as _gradient_brush, kpi_card as _kpi_card, nice_top as _nice_top, remove as _remove
 from ...pdfkit import rule as _rule, tick_decimals as _tick_decimals, typo as _typo
 from ...qt import QtCore, QtGui, QtWidgets
-from . import review
+from . import review, widgets
 
 # --------------------------------------------------------------------------
 # Constants
@@ -121,35 +121,10 @@ def _finite(value):
     return None if math.isnan(number) or math.isinf(number) else number
 
 
-def _fallback_errors(chk, marker):
-    """Errors of a marker if msapi.marker_errors does not exist (yet).
-
-    Method of the official Metashape API example: estimated minus reference,
-    brought into the local frame (east, north, up) at the marker point.
-    """
-    try:
-        reference = marker.reference.location
-        position = marker.position
-        if reference is None or position is None:
-            return None
-        crs, matrix = chk.crs, chk.transform.matrix
-        if crs is None or matrix is None:
-            return None
-        world = matrix.mulp(position)
-        estimated = crs.unproject(crs.project(world))
-        delta = estimated - crs.unproject(reference)
-        local = crs.localframe(world).mulv(delta)
-        x, y, z = local[0], local[1], local[2]
-        return {"x": x, "y": y, "z": z, "total": math.sqrt(x * x + y * y + z * z)}
-    except Exception:
-        return None
-
-
 def _marker_errors(chk, marker):
     """{"x","y","z","total"} in metres, None values when unknown. Never raises."""
-    reader = getattr(msapi, "marker_errors", None)
     try:
-        raw = reader(chk, marker) if reader is not None else _fallback_errors(chk, marker)
+        raw = msapi.marker_errors(chk, marker)
     except Exception:
         raw = None
     raw = raw or {}
@@ -207,6 +182,15 @@ def _meta():
         "project_path": path,
         "metashape": msapi.app_version(),
     }
+
+
+def _reference_is_geographic(chunk):
+    """True / False when the markers' coordinate system says whether the reference is in degrees; None when unknown."""
+    try:
+        kind = msapi.crs_kind(getattr(chunk, "marker_crs", None) or chunk.crs)
+    except Exception:
+        return None
+    return None if kind is None else kind == "geographic"
 
 
 def collect_data(chunk, today=None):
@@ -281,6 +265,7 @@ def collect_data(chunk, today=None):
         "meta": _meta(),
         "markers": markers,
         "stats": stats,
+        "ref_geographic": _reference_is_geographic(chunk),
     }
 
 
@@ -338,7 +323,9 @@ def csv_rows(data):
         if with_ref:
             ref = m.get("ref")
             if ref:
-                geographic = max(abs(ref[0]), abs(ref[1])) <= 360.0
+                geographic = data.get("ref_geographic")
+                if geographic is None:                      # the coordinate system is unknown: judge by the values
+                    geographic = max(abs(ref[0]), abs(ref[1])) <= 360.0
                 row += [fmt_num(ref[0], 8 if geographic else 3),
                         fmt_num(ref[1], 8 if geographic else 3), fmt_num(ref[2], 3)]
             else:
@@ -348,11 +335,22 @@ def csv_rows(data):
 
 
 def write_csv(data, path):
-    """Writes the CSV, UTF-8 with BOM (Excel), comma-delimited with a decimal point."""
-    with open(path, "w", newline="", encoding="utf-8-sig") as handle:
-        writer = csv.writer(handle, delimiter=i18n.csv_delimiter(), lineterminator="\r\n")
-        for row in csv_rows(data):
-            writer.writerow(row)
+    """Writes the CSV, UTF-8 with BOM (Excel), comma-delimited with a decimal point.
+
+    Written beside the target and moved into place at the end: a failure or a full disk never leaves a half file under the final name."""
+    part = path + ".part"
+    try:
+        with open(part, "w", newline="", encoding="utf-8-sig") as handle:
+            writer = csv.writer(handle, delimiter=i18n.csv_delimiter(), lineterminator="\r\n")
+            for row in csv_rows(data):
+                writer.writerow(row)
+        os.replace(part, path)
+    finally:
+        if os.path.exists(part):
+            try:
+                os.remove(part)
+            except OSError:
+                pass
     return path
 
 
@@ -1371,6 +1369,25 @@ def _grab_photo_view():
     return None
 
 
+_FULL_IMAGE = [None, None]                                   # [path, image]: the last photo that had to be decoded whole
+
+
+def clear_image_cache():
+    """Let go of the decoded photo kept for the thumbnails (a 100 MP photo is hundreds of MB): call when an export ends."""
+    _FULL_IMAGE[0] = _FULL_IMAGE[1] = None
+
+
+def _full_image(path):
+    """The whole photo, decoded at most once while consecutive thumbnails come from the same file."""
+    if _FULL_IMAGE[0] == path and _FULL_IMAGE[1] is not None:
+        return _FULL_IMAGE[1]
+    image = QtGui.QImage(path)
+    if image.isNull():
+        return None
+    _FULL_IMAGE[0], _FULL_IMAGE[1] = path, image
+    return image
+
+
 def _read_region(path, cx, cy, width, height, sensor):
     """Region `width` x `height` (pixels) centred on (cx, cy) in the image file.
 
@@ -1380,11 +1397,11 @@ def _read_region(path, cx, cy, width, height, sensor):
     """
     if not path or not os.path.isfile(path):
         return None
-    reader = QtGui.QImageReader(path)
+    reader = QtGui.QImageReader(path)                       # one reader: the size, then the clipped read
     size = reader.size()
     if not size.isValid():
-        full = QtGui.QImage(path)
-        if full.isNull():
+        full = _full_image(path)
+        if full is None or full.isNull():
             return None
         size = full.size()
     iw, ih = size.width(), size.height()
@@ -1399,11 +1416,11 @@ def _read_region(path, cx, cy, width, height, sensor):
     x0 = int(max(0, min(iw - rw, round(fx - rw / 2.0))))
     y0 = int(max(0, min(ih - rh, round(fy - rh / 2.0))))
     rect = QtCore.QRect(x0, y0, rw, rh)
-    reader = QtGui.QImageReader(path)
     reader.setClipRect(rect)
     image = reader.read()
     if image.isNull() or image.width() != rw or image.height() != rh:
-        image = QtGui.QImage(path).copy(rect)
+        full = _full_image(path)                            # the whole photo, decoded once for all the thumbnails of that photo
+        image = full.copy(rect) if full is not None else QtGui.QImage()
     if image.isNull():
         return None
     return image, fx - x0, fy - y0, scale
@@ -1616,31 +1633,17 @@ def ask_save_path(parent, caption, default_path, name_filter):
     return str(path or "")
 
 
-def _exec(box):
-    runner = getattr(box, "exec_", None) or getattr(box, "exec")
-    return runner()
-
-
 def show_message(parent, title, text, warning=False):
     try:
-        box = QtWidgets.QMessageBox(
-            QtWidgets.QMessageBox.Warning if warning else QtWidgets.QMessageBox.Information,
-            title, text, QtWidgets.QMessageBox.Ok, parent)
-        _exec(box)
-    except Exception:
-        msapi.message_box("{}: {}".format(title, text))
+        uikit.inform(parent, title, text, "warning" if warning else "info")
+    except Exception as exc:
+        journal.write("Report: could not show a message: {!r}".format(exc))
 
 
 def offer_open(parent, title, path):
     """Small box with a button to open the file. Returns True if opened."""
     try:
-        box = QtWidgets.QMessageBox(QtWidgets.QMessageBox.Information, title,
-                                    i18n.t("dlg.saved", path=path),
-                                    QtWidgets.QMessageBox.NoButton, parent)
-        open_button = box.addButton(i18n.t("dlg.open"), QtWidgets.QMessageBox.AcceptRole)
-        box.addButton(i18n.t("dlg.close"), QtWidgets.QMessageBox.RejectRole)
-        _exec(box)
-        if box.clickedButton() is open_button:
+        if uikit.confirm(parent, title, i18n.t("dlg.saved", path=path), ok=i18n.t("dlg.open"), cancel=i18n.t("ui.close")):
             return open_file(path)
     except Exception as exc:
         journal.write("Report: could not offer to open the file: {!r}".format(exc))
@@ -1654,14 +1657,20 @@ def open_file(path):
         return False
 
 
-def _busy(on):
+_BUSY = []
+
+
+def _busy(on, parent=None):
+    """The "building the report" window while the report is written on the main thread (it does not take part in the work)."""
     try:
         if on:
-            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
-        else:
-            QtWidgets.QApplication.restoreOverrideCursor()
-    except Exception:
-        pass
+            window = widgets.BusyDialog(i18n.t("dlg.building"), parent, title=i18n.t("dlg.title"))
+            _BUSY.append(window)
+            window.open()
+        elif _BUSY:
+            _BUSY.pop().close()
+    except Exception as exc:
+        journal.write("Report: busy window: {!r}".format(exc))
 
 
 def _status(state, text):
@@ -1722,11 +1731,12 @@ def export_pdf(state, parent=None):
                               i18n.t("dlg.filter_pdf"), i18n.t("file.report"))
         if data is None:
             return None
-        _busy(True)
+        _busy(True, parent)
         try:
             images = collect_images(state, data)
             pages = build_pdf(data, path, images)
         finally:
+            clear_image_cache()
             _busy(False)
         journal.write("PDF report written: {} ({} pages, {} markers)".format(
             path, pages, data["stats"]["n_markers"]))

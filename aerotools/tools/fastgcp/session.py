@@ -15,18 +15,9 @@ from . import history
 
 SECTION = "fastgcp"
 
-# Former values of the "after marking" option. The move to the next photo
-# is now fixed (photos.advance_after_place); the constants stay defined
-# for the modules that still import them.
-AFTER_STAY = "stay"
-AFTER_PAGEDOWN = "pagedown"
+# The move to the next photo is fixed (photos.advance_after_place): the former "after marking" choices are gone.
+AFTER_STAY = "stay"                  # still used by the Qt self-test
 AFTER_API = "api"
-
-AFTER_LABELS = (
-    (AFTER_PAGEDOWN, "Next (list)"),
-    (AFTER_API, "Next (project)"),
-    (AFTER_STAY, "Stay"),
-)
 
 # Options that are no longer choices: value imposed at each load,
 # any write is ignored (an old settings.json does not change them).
@@ -165,6 +156,26 @@ class Session(object):
         self.aigcp_applied = []
         self.aigcp_review = None
         self.aigcp_log = []
+        try:
+            from ... import msapi
+            msapi.invalidate_camera_tables()
+        except Exception:
+            pass
+
+    def close_chunk_windows(self):
+        """Close or refresh the windows that show results of the previous chunk (Adjust, Residual check, Diagnostic):
+        a result computed for another chunk must not be acted on."""
+        panel = self.panel
+        if panel is None:
+            return
+        for name in ("_adjust_dialog", "_qc_dialog", "_diag_dialog"):
+            dialog = getattr(panel, name, None)
+            if dialog is None:
+                continue
+            try:
+                dialog.close()
+            except Exception:
+                pass
 
 
 DOCK_NAME = "AeroFastGcpDock"          # object name of the panel: finds it again after a reload of the code

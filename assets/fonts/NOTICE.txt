@@ -2,3 +2,6 @@ Fonts shipped in this folder (SIL Open Font License 1.1; the licence texts are n
 
   Manrope  Copyright 2019 The Manrope Project Authors (https://github.com/sharanda/manrope)  - OFL-Manrope.txt
   Rubik    Copyright 2015 The Rubik Project Authors (https://github.com/googlefonts/rubik)  - OFL-Rubik.txt
+
+The .ttf files here are static instances (Regular 400, SemiBold 600, Manrope Medium 500) cut from the variable fonts of the same projects
+with fontTools, because Qt 5 shows a variable font at one weight only. Their licences are the ones above.

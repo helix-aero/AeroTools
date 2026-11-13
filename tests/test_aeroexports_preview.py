@@ -107,7 +107,7 @@ def test_automatic_range_ignores_a_spike_and_custom_range_is_used_as_typed(tmp_p
 
 
 def test_a_geographic_dem_is_painted_without_shading_like_the_export(tmp_path):
-    model, _z, _path = make_preview(tmp_path, pixel=0.00001)
+    model, _z, _path = make_preview(tmp_path, pixel=0.00001, geographic=True)
     assert model.geographic
     sun, bare = model.render(looks.DEFAULT, "white"), model.render(looks.DEFAULT._replace(shading="none"), "white")
     assert np.array_equal(sun, bare)

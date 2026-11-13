@@ -272,11 +272,21 @@ class FakeOrthomosaic(object):
         self.photos_removed = True
 
 
+class FakeCloud(object):
+    """A point cloud of a chunk; `meta` carries what Metashape wrote ("build_..." for a built one, "import_..." for an imported one)."""
+
+    def __init__(self, name="dense", meta=None):
+        self.name, self.meta = name, meta if meta is not None else {"build_depth/downscale": "4"}
+
+    def __repr__(self):
+        return self.name
+
+
 class FakeChunk(object):
     def __init__(self, label, files_dir, index):
         self.label, self._files, self._index = label, files_dir, index
         self.cameras, self.markers = [1, 2, 3], [1, 2]
-        self.point_clouds = ["dense"]
+        self.point_clouds = [FakeCloud()]
         self.depth_maps_sets = ["depth"]
         self.orthomosaics = [FakeOrthomosaic(files_dir, index)]
 
@@ -376,7 +386,7 @@ def test_lighten_cleans_orthophotos_metashape_left_behind(tmp_path, fake_metasha
 def test_strip_chunk_only_touches_the_chosen_items():
     chunk = FakeChunk("C", "x", 0)
     assert actions.strip_chunk(chunk, ("ortho",)) == ["ortho"]
-    assert chunk.point_clouds == ["dense"] and chunk.depth_maps_sets == ["depth"]
+    assert len(chunk.point_clouds) == 1 and chunk.depth_maps_sets == ["depth"]
     assert chunk.orthomosaics[0].photos_removed
     assert actions.strip_chunk(chunk) == ["dense", "depth"]
 

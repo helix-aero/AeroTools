@@ -67,7 +67,8 @@ def dem_mask(path, target=TARGET_PX):
         rows, cols = np.nonzero(good)
         inside = (top + rows < tiff.height) & (left + cols < tiff.width)       # a tile on the edge can reach past the image
         rows, cols = rows[inside], cols[inside]
-        np.logical_or.at(mask, ((top + rows) // step, (left + cols) // step), True)
+        # every write is True, so repeated cells are harmless: a plain assignment replaces the very slow ufunc.at
+        mask[(top + rows) // step, (left + cols) // step] = True
     return mask, step
 
 

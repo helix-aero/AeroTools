@@ -75,12 +75,19 @@ menu to Metashape, with one entry per tool.
 | **Aero-Exports** | Export the orthomosaic and the DEM with short file names, in several formats, pixel sizes and coordinate systems. | [Aero-Exports guide](docs/tools/aero-exports.md) |
 | **Aero-L3** | Turn the photos of a DJI Zenmuse L3 into a Metashape chunk ready to align: both lenses, positions with their accuracy, and a starting orientation that keeps the pictures from coming out flipped. | [Aero-L3 guide](docs/tools/aero-l3.md) |
 
+<table>
+  <tr>
+    <td width="50%"><a href="docs/tools/aero-space.md"><img alt="Aero-Space lists the heaviest Metashape projects on a drive" src="docs/images/aero-space/01-scan.png"></a></td>
+    <td width="50%"><a href="docs/tools/aero-exports.md"><img alt="Aero-Exports writes the ortho and the DEM, including an AutoCAD drawing" src="docs/images/aero-exports/01-window.png"></a></td>
+  </tr>
+</table>
+
 ## Install
 
 You need Metashape Pro 2.x on Windows.
 
 1. Click **Download latest stable version** at the top of this page (or **Download latest dev version** to try the newest changes, or clone this repository), and unzip it anywhere you like.
-2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). It installs the **Aero** menu and the code the tools share, and nothing else (a few seconds: about 1 MB on the stable version, about 26 MB on the dev version).
+2. Double-click **`CLICK HERE TO INSTALL.bat`** (at the root of the unzipped folder). It installs the **Aero** menu and the code the tools share, and nothing else (a few seconds, about 27 MB).
 3. Restart Metashape and open **Aero > Install plugins...**: every tool is listed with an **Install** button. Pick the ones you need; each one downloads only its own files
    (a tool that needs another one brings it, and says so). **Aero-GCP** asks which AI detection you want first (none, light, precise or both).
    Tools can be updated or removed from the same window.
@@ -96,7 +103,7 @@ into `%LOCALAPPDATA%\Agisoft\Metashape Pro\scripts\`. Nothing else is touched.
 
 - Windows, and Metashape Pro 2.x. We use it daily with Metashape 2.2.
 - An internet connection to install the tools and to update them.
-- Disk space: all the tools together take about 35 MB (stable version) or about 60 MB (dev version), without the optional AI engines below.
+- Disk space: all the tools together take about 60 MB, without the optional AI engines below.
 - Aero-GCP, optional AI detection: a separate light Python (ONNX Runtime), about 100 MB, no graphics card needed. A precise engine
   (PyTorch, about 3 GB) and retraining tools (about 3 GB) are optional. Hand marking works without any of them.
   See the [troubleshooting table](docs/tools/aero-gcp.md#troubleshooting) if the detection does not start.
