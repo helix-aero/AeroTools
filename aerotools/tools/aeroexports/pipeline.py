@@ -16,9 +16,25 @@ import shutil
 import tempfile
 
 from ... import projtool
-from . import crs, dxfout, external, footprint, geotiff, look as looks, naming, plan, relief, tiling, vertical
+from . import crs, dxfout, external, geotiff, look as looks, naming, plan, tiling
+
+
+class _Needs(object):
+    """A module that needs numpy, imported on first use: the exports that do not need it (plain GeoTIFF, JPEG, JP2, ECW) run on a
+    Metashape without numpy. Using it there raises ImportError, which `run_job` turns into a readable Failure."""
+
+    def __init__(self, name):
+        self._name = name
+
+    def __getattr__(self, attr):
+        import importlib
+        return getattr(importlib.import_module("." + self._name, __package__), attr)
+
+
+footprint, relief, vertical = _Needs("footprint"), _Needs("relief"), _Needs("vertical")
 
 TMP_NAME = ".aeroexports_tmp"
+WORK_MARKER = ".aeroexports_work"       # written in every work folder this module creates: a folder without it is never swept
 
 
 class Failure(Exception):
@@ -44,6 +60,7 @@ class Context(object):
         self.native = False
         self.vertical, self.proj, self.epsg = vertical, proj, epsg   # height grid (id), PROJ engine, EPSG of the output CRS
         self.look = looks.normalized(look if look is not None else looks.DEFAULT)   # palette / shading of the DEM image
+        self.all_jobs = None                              # every file of the export (set by `run`): tiles are numbered on one grid
         self.failed = ""                                  # name of the file being written: the one that failed if `run` raises
 
 
@@ -143,16 +160,42 @@ def _grid(ctx, job):
     return pixel, ctx.snap(box, pixel)
 
 
+def _frame(ctx, job):
+    """The grid every file of this export is cut on: (tile size, absolute index of the first column, of the last row, number of
+    columns, number of rows). One size (valid for the pixels of ALL the files) and one origin (the union of their extents), so a
+    tile of the orthomosaic and the tile of the DTM that carry the same R..C.. cover the same ground."""
+    peers = [peer for peer in (getattr(ctx, "all_jobs", None) or [job]) if peer.kind in plan.KINDS]
+    pixels, boxes = [], []
+    for peer in peers:
+        _pixel, box = _grid(ctx, peer)
+        if box:
+            pixels.append(pixel_of(ctx, peer))
+            boxes.append(box)
+    size, _exact = tiling.snap_tile_size(ctx.tile_m, pixels)
+    left, bottom = min(b[0] for b in boxes), min(b[1] for b in boxes)
+    right, top = max(b[2] for b in boxes), max(b[3] for b in boxes)
+    first_x = int(tiling.floor_to(left, size) / size)
+    first_y = int(tiling.floor_to(bottom, size) / size)
+    last_y = int(tiling.ceil_to(top, size) / size)          # exclusive
+    last_x = int(tiling.ceil_to(right, size) / size)
+    return size, first_x, first_y, last_x - first_x, last_y - first_y
+
+
 def _tiles(ctx, job, box):
-    """List of (name token or None, floating extent): a single tile if tiling is not requested."""
+    """List of (name token or None, floating extent): a single tile if tiling is not requested. The numbers R..C.. count from the
+    common frame of all the files (`_frame`), not from the extent of this one raster."""
     if not ctx.tile_m or not box:
         return [(None, box)]
     pixel = pixel_of(ctx, job)
-    size, _exact = tiling.snap_tile_size(ctx.tile_m, [pixel])
+    size, first_x, first_y, n_cols, n_rows = _frame(ctx, job)
     tiles = tiling.tile_grid(box, size, pixel_sizes=(pixel,), edge="crop")
-    rows = max(t.row for t in tiles)
-    cols = max(t.col for t in tiles)
-    return [(tiling.tile_name(t, "rc", rows, cols), tuple(float(v) for v in t.bounds)) for t in tiles]
+    origin_x, origin_y = tiling.grid_origin(tiles)
+    shift_x, shift_y = int(origin_x / size) - first_x, int(origin_y / size) - first_y
+    out = []
+    for tile in tiles:
+        shared = tile._replace(row=n_rows - (tile.iy + shift_y), col=tile.ix + shift_x + 1)
+        out.append((tiling.tile_name(shared, "rc", n_rows, n_cols), tuple(float(v) for v in tile.bounds)))
+    return out
 
 
 def _named(ctx, job, kind, ext, token):
@@ -160,11 +203,26 @@ def _named(ctx, job, kind, ext, token):
                              date_style=ctx.date_style)
 
 
-def _big(ctx, job):
+def _view_named(ctx, job, ext, token):
+    """Name of the picture of a DEM tile: the DEM's own name in the picture format (a GeoTIFF picture gets "_view")."""
+    return plan.picture_name(_named(ctx, job, plan.DEM, "tif", token), ext)
+
+
+def exported_size(ctx, job, pixel, box):
+    """(width, height) in pixels of the raster Metashape is asked for: the extent over the pixel when the grid is imposed (finer pixel,
+    other CRS, a tile), else the native size. None when unknown."""
+    if pixel and box:
+        return (int(math.ceil((box[2] - box[0]) / float(pixel) - 1e-6)), int(math.ceil((box[3] - box[1]) / float(pixel) - 1e-6)))
     found = ctx.info.get(job.kind)
-    if not found:
+    return (found[1], found[2]) if found else None
+
+
+def _big(ctx, job, pixel=None, box=None):
+    """BigTIFF (more than 4 GB of raw samples) decided on the size that is exported, not on the native one."""
+    size = exported_size(ctx, job, pixel, box)
+    if not size:
         return False
-    return plan.needs_bigtiff(found[1], found[2], 4 if job.kind == plan.ORTHO else 1, 1 if job.kind == plan.ORTHO else 4)
+    return plan.needs_bigtiff(size[0], size[1], 4 if job.kind == plan.ORTHO else 1, 1 if job.kind == plan.ORTHO else 4)
 
 
 def _record(ctx, raw, layer, final):
@@ -185,6 +243,29 @@ def _commit(staged, final):
         os.replace(staged, final)
     except OSError as exc:
         raise Failure("Cannot overwrite %s: %s" % (os.path.basename(final), exc))
+
+
+def size_problems(ctx, jobs):
+    """Readable reasons why a file of the list cannot be written as asked (libjpeg refuses an image more than 65 500 px on a side: the
+    check of tiling.tile_size_warnings, run on the planned grid, before Metashape works for minutes). [] when all is fine."""
+    problems = []
+    for job in jobs:
+        picture = job.kind == plan.DEM and (job.extra or {}).get("view_ext") == "jpg"
+        if (job.spec.get("image") != "jpeg" and not picture) or job.spec.get("post") or ctx.preset == plan.CAD:
+            continue
+        pixel, box = _grid(ctx, job)
+        for token, tile_box in (_tiles(ctx, job, box) if box else [(None, None)]):
+            size = exported_size(ctx, job, pixel, tile_box or box)
+            if not size:
+                continue
+            for key, text in tiling.tile_size_warnings(size[0], size[1], 3, 1, "jpeg"):
+                if key == "side_limit":
+                    problems.append("%s: %s. Cut it into tiles or choose GeoTIFF." % (job.name, text))
+                    break
+            else:
+                continue
+            break
+    return problems
 
 
 def run_job(ctx, job, work, report, result, images):
@@ -230,7 +311,7 @@ def run_job(ctx, job, work, report, result, images):
         # The work folder is new: no file left by an earlier export (maybe of another chunk) can pass for this one.
         ctx.native = True
         try:
-            ok, error = ctx.export(ctx.chunk, job.kind, raw_spec, raw, pixel, tile_box, big=_big(ctx, job), progress=None,
+            ok, error = ctx.export(ctx.chunk, job.kind, raw_spec, raw, pixel, tile_box, big=_big(ctx, job, pixel, tile_box), progress=None,
                                    crs=ctx.crs, clip_to_boundary=ctx.clip_boundary)
         finally:
             ctx.native = False
@@ -260,7 +341,8 @@ def run_job(ctx, job, work, report, result, images):
             images.append(record)
         if job.kind == plan.DEM and extra.get("view_path"):       # CAD, or the coloured picture asked next to a JP2 / ECW export
             _dem_image(ctx, job, raw, token, work, date_text, pixel_text, result, images if is_cad else None)
-        if direct:
+        values = plan.values_wanted(job)                      # False: only the coloured picture of the DEM was asked
+        if direct and values:
             _commit(raw, final)
             for name in plan.aux_names(os.path.basename(final), spec):      # .jgw / .prj of a JPEG: written next to the file
                 side = os.path.join(work, name)
@@ -269,11 +351,13 @@ def run_job(ctx, job, work, report, result, images):
         else:
             os.remove(raw)
         # the files of this tile, listed before the picture of the DEM (written by _dem_image) as they always were
-        written = [(final, os.path.getsize(final))]
-        for name in plan.aux_names(os.path.basename(final), spec):
-            side = os.path.join(folder, name)
-            if os.path.isfile(side):
-                written.append((side, os.path.getsize(side)))
+        written = []
+        if values:
+            written.append((final, os.path.getsize(final)))
+            for name in plan.aux_names(os.path.basename(final), spec):
+                side = os.path.join(folder, name)
+                if os.path.isfile(side):
+                    written.append((side, os.path.getsize(side)))
         result.files[position:position] = written
     for name in skipped:                                  # the export went through: a tile of an older export that has no data now
         if os.path.isfile(name):                          # would be an orphan next to the new ones
@@ -327,7 +411,7 @@ def _clip_ortho(ctx, raw, work, record, result):
         mask_info = geotiff.read_geotiff(mask_path)
         record["clip"] = footprint.clip_polygon(footprint.alpha_mask(mask_path), geotiff.extent(mask_info), info) or None
         os.remove(mask_path)
-    except (ValueError, OSError, TypeError):
+    except (ValueError, OSError, TypeError, ImportError):
         _clip_warning(result)
 
 
@@ -342,7 +426,7 @@ def _clip_dem(ctx, dem_tif, view_tif, record, result):
         left, top = dem["origin"]
         extent = (left, top - mask.shape[0] * step * dem["pixel"][1], left + mask.shape[1] * step * dem["pixel"][0], top)
         record["clip"] = footprint.clip_polygon(mask, extent, geotiff.read_geotiff(view_tif)) or None
-    except (ValueError, OSError, TypeError):
+    except (ValueError, OSError, TypeError, ImportError):
         _clip_warning(result)
 
 
@@ -361,12 +445,28 @@ def _dem_image(ctx, job, dem_tif, token, work, date_text, pixel_text, result, im
     (`images` is None)."""
     extra = job.extra
     view_tif = os.path.join(work, os.path.splitext(os.path.basename(dem_tif))[0] + "_view.tif")
+    view_final = os.path.join(os.path.dirname(extra["view_path"]), _view_named(ctx, job, extra["view_ext"], token))
+    if extra["view_ext"] == "jpg":                        # JPEG + world file, written by relief itself (no external tool)
+        view_jpg = os.path.splitext(view_tif)[0] + ".jpg"
+        ok, message = relief.render(dem_tif, view_jpg, look=_look_for(ctx, result), tick=ctx.tick, jpeg=True)
+        _drop_sidecar(dem_tif)
+        if not ok:
+            raise Failure(message)
+        _commit(view_jpg, view_final)
+        result.files.append((view_final, os.path.getsize(view_final)))
+        world = os.path.splitext(view_final)[0] + ".jgw"
+        _commit(os.path.splitext(view_jpg)[0] + ".jgw", world)
+        result.files.append((world, os.path.getsize(world)))
+        return
     ok, message = relief.render(dem_tif, view_tif, look=_look_for(ctx, result), tick=ctx.tick)
     _drop_sidecar(dem_tif)
     if not ok:
         raise Failure(message)
-    view_final = os.path.join(os.path.dirname(extra["view_path"]), _named(ctx, job, plan.DEM, extra["view_ext"], token))
     # the coloured relief is an RGB GeoTIFF: it follows the same path as the orthomosaic (GDAL first, or Global Mapper)
+    if extra["view_ext"] == "tif":                        # the picture is the RGB GeoTIFF itself: no converter
+        _commit(view_tif, view_final)
+        result.files.append((view_final, os.path.getsize(view_final)))
+        return
     _convert(ctx, extra["view_ext"], view_tif, view_final, work)
     result.files.append((view_final, os.path.getsize(view_final)))
     if images is not None:
@@ -385,16 +485,29 @@ def run(ctx, jobs, progress):
     result = Result()
     if not jobs:
         return result
+    ctx.all_jobs = list(jobs)                             # the tiles of every file are numbered on one common grid
+    problems = size_problems(ctx, jobs)
+    if problems:
+        raise Failure(problems[0])
     os.makedirs(ctx.folder, exist_ok=True)
+    sweep_stale(ctx.folder)
     work = tempfile.mkdtemp(prefix=TMP_NAME, dir=ctx.folder)
+    try:
+        with open(os.path.join(work, WORK_MARKER), "w") as handle:
+            handle.write("work folder of an Aero-Exports run")
+    except OSError:
+        pass
     images = []
     total = len(jobs)
     try:
         for index, job in enumerate(jobs):
             ctx.failed = job.name
             progress(index / float(total), job.name)
-            run_job(ctx, job, work, lambda part, index=index: progress((index + part) / float(total), job.name), result,
-                    images)
+            try:
+                run_job(ctx, job, work, lambda part, index=index: progress((index + part) / float(total), job.name), result,
+                        images)
+            except ImportError as exc:
+                raise Failure("This export needs numpy, which this Metashape does not include (%s)" % exc)
         progress(1.0, "")
         if ctx.preset == plan.CAD:
             _write_cad(ctx, jobs, images, result, work)
@@ -402,6 +515,46 @@ def run(ctx, jobs, progress):
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return result
+
+
+STALE_SECONDS = 24 * 3600
+
+
+def _is_link(path):
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return True
+    return os.path.islink(path) or bool(getattr(st, "st_file_attributes", 0) & 0x400)
+
+
+def sweep_stale(folder, now=None):
+    """Remove the work folders (and half-written DWG) that an export killed in the middle left in the Outputs folder: names that start
+    with TMP_NAME and not touched for a day. Never a recent one (another export may be running). Returns the number removed."""
+    import time
+    now = time.time() if now is None else now
+    removed = 0
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return 0
+    for name in names:
+        path = os.path.join(folder, name)
+        if not name.startswith(TMP_NAME):
+            continue
+        try:
+            if _is_link(path) or now - os.path.getmtime(path) < STALE_SECONDS:
+                continue                                      # a link or junction is never followed
+            if os.path.isdir(path):
+                if not os.path.isfile(os.path.join(path, WORK_MARKER)):
+                    continue                                  # not made by us: a user's folder that happens to start the same
+                shutil.rmtree(path)
+            else:
+                os.remove(path)
+            removed += 1
+        except OSError:
+            continue
+    return removed
 
 
 def _write_cad(ctx, jobs, images, result, work):

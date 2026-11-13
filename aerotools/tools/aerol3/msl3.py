@@ -35,6 +35,13 @@ TIEPOINT_LIMIT = 10000
 REPAIR_PASSES = 2
 
 
+def _is_signature_error(exc):
+    """True when a TypeError of a Metashape call says that the arguments are not those the function takes (boost.python writes 'did not
+    match C++ signature', Python writes 'unexpected keyword argument')."""
+    text = str(exc).lower()
+    return "unexpected keyword" in text or "did not match c++ signature" in text or "no such keyword" in text
+
+
 def log(message):
     journal.write("Aero-L3: " + message, tag=TAG)
 
@@ -139,6 +146,7 @@ class MetashapeL3Backend(Backend):
     """Creates the chunk of a plan in the open Metashape project and carries out the ticked steps."""
 
     threaded = False
+    xmp_flags_ignored = False          # True once Metashape refused the flags that stop it from reading the XMP (older API)
 
     def __init__(self, pump=None):
         self.doc = Metashape.app.document
@@ -278,7 +286,13 @@ class MetashapeL3Backend(Backend):
         try:
             try:
                 chunk.addPhotos(**dict(base, **flags))
-            except TypeError:                                   # an older API without these names: the defaults (angles not read) are close
+            except TypeError as exc:
+                if not _is_signature_error(exc):             # any other TypeError is a real mistake: never hide it by dropping the flags
+                    raise
+                # An older API without these names. Metashape then reads the XMP itself; the tool overwrites the references and the
+                # calibrations afterwards, and says so in the journal.
+                self.xmp_flags_ignored = True
+                log("addPhotos does not know the flags that stop Metashape from reading the XMP: {}".format(exc))
                 chunk.addPhotos(**base)
         except KeyboardInterrupt:
             raise Cancelled()
@@ -584,15 +598,26 @@ class MetashapeL3Backend(Backend):
         proj.crs = Metashape.CoordinateSystem(epsg)
         return proj, epsg
 
+    @staticmethod
+    def _resolution(plan):
+        """The pixel the operator chose (screen 4, in centimetres) as Metashape's `resolution` (metres, the projection is in metres);
+        nothing when it is not a positive number, so Metashape then picks its own."""
+        try:
+            pixel = float(plan.options.pixel_cm) / 100.0
+        except (AttributeError, TypeError, ValueError):
+            return {}
+        return {"resolution": pixel} if pixel > 0 else {}
+
     def _dem(self, chunk, plan, prog, result):
         proj, epsg = self._projection(chunk, plan)
         self._call(prog, 0.0, 0.7, T("l3.run.depth_maps"), chunk.buildDepthMaps, downscale=4, filter_mode=Metashape.MildFiltering)
-        self._call(prog, 0.7, 1.0, T("l3.run.dem"), chunk.buildDem, source_data=Metashape.DepthMapsData, projection=proj)
+        self._call(prog, 0.7, 1.0, T("l3.run.dem"), chunk.buildDem, source_data=Metashape.DepthMapsData, projection=proj,
+                   **self._resolution(plan))
         return StepResult("dem", True, T("l3.run.dem_done", crs=str(epsg).replace("::", ":")))
 
     def _ortho(self, chunk, plan, prog, result):
         proj, epsg = self._projection(chunk, plan)
         kwargs = dict(surface_data=Metashape.ElevationData, blending_mode=Metashape.MosaicBlending, fill_holes=True, refine_seamlines=False,
-                      projection=proj)
+                      projection=proj, **self._resolution(plan))
         self._call(prog, 0.0, 1.0, T("l3.run.ortho"), chunk.buildOrthomosaic, **kwargs)
         return StepResult("ortho", True, T("l3.run.ortho_done", crs=str(epsg).replace("::", ":")))

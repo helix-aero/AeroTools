@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # AeroTools - launcher written by install_aerotools.bat. Do not edit by hand.
 # Metashape runs this file at every start. The path below is written at install
 # time (__file__ is not reliable in this context).

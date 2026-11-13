@@ -14,8 +14,6 @@ import os
 import sqlite3
 import subprocess
 
-import numpy as np
-
 VENDOR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor", "proj")
 CHUNK = 100000                       # points per call
 NO_WINDOW = 0x08000000               # CREATE_NO_WINDOW (Windows)
@@ -28,10 +26,30 @@ MODERN_GLOBAL = ("reseau geodesique francais 1993", "european terrestrial refere
                  "japanese geodetic datum 2011", "jgd2011")
 
 _db_cache = {}
+_BAD_GRID_CHARS = (" ", chr(9), "/", ";", chr(92))      # a grid is a bare file name: a space would split the PROJ string
 
 
 class ProjError(Exception):
     """Readable failure of a PROJ call."""
+
+
+def _numpy():
+    """numpy, imported when a conversion runs: this module (and the tools that import it) loads on a Metashape without numpy."""
+    try:
+        import numpy
+    except ImportError:
+        raise ProjError("the Python package numpy is not available in this Metashape")
+    return numpy
+
+
+def close_db():
+    """Close the cached proj.db connections (the file stays locked on Windows while one is open)."""
+    for path in list(_db_cache):
+        connection = _db_cache.pop(path)
+        try:
+            connection.close()
+        except Exception:
+            pass
 
 
 def proj_db():
@@ -118,6 +136,7 @@ class Proj(object):
 
     def _columns(self, name, args, rows, width):
         """Run `name` on `rows` (n x k array) in batches; returns an (n, width) array of floats (NaN where PROJ gives up)."""
+        np = _numpy()
         rows = np.asarray(rows, dtype=np.float64)
         out = np.full((len(rows), width), np.nan)
         for start in range(0, len(rows), CHUNK):
@@ -145,6 +164,7 @@ class Proj(object):
 
     def lonlat(self, epsg, xs, ys):
         """(longitudes, latitudes) in degrees of the points (xs, ys) of CRS `epsg`, in its geographic frame."""
+        np = _numpy()
         xs, ys = np.asarray(xs, dtype=np.float64).ravel(), np.asarray(ys, dtype=np.float64).ravel()
         rows = np.column_stack([xs, ys, np.zeros(len(xs))])
         out = self._columns("cs2cs", ["-d", "9", "EPSG:%d" % int(epsg), "EPSG:%d" % geographic_epsg(epsg)], rows, 3)
@@ -152,6 +172,9 @@ class Proj(object):
 
     def vertical_shift(self, grid_file, lons, lats):
         """Shift (metres) to add to an ellipsoidal height to get the altitude, at the given points: `-N`. NaN outside the grid."""
+        np = _numpy()
+        if any(char in str(grid_file) for char in _BAD_GRID_CHARS):
+            raise ProjError("grid file name must be a bare name found through PROJ_DATA: %r" % (grid_file,))
         lons, lats = np.asarray(lons, dtype=np.float64).ravel(), np.asarray(lats, dtype=np.float64).ravel()
         rows = np.column_stack([lons, lats, np.zeros(len(lons)), np.zeros(len(lons))])
         args = ["-d", "6", "+proj=pipeline", "+step", "+inv", "+proj=vgridshift", "+grids=%s" % grid_file, "+multiplier=1"]

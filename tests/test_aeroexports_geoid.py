@@ -149,7 +149,7 @@ def test_the_tiff_reader_refuses_what_it_does_not_know(tmp_path):
 
 # -- a DTM (hand-written TIFF, like Metashape's: Deflate tiles, georeferencing, nodata) ----------------
 
-def make_dem(path, array, x0, y0, pixel, nodata=-32767.0, tile=16):
+def make_dem(path, array, x0, y0, pixel, nodata=-32767.0, tile=16, geographic=False):
     """Float32 GeoTIFF with Deflate tiles, PixelIsArea, like Metashape's."""
     import zlib
     height, width = array.shape
@@ -169,7 +169,7 @@ def make_dem(path, array, x0, y0, pixel, nodata=-32767.0, tile=16):
     values = {256: (4, [width]), 257: (4, [height]), 258: (3, [32]), 259: (3, [8]), 262: (3, [1]), 277: (3, [1]),
               322: (4, [tile]), 323: (4, [tile]), 324: (4, offsets), 325: (4, [len(b) for b in blocks]), 339: (3, [3]),
               33550: (12, [pixel, pixel, 0.0]), 33922: (12, [0.0, 0.0, 0.0, x0, y0, 0.0]),
-              34735: (3, [1, 1, 0, 3, 1024, 0, 1, 1, 1025, 0, 1, 1, 3072, 0, 1, 3942])}
+              34735: (3, [1, 1, 0, 3, 1024, 0, 1, 2 if geographic else 1, 1025, 0, 1, 1, 3072, 0, 1, 3942])}
     codes = {3: "H", 4: "I", 12: "d"}
     entries, extra = [], b""
     ifd = cursor + (cursor % 2)

@@ -18,11 +18,10 @@ Each decision is applied to the project right away. No direct call to Metashape:
 everything goes through review.py and msapi.
 """
 
-from ... import config, i18n, journal, msapi, theme
+from ... import config, i18n, journal, msapi, uikit
 from ...qt import QShortcut, QtCore, QtGui, QtWidgets, modifiers
-from ... import controls
-from ... import dialogs
-from . import adjust_panel, imageadjust, photos, review
+from ...uikit import tokens
+from . import adjust_panel, imageadjust, photos, review, widgets
 
 SECTION = "aigcp"
 THUMB_KEY = "review_thumb"
@@ -30,28 +29,11 @@ ZOOM_KEY = "review_zoom"
 DEFAULT_THUMB = 170
 MIN_THUMB, MAX_THUMB, THUMB_STEP = 96, 360, 20
 DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM, ZOOM_STEP = 100, 50, 400, 25
-SCROLL_ROOM = 16                      # room for the right panel's scroll bar
-PREVIEW = 190                         # selected photo, at the top of the right panel (230 px minus margins, a bit less to fit in height)
+PREVIEW = 150                         # selected photo, at the top of the right panel
 REFRESH_MS = 70                       # wait after an adjustment before repainting the images
-VIEW_MIN = 560                        # minimum side of the large refinement view
+VIEW_MIN = 480                        # minimum side of the large refinement view
 VIEW_ZOOM_STEP = 0.8                  # one wheel notch in the refinement view
 ROLE_ENTRY = QtCore.Qt.UserRole
-
-
-def _styled_root(dialog):
-    """Inner widget that carries the panel's background and styles.
-
-    As in the FastGCP panel: under Metashape, a QDialog does not paint the wanted
-    background, an inner QWidget does.
-    """
-    root = QtWidgets.QWidget()
-    root.setObjectName("aeroPanel")
-    root.setAttribute(QtCore.Qt.WA_StyledBackground, True)
-    root.setStyleSheet(theme.stylesheet())
-    outer = QtWidgets.QVBoxLayout(dialog)
-    outer.setContentsMargins(0, 0, 0, 0)
-    outer.addWidget(root)
-    return root
 
 
 def _exec(dialog, *args):
@@ -74,28 +56,6 @@ def zoom_percent():
     return _saved(ZOOM_KEY, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM)
 
 
-def _button(text_key, handler, object_name="aeroGhost", width=96):
-    button = QtWidgets.QPushButton(i18n.t(text_key))
-    button.setObjectName(object_name)
-    button.setProperty("pill", True)
-    button.setCursor(QtCore.Qt.PointingHandCursor)
-    button.setFixedHeight(32)
-    button.setMinimumWidth(width)
-    button.setAutoDefault(False)
-    button.clicked.connect(lambda *_args: handler())
-    return button
-
-
-def _restyle(widget, object_name):
-    """Changes a widget's objectName and re-applies its style (QSS)."""
-    if widget.objectName() == object_name:
-        return
-    widget.setObjectName(object_name)
-    style = widget.style()
-    style.unpolish(widget)
-    style.polish(widget)
-
-
 def _timer(parent, handler):
     timer = QtCore.QTimer(parent)
     timer.setSingleShot(True)
@@ -111,17 +71,20 @@ def _event_pos(event):
 
 def _cross(painter, x, y, arm, gap, color, width):
     """Four-arm cross around (x, y), with a gap at the centre to see the target."""
-    pen = QtGui.QPen(QtGui.QColor(*color))
+    pen = QtGui.QPen(QtGui.QColor(color))
     pen.setWidth(width)
     painter.setPen(pen)
     for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
         painter.drawLine(int(x + dx * gap), int(y + dy * gap), int(x + dx * arm), int(y + dy * arm))
 
 
-_RED = (255, 74, 46)
-_GREEN = (60, 220, 120)
-_DARK_RED = (225, 55, 55)
-_WHITE = (255, 255, 255)
+
+
+def _shade(color, alpha):
+    """A kit colour with some transparency (the dark veils over a photo)."""
+    out = QtGui.QColor(color)
+    out.setAlpha(alpha)
+    return out
 EXCLUDABLE = (review.KEPT, review.ACCEPTED, review.REFINED)    # a point can also be excluded after validation
 STATUS_TEXTS = {review.KEPT: "review.status_kept", review.REMOVED: "review.status_removed",
                 review.REFINED: "review.status_refined", review.ACCEPTED: "review.status_accepted"}
@@ -156,12 +119,12 @@ def _badge(painter, size, state):
     painter.save()
     painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
     if state == review.REMOVED:
-        fill, mark = QtGui.QColor(*_DARK_RED), QtGui.QColor(*_WHITE)
+        fill, mark = QtGui.QColor(tokens.DANGER_SOLID), QtGui.QColor(tokens.TEXT_STRONG)
     elif state == review.REFINED:
-        fill, mark = QtGui.QColor(*_GREEN), QtGui.QColor(*_WHITE)
+        fill, mark = QtGui.QColor(tokens.ACCENT), QtGui.QColor(tokens.ON_ACCENT)
     else:
-        fill, mark = QtGui.QColor(30, 30, 30, 200), QtGui.QColor(*_GREEN)
-    painter.setPen(QtGui.QPen(QtGui.QColor(*_GREEN), 1.5) if state == review.ACCEPTED else QtCore.Qt.NoPen)
+        fill, mark = _shade(tokens.BG, 220), QtGui.QColor(tokens.ACCENT)
+    painter.setPen(QtGui.QPen(QtGui.QColor(tokens.ACCENT), 1.5) if state == review.ACCEPTED else QtCore.Qt.NoPen)
     painter.setBrush(fill)
     painter.drawEllipse(QtCore.QRectF(x, y, d, d))
     pen = QtGui.QPen(mark, max(1.6, d / 9.0))
@@ -183,7 +146,7 @@ def _badge(painter, size, state):
 def render_thumb(entry, size, zoom, cache, adjust=None):
     """Square thumbnail of `size` px: adjusted crop, cross on the AI point, status."""
     base = QtGui.QImage(size, size, QtGui.QImage.Format_RGB32)
-    base.fill(QtGui.QColor(45, 45, 45))
+    base.fill(QtGui.QColor(tokens.SURFACE))
     painter = QtGui.QPainter(base)
     try:
         painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
@@ -199,20 +162,20 @@ def render_thumb(entry, size, zoom, cache, adjust=None):
         if has_image:
             u, v = review.to_view(entry, entry["ai_x"], entry["ai_y"], size, zoom)
             arm, gap = max(8, size // 7), max(3, size // 40)
-            _cross(painter, u, v, arm, gap, _RED, 2)
+            _cross(painter, u, v, arm, gap, tokens.DANGER, 2)
             if entry["state"] == review.REFINED:
                 u, v = review.to_view(entry, entry["x"], entry["y"], size, zoom)
-                _cross(painter, u, v, arm, gap, _GREEN, 2)
+                _cross(painter, u, v, arm, gap, tokens.ACCENT, 2)
         else:
-            painter.setPen(QtGui.QColor(200, 200, 200))
+            painter.setPen(QtGui.QColor(tokens.TEXT_MUTED))
             painter.drawText(QtCore.QRect(0, 0, size, size), QtCore.Qt.AlignCenter,
                              i18n.t("review.no_crop"))
         # Confidence at the top left.
-        painter.fillRect(0, 0, 38, 16, QtGui.QColor(0, 0, 0, 150))
-        painter.setPen(QtGui.QColor(*_WHITE))
+        painter.fillRect(0, 0, 38, 16, _shade(tokens.BG, 200))
+        painter.setPen(QtGui.QColor(tokens.TEXT_STRONG))
         painter.drawText(4, 12, "{:.2f}".format(entry["conf"]))
         if entry["state"] == review.REMOVED:
-            painter.fillRect(0, 0, size, size, QtGui.QColor(0, 0, 0, 120))
+            painter.fillRect(0, 0, size, size, _shade(tokens.BG, 150))
         _badge(painter, size, entry["state"])
     finally:
         painter.end()
@@ -313,7 +276,7 @@ class _RefineView(QtWidgets.QWidget):
     def paintEvent(self, event):
         painter = QtGui.QPainter(self)
         try:
-            painter.fillRect(self.rect(), QtGui.QColor(45, 45, 45))
+            painter.fillRect(self.rect(), QtGui.QColor(tokens.SURFACE))
             if self._entry is None:
                 return
             if self._image is not None and not self._image.isNull():
@@ -328,111 +291,49 @@ class _RefineView(QtWidgets.QWidget):
                                   self._image)
                 painter.restore()
             ai = self._to_widget(self._entry["ai_x"], self._entry["ai_y"])
-            _cross(painter, ai[0], ai[1], 26, 6, _RED, 2)
+            _cross(painter, ai[0], ai[1], 26, 6, tokens.DANGER, 2)
             if self._pick is None and self._current is not None:
                 u, v = self._to_widget(*self._current)
-                _cross(painter, u, v, 20, 5, (60, 220, 120), 1)
+                _cross(painter, u, v, 20, 5, tokens.ACCENT, 1)
             if self._pick is not None:
                 u, v = self._to_widget(*self._pick)
-                _cross(painter, u, v, 26, 4, _GREEN, 2)
+                _cross(painter, u, v, 26, 4, tokens.ACCENT, 2)
         finally:
             painter.end()
 
 
-class BusyDialog(controls.FollowsText, QtWidgets.QDialog):
-    """Small modal "applying" window with a progress bar.
-
-    Blocks the review window while the points are placed (no double click on
-    Validate). `step(done, total)` advances the bar and lets Qt repaint.
-    """
-
-    def __init__(self, text, parent=None):
-        super(BusyDialog, self).__init__(parent)
-        self.setModal(True)
-        self.setWindowTitle(i18n.t("review.busy_title"))
-        self.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.CustomizeWindowHint | QtCore.Qt.WindowTitleHint)
-        self.setFixedWidth(380)
-        root = _styled_root(self)
-        layout = QtWidgets.QVBoxLayout(root)
-        pad = theme.PAD * 2
-        layout.setContentsMargins(pad, pad, pad, pad)
-        layout.setSpacing(theme.PAD)
-        self.label = QtWidgets.QLabel(text)
-        self.label.setWordWrap(True)
-        layout.addWidget(self.label)
-        self.bar = QtWidgets.QProgressBar()
-        self.bar.setObjectName("aeroProgress")
-        self.bar.setTextVisible(False)
-        self.bar.setRange(0, 0)
-        layout.addWidget(self.bar)
-        self.note = QtWidgets.QLabel(i18n.t("review.busy_note"))
-        self.note.setObjectName("aeroMeta")
-        self.note.setWordWrap(True)
-        layout.addWidget(self.note)
-
-    def step(self, done, total):
-        if total > 0:
-            self.bar.setRange(0, total)
-            self.bar.setValue(min(done, total))
-        QtWidgets.QApplication.processEvents()
-
-    def open(self):
-        """Shows the window without blocking: the caller advances the bar with step()."""
-        self.show()
-        self.raise_()
-        QtWidgets.QApplication.processEvents()
+BusyDialog = widgets.BusyDialog
 
 
-class RefineDialog(QtWidgets.QDialog):
+class RefineDialog(uikit.ToolWindow):
     """Modal refinement window: all the chosen thumbnails, one after the other.
 
     The points are only placed on "Validate"; `picks()` returns them. "Cancel" places none.
     """
+    MARK = "tool_gcp"
+    DESIGN_SIZE = (1100, 740)
 
     def __init__(self, entries, zoom, model, parent=None):
-        super(RefineDialog, self).__init__(parent)
+        super(RefineDialog, self).__init__(parent, title=i18n.t("review.title"), modal=True)
         self._entries = list(entries)
         self._zoom = zoom
         self._model = model
         self._picks = {}
         self._index = 0
         self._source = None
-        root = _styled_root(self)
-        self.resize(1010, 760)
-        layout = QtWidgets.QVBoxLayout(root)
-        layout.setContentsMargins(theme.PAD_L, theme.PAD_L, theme.PAD_L, theme.PAD_L)
-        layout.setSpacing(theme.PAD)
 
-        self.header = QtWidgets.QLabel()
-        self.header.setObjectName("aeroValue")
-        layout.addWidget(self.header)
-
-        body = QtWidgets.QHBoxLayout()
-        body.setSpacing(theme.PAD)
+        body = QtWidgets.QWidget()
+        row = uikit.hbox(spacing=tokens.M, parent=body)
         self.view = _RefineView(self._on_pick)
-        body.addWidget(self.view, 1)
+        row.addWidget(self.view, 1)
         self.panel = adjust_panel.AdjustPanel(model, hint_key="review.refine_hint")
-        body.addWidget(self.panel, 0)
-        layout.addLayout(body, 1)
+        row.addWidget(self.panel, 0)
+        self.set_content(body)
 
-        bottom = QtWidgets.QHBoxLayout()
-        bottom.setSpacing(theme.PAD)
-        self.progress = QtWidgets.QProgressBar()
-        self.progress.setObjectName("aeroProgress")
-        self.progress.setTextVisible(False)
-        self.progress.setRange(0, max(1, len(self._entries)))
-        bottom.addWidget(self.progress, 1)
-        self.progress_label = QtWidgets.QLabel()
-        self.progress_label.setObjectName("aeroMeta")
-        self.progress_label.setMinimumWidth(110)
-        bottom.addWidget(self.progress_label)
-        self.cancel_button = _button("review.refine_cancel", self.reject)
-        self.next_button = _button("review.refine_next", self._next)
-        self.validate_button = _button("review.refine_validate_exit", self.accept, width=150)
-        # Windows order: the positive action on the left, Cancel on the far right.
-        for button in (self.validate_button, self.next_button, self.cancel_button):
-            bottom.addWidget(button)
-        layout.addLayout(bottom)
+        self.skip_button = self.footer.add_left(uikit.button("review.refine_next", self._next))
+        self.set_primary(i18n.t("review.refine_validate_exit"), self.accept)
+        self.footer.show_progress(True)                      # the footer shows how many points are placed
+        self.footer.progress.set_cancellable(False)
 
         for key in ("Return", "Enter"):
             shortcut = QShortcut(QtGui.QKeySequence(key), self)
@@ -443,6 +344,15 @@ class RefineDialog(QtWidgets.QDialog):
         model.subscribe(self._on_model)
         self.finished.connect(lambda *_args: model.unsubscribe(self._on_model))
         self._show(0)
+
+    @property
+    def validate_button(self):
+        return self.next_button
+
+    def refresh_buttons(self, *args):
+        super(RefineDialog, self).refresh_buttons(*args)
+        if hasattr(self, "skip_button"):
+            self._update_state()                           # the shell re-enables the primary: Validate needs a point first
 
     # -- current entry --------------------------------------------------------------
 
@@ -456,8 +366,8 @@ class RefineDialog(QtWidgets.QDialog):
         self._source = source if source is not None and not source.isNull() else None
         text = i18n.t("review.refine_title", label=entry["label"], camera=entry["camera_label"])
         position = i18n.t("review.refine_photo", n=index + 1, total=len(self._entries))
-        self.header.setText("{}  ·  {}".format(text, position))
-        self.setWindowTitle("{} ({})".format(text, position))
+        self.set_title(text)
+        self.set_subtitle(position)
         side = review.view_rect(entry, self._zoom)[2]
         self.view.show_entry(entry, self._adjusted(), side, self._picks.get(index))
         self._update_state()
@@ -480,14 +390,11 @@ class RefineDialog(QtWidgets.QDialog):
 
     def _update_state(self):
         total, done = len(self._entries), len(self._picks)
-        self.progress.setValue(done)
-        self.progress_label.setText(i18n.t("review.refine_progress", done=done, total=total))
-        self.next_button.setEnabled(total > 1)
+        self.footer.progress.set_progress(done / float(max(1, total)), i18n.t("review.refine_progress", done=done, total=total))
+        self.skip_button.setEnabled(total > 1)
         complete = done == total
-        self.validate_button.setEnabled(done > 0)
-        self.validate_button.setText(i18n.t("review.refine_validate" if complete
-                                            else "review.refine_validate_exit"))
-        _restyle(self.validate_button, "aeroRun" if complete else "aeroGhost")
+        self.next_button.setEnabled(done > 0)
+        self.next_button.setText(i18n.t("review.refine_validate" if complete else "review.refine_validate_exit"))
 
     def _next(self):
         """Moves to the next thumbnail without a point (wrapping around); otherwise to the next one."""
@@ -527,6 +434,31 @@ class _PreviewLabel(QtWidgets.QLabel):
         super(_PreviewLabel, self).mousePressEvent(event)
 
 
+class _MarkerDelegate(QtWidgets.QStyledItemDelegate):
+    """A marker of the list: its name first, in the primary text colour and semibold; what is kept and how sure the AI is, muted after it."""
+
+    def paint(self, painter, option, index):
+        opt = QtWidgets.QStyleOptionViewItem(option)
+        self.initStyleOption(opt, index)
+        text, opt.text = opt.text, ""
+        widget = option.widget
+        (widget.style() if widget is not None else QtWidgets.QApplication.style()).drawControl(QtWidgets.QStyle.CE_ItemViewItem, opt, painter, widget)
+        name, _sep, rest = text.partition("   ")
+        rect = option.rect.adjusted(uikit.px(tokens.S), 0, -uikit.px(tokens.S), 0)
+        painter.save()
+        painter.setFont(uikit.metrics.font("body", strong=True))
+        painter.setPen(QtGui.QColor(tokens.TEXT_STRONG))
+        width = painter.fontMetrics().horizontalAdvance(name)
+        painter.drawText(rect, QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, name)
+        painter.setFont(uikit.metrics.font("small"))
+        painter.setPen(QtGui.QColor(tokens.TEXT_MUTED))
+        painter.drawText(rect.adjusted(width + uikit.px(tokens.S), 0, 0, 0), QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft, " ".join(rest.split()))
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        return QtCore.QSize(option.rect.width(), uikit.px(tokens.CONTROL_H))
+
+
 class _ThumbList(QtWidgets.QListWidget):
     """Thumbnail list: Ctrl + wheel = thumbnail size, Shift + wheel = zoom inside them."""
 
@@ -547,11 +479,14 @@ class _ThumbList(QtWidgets.QListWidget):
         super(_ThumbList, self).wheelEvent(event)
 
 
-class ReviewDialog(QtWidgets.QDialog):
+class ReviewDialog(uikit.ToolWindow):
     """Markers on the left, thumbnails in the middle, settings panel on the right. Non-modal."""
+    MARK = "tool_gcp"
+    CLOSE_ONLY = True
+    DESIGN_SIZE = (1240, 740)
 
     def __init__(self, state, rev, parent=None):
-        super(ReviewDialog, self).__init__(parent)
+        super(ReviewDialog, self).__init__(parent, title=i18n.t("review.title"))
         self.review = rev
         self._state = state
         self._cache = {}
@@ -559,21 +494,15 @@ class ReviewDialog(QtWidgets.QDialog):
         self._zoom = zoom_percent() / 100.0
         self._items = {}
         self.adjust = imageadjust.load()
-        root = _styled_root(self)
-        self.setWindowTitle(i18n.t("review.title"))
-        self.resize(1280, 820)
 
-        layout = QtWidgets.QVBoxLayout(root)
-        layout.setContentsMargins(theme.PAD_L, theme.PAD_L, theme.PAD_L, theme.PAD_L)
-        layout.setSpacing(theme.PAD)
-
-        body = QtWidgets.QHBoxLayout()
-        body.setSpacing(theme.PAD)
+        body = QtWidgets.QWidget()
+        layout = uikit.hbox(spacing=tokens.M, parent=body)
         self.markers = QtWidgets.QListWidget()
         self.markers.setObjectName("aeroThumbs")
-        self.markers.setFixedWidth(190)
+        self.markers.setFixedWidth(uikit.px(210))
+        self.markers.setItemDelegate(_MarkerDelegate(self.markers))
         self.markers.currentRowChanged.connect(self._on_marker)
-        body.addWidget(self.markers)
+        layout.addWidget(self.markers)
         self.thumbs = _ThumbList(self._resize_thumbs, self._step_zoom)
         self.thumbs.setObjectName("aeroThumbs")
         self.thumbs.setViewMode(QtWidgets.QListView.IconMode)
@@ -581,42 +510,23 @@ class ReviewDialog(QtWidgets.QDialog):
         self.thumbs.setMovement(QtWidgets.QListView.Static)
         self.thumbs.setUniformItemSizes(True)
         self.thumbs.setWordWrap(True)
-        self.thumbs.setSpacing(theme.PAD)
+        self.thumbs.setSpacing(uikit.px(tokens.S))
         # A click makes the photo active (top right); Ctrl or Shift + click to pick several.
         self.thumbs.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         self.thumbs.itemSelectionChanged.connect(self._update_buttons)
         self.thumbs.itemDoubleClicked.connect(self._on_double_click)
         self.thumbs.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.thumbs.customContextMenuRequested.connect(self._on_menu)
-        body.addWidget(self.thumbs, 1)
+        layout.addWidget(self.thumbs, 1)
         self._viewed = None
         self.panel = adjust_panel.AdjustPanel(self.adjust, top=self._build_top(), hint_key="review.hint")
-        # If the window is short, the panel scrolls: its sliders never overlap.
-        scroller = QtWidgets.QScrollArea()
-        scroller.setFrameShape(QtWidgets.QFrame.NoFrame)
-        scroller.setWidgetResizable(True)
-        scroller.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        scroller.setFixedWidth(self.panel.width() + SCROLL_ROOM)
-        scroller.setWidget(self.panel)
-        scroller.viewport().setAutoFillBackground(False)
-        self.panel.setAutoFillBackground(False)
-        body.addWidget(scroller, 0)
-        layout.addLayout(body, 1)
-
-        bottom = QtWidgets.QHBoxLayout()
-        bottom.setSpacing(theme.PAD)
-        self.exclude_button = _button("review.exclude", self._on_exclude)
-        self.restore_button = _button("review.restore", self._on_restore)
-        self.refine_button = _button("review.refine", self._on_refine)
-        for button in (self.exclude_button, self.restore_button, self.refine_button):
-            bottom.addWidget(button)
-        bottom.addStretch(1)
-        self.summary = QtWidgets.QLabel()
-        self.summary.setObjectName("aeroMeta")
-        bottom.addWidget(self.summary)
-        self.validate_button = _button("review.accept", self._on_accept)
-        bottom.addWidget(self.validate_button)
-        layout.addLayout(bottom)
+        layout.addWidget(self.panel, 0)
+        self.set_content(body)
+        # The three decisions on the selected thumbnails sit with Close; Validate (every kept point) is the primary.
+        self.exclude_button = self.footer.add_left(uikit.button("review.exclude", self._on_exclude))
+        self.restore_button = self.footer.add_left(uikit.button("review.restore", self._on_restore))
+        self.refine_button = self.footer.add_left(uikit.button("review.refine", self._on_refine))
+        self.set_primary(i18n.t("review.accept"), self._on_accept)
 
         for key, handler in (("Delete", self._on_exclude), ("Return", self._on_refine)):
             shortcut = QShortcut(QtGui.QKeySequence(key), self)
@@ -629,6 +539,19 @@ class ReviewDialog(QtWidgets.QDialog):
         self._update_zoom_label()
         self._fill_markers()
 
+    @property
+    def validate_button(self):
+        return self.next_button
+
+    @property
+    def summary(self):
+        return self.status
+
+    def refresh_buttons(self, *args):
+        super(ReviewDialog, self).refresh_buttons(*args)
+        if hasattr(self, "refine_button"):
+            self._update_buttons()                         # the shell re-enables the primary: Validate needs a kept point
+
     def showEvent(self, event):
         super(ReviewDialog, self).showEvent(event)
         # The window is reused after being closed: `finished` removed the settings subscription,
@@ -638,23 +561,18 @@ class ReviewDialog(QtWidgets.QDialog):
     def _build_top(self):
         """Top of the right panel: the selected photo enlarged, then the zoom."""
         box = QtWidgets.QWidget()
-        column = QtWidgets.QVBoxLayout(box)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(theme.PAD_S)
-        title = QtWidgets.QLabel(i18n.t("review.preview").upper())
-        title.setObjectName("aeroEyebrow")
+        column = uikit.vbox(spacing=tokens.S, parent=box)
+        title = uikit.label(i18n.t("review.preview"), "lead", wrap=False)
         column.addWidget(title)
         self.preview = _PreviewLabel(self._on_preview_click)
-        self.preview.setFixedSize(PREVIEW, PREVIEW)
+        self.preview.setFixedSize(uikit.px(PREVIEW), uikit.px(PREVIEW))
         self.preview.setAlignment(QtCore.Qt.AlignCenter)
         self.preview.setWordWrap(True)
-        self.preview.setStyleSheet("background: {}; border-radius: 4px; color: {};".format(theme.GROUND_3, theme.FG_3))
+        self.preview.setProperty("ui", "card")
+        self.preview.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         column.addWidget(self.preview)
-        self.preview_name = QtWidgets.QLabel()
-        self.preview_name.setObjectName("aeroMeta")
-        self.preview_name.setWordWrap(True)
+        self.preview_name = uikit.ElidedLabel("", "small", "muted")
         column.addWidget(self.preview_name)
-        column.addSpacing(theme.PAD_S)
         column.addWidget(self._build_zoom())
         self._update_preview()
         return box
@@ -694,53 +612,42 @@ class ReviewDialog(QtWidgets.QDialog):
         if entry is None:
             self.preview.setPixmap(QtGui.QPixmap())
             self.preview.setText(i18n.t("review.preview_none"))
-            self.preview_name.setText("")
+            self.preview_name.setFullText("")
             return
         self.preview.setPixmap(render_thumb(entry, PREVIEW, self._zoom, self._cache, self.adjust))
-        self.preview_name.setText("{} · {:.2f} · {}".format(
+        self.preview_name.setFullText("{} · {:.2f} · {}".format(
             entry["camera_label"], entry["conf"], i18n.t(STATUS_TEXTS[entry["state"]])))
 
     def _build_zoom(self):
         """Zoom row, under the selected photo: slimmer than a bar at the top of the window."""
         box = QtWidgets.QWidget()
-        column = QtWidgets.QVBoxLayout(box)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(2)
-        line = QtWidgets.QHBoxLayout()
-        name = QtWidgets.QLabel(i18n.t("review.zoom"))
-        name.setObjectName("aeroMeta")
-        self.zoom_label = QtWidgets.QLabel()
-        self.zoom_label.setObjectName("aeroMeta")
+        column = uikit.vbox(spacing=tokens.XS, parent=box)
+        line = uikit.hbox()
+        name = uikit.label(i18n.t("review.zoom"), "small", "muted", wrap=False)
+        self.zoom_label = uikit.label("", "small", "muted", wrap=False)
         self.zoom_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         line.addWidget(name, 1)
         line.addWidget(self.zoom_label, 0)
         column.addLayout(line)
-        row = QtWidgets.QHBoxLayout()
-        row.setSpacing(theme.PAD_S)
-        row.setAlignment(QtCore.Qt.AlignVCenter)
-        self.zoom_out = self._zoom_button("−", -ZOOM_STEP)
+        row = uikit.hbox(spacing=tokens.S)
+        self.zoom_out = self._zoom_button("minus", -ZOOM_STEP)
         row.addWidget(self.zoom_out, 0, QtCore.Qt.AlignVCenter)
         self.slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.slider.setObjectName("aeroSlider")
         self.slider.setRange(MIN_ZOOM, MAX_ZOOM)
         self.slider.setValue(int(round(self._zoom * 100)))
-        self.slider.setFixedHeight(26)           # same height as the buttons: everything is centred on the same line
+        self.slider.setFixedHeight(uikit.px(tokens.CONTROL_H))
         self.slider.valueChanged.connect(self._on_zoom)
         self.slider.sliderReleased.connect(self._save_zoom)
         row.addWidget(self.slider, 1, QtCore.Qt.AlignVCenter)
-        self.zoom_in = self._zoom_button("+", ZOOM_STEP)
+        self.zoom_in = self._zoom_button("plus", ZOOM_STEP)
         row.addWidget(self.zoom_in, 0, QtCore.Qt.AlignVCenter)
         column.addLayout(row)
         return box
 
-    def _zoom_button(self, text, step):
-        button = QtWidgets.QToolButton()
-        button.setObjectName("aeroZoomButton")
-        button.setText(text)
-        button.setCursor(QtCore.Qt.PointingHandCursor)
-        button.setFixedSize(26, 26)
-        button.clicked.connect(lambda *_args: self.slider.setValue(self.slider.value() + step))
-        return button
+    def _zoom_button(self, icon_name, step):
+        tip = i18n.t("review.zoom_out" if step < 0 else "review.zoom_in")
+        return uikit.IconButton(icon_name, tip, lambda: self.slider.setValue(self.slider.value() + step))
 
     # -- filling -------------------------------------------------------------
 
@@ -854,7 +761,7 @@ class ReviewDialog(QtWidgets.QDialog):
 
     def _update_summary(self):
         counts = self.review.counts()
-        self.summary.setText(i18n.t(
+        self.set_status(i18n.t(
             "review.summary", kept=counts[review.KEPT], removed=counts[review.REMOVED],
             refined=counts[review.REFINED], accepted=counts[review.ACCEPTED]))
 
@@ -864,10 +771,10 @@ class ReviewDialog(QtWidgets.QDialog):
         `labels`: markers for which a proposal has just changed; `everything`: the whole table.
         """
         row = self.markers.currentRow()
-        labels = self.review.labels()
-        for index, label in enumerate(labels):
+        shown = self.review.labels()                       # every marker of the list; `labels` stays the ones that changed
+        for index, label in enumerate(shown):
             self.markers.item(index).setText(self._marker_text(label))
-        if 0 <= row < len(labels):
+        if 0 <= row < len(shown):
             self.markers.setCurrentRow(row)
         self._update_summary()
         self._update_buttons()
@@ -894,7 +801,8 @@ class ReviewDialog(QtWidgets.QDialog):
     def _on_exclude(self):
         # Excluding an already validated or refined point undoes a manual pin: ask first.
         done = sum(1 for _item, e in self._selected() if e["state"] in (review.ACCEPTED, review.REFINED))
-        if done and not dialogs.ask(self, i18n.t("review.exclude"), i18n.t("review.confirm_exclude_done", n=done)):
+        if done and not uikit.confirm(self, i18n.t("review.exclude"), i18n.t("review.confirm_exclude_done", n=done),
+                                      ok=i18n.t("review.exclude"), danger=True):
             return
         self._apply(review.remove)
 
@@ -948,8 +856,7 @@ class ReviewDialog(QtWidgets.QDialog):
         item = self.thumbs.itemAt(pos)
         if item is not None and not item.isSelected():
             item.setSelected(True)
-        menu = QtWidgets.QMenu(self)
-        menu.setStyleSheet(theme.menu_stylesheet())
+        menu = QtWidgets.QMenu(self.thumbs)
         for text_key, handler, enabled in (
                 ("review.exclude", self._on_exclude, self.exclude_button.isEnabled()),
                 ("review.restore", self._on_restore, self.restore_button.isEnabled()),
@@ -963,15 +870,14 @@ class ReviewDialog(QtWidgets.QDialog):
         count = sum(1 for e in self.review.entries if e["state"] == review.KEPT)
         if not count:
             return
-        if not dialogs.ask(self, i18n.t("review.accept"), i18n.t("review.confirm_accept", n=count)):
+        if not uikit.confirm(self, i18n.t("review.accept"), i18n.t("review.confirm_accept", n=count), ok=i18n.t("review.accept")):
             return
         busy = BusyDialog(i18n.t("review.busy_validate", n=count), self)
         busy.open()
         try:
             done = review.accept_kept(self._state, self.review, busy.step)
-            busy.label.setText(i18n.t("review.busy_refresh"))
-            busy.bar.setRange(0, 0)
-            QtWidgets.QApplication.processEvents()
+            busy.set_text(i18n.t("review.busy_refresh"))
+            busy.indeterminate()
             photos.panel_call(self._state, "set_status", i18n.t("review.accepted_status", n=done))
             self._fill_thumbs()
             self._after_change(everything=True)

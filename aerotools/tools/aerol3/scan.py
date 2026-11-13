@@ -76,6 +76,7 @@ class FlightInfo(object):
         self.photos = []
         self.mrk_files = []
         self.mrk_shots = []
+        self.mrk_ignored = 0           # lines of the MRK files that were not understood, or files that could not be read
         self.lidar_files = 0
         self.report_files = 0
 
@@ -250,7 +251,9 @@ def scan_folder(root, progress=None, cancelled=None, workers=6, reader=None):
             elif low.endswith(".rpt"):
                 flight.report_files += 1
         for path in flight.mrk_files:
-            flight.mrk_shots.extend(mrk.parse_mrk(path))
+            shots, ignored, error = mrk.read_mrk(path)
+            flight.mrk_shots.extend(shots)
+            flight.mrk_ignored += ignored + (1 if error else 0)
         flight.photos.sort(key=lambda r: (r.gps_time is None, r.gps_time, r.name))
         result.flights.append(flight)
     prog(1.0, "Scan finished")

@@ -9,10 +9,13 @@ Principle
   - `t(key, **fields)` never raises: a key missing from the catalog gives the key itself, and a
     missing field is left as it is.
   - Call `t()` when something is displayed, never at import time.
+  - Plurals: write `{n} {n|file|files}` in a text; `t(key, n=1)` gives "1 file", `n=2` gives "2 files" (zero is plural).
+    For a text assembled in code, `plural(n, "file", "files")` and `tn(key_one, key_other, n)` do the same.
 """
 
 import datetime
 import math
+import re
 
 from .lang import en
 
@@ -37,11 +40,31 @@ class _Open(dict):
         return "{" + str(name) + "}"
 
 
+_PLURAL = re.compile(r"\{(\w+)\|([^{}|]*)\|([^{}|]*)\}")
+
+
+def plural(n, one, other):
+    """`one` when the count is exactly 1, else `other` (0 is plural, as in English)."""
+    try:
+        return one if float(n) == 1.0 else other
+    except (TypeError, ValueError):
+        return other
+
+
+def _plurals(text, fields):
+    def pick(match):
+        name = match.group(1)
+        if name not in fields:
+            return match.group(0)
+        return plural(fields[name], match.group(2), match.group(3))
+    return _PLURAL.sub(pick, text)
+
+
 def _format(text, fields):
     if not fields:
         return text
     try:
-        return text.format_map(_Open(fields))
+        return _plurals(text, fields).format_map(_Open(fields))
     except Exception:
         return text
 
@@ -56,6 +79,13 @@ def t(key, **fields):
     if text is None:
         text = str(key)
     return _format(text, fields)
+
+
+def tn(key_one, key_other, count, **fields):
+    """Text of `key_one` when `count` is 1, else of `key_other` (for texts that differ by more than a word). `{n}` is the count unless
+    the call gives another `n`."""
+    fields.setdefault("n", count)
+    return t(key_one if plural(count, True, False) else key_other, **fields)
 
 
 def has(key):

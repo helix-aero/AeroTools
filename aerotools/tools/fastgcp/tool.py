@@ -5,7 +5,7 @@ panel to the front. `uninstall()` (the cross of the panel) closes it cleanly
 (event filter, timer, shortcut, dock), so a later start begins from nothing.
 """
 
-from ... import i18n, journal, msapi, qt, theme
+from ... import i18n, journal, msapi, qt, theme, uikit
 from ...qt import QShortcut, QtCore, QtGui, QtWidgets
 from . import aigcp, history, marking, photos, session as session_mod
 from .session import DOCK_NAME
@@ -33,7 +33,7 @@ def install():
     state = session_mod.current()
     window = msapi.main_window()
     if window is None:
-        msapi.message_box(i18n.t("tool.no_window"))
+        uikit.error(None, i18n.t("panel.title"), i18n.t("tool.no_window"))
         return
 
     if _alive(state.panel):
@@ -220,11 +220,12 @@ def _tick(state):
     aigcp.poll(state)
     _poll_table(state)
     chunk = msapi.chunk()
-    key = msapi.chunk_key(chunk)
+    key = msapi.chunk_identity(chunk)           # project + chunk key: a chunk key alone repeats from one project to the next
 
     if key != state.last_chunk_key:
         state.last_chunk_key = key
         state.forget_chunk()
+        state.close_chunk_windows()
         photos.panel_call(state, "close_review")
         try:
             # The chunk name follows the progress in the panel status.

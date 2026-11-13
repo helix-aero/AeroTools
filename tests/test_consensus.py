@@ -48,7 +48,22 @@ def test_fewer_than_three_rays_cannot_be_judged():
 
 def test_parallel_rays_cannot_be_judged():
     rays = [((float(k), 0.0, -40.0), (0.0, 0.0, 1.0)) for k in range(5)]
-    assert consensus.consensus(rays, 0.1) == (None, None)
+    assert consensus.consensus(rays, 0.1) == ([False] * 5, None)            # enough rays, no point: nothing confirmed
+
+
+def test_no_point_with_enough_rays_discards_every_detection_of_the_marker():
+    from aerotools.tools.fastgcp import aigcp
+    from aerotools import msapi
+    group = [({"camera": k}, {"x": 1.0, "y": 2.0}) for k in range(5)]
+    original = msapi.pixel_ray
+    msapi.pixel_ray = lambda camera, x, y: ((float(camera), 0.0, -40.0), (0.0, 0.0, 1.0))
+    scale = msapi.chunk_scale
+    msapi.chunk_scale = lambda chk: 1.0
+    try:
+        kept, dropped = aigcp._consistent(None, group)
+    finally:
+        msapi.pixel_ray, msapi.chunk_scale = original, scale
+    assert kept == [] and len(dropped) == 5
 
 
 def test_unrelated_rays_share_no_point():

@@ -1,6 +1,6 @@
-"""Small UI building blocks shared by the AeroTools windows (install, update).
+"""Small UI building blocks shared by the AeroTools windows, kept for the windows that are not migrated to the kit yet.
 
-Same style as the FastGCP panel: under Metashape a QDialog does not paint the wanted background,
+Everything here is a thin alias onto `aerotools/uikit` (see docs/UIKIT.md). Under Metashape a QDialog does not paint the wanted background,
 an inner QWidget does (see `styled_root`).
 """
 
@@ -9,10 +9,13 @@ from .qt import QtCore, QtWidgets
 
 
 def styled_root(dialog):
+    """The inner widget (named aeroPanel) that carries the kit's style sheet and the window background; it fills `dialog`.
+
+    New windows use `uikit.ToolWindow` instead, which does this and more."""
+    from .uikit import style
     root = QtWidgets.QWidget()
-    root.setObjectName("aeroPanel")
     root.setAttribute(QtCore.Qt.WA_StyledBackground, True)
-    root.setStyleSheet(theme.stylesheet())
+    style.apply(root)
     outer = QtWidgets.QVBoxLayout(dialog)
     outer.setContentsMargins(0, 0, 0, 0)
     outer.addWidget(root)
@@ -24,47 +27,43 @@ def run(dialog):
     return (getattr(dialog, "exec_", None) or getattr(dialog, "exec"))()
 
 
+# Older object names -> the kit's button roles.
+_ROLES = {"aeroRun": "primary", "aeroGo": "primary", "aeroYes": "primary", "aeroNo": "danger", "aeroGhost": "secondary",
+          "aeroBtn": "secondary"}
+
+
 def button(text_key, handler, object_name="aeroGhost", width=96, **fields):
-    widget = QtWidgets.QPushButton(i18n.t(text_key, **fields) if fields else i18n.t(text_key))
+    """A kit `Button` (one height, role taken from the older object name). New code: `uikit.button(key, handler, role)`."""
+    from .uikit import controls
+    widget = controls.Button(i18n.t(text_key, **fields) if fields else i18n.t(text_key), _ROLES.get(object_name, "secondary"))
     widget.setObjectName(object_name)
-    widget.setProperty("pill", True)
-    widget.setCursor(QtCore.Qt.PointingHandCursor)
-    widget.setFixedHeight(32)
     widget.setMinimumWidth(width)
-    widget.setAutoDefault(False)
     widget.clicked.connect(lambda *_args: handler())
     return widget
 
 
 def big_button(text_key, handler, kind="aeroBtn", width=0, **fields):
-    """Big button (40 px, centered text) of the dark windows. `aeroGo` = green, `aeroBtn` = grey."""
-    widget = QtWidgets.QPushButton(i18n.t(text_key, **fields) if fields else i18n.t(text_key))
+    """Same as `button` (there is only one button height now): `aeroGo` = primary, `aeroBtn` = secondary."""
+    from .uikit import controls
+    widget = controls.Button(i18n.t(text_key, **fields) if fields else i18n.t(text_key), _ROLES.get(kind, "secondary"))
     widget.setObjectName(kind)
-    widget.setCursor(QtCore.Qt.PointingHandCursor)
-    widget.setFixedHeight(40)
     if width:
         widget.setMinimumWidth(width)
-    widget.setAutoDefault(False)
     widget.clicked.connect(lambda *_args: handler())
     return widget
 
 
 def combo(parent=None):
-    """Drop-down list in the style of the dark windows."""
-    box = QtWidgets.QComboBox(parent)
+    """Drop-down list of the kit (reachable by Tab). New code: `uikit.ChoiceBox`."""
+    from .uikit import controls
+    box = controls.ChoiceBox(parent=parent)
     box.setObjectName("aeroCombo")
-    box.setProperty("arrow", True)
-    box.setCursor(QtCore.Qt.PointingHandCursor)
-    box.setFocusPolicy(QtCore.Qt.NoFocus)
-    box.setMinimumHeight(36)
     return box
 
 
 def dark_root(dialog):
-    """Like `styled_root`, with the dark background of the Settings windows."""
-    root = styled_root(dialog)
-    root.setProperty("settings", True)
-    return root
+    """Same as `styled_root` (there is one window background now)."""
+    return styled_root(dialog)
 
 
 def tile(caption=""):
@@ -152,25 +151,16 @@ class OptionCard(QtWidgets.QFrame):
         super(OptionCard, self).mousePressEvent(event)
 
 
-TABLE_STYLE = """
-    QTableWidget {{
-        background: {pane}; alternate-background-color: {head}; color: {fg_1};
-        selection-background-color: {soft}; selection-color: {fg_0};
-        gridline-color: transparent; border: 1px solid {border}; border-radius: 8px; outline: none;
-    }}
-    QTableWidget::item {{ padding: 0 8px; border: none; }}
-    QTableWidget::item:selected, QTableWidget::item:selected:!active {{ background: {soft}; color: {fg_0}; }}
-    QHeaderView::section {{
-        background: {head}; color: {fg_2}; border: none; padding: 7px 8px; font-weight: bold;
-    }}
-    QTableCornerButton::section {{ background: {head}; border: none; }}
-"""
-
-
 def table_style():
-    """Style of a table on a black background (marker pop-ups)."""
-    return TABLE_STYLE.format(pane=theme.PANE, head=theme.PANE_HEAD, fg_0=theme.FG_0, fg_1=theme.FG_1,
-                              fg_2=theme.FG_2, border=theme.BORDER_SOFT, soft=theme.GREEN_SOFT)
+    """Style of a table that is not a kit `DataTable` yet (a QTableWidget on the window background)."""
+    from .uikit import style
+    return style.table_stylesheet()
+
+
+def __getattr__(name):
+    if name == "TABLE_STYLE":
+        return table_style()
+    raise AttributeError("module 'aerotools.ui' has no attribute " + repr(name))
 
 
 def label(text="", object_name=None, wrap=True):

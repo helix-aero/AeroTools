@@ -36,6 +36,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
+# No trailing backslash on the root (a quoted "D:\" argument would swallow its closing quote), except for a drive root.
+$Root = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Root))
+if ($Root.Length -gt [IO.Path]::GetPathRoot($Root).Length) { $Root = $Root.TrimEnd('\') }
+
 $EnvDir = Join-Path $env:USERPROFILE 'AIGCP\_env'
 $EnvPython = Join-Path $EnvDir 'Scripts\python.exe'
 $Models = @('checker', 'spray')
@@ -363,7 +367,11 @@ function Test-TrainingInstalled { return (Test-Imports @('torch', 'ultralytics',
 
 
 function Get-LauncherText {
-    return [IO.File]::ReadAllText($Template).Replace('@@AEROTOOLS_ROOT@@', $Root)
+    # The path sits in a raw string, which cannot end with a backslash: a root such as D:\ is written as r"D:" + "\\".
+    $clean = $Root.TrimEnd('\')
+    $literal = 'r"' + $clean + '"'
+    if ($clean.Length -lt $Root.Length) { $literal += ' + "\\"' }
+    return [IO.File]::ReadAllText($Template).Replace('r"@@AEROTOOLS_ROOT@@"', $literal)
 }
 
 

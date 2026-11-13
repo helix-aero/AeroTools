@@ -5,13 +5,15 @@ read the same `imageadjust.Adjustments` object, so an adjustment made in one is
 found in the other. The adjustments only affect the display (see imageadjust.py).
 """
 
-from ... import i18n, theme
+from ... import i18n, uikit
 from ...qt import QtCore, QtWidgets
+from ...uikit import tokens
 from . import imageadjust
 
 SAVE_DELAY_MS = 400
 LABELS = {"exposure": "review.exposure", "contrast": "review.contrast",
           "saturation": "review.saturation", "sharpness": "review.sharpness"}
+WIDTH = 240
 
 
 def _signed(value):
@@ -32,6 +34,8 @@ class _ResetLabel(QtWidgets.QLabel):
     def __init__(self, text, on_reset):
         super(_ResetLabel, self).__init__(text)
         self._on_reset = on_reset
+        self.setProperty("type", "small")
+        self.setProperty("tone", "muted")
 
     def mouseDoubleClickEvent(self, event):
         self._on_reset()
@@ -44,40 +48,24 @@ class AdjustPanel(QtWidgets.QFrame):
     def __init__(self, model, top=None, hint_key=None, parent=None):
         super(AdjustPanel, self).__init__(parent)
         self.model = model
-        self.setObjectName("aeroCard")
-        self.setFixedWidth(230)
+        self.setProperty("ui", "card")
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        self.setFixedWidth(uikit.px(WIDTH))
         self._sliders, self._values = {}, {}
-        layout = QtWidgets.QVBoxLayout(self)
-        pad = theme.PAD + theme.PAD_S
-        layout.setContentsMargins(pad, pad, pad, pad)
-        layout.setSpacing(theme.PAD)
+        layout = uikit.vbox((tokens.M, tokens.M, tokens.M, tokens.M), tokens.S, parent=self)
 
         if top is not None:
             layout.addWidget(top)
-        self._eyebrow = QtWidgets.QLabel(i18n.t("review.view").upper())
-        self._eyebrow.setObjectName("aeroEyebrow")
-        layout.addWidget(self._eyebrow)
-
-        for key in imageadjust.KEYS:
-            layout.addLayout(self._row(key))
-        self.reset_button = QtWidgets.QPushButton(i18n.t("review.reset"))
-        self.reset_button.setObjectName("aeroGhost")
-        self.reset_button.setProperty("pill", True)
-        self.reset_button.setCursor(QtCore.Qt.PointingHandCursor)
-        self.reset_button.setFixedHeight(28)
-        self.reset_button.clicked.connect(lambda *_args: self.model.reset())
-        layout.addWidget(self.reset_button)
-
-        note = i18n.t("review.view_note") if imageadjust.available() else i18n.t("review.no_numpy")
-        self.note = QtWidgets.QLabel(note)
-        self.note.setObjectName("aeroMeta")
-        self.note.setWordWrap(True)
-        layout.addWidget(self.note)
+        info = i18n.t("review.view_note") if imageadjust.available() else i18n.t("review.no_numpy")
         if hint_key:
-            self.hint = QtWidgets.QLabel(i18n.t(hint_key))
-            self.hint.setObjectName("aeroMeta")
-            self.hint.setWordWrap(True)
-            layout.addWidget(self.hint)
+            info += "\n\n" + i18n.t(hint_key)
+        self._section = uikit.Section(i18n.t("review.view"), info=info)
+        self._section.body.setSpacing(uikit.px(tokens.XS))
+        layout.addWidget(self._section)
+        for key in imageadjust.KEYS:
+            self._section.body.addLayout(self._row(key))
+        self.reset_button = uikit.Button(i18n.t("review.reset"), "quiet", handler=self.model.reset)
+        self._section.add_right(self.reset_button)
         layout.addStretch(1)
 
         self._save_timer = QtCore.QTimer(self)
@@ -88,17 +76,14 @@ class AdjustPanel(QtWidgets.QFrame):
         self.destroyed.connect(lambda *_args, m=model, f=self._on_model: m.unsubscribe(f))
 
     def _row(self, key):
-        box = QtWidgets.QVBoxLayout()
-        box.setContentsMargins(0, 0, 0, 0)
-        box.setSpacing(2)
-        line = QtWidgets.QHBoxLayout()
+        box = uikit.vbox(spacing=tokens.XS)
+        line = uikit.hbox()
+
         def reset(_key=key):
             self.model.set(_key, 0)
 
         name = _ResetLabel(i18n.t(LABELS[key]), reset)
-        name.setObjectName("aeroMeta")
         value = _ResetLabel("0", reset)
-        value.setObjectName("aeroMeta")
         value.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         line.addWidget(name, 1)
         line.addWidget(value, 0)

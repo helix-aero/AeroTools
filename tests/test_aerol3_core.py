@@ -592,7 +592,7 @@ def test_every_finding_has_a_text(tmp_path):
     from aerotools.lang import en
     codes = {"no_photos", "not_l3", "mixed_units", "size", "orientation", "lens", "calibration", "duplicate_names", "unpaired", "unpaired_included", "lens_conflict",
              "dewarped", "nothing_to_do", "no_gps", "rtk_not_fixed", "gps_not_rtk", "altitude_type", "orientation_ready", "angles_missing",
-             "angles_inconsistent", "oblique", "rig_angle", "pair_gap", "against_track", "lens_side", "position_jump", "mrk_missing", "mrk_mismatch",
+             "angles_inconsistent", "oblique", "rig_angle", "pair_gap", "against_track", "lens_side", "position_jump", "mrk_missing", "mrk_mismatch", "mrk_unreadable",
              "tiny_flights"}
     for code in codes:
         short, detail = en.TEXTS["l3.check." + code + ".short"], en.TEXTS["l3.check." + code + ".detail"]

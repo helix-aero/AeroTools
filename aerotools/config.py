@@ -6,8 +6,10 @@ each PC keeps its own ticked boxes.
 
 import copy
 import datetime
+import importlib.util
 import json
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -89,6 +91,8 @@ def tool(tool_id):
 #             (PROJ engine in aerotools/vendor/proj, PDF drawing kit, Outputs folder) is core: no tool imports another tool.
 #   marker    a file that exists only when the pack is installed
 #   requires  other packs this one imports code from (tests/test_packs.py checks it against the imports)
+#   requires_modules  optional: Python packages the tool imports that Metashape may not ship (numpy). Checked before the tool is installed
+#             and before it starts, so the user reads one clear line instead of a ModuleNotFoundError. Nothing is installed for them.
 #   setup     optional: module (by name, the core never imports a tool) whose `run(parent, engine, training, confirm)` finishes the
 #             installation once the files are there (Aero-GCP: the AI detection engine)
 CORE = "core"
@@ -98,7 +102,7 @@ PACKS = [
     {"id": "fastspace", "paths": ["aerotools/tools/fastspace/"], "marker": "aerotools/tools/fastspace/tool.py",
      "requires": []},
     {"id": "aeroexports", "paths": ["aerotools/tools/aeroexports/", "aerotools/vendor/proj/data/"],
-     "marker": "aerotools/tools/aeroexports/tool.py", "requires": []},
+     "marker": "aerotools/tools/aeroexports/tool.py", "requires": [], "requires_modules": ["numpy"]},
     {"id": "aerol3", "paths": ["aerotools/tools/aerol3/"], "marker": "aerotools/tools/aerol3/tool.py",
      "requires": []},
 ]
@@ -145,6 +149,24 @@ def dependents(pack_id):
     return [entry["id"] for entry in PACKS if entry["id"] != pack_id and pack_id in pack_closure([entry["id"]])]
 
 
+def module_available(name):
+    """True when the Python package `name` can be imported in this Metashape (looked up, not imported: cheap and without side effects)."""
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError, AttributeError):
+        return sys.modules.get(name) is not None
+
+
+def missing_modules(pack_id):
+    """Python packages that a tool (and the packs it requires) imports and that this Metashape does not have, in a stable order."""
+    missing = []
+    for pack_name in pack_closure([pack_id]):
+        for module in pack(pack_name).get("requires_modules", []):
+            if module not in missing and not module_available(module):
+                missing.append(module)
+    return missing
+
+
 # --------------------------------------------------------------------------
 # Per-workstation settings
 # --------------------------------------------------------------------------
@@ -187,6 +209,8 @@ def _migrate_legacy_sections(data):
 READ_TRIES = 4                       # a writer reads this many times before it gives up
 READ_PAUSE_S = 0.05                  # grows with each try
 _WRITE_LOCK = threading.RLock()      # the update thread and the interface both write the settings
+CACHE_SETTLE_S = 1.0                 # a file written less than this long ago is read again each time (timestamps are coarse)
+_CACHE = {}                          # path -> ((mtime_ns, size), data): settings.json is parsed again only when the file changed
 
 
 def _read_settings(tries=1):
@@ -212,12 +236,38 @@ def _read_settings(tries=1):
 
 
 def load_settings():
-    """Settings of the workstation. Never raises: a broken file gives empty settings (`put` does not write over it)."""
+    """Settings of the workstation (a copy the caller may change). Never raises: a broken file gives empty settings (`put` does not
+    write over it)."""
+    return copy.deepcopy(_shared_settings())
+
+
+def _shared_settings():
+    """The settings as parsed, NOT to be modified or handed out: callers copy what they keep.
+
+    The parsed file is cached by (path, mtime, size): the timers of the tools ask for a setting several times a second. A file written a
+    moment ago is never served from the cache, so two quick writes of the same size cannot be mistaken for one."""
+    path = settings_path()
+    try:
+        info = os.stat(path)
+        signature = (info.st_mtime_ns, info.st_size)
+    except OSError:
+        info, signature = None, None
+    entry = _CACHE.get(path)
+    if entry is not None and entry[0] == signature and signature is not None:
+        return entry[1]
     data, state = _read_settings()
     if state != "ok":
         return {}
     if _migrate_legacy_sections(data):
-        save_settings(data)
+        with _WRITE_LOCK:                                    # re-read under the lock: a put() in between must not be overwritten
+            fresh, fresh_state = _read_settings(READ_TRIES)
+            if fresh_state == "ok":
+                data = fresh
+                if _migrate_legacy_sections(data):
+                    _write_settings(data)
+        return data
+    if info is not None and time.time() - info.st_mtime >= CACHE_SETTLE_S:
+        _CACHE[path] = (signature, data)
     return data
 
 
@@ -265,12 +315,14 @@ def _keep_corrupt_copy():
 
 def section(name):
     """A settings section as a dict. A corrupted section gives an empty one."""
-    value = load_settings().get(name, {})
-    return value if isinstance(value, dict) else {}
+    value = _shared_settings().get(name, {})
+    return copy.deepcopy(value) if isinstance(value, dict) else {}
 
 
 def get(section_name, key, default=None):
-    return section(section_name).get(key, default)
+    group = _shared_settings().get(section_name, {})
+    value = group.get(key, default) if isinstance(group, dict) else default
+    return copy.deepcopy(value) if isinstance(value, (dict, list)) else value
 
 
 def put(section_name, key, value):

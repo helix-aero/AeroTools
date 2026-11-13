@@ -14,7 +14,9 @@ Only the exact folders above are deleted; each one is checked by name before any
 """
 
 import os
+import re
 import shutil
+import stat
 
 from . import config
 
@@ -38,10 +40,37 @@ def env_dir():
     return os.path.join(os.path.expanduser("~"), "AIGCP", "_env")
 
 
+_ROOT_LINE = re.compile(r'^[ \t]*_aero_root\s*=\s*r"([^"]*)"(\s*\+\s*"\\\\")?', re.MULTILINE)
+
+
+def launcher_root():
+    """The folder the launcher points to ("" when there is no launcher or it is not one of ours). Read before the launcher is deleted."""
+    try:
+        with open(launcher_path(), encoding="utf-8", errors="replace") as handle:
+            found = _ROOT_LINE.search(handle.read())
+    except OSError:
+        return ""
+    if not found:
+        return ""
+    return found.group(1) + ("\\" if found.group(2) else "")
+
+
+def code_folders():
+    """The folders of the code the installer made: the default one, and the one the launcher points to when the installer was given
+    another -AppDir. A folder under another name (a development copy) is not listed here."""
+    folders = [config.app_dir()]
+    pointed = launcher_root()
+    if pointed:
+        pointed = os.path.normpath(pointed)
+        if os.path.basename(pointed) == config.APP_DIR_NAME and os.path.normcase(pointed) != os.path.normcase(os.path.normpath(folders[0])):
+            folders.append(pointed)
+    return folders
+
+
 def targets():
     """{id: [paths]}: what each item removes (paths that exist or not)."""
     launcher = launcher_path()
-    return {MENU: [launcher, launcher + ".bak"], CODE: [config.app_dir()], SETTINGS: [config.settings_dir()], ENV: [env_dir()]}
+    return {MENU: [launcher, launcher + ".bak"], CODE: code_folders(), SETTINGS: [config.settings_dir()], ENV: [env_dir()]}
 
 
 def folder_size(path):
@@ -73,15 +102,38 @@ def _safe(item_id, path):
     return expected is None or os.path.basename(os.path.normpath(path)) == expected
 
 
+def _unlock(function, path, _excinfo):
+    """rmtree handler: a read-only file (a copy made from a zip, a model) is made writable and deleted again."""
+    try:
+        os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+        function(path)
+    except OSError:
+        pass
+
+
 def _remove_path(item_id, path):
     if not _safe(item_id, path):
         raise OSError("unexpected folder: " + path)
-    if os.path.isdir(path):
-        shutil.rmtree(path)
+    if os.path.islink(path) or _is_junction(path):
+        os.rmdir(path) if os.path.isdir(path) else os.remove(path)               # the link goes, never what it points to
+    elif os.path.isdir(path):
+        shutil.rmtree(path, onerror=_unlock)
     else:
-        os.remove(path)
+        try:
+            os.remove(path)
+        except PermissionError:
+            os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+            os.remove(path)
     if os.path.exists(path):
         raise OSError("still there: " + path)
+
+
+def _is_junction(path):
+    """A Windows junction: a folder that is a link (os.path.islink does not see it on Python 3.9)."""
+    try:
+        return bool(os.lstat(path).st_file_attributes & 0x400) and not os.path.islink(path)       # FILE_ATTRIBUTE_REPARSE_POINT
+    except (AttributeError, OSError):
+        return False
 
 
 def remove(ids, progress=None):
@@ -89,11 +141,18 @@ def remove(ids, progress=None):
     Returns {"removed": [ids], "errors": {id: message}}; an item that fails does not stop the others."""
     wanted = [item_id for item_id in ORDER if item_id in ids or item_id in LOCKED]
     removed, errors = [], {}
+    pointed = targets()                                    # read first: removing the launcher must not hide where the code is
+    if CODE in wanted:
+        try:
+            from . import bootstrap
+            bootstrap.release_files()                      # a file the core holds open (proj.db) would stay behind
+        except Exception:
+            pass
     for item_id in wanted:
         if progress:
             progress(item_id)
         failed = []
-        for path in targets()[item_id]:
+        for path in pointed[item_id]:
             if not os.path.exists(path):
                 continue
             try:

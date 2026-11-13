@@ -6,6 +6,7 @@ and an exception in a subscriber never prevents the line from being written.
 """
 
 import os
+import sys
 import time
 
 MAX_LINES = 300
@@ -14,6 +15,7 @@ LOG_MAX_BYTES = 1 << 20
 
 _lines = []
 _subscribers = []
+_file = {"path": None, "size": 0}            # the log file in use and its size, known without asking the disk for each line
 
 
 def write(message, tag="AeroTools"):
@@ -22,7 +24,7 @@ def write(message, tag="AeroTools"):
     _lines.append(line)
     if len(_lines) > MAX_LINES:
         del _lines[: len(_lines) - MAX_LINES]
-    print("[{}] {}".format(tag, message))
+    _print("[{}] {}".format(tag, message))
     _to_file("{} [{}] {}".format(time.strftime("%Y-%m-%d %H:%M:%S"), tag, message))
     for callback in list(_subscribers):
         try:
@@ -38,17 +40,35 @@ def log_path():
     return os.path.join(config.settings_dir(), LOG_NAME)
 
 
-def _to_file(text):
-    """Append a line to the file; never raises. Beyond 1 MB, the old file becomes .old."""
+def _print(text):
+    """The console line; Metashape may have no stdout at all (None), and a closed or odd console must never stop a tool."""
     try:
-        path = log_path()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        if os.path.isfile(path) and os.path.getsize(path) > LOG_MAX_BYTES:
-            os.replace(path, path + ".old")
-        with open(path, "a", encoding="utf-8", errors="replace") as handle:
-            handle.write(text + "\n")
+        if sys.stdout is not None:
+            print(text)
     except Exception:
         pass
+
+
+def _to_file(text):
+    """Append a line to the file; never raises. Beyond 1 MB, the old file becomes .old.
+
+    The folder and the size are looked at once per file, then followed in memory: a chatty tool (zoom) writes many lines a second."""
+    data = (text + os.linesep).encode("utf-8", errors="replace")
+    for _attempt in (1, 2):
+        try:
+            path = log_path()
+            if _file["path"] != path:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                _file["path"], _file["size"] = path, (os.path.getsize(path) if os.path.isfile(path) else 0)
+            if _file["size"] > LOG_MAX_BYTES:
+                os.replace(path, path + ".old")
+                _file["size"] = 0
+            with open(path, "ab") as handle:
+                handle.write(data)
+            _file["size"] += len(data)
+            return
+        except Exception:
+            _file["path"] = None              # something changed under us (folder removed, file locked): look again, once
 
 
 def lines():

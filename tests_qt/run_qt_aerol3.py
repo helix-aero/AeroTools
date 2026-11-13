@@ -35,12 +35,14 @@ sys.modules["Metashape"] = FAKE
 from aerotools import config, journal  # noqa: E402
 GUARD.pin(config)
 from aerotools.qt import QtCore, QtGui, QtWidgets  # noqa: E402
-from aerotools import controls  # noqa: E402
-from aerotools.tools.aerol3 import checks, plan as plan_module, state as S, widgets, wizard as W  # noqa: E402
+from aerotools import uikit  # noqa: E402
+from aerotools.uikit import metrics, shell as ushell  # noqa: E402
+from aerotools.tools.aerol3 import checks, plan as plan_module, state as S, wizard as W  # noqa: E402
 from aerotools.tools.aerol3.fake_backend import FakeBackend  # noqa: E402
 import aerol3_synth as synth  # noqa: E402
 
-controls.screen_area = lambda: QtCore.QRect(0, 0, 1920, 1040)       # a Full HD screen (the offscreen one is small and varies)
+SCREEN = {"area": QtCore.QRect(0, 0, 1920, 1040)}
+ushell.screen_area = lambda widget=None: SCREEN["area"]             # a Full HD screen (the offscreen one is small and varies)
 journal.print = lambda *args, **kwargs: None
 APP = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 FAILURES = []
@@ -118,31 +120,25 @@ def type_into(field, text):
     pump(30)
 
 
-SCALES = (1.0, 1.5, 2.0)
+SCALES = (1.0, 1.25, 1.5)
 
 
-def rescale(window, factor):
-    """What Windows display scaling does to the text: every font grows by `factor`. Call it before the window is shown."""
-    if factor == 1.0:
-        return
-    base = getattr(rescale, "base", None) or APP.font().pointSizeF()
-    rescale.base = base
-    font = QtGui.QFont(APP.font())
-    font.setPointSizeF(base * factor)
-    APP.setFont(font)
-    pattern = re.compile(r"(\d+(?:\.\d+)?)pt")
-    for widget in [window] + window.findChildren(QtWidgets.QWidget):
-        sheet = widget.styleSheet()
-        if "pt" in sheet:
-            widget.setStyleSheet(pattern.sub(lambda m: "{:g}pt".format(float(m.group(1)) * factor), sheet))
+def rescale(factor):
+    """What Windows display scaling does to the window: every size of the kit grows by `factor`. Call it before the window is built."""
+    metrics.set_scale(factor)
 
 
 def unscale():
-    base = getattr(rescale, "base", None)
-    if base:
-        font = QtGui.QFont(APP.font())
-        font.setPointSizeF(base)
-        APP.setFont(font)
+    metrics.set_scale(None)
+
+
+def click_at(widget, point):
+    """A real left click at `point` (in the widget's own coordinates)."""
+    point = QtCore.QPointF(point)
+    for kind in (QtCore.QEvent.MouseButtonPress, QtCore.QEvent.MouseButtonRelease):
+        buttons = QtCore.Qt.LeftButton if kind == QtCore.QEvent.MouseButtonPress else QtCore.Qt.NoButton
+        APP.sendEvent(widget, QtGui.QMouseEvent(kind, point, point, QtCore.Qt.LeftButton, buttons, QtCore.Qt.NoModifier))
+    pump(30)
 
 
 def _parents(widget):
@@ -156,7 +152,7 @@ def cut_off(window):
     """What is cut off in a window: a scroll page that needs a horizontal bar, a widget past its page's or the window's right edge, text in a
     label that does not fit its box. Empty when all is visible."""
     problems = []
-    for index, area in enumerate(window.findChildren(controls.FitScroll)):
+    for index, area in enumerate(window.findChildren(QtWidgets.QScrollArea)):
         if not area.isVisibleTo(window):
             continue
         page = area.widget()
@@ -172,7 +168,7 @@ def cut_off(window):
     for widget in window.findChildren(QtWidgets.QWidget):
         if widget.isVisibleTo(window) and widget.width() > 1:
             corner = widget.mapTo(window, QtCore.QPoint(widget.width() - 1, widget.size().height() - 1))
-            inside_scroll = any(isinstance(p, QtWidgets.QScrollArea) for p in _parents(widget))
+            inside_scroll = any(isinstance(p, (QtWidgets.QScrollArea, QtWidgets.QAbstractScrollArea)) for p in _parents(widget))
             if corner.x() > frame.right() + 1 or (corner.y() > frame.bottom() + 1 and not inside_scroll):
                 problems.append("{} ({}) past the window edge: {},{} > {},{}".format(type(widget).__name__, widget.objectName(), corner.x(),
                                                                                     corner.y(), frame.right(), frame.bottom()))
@@ -227,7 +223,6 @@ def new_wizard(keep_settings=False, **backend_args):
 
 
 def show(window):
-    window.fit_to_fonts()
     window.show()
     pump(80)
     window.resize(window.size())
@@ -271,12 +266,35 @@ def vertical_bars(window):
 
 
 def tips(window):
-    return [info.text_tip() for info in window.screen().findChildren(widgets.InfoButton)]
+    return [info.text_tip() for info in window.screen().findChildren(uikit.InfoButton)]
 
 
-def flight_boxes(window):
-    rows = window.screens[S.PHOTOS].rows
-    return {key.split("-")[-1]: rows[key][0] for key in rows}
+def flight_keys(window):
+    """{'FLIGHT01': key, ...}: the flights of the list by the end of their name."""
+    return {key.split("-")[-1]: key for key in window.screens[S.PHOTOS].keys}
+
+
+def ticks(window):
+    screen = window.screens[S.PHOTOS]
+    return {short: screen.is_ticked(key) for short, key in flight_keys(window).items()}
+
+
+def tick(window, short, on):
+    window.screens[S.PHOTOS].set_ticked(flight_keys(window)[short], on)
+
+
+def tick_all(window, on):
+    for short in flight_keys(window):
+        tick(window, short, on)
+
+
+def working(window):
+    """True while the footer shows the progress of a task."""
+    return window.footer.center.currentWidget() is window.footer.progress
+
+
+def popover_text():
+    return uikit.controls.Popover.shared()._label.text()
 
 
 def run_to_end(window, **ticks):
@@ -293,14 +311,17 @@ def run_to_end(window, **ticks):
 # cases
 # --------------------------------------------------------------------------------------------------
 
-@case("opens on Photos: Next disabled, Back hidden, four steps in the bar")
+@case("opens on Photos: Next disabled, Back hidden, four steps in the bar, an empty state instead of a list")
 def _():
     window, _b = new_wizard()
     show(window)
     shot(window, "L301_photos_empty_x1.0")
     ok = (window.current_step() == S.PHOTOS and not window.next_button.isEnabled() and not window.back_button.isVisible()
           and len(window.steps.circles) == 4 and window.steps.state_of(0) == "current" and window.steps.state_of(1) == "todo")
-    ok = ok and not window.screens[S.PHOTOS].scroll.isVisible()                          # no empty list before the scan
+    screen = window.screens[S.PHOTOS]
+    ok = ok and not screen.scroll.isVisible() and screen.empty.isVisible()                # no empty list before the scan
+    ok = ok and window.header.title.fullText() == "Aero-L3" and window.header.subtitle.fullText() == "Project: unsaved"
+    ok = ok and window.cancel_button.text() == "Cancel" and window.next_button.text() == "Next"
     window.close()
     return ok
 
@@ -312,27 +333,96 @@ def _():
     screen = window.screens[S.PHOTOS]
     screen.path.setText(os.path.join(DATA, "nothing_here"))
     click_button(screen.scan_button)
-    ok = screen.status.text() == "Folder not found." and not window.next_button.isEnabled()
+    ok = screen.status.text() == "Folder not found." and not window.next_button.isEnabled() and screen.path.property("invalid") is True
     window.close()
     return ok, screen.status.text()
 
 
-@case("scan: bar while it runs, the flights appear under the folder, Next opens")
+@case("scan: progress in the footer while it runs, the flights appear under the folder, Next opens")
 def _():
     window, _b = new_wizard()
     show(window)
     screen = window.screens[S.PHOTOS]
     screen.path.setText(MISSION)
     click_button(screen.scan_button)
-    busy = window.busy() and screen.bar.isVisible()
+    busy = window.busy() and working(window) and window.cancel_button.text() == "Cancel" and not window.next_button.isEnabled()
     shot(window, "L302_photos_scanning_x1.0")
     assert until(lambda: window.state.has_photos() and not window.busy(), 30)
     pump(80)
     shot(window, "L303_photos_found_x1.0")
     ok = (busy and screen.status.text() == "60 photos, 3 flights" and screen.skipped.text() == "1 other file skipped" and screen.scroll.isVisible()
-          and len(screen.rows) == 3 and window.next_button.isEnabled() and not screen.bar.isVisible())
+          and len(screen.keys) == 3 and window.next_button.isEnabled() and not working(window) and not screen.empty.isVisible())
     window.close()
-    return ok, screen.status.text() + " | " + screen.skipped.text()
+    return ok, "{} | {} | busy {}".format(screen.status.text(), screen.skipped.text(), busy)
+
+
+@case("scan: a failure shows the red banner with Retry, Retry scans again and the banner goes")
+def _():
+    from aerotools.tools.aerol3 import scan as scan_module
+    real, calls = scan_module.scan_folder, []
+
+    def broken(root, progress=None, cancelled=None, **kwargs):
+        calls.append(root)
+        if len(calls) == 1:
+            raise OSError("the disk is gone")
+        return real(root, progress, cancelled, **kwargs)
+    scan_module.scan_folder = broken
+    try:
+        window, _b = new_wizard()
+        show(window)
+        screen = window.screens[S.PHOTOS]
+        screen.path.setText(MISSION)
+        click_button(screen.scan_button)
+        assert until(lambda: not window.busy(), 15)
+        pump(60)
+        shot(window, "L303_photos_failed_x1.0")
+        banner = window.banner
+        failed = (banner.isVisible() and banner.kind() == "danger" and "the disk is gone" in banner.message.text() and banner.action_button.isVisible()
+                  and banner.action_button.text() == "Retry" and screen.status.text() == "Scan failed." and not window.next_button.isEnabled())
+        click_button(banner.action_button)
+        assert until(lambda: window.state.has_photos() and not window.busy(), 30)
+        pump(60)
+        ok = failed and len(calls) == 2 and not banner.isVisible() and window.next_button.isEnabled()
+        window.close()
+    finally:
+        scan_module.scan_folder = real
+    return ok, str(calls)
+
+
+def slow_scan(real):
+    """A scan that waits for the cancel and then reports itself cancelled."""
+    def slow(root, progress=None, cancelled=None, **kwargs):
+        for _i in range(300):
+            if cancelled is not None and cancelled():
+                break
+            time.sleep(0.01)
+        result = real(root, progress, cancelled, **kwargs)
+        result.cancelled = True
+        return result
+    return slow
+
+
+@case("scan: Cancel stops it, the status says so, Next stays closed")
+def _():
+    from aerotools.tools.aerol3 import scan as scan_module
+    real = scan_module.scan_folder
+    scan_module.scan_folder = slow_scan(real)
+    try:
+        window, _b = new_wizard()
+        show(window)
+        screen = window.screens[S.PHOTOS]
+        screen.path.setText(MISSION)
+        click_button(screen.scan_button)
+        pump(100)
+        click_button(window.cancel_button)
+        assert until(lambda: not window.busy(), 15)
+        pump(60)
+        ok = screen.status.text() == "Scan cancelled." and not window.next_button.isEnabled() and window.isVisible() and not screen.scroll.isVisible()
+        detail = "{} {} next {} visible {} list {}".format(window.banner.message.text(), screen.status.text(), window.next_button.isEnabled(), window.isVisible(), screen.scroll.isVisible())
+        window.close()
+    finally:
+        scan_module.scan_folder = real
+    return ok, detail
 
 
 @case("the chosen folder is remembered between sessions")
@@ -383,47 +473,48 @@ def _():
     scanned(window)
     shot(window, "L304_photos_flights_x1.0")
     screen = window.screens[S.PHOTOS]
-    boxes = flight_boxes(window)
-    ticks = {k: b.isChecked() for k, b in boxes.items()}
-    heads = [label.text() for label in screen.page.findChildren(QtWidgets.QLabel) if label.objectName() == "l3ColHead"]
-    ok = (ticks == {"FLIGHT01": True, "BIASED": False, "FLIGHT02": True}
-          and heads == ["Flight", "Shots", "RTK fix", "Date (UTC)"] and screen.summary.text() == "2 of 3 flights, 24 shots"
-          and screen.all_box.isVisible() and not screen.all_box.isChecked() and window.next_button.isEnabled())
+    got = ticks(window)
+    heads = [column.title for column in screen.scroll.columns]
+    ok = (got == {"FLIGHT01": True, "BIASED": False, "FLIGHT02": True}
+          and heads == ["", "Flight", "Shots", "RTK fix", "Date (UTC)"] and screen.summary.text() == "2 of 3 flights, 24 shots"
+          and screen.pick_all.isEnabled() and screen.pick_none.isEnabled() and window.next_button.isEnabled())
+    mark = {k: screen.table.item(i, 0).text() for i, k in enumerate(screen.keys)}
+    ok = ok and sorted(mark.values()) == ["", "✓", "✓"]
     window.close()
-    return ok, "{} {} {}".format(ticks, heads, screen.summary.text())
+    return ok, "{} {} {}".format(got, heads, screen.summary.text())
 
 
-@case("photos: ticking a flight updates the summary, the header box ticks all or none, no flight closes Next")
+@case("photos: ticking a flight updates the summary, All and None tick all or none, no flight closes Next")
 def _():
     window, _b = new_wizard()
     show(window)
     scanned(window)
     screen = window.screens[S.PHOTOS]
-    boxes = flight_boxes(window)
-    boxes["BIASED"].setChecked(True)
+    tick(window, "BIASED", True)
     pump(400)
     with_calibration = screen.summary.text()
-    all_ticked = screen.all_box.isChecked()
-    click_button(screen.all_box)                         # all ticked: the click unticks them all
-    closed = not window.next_button.isEnabled() and screen.summary.text() == "Tick a flight."
-    click_button(screen.all_box)
-    reopened = window.next_button.isEnabled() and screen.summary.text() == "3 of 3 flights, 30 shots"
-    click_button(boxes["FLIGHT01"])                        # a click on the tick box itself
-    ok = with_calibration == "3 of 3 flights, 30 shots" and all_ticked and closed and reopened and not boxes["FLIGHT01"].isChecked()
+    click_button(screen.pick_none)
+    closed = not window.next_button.isEnabled() and screen.summary.text() == "Tick a flight." and not screen.pick_none.isEnabled()
+    click_button(screen.pick_all)
+    reopened = window.next_button.isEnabled() and screen.summary.text() == "3 of 3 flights, 30 shots" and not screen.pick_all.isEnabled()
+    tick(window, "FLIGHT01", False)
+    pump(400)
+    ok = with_calibration == "3 of 3 flights, 30 shots" and closed and reopened and not ticks(window)["FLIGHT01"]
     window.close()
     return ok, with_calibration
 
 
-@case("photos: a click on the row ticks the flight")
+@case("photos: a click on the row ticks the flight, another click unticks it")
 def _():
     window, _b = new_wizard()
     show(window)
     scanned(window)
     screen = window.screens[S.PHOTOS]
-    key = [k for k in screen.rows if k.endswith("BIASED")][0]
-    frame = screen.rows[key][1]
-    click_button(frame)
-    ok = screen.rows[key][0].isChecked() and window.state.selection[key] is True and frame.property("on") is True
+    key = [k for k in screen.keys if k.endswith("BIASED")][0]
+    click_at(screen.table.viewport(), screen.row_point(key))
+    first = screen.is_ticked(key) and window.state.selection[key] is True and screen.table.item(screen.keys.index(key), 0).text() == "✓"
+    click_at(screen.table.viewport(), screen.row_point(key))
+    ok = first and not screen.is_ticked(key) and window.state.selection[key] is False
     window.close()
     return ok
 
@@ -437,7 +528,7 @@ def _():
     screen = window.screens[S.CHECKS]
     passed = screen.passed
     folded = passed is not None and not passed.is_open() and not passed.body.isVisible() and passed.head.text() == "8 checks passed"
-    tiles = {k: v.text() for k, v in screen.tiles.items()}
+    tiles = {k: v.fullText() for k, v in screen.tiles.items()}
     ok = (screen.verdict.text() == "Ready" and screen.verdict_glyph.kind() == "ok" and folded and not screen.finding_rows
           and tiles == {"shots": "24", "flights": "2", "left": "SERIAL-LEFT-001", "right": "SERIAL-RIGHT-001", "tilt": "22.5 deg"}
           and window.next_button.isEnabled())
@@ -455,18 +546,17 @@ def _():
     window, _b = new_wizard()
     show(window)
     scanned(window, folder)
-    for box in flight_boxes(window).values():
-        box.setChecked(True)
+    tick_all(window, True)
     pump(40)
     click_button(window.next_button)
     pump(60)
     shot(window, "L306_checks_blocked_x1.0")
     screen = window.screens[S.CHECKS]
     row = screen.finding_rows[0]
-    blocked = (screen.verdict.text() == "1 blocking" and screen.verdict_glyph.kind() == "stop" and row.label.text() == "More than one L3"
-               and row.count.text() == "" and row.glyph.kind() == "stop" and "one unit only" in row.info.text_tip() and not window.next_button.isEnabled())
+    blocked = (screen.verdict.text() == "1 blocking" and screen.verdict_glyph.kind() == "error" and row.label.text() == "More than one L3"
+               and row.count.text() == "" and row.glyph.kind() == "error" and "one unit only" in row.info.text_tip() and not window.next_button.isEnabled())
     click_button(window.back_button)
-    flight_boxes(window)["OTHERL3"].setChecked(False)
+    tick(window, "OTHERL3", False)
     pump(400)
     click_button(window.next_button)
     pump(60)
@@ -475,13 +565,19 @@ def _():
     return blocked and fixed, screen.verdict.text()
 
 
-@case("checks: a photo that would come out turned is '1 to check' with its file name in the tip")
-def _():
-    folder = make_mission("rotated", extra=False)
+def rotated_mission(name):
+    """A mission whose third photo of the first flight is turned by its EXIF orientation; returns (folder, file name of that photo)."""
+    folder = make_mission(name, extra=False)
     flight = [d for d in os.listdir(folder) if d.endswith("FLIGHT01")][0]
     victim = sorted(f for f in os.listdir(os.path.join(folder, flight)) if f.endswith("_LV.JPG"))[2]
     with open(os.path.join(folder, flight, victim), "wb") as handle:
         handle.write(synth.make_jpeg(orientation=6, tags=synth.photo_tags("L", 120.0, "B", 48.8, 2.3, 200.0, synth.GPS0)))
+    return folder, victim
+
+
+@case("checks: a photo that would come out turned is '1 to check' with its file name in the tip")
+def _():
+    folder, victim = rotated_mission("rotated")
     window, _b = new_wizard()
     show(window)
     scanned(window, folder)
@@ -499,11 +595,7 @@ def _():
 
 @case("checks: the 'i' shows its tip on click and has a name for screen readers; a long tip wraps")
 def _():
-    folder = make_mission("rotated2", extra=False)
-    flight = [d for d in os.listdir(folder) if d.endswith("FLIGHT01")][0]
-    victim = sorted(f for f in os.listdir(os.path.join(folder, flight)) if f.endswith("_LV.JPG"))[2]
-    with open(os.path.join(folder, flight, victim), "wb") as handle:
-        handle.write(synth.make_jpeg(orientation=6, tags=synth.photo_tags("L", 120.0, "B", 48.8, 2.3, 200.0, synth.GPS0)))
+    folder, victim = rotated_mission("rotated2")
     window, _b = new_wizard()
     show(window)
     scanned(window, folder)
@@ -512,12 +604,13 @@ def _():
     info = window.screens[S.CHECKS].finding_rows[0].info
     click_button(info)
     pump(60)
-    shown = QtWidgets.QToolTip.isVisible() and victim in QtWidgets.QToolTip.text()
-    QtWidgets.QToolTip.hideText()
-    ok = (shown and info.accessibleName() == "More information" and victim in info.accessibleDescription()
-          and info.focusPolicy() == QtCore.Qt.StrongFocus and info.toolTip().startswith("<p>"))
+    shown = info.tip_visible() and victim in popover_text()
+    wraps = uikit.controls.Popover.shared()._label.wordWrap()
+    info.hide_tip()
+    ok = (shown and wraps and info.accessibleName() == "More information" and victim in info.accessibleDescription()
+          and info.focusPolicy() == QtCore.Qt.StrongFocus)
     window.close()
-    return ok, QtWidgets.QToolTip.text()[:80]
+    return ok, popover_text()[:80]
 
 
 @case("checks: more findings than fit scroll inside the list, the verdict and the buttons stay in place")
@@ -536,7 +629,7 @@ def _():
     return ok, str(cut_off(window))[:200]
 
 
-@case("project: advanced is folded; typed numbers apply, a wrong text goes back, the name is required")
+@case("project: advanced is folded; typed numbers apply, a wrong text is refused in words, the name is required")
 def _():
     window, _b = new_wizard()
     show(window)
@@ -547,23 +640,26 @@ def _():
     screen.advanced.set_open(True)
     pump(60)
     shot(window, "L308_project_advanced_x1.0")
-    ok = (folded and screen.name.text() == "L3_TESTSITE_300101" and window.next_button.text() == "Create project" and window.next_button.isEnabled()
+    ok = (folded and screen.chunk.text() == "L3_TESTSITE_300101" and window.next_button.text() == "Create project" and window.next_button.isEnabled()
           and screen.fields["accuracy_fixed"].isVisible())
     type_into(screen.fields["accuracy_fixed"], "0,03")
-    ok = ok and window.state.options.accuracy_fixed == 0.03
+    ok = ok and window.state.options.accuracy_fixed == 0.03 and window.current_step() == S.PROJECT       # Enter takes the value, it does not create
     type_into(screen.fields["accuracy_fixed"], "abc")
-    ok = ok and window.state.options.accuracy_fixed == 0.03 and screen.fields["accuracy_fixed"].text() == "0.030"
+    row = [r for r in screen.advanced.body.findChildren(uikit.blocks.FormRow) if r.control is screen.fields["accuracy_fixed"]][0]
+    ok = ok and window.state.options.accuracy_fixed == 0.03 and row.error_text() == "That is not a number." and screen.fields["accuracy_fixed"].value() == 0.03
+    type_into(screen.fields["accuracy_fixed"], "0.04")
+    ok = ok and window.state.options.accuracy_fixed == 0.04 and row.error_text() == "" and screen.fields["accuracy_fixed"].text() == "0.040"
     type_into(screen.fields["z_shift"], "0.27")
     ok = ok and window.state.options.z_shift == 0.27
     type_into(screen.fields["rotation_accuracy"], "5000")
     ok = ok and window.state.options.rotation_accuracy == 10.0                      # out of range: refused
-    screen.name.setText("")
-    screen.name.textEdited.emit("")
+    screen.chunk.setText("")
+    screen.chunk.textEdited.emit("")
     pump(30)
-    ok = ok and not window.next_button.isEnabled()
-    screen.name.setText("My chunk")
-    screen.name.textEdited.emit("My chunk")
-    ok = ok and window.next_button.isEnabled() and window.state.options.chunk_name == "My chunk"
+    ok = ok and not window.next_button.isEnabled() and screen.name_row.error_text() == "Enter a name."
+    screen.chunk.setText("My chunk")
+    screen.chunk.textEdited.emit("My chunk")
+    ok = ok and window.next_button.isEnabled() and window.state.options.chunk_name == "My chunk" and screen.name_row.error_text() == ""
     window.close()
     return ok
 
@@ -575,7 +671,7 @@ def _():
     to_step(window, S.PROJECT)
     screen = window.screens[S.PROJECT]
     screen.advanced.set_open(True)
-    click_button(screen.frame.button("etrs89"))
+    click_at(screen.frame, QtCore.QPoint(int(screen.frame.width() * 0.75), screen.frame.height() // 2))
     screen.fixed_cal.setChecked(True)
     screen.unpaired.setChecked(True)
     screen.quick.setChecked(True)
@@ -614,14 +710,15 @@ def _():
     run_to_end(window, align=True)
     shot(window, "L309_run_done_x1.0")
     screen = window.screens[S.RUN]
-    rows = {line.key: (line.glyph.kind(), line.figure.text()) for line in screen.lines}
+    rows = {line.key: (line.glyph.kind(), line.figure.fullText()) for line in screen.lines}
     plan, steps = backend.runs[0]
     ok = (window.current_step() == S.RUN and screen.headline.text() == "Ready: L3_TESTSITE_300101" and screen.head_glyph.kind() == "ok"
           and rows == {"create": ("ok", "48 cameras, sensors: 2"), "verify": ("ok", "48 cameras, max error 0.000 deg"), "align": ("ok", "48 / 48 photos")}
           and screen.next_line.text() == "Next: add control points, then save the project."
-          and not window.back_button.isVisible() and window.cancel_button.text() == "Close" and steps == ["align", "repair"]
-          and plan.options.chunk_name == "L3_TESTSITE_300101" and plan.photo_count == 48)
-    window.close()
+          and not window.back_button.isVisible() and not window.next_button.isVisible() and window.cancel_button.text() == "Close" and steps == ["align", "repair"]
+          and plan.options.chunk_name == "L3_TESTSITE_300101" and plan.photo_count == 48 and not window.banner.isVisible())
+    click_button(window.cancel_button)
+    ok = ok and not window.isVisible()
     return ok, str(rows)
 
 
@@ -638,13 +735,13 @@ def _():
     return ok, screen.next_line.text()
 
 
-@case("create: while it runs one step turns, the ones before are ticked, the ones after wait; its bar is the only one")
+@case("create: while it runs one step turns, the ones before are ticked, the ones after wait; the footer shows the one progress")
 def _():
     seen = {}
 
     def watch():
         APP.processEvents()
-        time.sleep(0.12)                                    # the window looks at the progress every 100 ms
+        time.sleep(0.03)
         APP.processEvents()
         window = seen.get("window")
         if window is not None and window.busy() and window.current_step() == S.RUN:
@@ -652,7 +749,7 @@ def _():
             kinds = [line.glyph.kind() for line in screen.lines]
             if "running" in kinds and kinds != seen.get("last"):
                 seen["last"] = kinds
-                seen.setdefault("states", []).append((kinds, [line.bar.isVisibleTo(window) for line in screen.lines], screen.headline.text()))
+                seen.setdefault("states", []).append((kinds, working(window), screen.headline.text(), window.footer.progress.text.fullText()))
                 if len(seen["states"]) == 3:
                     shot(window, "L309_run_running_x1.0")
     backend = FakeBackend(pump=watch)
@@ -664,8 +761,8 @@ def _():
     run_to_end(window, align=True, optimize=True)
     states = seen.get("states", [])
     first_ok = bool(states) and states[0][0][0] == "running" and states[0][0][1:] == ["pending"] * 3
-    later_ok = any(k == ["ok", "ok", "running", "pending"] for k, _b, _h in states)
-    bars_ok = all(sum(bars) == 1 for _k, bars, _h in states) and all(h == "Creating L3_TESTSITE_300101" for _k, _b, h in states)
+    later_ok = any(k == ["ok", "ok", "running", "pending"] for k, _b, _h, _t in states)
+    bars_ok = all(b for _k, b, _h, _t in states) and all(h == "Creating L3_TESTSITE_300101" for _k, _b, h, _t in states) and all(t for _k, _b, _h, t in states)
     window.close()
     return first_ok and later_ok and bars_ok, str(states[:3])
 
@@ -678,8 +775,8 @@ def _():
     run_to_end(window, align=True)
     shot(window, "L310_run_problem_x1.0")
     screen = window.screens[S.RUN]
-    rows = {line.key: (line.glyph.kind(), line.figure.text()) for line in screen.lines}
-    ok = (screen.headline.text() == "Check L3_TESTSITE_300101" and screen.head_glyph.kind() == "warn" and rows["repair"] == ("stop", "4 of 4 still flipped")
+    rows = {line.key: (line.glyph.kind(), line.figure.fullText()) for line in screen.lines}
+    ok = (screen.headline.text() == "Check L3_TESTSITE_300101" and screen.head_glyph.kind() == "warn" and rows["repair"] == ("error", "4 of 4 still flipped")
           and window.state.result.alignment.remaining == 4 and screen.next_line.text() == "")
     window.close()
     return ok, str(rows)
@@ -692,7 +789,7 @@ def _():
     to_step(window, S.PROJECT)
     run_to_end(window, align=True)
     screen = window.screens[S.RUN]
-    rows = {line.key: (line.glyph.kind(), line.figure.text()) for line in screen.lines}
+    rows = {line.key: (line.glyph.kind(), line.figure.fullText()) for line in screen.lines}
     ok = rows.get("repair") == ("ok", "4 re-aligned") and screen.headline.text().startswith("Ready")
     window.close()
     return ok, str(rows)
@@ -705,10 +802,31 @@ def _():
     to_step(window, S.PROJECT)
     run_to_end(window, align=True)
     screen = window.screens[S.RUN]
-    rows = {line.key: (line.glyph.kind(), line.figure.text()) for line in screen.lines}
-    ok = rows["verify"] == ("stop", "simulated failure") and rows["align"][0] == "pending" and screen.headline.text().startswith("Check")
+    rows = {line.key: (line.glyph.kind(), line.figure.fullText()) for line in screen.lines}
+    ok = rows["verify"] == ("error", "simulated failure") and rows["align"][0] == "pending" and screen.headline.text().startswith("Check")
     window.close()
     return ok, str(rows)
+
+
+@case("create: an exception in the backend ends in the red banner (no Retry: a second run would make a second chunk) and a Failed headline")
+def _():
+    class Broken(FakeBackend):
+        def run(self, plan, steps, progress, cancelled):
+            raise RuntimeError("Metashape said no")
+    window = W.L3Wizard(Broken(pump=lambda: APP.processEvents()))
+    window.pick_folder = lambda start: MISSION
+    show(window)
+    to_step(window, S.PROJECT)
+    click_button(window.next_button)
+    assert until(lambda: not window.busy(), 30)
+    pump(100)
+    shot(window, "L310_run_exception_x1.0")
+    screen = window.screens[S.RUN]
+    banner = window.banner
+    ok = (banner.isVisible() and banner.kind() == "danger" and "Metashape said no" in banner.message.text() and not banner.action_button.isVisible()
+          and screen.headline.text() == "Failed" and screen.head_glyph.kind() == "error" and window.cancel_button.text() == "Close")
+    window.close()
+    return ok, banner.message.text()
 
 
 @case("create: Cancel during the run stops the whole batch")
@@ -739,52 +857,64 @@ def _():
     return ok, screen.headline.text()
 
 
-@case("photos: a list of 22 flights never asks for more height than the screen has, and Back to Photos keeps the window on screen")
+@case("photos: a list of 22 flights scrolls inside its table, the window stays on the screen and Back to Photos keeps it so")
 def _():
-    from aerotools.tools.aerol3 import screens as SC
-    tall = QtWidgets.QWidget()
-    tall.setMinimumSize(300, 3000)
-    box = SC.ListScroll(tall, preferred=600)
-    area = controls.screen_area()
-    capped = box.sizeHint().height() <= area.height() - 440 + 4
+    import copy
     window, _b = new_wizard()
     show(window)
     scanned(window)
+    screen = window.screens[S.PHOTOS]
+    flights = window.state.scan.flights
+    for index in range(19):
+        clone = copy.copy(flights[0])
+        clone.key = "{}-copy{}".format(flights[0].key, index)
+        flights.append(clone)
     click_button(window.next_button)
     pump(60)
-    window.screens[S.PHOTOS].scroll.widget().setMinimumHeight(3000)          # as tall as 22 rows
     click_button(window.back_button)
     pump(120)
-    on_screen = window.height() <= area.height() - W.SCREEN_MARGIN
+    screen.rebuild()
+    pump(120)
+    area = ushell.screen_area()
+    on_screen = window.height() <= area.height() - uikit.px(48) and window.width() <= area.width()
+    bar = screen.table.verticalScrollBar().isVisible()
+    buttons = window.next_button.isVisible() and window.next_button.mapTo(window, window.next_button.rect().bottomRight()).y() <= window.height()
     window.close()
-    return capped and on_screen, "hint {} window {} screen {}".format(box.sizeHint().height(), window.height(), area.height())
+    return on_screen and bar and buttons and len(screen.keys) == 22, "window {} screen {} bar {}".format(window.height(), area.height(), bar)
 
 
-@case("window: shrinking stops at the true least size and never moves the window")
+@case("window: it fits a 1366 x 768 screen on every page, the buttons stay in view")
 def _():
-    window, _b = new_wizard()
-    show(window)
-    pump(300)
-    top_left = window.pos()
-    window.resize(window.width(), 100)                    # far below the limit, like a drag to the bottom
-    pump(200)
-    layout = window.layout()
-    floor = max(layout.minimumSize().height(), layout.minimumHeightForWidth(window.width()) if layout.hasHeightForWidth() else 0)
-    stopped = window.height() >= floor and window.minimumHeight() >= floor - 1
-    still = window.pos() == top_left
-    window.close()
-    return stopped and still, "height {} floor {} min {} moved {}".format(window.height(), floor, window.minimumHeight(), not still)
+    SCREEN["area"] = QtCore.QRect(0, 0, 1366, 728)                      # the work area of a 1366 x 768 screen under the task bar
+    try:
+        window, _b = new_wizard(flipped=3)
+        show(window)
+        bad = []
 
-@case("window: its least height follows the page on show, not the tallest page, so it can be made smaller")
-def _():
-    window, _b = new_wizard()
-    show(window)
-    need = window.layout().minimumHeightForWidth(window.width())
-    floor = window.layout().totalMinimumSize().height()
-    window.close()
-    return need <= floor + 80, "least height {} for a floor of {}".format(need, floor)
+        def look(name):
+            pump(80)
+            if not window.fits_screen or window.height() > 728 or window.width() > 1366 or cut_off(window):
+                bad.append("{} {}x{} {}".format(name, window.width(), window.height(), cut_off(window)[:2]))
+        look("photos_empty")
+        scanned(window)
+        look("photos")
+        click_button(window.next_button)
+        look("checks")
+        click_button(window.next_button)
+        window.screens[S.PROJECT].advanced.set_open(True)
+        look("project_advanced")
+        window.screens[S.PROJECT].advanced.set_open(False)
+        window.screens[S.PROJECT].boxes["ortho"].setChecked(True)
+        click_button(window.next_button)
+        until(lambda: not window.busy() and window.state.result is not None, 30)
+        look("run")
+        window.close()
+    finally:
+        SCREEN["area"] = QtCore.QRect(0, 0, 1920, 1040)
+    return not bad, str(bad)
 
-@case("closing the window while a job runs waits for the job to stop")
+
+@case("closing the window while a job runs waits for the job to stop, then the window closes by itself")
 def _():
     window, _b = new_wizard()
     show(window)
@@ -793,19 +923,40 @@ def _():
     click_button(screen.scan_button)
     window.close()
     ended = until(lambda: not window.busy(), 20)
-    window.close()
-    return ended
+    gone = until(lambda: not window.isVisible(), 5)
+    return ended and gone, "ended {} hidden {}".format(ended, gone)
 
 
-@case("Esc and Enter do not close the window or press a random button")
+@case("Esc closes the window, Enter presses Next only when it is on; Esc during a job stops the job and keeps the window")
 def _():
     window, _b = new_wizard()
     show(window)
-    key(window, QtCore.Qt.Key_Escape)
     key(window, QtCore.Qt.Key_Return, "\r")
-    ok = window.isVisible() and window.current_step() == S.PHOTOS
-    window.close()
-    return ok
+    still = window.isVisible() and window.current_step() == S.PHOTOS                       # Next is off: Enter does nothing
+    scanned(window)
+    key(window, QtCore.Qt.Key_Return, "\r")
+    pump(60)
+    moved = window.current_step() == S.CHECKS                                                # Next is on: Enter presses it
+    key(window, QtCore.Qt.Key_Escape)
+    pump(60)
+    closed = not window.isVisible()
+    from aerotools.tools.aerol3 import scan as scan_module
+    real = scan_module.scan_folder
+    scan_module.scan_folder = slow_scan(real)
+    try:
+        other, _b2 = new_wizard()
+        show(other)
+        other.screens[S.PHOTOS].path.setText(MISSION)
+        click_button(other.screens[S.PHOTOS].scan_button)
+        pump(100)
+        key(other, QtCore.Qt.Key_Escape)
+        assert until(lambda: not other.busy(), 15)
+        pump(60)
+        kept = other.isVisible() and other.screens[S.PHOTOS].status.text() == "Scan cancelled."
+        other.close()
+    finally:
+        scan_module.scan_folder = real
+    return still and moved and closed and kept, "{} {} {} {}".format(still, moved, closed, kept)
 
 
 @case("Back walks through the screens and keeps the choices")
@@ -813,32 +964,54 @@ def _():
     window, _b = new_wizard()
     show(window)
     to_step(window, S.PROJECT)
-    window.screens[S.PROJECT].name.setText("Kept name")
-    window.screens[S.PROJECT].name.textEdited.emit("Kept name")
+    window.screens[S.PROJECT].chunk.setText("Kept name")
+    window.screens[S.PROJECT].chunk.textEdited.emit("Kept name")
     click_button(window.back_button)
     click_button(window.back_button)
     ok = window.current_step() == S.PHOTOS and window.state.has_photos()
     for _i in range(2):
         click_button(window.next_button)
-    ok = ok and window.current_step() == S.PROJECT and window.screens[S.PROJECT].name.text() == "Kept name"
+    ok = ok and window.current_step() == S.PROJECT and window.screens[S.PROJECT].chunk.text() == "Kept name"
     window.close()
     return ok
 
 
-@case("the Tab key reaches the 'i' of a row and Space shows its tip")
+@case("the Tab key reaches the 'i' of the summary and Space shows its tip")
 def _():
     window, _b = new_wizard()
     show(window)
     scanned(window)
-    info = window.screens[S.PHOTOS].page.findChildren(widgets.InfoButton)[0]
+    info = window.screens[S.PHOTOS].summary_info
     info.setFocus()
     pump(30)
     key(info, QtCore.Qt.Key_Space, " ")
     pump(60)
-    shown = QtWidgets.QToolTip.isVisible() and "start unticked" in QtWidgets.QToolTip.text()
-    QtWidgets.QToolTip.hideText()
+    shown = info.tip_visible() and "start unticked" in popover_text()
+    info.hide_tip()
     window.close()
-    return shown, QtWidgets.QToolTip.text()[:60]
+    return shown, popover_text()[:60]
+
+
+@case("checks: the Tab key reaches the 'i' of every finding inside the scrolling list")
+def _():
+    window, _b = new_wizard()
+    show(window)
+    to_step(window, S.CHECKS)
+    screen = window.screens[S.CHECKS]
+    window.state.analysis.findings.extend(checks.Finding(checks.WARNING, "no_gps", n=i + 2, total=40, examples=["a.JPG"]) for i in range(3))
+    screen.rebuild()
+    window.fix_tab_order()
+    pump(60)
+    wanted = [row.info for row in screen.finding_rows]
+    chain, widget = [], wanted[0]
+    for _i in range(80):
+        widget = widget.nextInFocusChain()
+        if widget is wanted[0]:
+            break
+        chain.append(widget)
+    got = [w for w in [wanted[0]] + chain if w in wanted]
+    window.close()
+    return got == wanted, "{} of {}".format(len(got), len(wanted))
 
 
 @case("project: the Tab key goes Name, frame, steps, quick test, Advanced, then its fields in screen order")
@@ -849,15 +1022,17 @@ def _():
     screen = window.screens[S.PROJECT]
     screen.advanced.set_open(True)
     pump(60)
+    window.fix_tab_order()
     window.activateWindow()
-    chain, widget = [], screen.name
-    for _i in range(60):
+    chain, widget = [], screen.chunk
+    for _i in range(80):
         widget = widget.nextInFocusChain()
-        if widget is screen.name:
+        if widget is screen.chunk:
             break
         if widget.isVisibleTo(window) and widget.isEnabled() and widget.focusPolicy() & QtCore.Qt.TabFocus and screen.isAncestorOf(widget):
             chain.append(widget)
-    want = [screen.quick, screen.advanced.head, screen.fields["accuracy_fixed"], screen.fields["accuracy_float"], screen.fields["accuracy_single"],
+    want = [screen.frame, screen.boxes["align"], screen.boxes["optimize"], screen.boxes["dem"], screen.boxes["ortho"], screen.quick,
+            screen.advanced.head, screen.fields["accuracy_fixed"], screen.fields["accuracy_float"], screen.fields["accuracy_single"],
             screen.fields["z_shift"], screen.fields["rotation_accuracy"], screen.fixed_cal, screen.unpaired]
     seen = [w for w in chain if w in want]
     window.close()
@@ -865,7 +1040,7 @@ def _():
 
 
 # --------------------------------------------------------------------------------------------------
-# every screen at three font scales
+# every screen at three scales
 # --------------------------------------------------------------------------------------------------
 
 METRICS = {}
@@ -889,11 +1064,11 @@ def inspect(window, name, tag, problems, advanced_open=False):
 
 
 def render_all(scale):
-    """Every screen at one font scale: nothing may be cut off, no vertical bar anywhere. With --shots the screens are saved as PNG."""
+    """Every screen at one scale: nothing may be cut off, no vertical bar anywhere. With --shots the screens are saved as PNG."""
     tag = "x%.1f" % scale
     problems = {}
+    rescale(scale)
     window, backend = new_wizard(flipped=3)
-    rescale(window, scale)
     show(window)
     inspect(window, "photos_empty", tag, problems)
     shot(window, "L3v2_photos_empty_" + tag)
@@ -937,21 +1112,18 @@ def render_states(scale):
     tag = "x%.1f" % scale
     problems = {}
     folder = make_mission("mixed_shots", extra=False, mixed=True)
+    rescale(scale)
     window, _b = new_wizard()
-    rescale(window, scale)
     show(window)
     scanned(window, folder)
-    for box in flight_boxes(window).values():
-        box.setChecked(True)
+    tick_all(window, True)
     pump(40)
     click_button(window.next_button)
     pump(100)
     inspect(window, "checks_blocked", tag, problems)
     shot(window, "L3v2_checks_blocked_" + tag)
     window.close()
-    unscale()
     window, _b = new_wizard(flipped=4, unrepairable=True)
-    rescale(window, scale)
     show(window)
     to_step(window, S.PROJECT)
     run_to_end(window, align=True)
@@ -962,7 +1134,7 @@ def render_states(scale):
     return problems
 
 
-@case("font scales x1.0, x1.5 and x2.0: nothing cut off, no vertical scroll bar, no label over 60 characters, on every screen")
+@case("scales x1.0, x1.25 and x1.5: nothing cut off, no vertical scroll bar, no label over 60 characters, on every screen")
 def _():
     global SHOTS
     keep, SHOTS = SHOTS, None
@@ -980,10 +1152,23 @@ def _():
 @case("every screen stays short: few words, a few characters")
 def _():
     if not METRICS:
-        keep = SHOTS
         render_all(1.0)
     over = {n: m["x1.0"] for n, m in METRICS.items() if n.split("_")[0] in TEXT_LIMITS and m["x1.0"][0] > TEXT_LIMITS[n.split("_")[0]]}
     return not over, str(over)
+
+
+@case("the tool has no style sheet, colour, message box or event pump of its own")
+def _():
+    import glob
+    folder = os.path.join(ROOT, "aerotools", "tools", "aerol3")
+    bad = []
+    for path in glob.glob(os.path.join(folder, "*.py")):
+        if os.path.basename(path) in ("msl3.py", "fake_backend.py", "tool.py"):           # the Metashape adapter and the fake backend pump by design
+            continue
+        text = open(path, encoding="utf-8").read()
+        if re.search(r"setStyleSheet|#[0-9a-fA-F]{6}\b|QMessageBox|processEvents|message_box|setFont|QFont", text):
+            bad.append(os.path.basename(path))
+    return not bad, str(bad)
 
 
 def finish():

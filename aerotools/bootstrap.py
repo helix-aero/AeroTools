@@ -29,6 +29,9 @@ _MENU_FLAG = "_AEROTOOLS_MENU_INSTALLED"
 _LAST_TOOL_FLAG = "_AEROTOOLS_LAST_TOOL"
 _ROOT_FLAG = "_AEROTOOLS_ROOT"
 _TOOLS_FLAG = "_AEROTOOLS_MENU_TOOLS"           # ids of the tools that already have their entry in the menu of this session
+_RETRY_FLAG = "_AEROTOOLS_MENU_RETRIES"         # how many times the menu layout was retried because the main window was not there yet
+ARRANGE_RETRIES = 5
+ARRANGE_RETRY_MS = 1000
 
 MENU = "Aero"
 
@@ -71,10 +74,23 @@ def install_menu(force=False):
         print("[AeroTools] cannot load: {!r}".format(exc))
         return False
 
+    try:
+        msapi.probe_capabilities()
+    except Exception as exc:
+        print("[AeroTools] capability probe failed: {!r}".format(exc))
+
+    # An update that was cut short (Metashape closed in the middle of it) is undone before anything reads the installation.
+    try:
+        from . import updater
+        for plugin in updater.plugins():
+            updater.recover(plugin)
+    except Exception as exc:
+        print("[AeroTools] update recovery failed: {!r}".format(exc))
+
     # The menu is added once per Metashape session (the Metashape API cannot remove or rename an entry). Only the tools that are
     # installed on this computer have an entry; "Install plugins" adds the others as they come.
     setattr(builtins, _TOOLS_FLAG, set())
-    added = sum(1 for entry in config.TOOLS if add_tool_menu(entry["id"]))
+    added = sum(1 for entry in config.TOOLS if add_tool_menu(entry["id"], arrange=False))
 
     # Three blocks split by a line: the tools, maintenance (install, updates, reload, uninstall), information.
     if added:
@@ -89,16 +105,17 @@ def install_menu(force=False):
     arrange_menu()
     setattr(builtins, _MENU_FLAG, True)
     print(
-        "[AeroTools] menu \"{}\" installed ({} tool(s)) - root {}".format(
-            MENU, added, root()
+        "[AeroTools] menu \"{}\" installed ({} {}) - root {}".format(
+            MENU, added, i18n.plural(added, "tool", "tools"), root()
         )
     )
     return True
 
 
-def add_tool_menu(tool_id):
+def add_tool_menu(tool_id, arrange=True):
     """Adds the menu entry of an installed tool, once per session. Returns True if it was added now. A tool installed while Metashape
-    runs gets its entry at the end of the menu until the next start, when it takes its place."""
+    runs gets its entry at the end of the menu until the next start, when it takes its place. `arrange=False` leaves the ordering to the
+    caller (install_menu adds every entry first and arranges the menu once)."""
     from . import config, i18n, msapi, updater
     entry = config.tool(tool_id)
     shown = getattr(builtins, _TOOLS_FLAG, None)
@@ -113,7 +130,8 @@ def add_tool_menu(tool_id):
     if not msapi.add_menu_item("{}/{}".format(MENU, name), _make_launcher(tool_id), entry.get("shortcut")):
         return False
     shown.add(tool_id)
-    arrange_menu()
+    if arrange:
+        arrange_menu()
     return True
 
 
@@ -123,8 +141,31 @@ def arrange_menu():
     tools = [e["menu"] + (" " + i18n.t("menu.soon") if not e.get("ready", False) else "") for e in config.TOOLS]
     maintenance = [i18n.t(key) for key in ("menu.install", "menu.update", "menu.reload", "menu.uninstall")]
     done = msapi.arrange_menu(MENU, [tools, maintenance, [i18n.t("menu.about")]])
-    msapi.add_logo_button(MENU, os.path.join(root(), "assets", "logo", "helix-aero-AERO-blanc-512px.png"), i18n.t("menu.logo_tip"))
+    logo = msapi.add_logo_button(MENU, os.path.join(root(), "assets", "logo", "helix-aero-AERO-blanc-512px.png"), i18n.t("menu.logo_tip"))
+    if not (done and logo):
+        _retry_arrange()
     return done
+
+
+def _retry_arrange():
+    """The main window may not exist yet when the launcher runs: try again a few times, one second apart, instead of never."""
+    tries = getattr(builtins, _RETRY_FLAG, 0)
+    if tries >= ARRANGE_RETRIES:
+        return False
+    setattr(builtins, _RETRY_FLAG, tries + 1)
+    try:
+        from .qt import QtCore
+        QtCore.QTimer.singleShot(ARRANGE_RETRY_MS, _retry_now)
+        return True
+    except Exception:
+        return False
+
+
+def _retry_now():
+    try:
+        arrange_menu()
+    except Exception as exc:
+        print("[AeroTools] menu layout retry failed: {!r}".format(exc))
 
 
 def _make_launcher(tool_id):
@@ -139,7 +180,19 @@ def _make_launcher(tool_id):
 # Loading the tools
 # --------------------------------------------------------------------------
 
-def launch(tool_id, reload=False):
+def _missing_text(missing):
+    return ", ".join(missing)
+
+
+def _module_named_in(exc):
+    """The third-party package an ImportError is about ("numpy"), or "" for anything else (a bug of ours must stay visible)."""
+    name = getattr(exc, "name", None) or ""
+    if isinstance(exc, ImportError) and name and not name.startswith("aerotools"):
+        return name.split(".")[0]
+    return ""
+
+
+def launch(tool_id):
     """Loads a tool and installs it. Returns True if the tool started."""
     ensure_on_path()
     from . import config, i18n, journal, msapi
@@ -158,26 +211,32 @@ def launch(tool_id, reload=False):
         msapi.message_box(i18n.t("boot.not_installed", title=entry["title"]))
         return False
 
-    if reload:
-        purge_modules()
+    missing = config.missing_modules(tool_id)
+    if missing:                                    # one clear line, before anything of the tool is imported
+        journal.write("{} not started: missing Python {} {}".format(
+            tool_id, i18n.plural(len(missing), "package", "packages"), _missing_text(missing)))
+        msapi.message_box(i18n.t("boot.missing_module", title=entry["title"], modules=_missing_text(missing)))
+        return False
 
     module_name = "aerotools.tools.{}.tool".format(tool_id)
     try:
         module = importlib.import_module(module_name)
     except Exception as exc:
         journal.write("failed to load {}: {!r}".format(tool_id, exc))
-        msapi.message_box(
-            i18n.t("boot.load_failed", tool=tool_id, error=repr(exc))
-        )
+        if _module_named_in(exc):
+            msapi.message_box(i18n.t("boot.missing_module", title=entry["title"], modules=_module_named_in(exc)))
+        else:
+            msapi.message_box(i18n.t("boot.load_failed", tool=tool_id, error=repr(exc)))
         return False
 
     try:
         module.install()
     except Exception as exc:
         journal.write("failed to start {}: {!r}".format(tool_id, exc))
-        msapi.message_box(
-            i18n.t("boot.start_failed", tool=tool_id, error=repr(exc))
-        )
+        if _module_named_in(exc):
+            msapi.message_box(i18n.t("boot.missing_module", title=entry["title"], modules=_module_named_in(exc)))
+        else:
+            msapi.message_box(i18n.t("boot.start_failed", tool=tool_id, error=repr(exc)))
         return False
 
     if entry.get("reopen", False):
@@ -214,8 +273,20 @@ def purge_modules():
                 closer()
             except Exception:
                 pass
+    release_files()
     for name in [n for n in sys.modules if n.startswith("aerotools")]:
         del sys.modules[name]
+
+
+def release_files():
+    """Let go of the files the core keeps open (the read-only proj.db connection of projtool): on Windows an update or an uninstall
+    could not replace them otherwise. Called before the files change (updates, plugin install, uninstall) and before a purge."""
+    closer = getattr(sys.modules.get("aerotools.projtool"), "close_db", None)
+    if callable(closer):
+        try:
+            closer()
+        except Exception:
+            pass
 
 
 def reload_all():

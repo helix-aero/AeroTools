@@ -30,8 +30,17 @@ _DEDUP_WINDOW_S = 0.25
 # Placement
 # --------------------------------------------------------------------------
 
+_REFUSAL_REPEAT_S = 5.0
+_last_refusal = [None, 0.0]
+
+
 def _refuse(message):
-    journal.write("Marking ignored: " + message)
+    """Say why a click was not used. The same reason repeated within a few seconds (plain clicks on a photo with no current
+    marker, for example) is written once: the journal must not grow with every click."""
+    now = time.time()
+    if _last_refusal[0] != message or now - _last_refusal[1] > _REFUSAL_REPEAT_S:
+        journal.write("Marking ignored: " + message)
+    _last_refusal[0], _last_refusal[1] = message, now
     return False
 
 
@@ -59,11 +68,11 @@ def _snapped(state, camera, label, x, y):
         return x, y
 
 
-def place_at(state, global_pos):
+def place_at(state, global_pos, over_photo=False):
     """Place the projection of the current marker under `global_pos`.
 
     Returns True only if the projection was placed. Each refusal leaves
-    a short line in the journal.
+    a short line in the journal. `over_photo`: the caller (the click filter) has just checked that the cursor is over a photo.
     """
     if not state.enabled:
         return _refuse("tool disabled")
@@ -73,7 +82,7 @@ def place_at(state, global_pos):
         return _refuse("no current marker")
     marker = state.active_marker
 
-    if not msapi.cursor_over_photo_view(global_pos):
+    if not over_photo and not msapi.cursor_over_photo_view(global_pos):
         return _refuse("cursor outside a photo ({})".format(
             msapi.describe_position(global_pos)
         ))
@@ -341,7 +350,7 @@ class ClickFilter(QtCore.QObject):
                 return False
             self._busy = True
             try:
-                return bool(place_at(state, pos))
+                return bool(place_at(state, pos, over_photo=True))
             finally:
                 self._busy = False
         except Exception as exc:

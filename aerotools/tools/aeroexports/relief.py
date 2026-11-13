@@ -7,6 +7,7 @@ at 45 degrees (strength 0.8), white where there is no data. The DEM is read bloc
 shading) and the RGB image is written in Deflate with the DEM's georeferencing.
 """
 
+import os
 import struct
 import zlib
 
@@ -139,6 +140,16 @@ def nodata_mask(z, nodata=None):
     return bad if nodata is None else bad | (z == nodata)
 
 
+def is_geographic(tiff, pixel_x):
+    """True when the DEM is in degrees. Read from the GeoTIFF key GTModelType (1 projected, 2 geographic) when the file has it; only
+    a file without it falls back on the old guess (a pixel under 0.01), which took a millimetre DEM in metres for degrees."""
+    keys = tiff.ints(tiffio.T_GEOKEYS, [])
+    for index in range(4, len(keys) - 3, 4):
+        if keys[index] == 1024 and keys[index + 1] == 0:
+            return keys[index + 3] == 2
+    return pixel_x < 0.01
+
+
 def declared_nodata(tiff):
     """The "no data" value written in the TIFF (GDAL tag), or None."""
     try:
@@ -216,8 +227,36 @@ def pixel_size(tiff):
     return (abs(scale[0]), abs(scale[1])) if scale else (1.0, 1.0)
 
 
-def render(dem_path, out_path, look=None, tick=None, level=6):
-    """Float32 GeoTIFF DEM -> RGB GeoTIFF with the look (default: Metashape's). Returns (ok, message)."""
+def _strips(tiff):
+    """(top, bottom, rows, first row of `rows`) for each strip of CHUNK rows of the DEM, with one row more above and below for the
+    shading (what `z[lo:hi]` was when the whole DEM was in memory), decoded block by block: the DEM is never held whole, only the
+    strip being painted, the rows kept for the next one and the band being read."""
+    held, held_top = None, 0                         # rows of the DEM still needed: from held_top down
+    height = tiff.height
+    pending = iter(tiff.row_bands())
+    done = False
+    for top in range(0, height, CHUNK):
+        bottom = min(height, top + CHUNK)
+        lo, hi = max(0, top - 1), min(height, bottom + 1)
+        while not done and (held is None or held_top + held.shape[0] < hi):
+            try:
+                band_top, band = next(pending)
+            except StopIteration:
+                done = True
+                break
+            if held is None:
+                held, held_top = band, band_top
+            else:
+                held = np.concatenate([held, band])
+        yield top, bottom, held[lo - held_top:hi - held_top], lo
+        keep = max(0, bottom - 1)                    # the next strip starts one row above its first one
+        if held is not None and keep > held_top:
+            held, held_top = held[keep - held_top:], keep
+
+
+def render(dem_path, out_path, look=None, tick=None, level=6, jpeg=False, quality=90):
+    """Float32 GeoTIFF DEM -> RGB GeoTIFF with the look (default: Metashape's). Returns (ok, message).
+    `jpeg`: `out_path` is a JPEG instead (Qt's encoder, no external tool) with its world file `.jgw` next to it."""
     try:
         look = looks.normalized(looks.DEFAULT if look is None else look)
         tiff = tiffio.Tiff(dem_path)
@@ -226,26 +265,56 @@ def render(dem_path, out_path, look=None, tick=None, level=6):
             return False, "DEM without data"
         low, high = choose_range(look, span, lambda: percentile_range(dem_path, span))
         pixel_x, pixel_y = pixel_size(tiff)
-        geographic = pixel_x < 0.01          # degrees: no slope in metres, so no shading
-        z = tiff.read_all()
+        geographic = is_geographic(tiff, pixel_x)          # degrees: no slope in metres, so no shading
         nodata = declared_nodata(tiff)
         table = table_for(looks.palette(look.palette))
         compressed = []
-        for top in range(0, tiff.height, CHUNK):
-            bottom = min(tiff.height, top + CHUNK)
-            part = z[top:bottom]
+        for top, bottom, window, lo in _strips(tiff):
+            part = window[top - lo:bottom - lo]
             shade = None
             if not geographic:
-                lo, hi = max(0, top - 1), min(tiff.height, bottom + 1)
-                full = shade_block(z[lo:hi], nodata, low, pixel_x, pixel_y, look)
+                full = shade_block(window, nodata, low, pixel_x, pixel_y, look)
                 shade = None if full is None else full[top - lo:top - lo + (bottom - top)]
             image = colorize(part, low, high, table, shade, nodata)
-            compressed.append(zlib.compress(np.ascontiguousarray(image).tobytes(), level))
+            if jpeg:
+                compressed.append(np.ascontiguousarray(image))
+            else:
+                compressed.append(zlib.compress(np.ascontiguousarray(image).tobytes(), level))
             if tick is not None:
                 tick()
+        if jpeg:
+            return _write_jpeg(out_path, tiff, compressed, quality)
         _write_rgb(out_path, tiff, compressed)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, MemoryError) as exc:
         return False, "Coloured relief: %s" % exc
+    return True, ""
+
+
+def world_file_lines(tiff):
+    """The six lines of the world file (.jgw) of a north-up GeoTIFF: pixel sizes, rotation terms, centre of the top-left pixel."""
+    scale, tie = tiff.ints(tiffio.T_SCALE), tiff.ints(tiffio.T_TIEPOINT)
+    if not scale or not tie or len(tie) < 6:
+        raise ValueError("DEM without georeferencing")
+    sx, sy = abs(scale[0]), abs(scale[1])
+    x0, y0 = tie[3] - tie[0] * sx, tie[4] + tie[1] * sy
+    return [repr(float(v)) for v in (sx, 0.0, 0.0, -sy, x0 + sx / 2.0, y0 - sy / 2.0)]
+
+
+def _write_jpeg(path, source, parts, quality):
+    """Strips of RGB rows -> JPEG + world file. Returns (ok, message). Qt is imported here: it is only needed for this."""
+    try:
+        from ... import qt
+    except ImportError:
+        return False, "JPEG: no encoder"
+    lines = world_file_lines(source)
+    image = np.concatenate(parts, axis=0)
+    del parts[:]
+    height, width = image.shape[:2]
+    shot = qt.QtGui.QImage(image.data, width, height, width * 3, getattr(qt.QtGui.QImage, "Format_RGB888", None) or qt.QtGui.QImage.Format.Format_RGB888)
+    if not shot.save(path, "JPEG", int(quality)):
+        return False, "JPEG: could not write %s" % path
+    with open(os.path.splitext(path)[0] + ".jgw", "w") as handle:
+        handle.write("\n".join(lines) + "\n")
     return True, ""
 
 

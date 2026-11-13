@@ -37,18 +37,26 @@ def parse_line(line):
                    float(m.group("sz")), int(m.group("q")))
 
 
-def parse_mrk(path):
-    """The shots of a MRK file (a list, empty when the file cannot be read or holds no shot)."""
-    shots = []
+def read_mrk(path):
+    """(shots, ignored, error) of a MRK file: `ignored` counts the non-empty lines that are not a shot (another firmware format, extra
+    columns), `error` is the reason when the file could not be read ('' otherwise). A byte order mark at the start is skipped."""
+    shots, ignored = [], 0
     try:
-        with open(path, "r", encoding="utf-8", errors="replace") as handle:
+        with open(path, "r", encoding="utf-8-sig", errors="replace") as handle:
             for line in handle:
                 shot = parse_line(line)
                 if shot is not None:
                     shots.append(shot)
-    except OSError:
-        return []
-    return shots
+                elif line.strip():
+                    ignored += 1
+    except OSError as exc:
+        return [], 0, "{}: {}".format(type(exc).__name__, exc)
+    return shots, ignored, ""
+
+
+def parse_mrk(path):
+    """The shots of a MRK file (a list, empty when the file cannot be read or holds no shot)."""
+    return read_mrk(path)[0]
 
 
 def gps_datetime(week, tow):

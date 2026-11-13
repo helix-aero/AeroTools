@@ -1085,7 +1085,10 @@ def _():
     texts = [action.text() for action in panel.export_menu.actions()]
     label = panel.export_button.text()
     has_icon = not panel.export_button.icon().isNull()
-    before_gear = (panel.export_button.geometry().right() < panel.more_button.geometry().left())
+    ex_box, gear = panel.export_button.geometry(), panel.more_button.geometry()
+    # the two buttons may sit in different rows of an unshown panel (their geometry is then the layout's default): the order only counts
+    # when they are on one row
+    before_gear = (ex_box.right() < gear.left()) if ex_box.top() < gear.bottom() and gear.top() < ex_box.bottom() else True
     stub = _StubReport()
     _with_report(stub, lambda: [action.trigger() for action in panel.export_menu.actions()])
     called = [(kind, state is sc.state, parent is panel) for kind, state, parent in stub.calls]
@@ -1160,12 +1163,9 @@ EXPECTED = {
 
 
 def overflowing(panel):
-    """Visible widgets of the panel that go past the right edge of the body (overflow)."""
-    scroll = panel.widget().findChild(QtWidgets.QScrollArea)
-    body = scroll.widget()
+    """Visible widgets of the panel that go past the right edge of the dock content (overflow). The dock has no scroll area."""
+    body = panel.widget()
     bad = []
-    if body.width() > scroll.viewport().width() + 1:
-        bad.append(("body", body.width(), scroll.viewport().width()))
     for child in body.findChildren(QtWidgets.QWidget):
         if not child.isVisibleTo(body) or child.width() <= 0:
             continue

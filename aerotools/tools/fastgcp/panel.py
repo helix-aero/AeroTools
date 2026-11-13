@@ -1,19 +1,18 @@
-"""FastGCP Qt panel: a dock at the right of Metashape.
+"""FastGCP Qt panel: a dock at the right of Metashape, built on the UI kit's `DockShell`.
 
-Main view: title, Undo button, Play / Pause with the state of the tool, current marker (two counters),
-search, marker table (ID, X / Y / Z errors, number of projections, sortable columns).
-The footer carries the status, the Export menu and the HELIX credit (site link and
-GitHub). The gear opens the Settings window (settings_dialog.py): options,
-log, AI models and retraining.
+Main view: title, Undo / Redo / settings buttons, on / off switch with the state of the tool, AI detection
+(Run is the one primary button), current marker (two counters), search, marker table (ID, X / Y / Z errors,
+number of projections, sortable columns; an empty state when there is no marker). The footer carries
+Residual check, Adjust, the Export menu and the HELIX credit (site link and GitHub). The gear opens the
+Settings window (settings_dialog.py): AI engine and model, training, options and log.
 
 The photo filter, the synchronisation with the Reference pane and the
 move to the next photo are automatic: the panel does not offer them.
 
 Rules of this module:
   - no direct call to Metashape: everything goes through `msapi`;
-  - no hard-coded style: colours, margins and objectName come from `theme`;
-  - no help sentence, and no tooltip other than the two counter pills
-    and the GitHub icon of the credit;
+  - no hard-coded style: colours, sizes and spacing come from the kit tokens, controls from `uikit`;
+  - no help sentence on screen: the explanation is behind the "i" of the header;
   - no hard-coded visible text: everything goes through `i18n.t(...)`;
   - never an exception towards the caller: a marker reference becomes
     invalid (RuntimeError) as soon as the chunk changes, the panel must
@@ -22,12 +21,12 @@ Rules of this module:
 
 import functools
 import math
-import os
 import re
 import time
 
-from ... import config, i18n, journal, msapi, svgpath, theme
+from ... import i18n, journal, msapi, svgpath, uikit
 from ...qt import QtCore, QtGui, QtWidgets
+from ...uikit import tokens
 from . import aigcp, history, qc
 from .session import DOCK_NAME
 
@@ -35,11 +34,7 @@ SITE_URL = "https://helix.aero"
 SITE_NAME = "helix.aero"
 GITHUB_URL = "https://github.com/helix-aero/AeroTools"
 SETTLE_MS = (500, 2000)               # rereads of the table after a bulk modification
-HEADER_BUTTON = 26                    # round buttons at the top: Undo, Redo, settings
 HEADER_ICON = 14
-LOGO_SCALE = 2                        # the logo is drawn at double resolution
-LOGO_WIDTH = 96                       # displayed width of the AERO logo (the kit asks for 64 px at least)
-LOGO_FILE = "helix-aero-AERO-degrade-512px.png"
 LABEL_MAX = 10                        # maximum length of the current marker name in its card
 
 # Lines visible in the unfolded log.
@@ -48,16 +43,7 @@ LOG_VISIBLE_LINES = 6
 # Minimum width of the dock: the marker table needs room.
 MIN_PANEL_WIDTH = 420
 
-# Same height for all the buttons and lists of the panel; Run is a small button.
-CONTROL_HEIGHT = 30
-RUN_WIDTH = 124
-RUN_HEIGHT = 40
 RUN_ICON = 14
-QC_WIDTH = 140
-ADJUST_WIDTH = 96
-EXPORT_WIDTH = 112
-CANCEL_WIDTH = 84
-PROGRESS_HEIGHT = 22                  # detection bar (text inside) and Cancel button at its right
 
 # Text of each check box of the Settings card (option key: text key).
 CHECK_TEXTS = {
@@ -79,7 +65,7 @@ AIGCP_CHOICE_TEXTS = {
 }
 
 # Minimum height of the marker table (it takes all the rest of the dock).
-LIST_MIN_HEIGHT = 120
+LIST_MIN_HEIGHT = 96
 
 # Table columns: (title text key, sort key, width in pixels;
 # 0 = stretches). The title is read with `i18n.t`, see `column_titles()`.
@@ -102,10 +88,6 @@ EXPORTS = (
 
 # Maximum width of the Export button text: beyond it, it is elided.
 EXPORT_TEXT_MAX_PX = 150
-
-# Qt ignores `letter-spacing` in style sheets: it is applied on the
-# font of the titles (in pixels, like the theme value).
-EYEBROW_SPACING = 1.4
 
 # A click on a new item triggers currentItemChanged then itemClicked:
 # the same marker is only handled once within this window.
@@ -195,31 +177,6 @@ def column_titles():
     return [i18n.t(key) for key, _sort, _width in COLUMNS]
 
 
-def _repolish(widget):
-    """Apply the style sheet again after an objectName change."""
-    try:
-        style = widget.style()
-        style.unpolish(widget)
-        style.polish(widget)
-        widget.update()
-    except RuntimeError:
-        pass
-
-
-def _eyebrow(text):
-    """Theme title (spaced capitals), elided if it is too long.
-
-    Same objectName as `theme.eyebrow`, with the letter spacing that the
-    QSS cannot do.
-    """
-    label = _ElidedLabel("aeroEyebrow")
-    font = label.font()
-    font.setLetterSpacing(QtGui.QFont.AbsoluteSpacing, EYEBROW_SPACING)
-    label.setFont(font)
-    label.set_full_text(text.upper())
-    return label
-
-
 # ----------------------------------------------------------------------
 # Painted icons (QPainter -> QPixmap -> QIcon), never a unicode character
 # ----------------------------------------------------------------------
@@ -253,36 +210,7 @@ def _cached(key, build):
     return pixmap
 
 
-# Round Play / Pause button: a single icon, no text.
-PLAY_BUTTON = 36
 PLAY_ICON = 16
-
-
-def _play_pixmap(running, color):
-    def build():
-        def draw(painter):
-            painter.setBrush(QtGui.QColor(color))
-            if running:
-                # PAUSE: two bars.
-                painter.setPen(QtCore.Qt.NoPen)
-                painter.drawRoundedRect(QtCore.QRectF(3.2, 2.2, 3.2, 11.6), 1.2, 1.2)
-                painter.drawRoundedRect(QtCore.QRectF(9.6, 2.2, 3.2, 11.6), 1.2, 1.2)
-            else:
-                # PLAY: triangle, shifted to the right to look centred.
-                painter.setPen(_pen(color, 1.4))
-                painter.drawPolygon(QtGui.QPolygonF([
-                    QtCore.QPointF(4.6, 2.6),
-                    QtCore.QPointF(13.0, 8.0),
-                    QtCore.QPointF(4.6, 13.4),
-                ]))
-        return _paint(PLAY_ICON, PLAY_ICON, draw)
-    return _cached(("play", running, color), build)
-
-
-def _play_icon(running):
-    """PAUSE when the tool runs (on the green), PLAY when it is stopped."""
-    color = theme.GREEN_ON if running else theme.FG_1
-    return QtGui.QIcon(_play_pixmap(running, color))
 
 
 def _run_pixmap(color):
@@ -302,25 +230,9 @@ def _run_pixmap(color):
 
 def _run_icon():
     icon = QtGui.QIcon()
-    icon.addPixmap(_run_pixmap(theme.GREEN_ON), QtGui.QIcon.Normal)
-    icon.addPixmap(_run_pixmap(theme.FG_4), QtGui.QIcon.Disabled)
+    icon.addPixmap(_run_pixmap(tokens.ON_ACCENT), QtGui.QIcon.Normal)
+    icon.addPixmap(_run_pixmap(tokens.BORDER_STRONG), QtGui.QIcon.Disabled)
     return icon
-
-
-STATE_DOT = 10
-
-
-def _state_dot_pixmap(running):
-    """Small round dot: green if the tool runs, grey otherwise."""
-    color = theme.GREEN if running else theme.FG_2
-
-    def build():
-        def draw(painter):
-            painter.setPen(QtCore.Qt.NoPen)
-            painter.setBrush(QtGui.QColor(color))
-            painter.drawEllipse(QtCore.QRectF(0.5, 0.5, STATE_DOT - 1.0, STATE_DOT - 1.0))
-        return _paint(STATE_DOT, STATE_DOT, draw)
-    return _cached(("state", running, color), build)
 
 
 COUNTER_ICON = 14
@@ -418,20 +330,6 @@ def _gear_pixmap(color):
     return _cached(("gear", color), build)
 
 
-CLOSE_ICON = 14
-
-
-def _close_pixmap(color):
-    """Thin cross (close the panel)."""
-    def build():
-        def draw(painter):
-            painter.setPen(_pen(color, 1.6))
-            painter.drawLine(QtCore.QPointF(3.5, 3.5), QtCore.QPointF(10.5, 10.5))
-            painter.drawLine(QtCore.QPointF(10.5, 3.5), QtCore.QPointF(3.5, 10.5))
-        return _paint(CLOSE_ICON, CLOSE_ICON, draw)
-    return _cached(("close", color), build)
-
-
 UNDO_ICON = 18
 
 
@@ -464,8 +362,8 @@ def _undo_icon(mirror=False):
         return pixmap.transformed(QtGui.QTransform().scale(-1, 1)) if mirror else pixmap
 
     icon = QtGui.QIcon()
-    icon.addPixmap(pick(_undo_pixmap(theme.FG_2)), QtGui.QIcon.Normal)
-    icon.addPixmap(pick(_undo_pixmap(theme.FG_3, 0.45)), QtGui.QIcon.Disabled)
+    icon.addPixmap(pick(_undo_pixmap(tokens.TEXT_MUTED)), QtGui.QIcon.Normal)
+    icon.addPixmap(pick(_undo_pixmap(tokens.TEXT_DISABLED, 0.45)), QtGui.QIcon.Disabled)
     return icon
 
 
@@ -510,9 +408,9 @@ def _dot_icon(done):
     painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
     if done:
         painter.setPen(QtCore.Qt.NoPen)
-        painter.setBrush(QtGui.QColor(theme.GREEN))
+        painter.setBrush(QtGui.QColor(tokens.ACCENT))
     else:
-        painter.setPen(QtGui.QPen(QtGui.QColor(theme.FG_3), 1.4))
+        painter.setPen(QtGui.QPen(QtGui.QColor(tokens.TEXT_DISABLED), 1.4))
         painter.setBrush(QtCore.Qt.NoBrush)
     painter.drawEllipse(1, 1, DOT_SIZE - 1, DOT_SIZE - 1)
     painter.end()
@@ -524,154 +422,6 @@ def _dot_icon(done):
 # ----------------------------------------------------------------------
 # Small widgets
 # ----------------------------------------------------------------------
-
-class _LinkFrame(QtWidgets.QFrame):
-    """Clickable frame: a click opens the address in the browser."""
-
-    def __init__(self, url, parent=None):
-        super(_LinkFrame, self).__init__(parent)
-        self._url = url
-        self.setCursor(QtCore.Qt.PointingHandCursor)
-
-    def mousePressEvent(self, event):
-        try:
-            QtGui.QDesktopServices.openUrl(QtCore.QUrl(self._url))
-        except Exception as exc:
-            journal.write("Aero-GCP: banner link: {!r}".format(exc))
-        super(_LinkFrame, self).mousePressEvent(event)
-
-
-class _ElidedLabel(QtWidgets.QLabel):
-    """Single-line label, truncated by "…" instead of widening the dock."""
-
-    def __init__(self, object_name, parent=None):
-        super(_ElidedLabel, self).__init__(parent)
-        self.setObjectName(object_name)
-        self._full = ""
-        self.setMinimumWidth(0)
-        self.setSizePolicy(
-            QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Preferred
-        )
-
-    def set_full_text(self, text):
-        self._full = text or ""
-        self._elide()
-
-    def _elide(self):
-        width = self.width()
-        if width <= 0:
-            shown = self._full
-        else:
-            shown = self.fontMetrics().elidedText(
-                self._full, QtCore.Qt.ElideRight, width
-            )
-        if shown != self.text():
-            QtWidgets.QLabel.setText(self, shown)
-
-    def resizeEvent(self, event):
-        super(_ElidedLabel, self).resizeEvent(event)
-        self._elide()
-
-    def changeEvent(self, event):
-        super(_ElidedLabel, self).changeEvent(event)
-        if event.type() in (QtCore.QEvent.FontChange, QtCore.QEvent.StyleChange):
-            self._elide()
-
-
-class _Switch(QtWidgets.QPushButton):
-    """Round ON / OFF switch: green track and dot on the right when the tool runs, grey otherwise."""
-
-    WIDTH, HEIGHT = 46, 26
-
-    def __init__(self, parent=None):
-        super(_Switch, self).__init__(parent)
-        self._on = True
-        self.setFixedSize(self.WIDTH, self.HEIGHT)
-        self.setCursor(QtCore.Qt.PointingHandCursor)
-
-    def set_on(self, on):
-        self._on = bool(on)
-        self.update()
-
-    def paintEvent(self, _event):
-        painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        width, height = float(self.width()), float(self.height())
-        painter.setPen(QtCore.Qt.NoPen)
-        painter.setBrush(QtGui.QColor(theme.GREEN if self._on else theme.GROUND_4))
-        painter.drawRoundedRect(QtCore.QRectF(0, 0, width, height), height / 2.0, height / 2.0)
-        knob = height - 6.0
-        left = width - knob - 3.0 if self._on else 3.0
-        painter.setBrush(QtGui.QColor("#ffffff" if self._on else theme.FG_2))
-        painter.drawEllipse(QtCore.QRectF(left, 3.0, knob, knob))
-        painter.end()
-
-
-class _ElidedButton(QtWidgets.QPushButton):
-    """Full-width button whose text is truncated by an ellipsis if it does not fit."""
-
-    def __init__(self, text="", parent=None):
-        super(_ElidedButton, self).__init__(parent)
-        self._full = ""
-        self.setMinimumWidth(0)
-        self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
-        self.set_full_text(text)
-
-    def set_full_text(self, text):
-        self._full = text or ""
-        self._elide()
-
-    def _elide(self):
-        room = self.width() - 28
-        shown = self._full
-        if room > 0:
-            shown = self.fontMetrics().elidedText(self._full, QtCore.Qt.ElideRight, room)
-        if shown != self.text():
-            QtWidgets.QPushButton.setText(self, shown)
-
-    def resizeEvent(self, event):
-        super(_ElidedButton, self).resizeEvent(event)
-        self._elide()
-
-    def changeEvent(self, event):
-        super(_ElidedButton, self).changeEvent(event)
-        if event.type() in (QtCore.QEvent.FontChange, QtCore.QEvent.StyleChange):
-            self._elide()
-
-
-class _ElidedCheck(QtWidgets.QCheckBox):
-    """Check box whose text is truncated by an ellipsis if it does not fit."""
-
-    INDICATOR_ROOM = 14 + 8 + 6   # box, space, margin
-
-    def __init__(self, text="", parent=None):
-        super(_ElidedCheck, self).__init__(parent)
-        self._full = ""
-        self.setMinimumWidth(0)
-        self.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Fixed)
-        self.set_full_text(text)
-
-    def set_full_text(self, text):
-        self._full = text or ""
-        self._elide()
-
-    def _elide(self):
-        room = self.width() - self.INDICATOR_ROOM
-        shown = self._full
-        if room > 0:
-            shown = self.fontMetrics().elidedText(self._full, QtCore.Qt.ElideRight, room)
-        if shown != self.text():
-            QtWidgets.QCheckBox.setText(self, shown)
-
-    def resizeEvent(self, event):
-        super(_ElidedCheck, self).resizeEvent(event)
-        self._elide()
-
-    def changeEvent(self, event):
-        super(_ElidedCheck, self).changeEvent(event)
-        if event.type() in (QtCore.QEvent.FontChange, QtCore.QEvent.StyleChange):
-            self._elide()
-
 
 class _GridHeader(QtWidgets.QHeaderView):
     """Table header, painted by hand: frame background, discreet title,
@@ -707,7 +457,7 @@ class _GridHeader(QtWidgets.QHeaderView):
     def _paint(self, painter, rect, index):
         painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
         # Rule under the header.
-        painter.setPen(QtGui.QPen(_qcolor(theme.BORDER_SOFT), 1))
+        painter.setPen(QtGui.QPen(_qcolor(tokens.BORDER), 1))
         painter.drawLine(rect.left(), rect.bottom(), rect.right(), rect.bottom())
 
         model = self.model()
@@ -715,7 +465,7 @@ class _GridHeader(QtWidgets.QHeaderView):
         if model is not None:
             text = model.headerData(index, QtCore.Qt.Horizontal) or ""
         sorted_here = self.sortIndicatorSection() == index
-        color = _qcolor(theme.FG_0 if sorted_here else theme.FG_1)
+        color = _qcolor(tokens.TEXT_STRONG if sorted_here else tokens.TEXT)
         font = QtGui.QFont(self.font())
         font.setPixelSize(HEADER_FONT_PX)
         font.setWeight(QtGui.QFont.DemiBold)
@@ -785,16 +535,16 @@ class _NumberDelegate(QtWidgets.QStyledItemDelegate):
         if brush is not None:
             try:
                 name = brush.color().name().lower()
-                muted = name == _qcolor(theme.FG_3).name().lower()
-                warn = name == _qcolor(theme.OFF_TEXT).name().lower()
+                muted = name == _qcolor(tokens.TEXT_DISABLED).name().lower()
+                warn = name == _qcolor(tokens.WARNING).name().lower()
             except Exception:
                 muted = warn = False
         if warn:
-            color = _qcolor(theme.OFF_TEXT)
+            color = _qcolor(tokens.WARNING)
         elif selected:
-            color = _qcolor(theme.FG_1 if muted else theme.FG_0)
+            color = _qcolor(tokens.TEXT if muted else tokens.TEXT_STRONG)
         else:
-            color = _qcolor(theme.FG_3 if muted else theme.FG_1)
+            color = _qcolor(tokens.TEXT_DISABLED if muted else tokens.TEXT)
 
         painter.save()
         try:
@@ -818,23 +568,20 @@ class _NumberDelegate(QtWidgets.QStyledItemDelegate):
 class _Counter(QtWidgets.QFrame):
     """Counter pill: a small painted icon and a number, no word.
 
-    The only part of the panel that carries a tooltip. The children let
-    the mouse through: hovering the icon or the number amounts to hovering the
+    The children let the mouse through: hovering the icon or the number amounts to hovering the
     whole pill.
     """
 
     def __init__(self, kind, tip, parent=None):
         super(_Counter, self).__init__(parent)
-        self.setObjectName("aeroCounter")
+        self.setProperty("ui", "card")
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)
         self._kind = kind
         self.set_tip(tip)
-        layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(8, 3, 10, 3)
-        layout.setSpacing(5)
+        layout = uikit.hbox((tokens.S, tokens.XS, tokens.S + 2, tokens.XS), tokens.XS + 1, parent=self)
         self._icon = QtWidgets.QLabel()
-        self._icon.setFixedSize(COUNTER_ICON, COUNTER_ICON)
-        self._number = QtWidgets.QLabel("0")
-        self._number.setObjectName("aeroCounterNum")
+        self._icon.setFixedSize(uikit.px(COUNTER_ICON), uikit.px(COUNTER_ICON))
+        self._number = uikit.label("0", "strong", wrap=False)
         for child in (self._icon, self._number):
             child.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
         layout.addWidget(self._icon)
@@ -843,9 +590,8 @@ class _Counter(QtWidgets.QFrame):
         self.apply_theme()
 
     def apply_theme(self):
-        """Icon in the colours of the active palette, tooltip in the theme style."""
-        self._icon.setPixmap(_counter_pixmap(self._kind, theme.FG_1))
-        self.setStyleSheet(theme.tooltip_stylesheet())
+        """Icon in the colours of the kit."""
+        self._icon.setPixmap(_counter_pixmap(self._kind, tokens.TEXT))
 
     def set_number(self, number):
         self._number.setText(str(int(number)))
@@ -854,7 +600,17 @@ class _Counter(QtWidgets.QFrame):
         self.setToolTip(tip)
 
 
-class FastGcpPanel(QtWidgets.QDockWidget):
+def _icon_button(tip, handler):
+    """Quiet square button with a painted icon (Undo, Redo, settings, GitHub); the icon is set by `_refresh_icons`."""
+    button = uikit.Button("", "quiet", handler=handler)
+    button.setFixedWidth(uikit.px(tokens.CONTROL_H))
+    button.setIconSize(QtCore.QSize(HEADER_ICON, HEADER_ICON))
+    button.setToolTip(tip)
+    button.setAccessibleName(tip)
+    return button
+
+
+class FastGcpPanel(uikit.DockShell):
     """FastGCP dock. Public contract: see the methods without an underscore."""
 
     # The journal lines may come from another thread: a signal puts them
@@ -862,7 +618,8 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     _line_added = QtCore.Signal(str)
 
     def __init__(self, state, parent=None):
-        super(FastGcpPanel, self).__init__("Aero-GCP", parent)
+        super(FastGcpPanel, self).__init__(i18n.t("panel.title"), info=i18n.t("panel.info"), parent=parent,
+                                           closable=True, mark="tool_gcp", min_width=MIN_PANEL_WIDTH)
         self._state = state
         self._journal_cb = None
         self._log_open = False
@@ -879,10 +636,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self._chunk_name = ""
 
         self.setObjectName(DOCK_NAME)
-        # The custom header acts as the bar: the native bar disappears.
-        self.setTitleBarWidget(QtWidgets.QWidget())
-        self._root = self._build_root()
-        self.setWidget(self._root)
+        self._build_content()
 
         self._load_options()
         self._refresh_icons()
@@ -896,102 +650,20 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     # Construction
     # ------------------------------------------------------------------
 
-    def _build_root(self):
-        root = QtWidgets.QWidget()
-        root.setObjectName("aeroPanel")
-        root.setMinimumWidth(MIN_PANEL_WIDTH)
-        root.setStyleSheet(theme.stylesheet())
-
-        outer = QtWidgets.QVBoxLayout(root)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-
-        scroll = QtWidgets.QScrollArea()
-        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        outer.addWidget(scroll)
-
-        body = QtWidgets.QWidget()
-        scroll.setWidget(body)
-        # QScrollArea paints its content: the panel background is left visible.
-        body.setAutoFillBackground(False)
-        scroll.viewport().setAutoFillBackground(False)
-
-        column = QtWidgets.QVBoxLayout(body)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(0)
-        column.addWidget(self._build_banner())
-        column.addWidget(self._build_header())
-        column.addWidget(theme.gradient_rule(QtWidgets))
-
-        content = QtWidgets.QWidget()
-        layout = QtWidgets.QVBoxLayout(content)
-        layout.setContentsMargins(theme.PAD_L, theme.PAD_L, theme.PAD_L, theme.PAD_L)
-        layout.setSpacing(theme.PAD)
-        layout.addLayout(self._build_play())
-        layout.addWidget(self._build_aigcp_card())
-        layout.addWidget(self._build_active_card())
-        layout.addWidget(self._build_search())
-        layout.addWidget(self._build_list(), 1)
+    def _build_content(self):
+        """Header buttons, then the body of the dock (the shell owns the root, the banner and the margins)."""
+        self.body.setSpacing(uikit.px(tokens.S))
+        self._build_header()
+        self.body.addLayout(self._build_play())
+        self.body.addWidget(self._build_aigcp_card())
+        self.body.addLayout(self._build_active_card())
+        self.body.addWidget(self._build_search())
+        self.body.addWidget(self._build_list(), 1)
         self._build_more()                # opened in the Settings window, never in the column
-        layout.addLayout(self._build_footer())
-        layout.addLayout(self._build_credit())
-        column.addWidget(content, 1)
-        return root
-
-    def _build_banner(self):
-        """At the very top: green rule, HELIX logo (white on the grey) and a presentation line.
-
-        The whole banner is a link to the site.
-        """
-        holder = QtWidgets.QWidget()
-        outer = QtWidgets.QVBoxLayout(holder)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
-        top = QtWidgets.QFrame()
-        top.setObjectName("aeroBannerTop")
-        top.setFixedHeight(3)
-        outer.addWidget(top)
-
-        banner = _LinkFrame(SITE_URL)
-        banner.setObjectName("aeroBanner")
-        row = QtWidgets.QHBoxLayout(banner)
-        row.setContentsMargins(theme.PAD_L, theme.PAD, theme.PAD_L, theme.PAD)
-        row.setSpacing(0)
-        logo = QtWidgets.QLabel()
-        pixmap = QtGui.QPixmap(os.path.join(config.ROOT, "assets", "logo", LOGO_FILE))
-        if pixmap.isNull():
-            logo.setText("AERO")
-            logo.setObjectName("aeroTitle")
-        else:
-            # AERO text logo, gradient version of the kit approved on 2026-10-31.
-            pixmap = pixmap.scaledToWidth(LOGO_WIDTH * LOGO_SCALE, QtCore.Qt.SmoothTransformation)
-            pixmap.setDevicePixelRatio(LOGO_SCALE)
-            logo.setPixmap(pixmap)
-        logo.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
-        # Logo and cross sit in two columns of the same width: the line between them is centred.
-        row.addWidget(self._banner_side(logo, QtCore.Qt.AlignLeft), 0)
-        self.ad = _ElidedLabel("aeroMeta")
-        self.ad.setAlignment(QtCore.Qt.AlignHCenter | QtCore.Qt.AlignVCenter)
-        self.ad.setAttribute(QtCore.Qt.WA_TransparentForMouseEvents, True)
-        self.ad.set_full_text(i18n.t("panel.ad", site=SITE_NAME))
-        row.addWidget(self.ad, 1)
-        self.close_button = self._round_button(self._on_close_clicked)
-        self.close_button.setEnabled(True)
-        self.close_button.setToolTip(i18n.t("panel.close_tip"))
-        row.addWidget(self._banner_side(self.close_button, QtCore.Qt.AlignRight), 0)
-        outer.addWidget(banner)
-        return holder
-
-    @staticmethod
-    def _banner_side(widget, align):
-        side = QtWidgets.QWidget()
-        side.setFixedWidth(LOGO_WIDTH)
-        layout = QtWidgets.QHBoxLayout(side)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(widget, 0, align | QtCore.Qt.AlignVCenter)
-        return side
+        self.body.addWidget(uikit.Divider())
+        self.body.addLayout(self._build_footer())
+        self.body.addLayout(self._build_credit())
+        self.status.hide()                # the "7/18 marked" status is no longer displayed; the label stays for the callers
 
     def _on_close_clicked(self):
         """The cross closes Aero-GCP: marking, timer and shortcuts stop, the panel disappears."""
@@ -1002,128 +674,73 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         tool.uninstall()
 
     def _build_header(self):
-        """Title on the left, on the right: Undo, Redo, settings (gear)."""
-        header = QtWidgets.QWidget()
-        header.setObjectName("aeroHeader")
-        layout = QtWidgets.QHBoxLayout(header)
-        layout.setContentsMargins(theme.PAD_L, theme.PAD + theme.PAD_S, theme.PAD_L, theme.PAD)
-        layout.setSpacing(theme.PAD)
-        title = QtWidgets.QLabel("Aero-GCP")
-        title.setObjectName("aeroTitle")
-        layout.addWidget(title, 1)
-
-        self.undo_button = self._round_button(self._on_undo_clicked)
-        self.redo_button = self._round_button(self._on_redo_clicked)
-        layout.addWidget(self.undo_button, 0)
-        layout.addWidget(self.redo_button, 0)
-
-        self.more_button = self._round_button(self._open_settings)
-        self.more_button.setEnabled(True)
-        layout.addWidget(self.more_button, 0)
-        return header
-
-    @staticmethod
-    def _round_button(handler):
-        """Small round button of the header banner (Undo, Redo, settings)."""
-        button = QtWidgets.QPushButton()
-        button.setObjectName("aeroGhost")
-        button.setProperty("round", True)
-        button.setCursor(QtCore.Qt.PointingHandCursor)
-        button.setFixedSize(HEADER_BUTTON, HEADER_BUTTON)
-        button.setIconSize(QtCore.QSize(HEADER_ICON, HEADER_ICON))
-        button.setEnabled(False)
-        button.clicked.connect(handler)
-        return button
+        """Right of the title: Undo, Redo, settings (gear), then the cross."""
+        try:
+            self.close_button.clicked.disconnect()
+        except (RuntimeError, TypeError):
+            pass
+        self.close_button.clicked.connect(self._on_close_clicked)
+        self.close_button.setToolTip(i18n.t("panel.close_tip"))
+        self.undo_button = _icon_button(i18n.t("panel.undo_tip"), self._on_undo_clicked)
+        self.redo_button = _icon_button(i18n.t("panel.redo_tip"), self._on_redo_clicked)
+        self.undo_button.setEnabled(False)
+        self.redo_button.setEnabled(False)
+        self.more_button = _icon_button(i18n.t("panel.settings_tip"), self._open_settings)
+        right = self.header.right
+        right.insertWidget(0, self.more_button)
+        right.insertWidget(0, self.redo_button)
+        right.insertWidget(0, self.undo_button)
 
     def _build_play(self):
-        """Round Play / Pause button, then dot and state text."""
-        row = QtWidgets.QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(theme.PAD + theme.PAD_S)
-
-        self.toggle = _Switch()
+        """On / off switch, then the state text."""
+        row = uikit.hbox(spacing=tokens.M)
+        self.toggle = uikit.Toggle("", True)
+        self.toggle.setAccessibleName(i18n.t("panel.state_on"))
         self.toggle.clicked.connect(self._on_toggle_clicked)
         row.addWidget(self.toggle, 0)
-
-        # The state dot is replaced by the switch; it stays for the existing callers.
-        self.state_dot = QtWidgets.QLabel()
-        self.state_dot.setFixedSize(STATE_DOT, STATE_DOT)
-        self.state_dot.setVisible(False)
-        row.addWidget(self.state_dot, 0, QtCore.Qt.AlignVCenter)
-
-        self.state_text = _ElidedLabel("aeroState")
-        self.state_text.set_full_text(i18n.t("panel.state_on"))
+        self.state_text = uikit.ElidedLabel(i18n.t("panel.state_on"), "lead")
         row.addWidget(self.state_text, 1)
         return row
 
     def _build_aigcp_card(self):
-        """AI detection, at the top: target type, scope (active marker or all), run."""
-        card = QtWidgets.QFrame()
-        card.setObjectName("aeroCardAccent")
-        layout = QtWidgets.QVBoxLayout(card)
-        pad = theme.PAD + theme.PAD_S
-        layout.setContentsMargins(pad, pad, pad, pad)
-        layout.setSpacing(theme.PAD)
-        self._eyebrow_aigcp = _ElidedLabel("aeroAccentTitle")
-        self._eyebrow_aigcp.set_full_text(i18n.t("panel.aigcp").upper())
-        layout.addWidget(self._eyebrow_aigcp)
+        """AI detection: target type, scope (active marker or all), run. Run is the one primary button of the view."""
+        section = uikit.Section(i18n.t("panel.aigcp"))
+        self._ai_section = section
+        section.body.setSpacing(uikit.px(tokens.S))
 
-        actions = QtWidgets.QHBoxLayout()
-        actions.setContentsMargins(0, 0, 0, 0)
-        actions.setSpacing(theme.PAD)
-        self.aigcp_button = self._tool_button("aigcp.run", self._on_aigcp_run)
-        self.aigcp_button.setObjectName("aeroRun")
-        self.aigcp_button.setFixedSize(RUN_WIDTH, RUN_HEIGHT)
-        self.aigcp_button.setIcon(_run_icon())
+        actions = uikit.hbox(spacing=tokens.S)
+        self.aigcp_clear_button = uikit.Button("", "secondary", handler=self._on_aigcp_clear)
+        self.aigcp_review_button = uikit.Button("", "secondary", handler=self._on_aigcp_review)
+        self.aigcp_button = uikit.Button("", "primary", icon=None, handler=self._on_aigcp_run)
         self.aigcp_button.setIconSize(QtCore.QSize(RUN_ICON, RUN_ICON))
-        self.aigcp_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
-        self.aigcp_clear_button = self._tool_button("aigcp.clear", self._on_aigcp_clear)
-        self.aigcp_review_button = self._tool_button("aigcp.review", self._on_aigcp_review)
-        actions.addWidget(self.aigcp_button, 0)
-        actions.addWidget(self.aigcp_clear_button, 1, QtCore.Qt.AlignVCenter)
-        actions.addWidget(self.aigcp_review_button, 1, QtCore.Qt.AlignVCenter)
-        layout.addLayout(actions)
+        actions.addWidget(self.aigcp_clear_button, 3)
+        actions.addWidget(self.aigcp_review_button, 2)
+        actions.addWidget(self.aigcp_button, 2)
+        section.body.addLayout(actions)
 
         # Two rows of lists: type and scope, then the photos to leave alone.
         choices = QtWidgets.QGridLayout()
         choices.setContentsMargins(0, 0, 0, 0)
-        choices.setHorizontalSpacing(theme.PAD)
-        choices.setVerticalSpacing(theme.PAD)
+        choices.setHorizontalSpacing(uikit.px(tokens.S))
+        choices.setVerticalSpacing(uikit.px(tokens.S))
         choices.addWidget(self._build_combo("type", aigcp.TYPES), 0, 0)
         choices.addWidget(self._build_combo("scope", aigcp.SCOPES), 0, 1)
         choices.addWidget(self._build_combo("ignore", aigcp.IGNORES), 1, 0, 1, 2)
         choices.setColumnStretch(0, 2)
         choices.setColumnStretch(1, 3)
-        layout.addLayout(choices)
+        section.body.addLayout(choices)
 
-        # Progress bar with its text inside, and Cancel at the right; visible during a computation.
-        self.aigcp_bar_row = QtWidgets.QWidget()
-        bar_layout = QtWidgets.QHBoxLayout(self.aigcp_bar_row)
-        bar_layout.setContentsMargins(0, 0, 0, 0)
-        bar_layout.setSpacing(theme.PAD)
-        self.aigcp_progress = QtWidgets.QProgressBar()
-        self.aigcp_progress.setObjectName("aeroProgressText")
-        self.aigcp_progress.setTextVisible(True)
-        self.aigcp_progress.setAlignment(QtCore.Qt.AlignCenter)
-        self.aigcp_progress.setRange(0, 100)
-        bar_layout.addWidget(self.aigcp_progress, 1)
-        self.aigcp_cancel_button = self._tool_button("aigcp.cancel", self._on_aigcp_cancel)
-        self.aigcp_cancel_button.setFixedSize(CANCEL_WIDTH, PROGRESS_HEIGHT)
-        self.aigcp_cancel_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
-        bar_layout.addWidget(self.aigcp_cancel_button, 0)
+        # Progress bar with its text, and Cancel at the right; visible during a computation.
+        self.aigcp_bar_row = uikit.ProgressRow(cancellable=True, icon_cancel=True)
+        self.aigcp_bar_row.cancelRequested.connect(self._on_aigcp_cancel)
         self.aigcp_bar_row.setVisible(False)
-        layout.addWidget(self.aigcp_bar_row)
+        section.body.addWidget(self.aigcp_bar_row)
         self._set_aigcp_texts()
-        return card
+        return section
 
     def _build_combo(self, key, values):
         """Drop-down list of an AI detection choice; the texts are set by `_set_aigcp_texts`."""
-        combo = QtWidgets.QComboBox()
-        combo.setObjectName("aeroCombo")
-        combo.setCursor(QtCore.Qt.PointingHandCursor)
-        combo.setFocusPolicy(QtCore.Qt.NoFocus)
-        combo.setFixedHeight(CONTROL_HEIGHT)
-        combo.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLength)
+        combo = uikit.ChoiceBox()
         combo.setMinimumContentsLength(4)
         for value in values:
             combo.addItem("", value)
@@ -1132,59 +749,44 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         return combo
 
     def _build_active_card(self):
-        card = QtWidgets.QFrame()
-        card.setObjectName("aeroCardActive")
-        layout = QtWidgets.QVBoxLayout(card)
-        layout.setContentsMargins(theme.PAD + theme.PAD_S, theme.PAD_S + 2, theme.PAD + theme.PAD_S, theme.PAD_S + 2)
-        layout.setSpacing(theme.PAD_S)
-
-        # A single line: title, identifier (truncated to 10 characters), counters.
-        line = QtWidgets.QHBoxLayout()
-        line.setContentsMargins(0, 0, 0, 0)
-        line.setSpacing(theme.PAD)
-        self._eyebrow_active = _eyebrow(i18n.t("panel.active_marker"))
-        self._eyebrow_active.setSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Preferred)
+        """A single line: title, identifier (truncated to 10 characters), counters."""
+        line = uikit.hbox(spacing=tokens.M)
+        self._eyebrow_active = uikit.ElidedLabel(i18n.t("panel.active_marker").upper(), "caption", fit=True)
         line.addWidget(self._eyebrow_active, 0)
-        self.active_value = _ElidedLabel("aeroValueEmpty")
-        self.active_value.set_full_text("—")
+        self.active_value = uikit.ElidedLabel("—", "title", "faint")
         line.addWidget(self.active_value, 1)
 
-        # The pills keep their place when they are hidden: the card
+        # The pills keep their place when they are hidden: the line
         # does not change height from one marker to the next.
         self.counters = QtWidgets.QWidget()
         policy = self.counters.sizePolicy()
         policy.setRetainSizeWhenHidden(True)
         self.counters.setSizePolicy(policy)
-        row = QtWidgets.QHBoxLayout(self.counters)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(theme.PAD)
+        row = uikit.hbox(spacing=tokens.S, parent=self.counters)
         self.count_pointed = _Counter("target", i18n.t("panel.tip_pointed"))
         self.count_photos = _Counter("image", i18n.t("panel.tip_seen"))
         row.addWidget(self.count_pointed)
         row.addWidget(self.count_photos)
         line.addWidget(self.counters, 0)
-        layout.addLayout(line)
-        return card
+        return line
 
     def _build_search(self):
-        self.search = QtWidgets.QLineEdit()
+        self.search = uikit.TextField()
         self.search.setPlaceholderText(i18n.t("panel.search"))
         self.search.setClearButtonEnabled(False)
         self.search.textChanged.connect(self._on_search)
         return self.search
 
     def _build_list(self):
-        """Marker table: ID, X / Y / Z errors, number of projections."""
+        """Marker table: ID, X / Y / Z errors, number of projections; an empty state when the chunk has no marker."""
         box = QtWidgets.QFrame()
-        box.setObjectName("aeroGridBox")
-        box.setMinimumHeight(LIST_MIN_HEIGHT)
-        box.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
-        )
-        inner = QtWidgets.QVBoxLayout(box)
-        # The square corners of the grid stay clear of the rounded frame.
-        inner.setContentsMargins(3, 3, 3, 3)
-        inner.setSpacing(0)
+        box.setProperty("ui", "card")
+        box.setAttribute(QtCore.Qt.WA_StyledBackground, True)
+        box.setMinimumHeight(uikit.px(LIST_MIN_HEIGHT))
+        box.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        inner = uikit.vbox((3, 3, 3, 3), 0, parent=box)
+        self._pages = QtWidgets.QStackedLayout()
+        inner.addLayout(self._pages)
 
         grid = QtWidgets.QTreeWidget()
         grid.setObjectName("aeroGrid")
@@ -1232,38 +834,27 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         grid.itemClicked.connect(self._on_item_clicked)
         grid.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         grid.customContextMenuRequested.connect(self._on_grid_menu)
-        inner.addWidget(grid)
+        self._pages.addWidget(grid)
+        self.empty = uikit.EmptyState(i18n.t("panel.empty_title"), i18n.t("panel.empty_text"))
+        self.empty.setSizePolicy(QtWidgets.QSizePolicy.Ignored, QtWidgets.QSizePolicy.Ignored)   # a short table must not grow the dock
+        self._pages.addWidget(self.empty)
         self.grid = grid
         # Former name of the widget, kept for the existing callers.
         self.list = grid
         return box
 
-    def _tool_button(self, text_key, handler):
-        button = _ElidedButton(i18n.t(text_key))
-        button.setObjectName("aeroGhost")
-        button.setProperty("pill", True)
-        button.setCursor(QtCore.Qt.PointingHandCursor)
-        button.setFixedHeight(CONTROL_HEIGHT)
-        button.clicked.connect(handler)
-        return button
-
     def _build_more(self):
-        """"More" card: recording of the markings and log. Folded at the start."""
-        self.more = QtWidgets.QFrame()
-        self.more.setObjectName("aeroCard")
-        layout = QtWidgets.QVBoxLayout(self.more)
-        pad = theme.PAD + theme.PAD_S
-        layout.setContentsMargins(pad, pad, pad, pad)
-        layout.setSpacing(theme.PAD_S)
+        """Options card: recording of the markings and log. Shown in the Settings window."""
+        self.more = QtWidgets.QWidget()
+        layout = uikit.vbox(spacing=tokens.S, parent=self.more)
 
         layout.addWidget(self._check("ai_auto_review", i18n.t(CHECK_TEXTS["ai_auto_review"])))
         layout.addWidget(self._check("collect_dataset", i18n.t(CHECK_TEXTS["collect_dataset"])))
 
-        self.log_button = _ElidedButton(i18n.t("panel.log"))
-        self.log_button.setCursor(QtCore.Qt.PointingHandCursor)
-        self.log_button.clicked.connect(self._on_log_button)
-        layout.addSpacing(theme.PAD_S)
-        layout.addWidget(self.log_button)
+        self.log_disclosure = uikit.Disclosure(i18n.t("panel.log"))
+        self.log_button = self.log_disclosure.head
+        self.log_disclosure.toggled.connect(self._on_log_toggled)
+        layout.addWidget(self.log_disclosure)
 
         self.log = QtWidgets.QPlainTextEdit()
         self.log.setObjectName("aeroLog")
@@ -1271,47 +862,28 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         self.log.setMaximumBlockCount(journal.MAX_LINES)
         self.log.setLineWrapMode(QtWidgets.QPlainTextEdit.WidgetWidth)
         self.log.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        self.log.setVisible(False)
-        layout.addWidget(self.log)
+        self.log_disclosure.add(self.log)
 
         return self.more
 
     def _check(self, key, text):
-        box = _ElidedCheck(text)
+        box = uikit.Toggle(text)
         self._checks[key] = box
         box.toggled.connect(functools.partial(self._on_check, key))
         return box
 
     def _build_footer(self):
-        """One row: residual check (green outline) on the left, Export (solid green) on the right."""
-        row = QtWidgets.QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(theme.PAD)
-        self.qc_button = self._tool_button("panel.qc", self._open_qc)
-        self.qc_button.setObjectName("aeroYes")
-        self.qc_button.setFixedWidth(QC_WIDTH)
-        self.qc_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        """One row: residual check and adjust on the left, Export (a menu) on the right. All secondary: Run is the primary."""
+        row = uikit.hbox(spacing=tokens.S)
+        self.qc_button = uikit.Button(i18n.t("panel.qc"), "secondary", handler=self._open_qc)
         row.addWidget(self.qc_button, 0)
-        self.adjust_button = self._tool_button("panel.adjust", self._open_adjust)
-        self.adjust_button.setObjectName("aeroYes")
-        self.adjust_button.setFixedWidth(ADJUST_WIDTH)
-        self.adjust_button.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        self.adjust_button = uikit.Button(i18n.t("panel.adjust"), "secondary", handler=self._open_adjust)
         row.addWidget(self.adjust_button, 0)
         row.addStretch(1)
 
-        # The status ("7/18 marked") is no longer displayed; the widget stays for the existing callers.
-        self.status = _ElidedLabel("aeroStatus")
-        self.status.setVisible(False)
-        row.addWidget(self.status, 0)
-
-        self.export_button = QtWidgets.QPushButton()
-        self._set_export_text()
-        self.export_button.setObjectName("aeroRun")
-        self.export_button.setProperty("pill", True)
-        self.export_button.setCursor(QtCore.Qt.PointingHandCursor)
-        self.export_button.setFixedSize(EXPORT_WIDTH, CONTROL_HEIGHT)
+        self.export_button = uikit.Button("", "secondary", handler=self._show_export_menu)
         self.export_button.setIconSize(QtCore.QSize(EXPORT_ICON, EXPORT_ICON))
-        self.export_button.clicked.connect(self._show_export_menu)
+        self._set_export_text()
         self.export_menu = QtWidgets.QMenu(self.export_button)
         self._export_actions = {}
         for kind, text_key in EXPORTS:
@@ -1319,36 +891,25 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             action.triggered.connect(functools.partial(self._on_export, kind))
             self._export_actions[kind] = action
         row.addWidget(self.export_button, 0)
-
         return row
 
     def _build_credit(self):
-        """At the very bottom: "Tool created by helix.aero" (link) and the GitHub icon (link)."""
-        row = QtWidgets.QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(theme.PAD_S)
-        self.credit = QtWidgets.QLabel()
-        self.credit.setObjectName("aeroMeta")
+        """At the very bottom: "Tool made by helix.aero" (link) and the GitHub icon (link)."""
+        row = uikit.hbox(spacing=tokens.XS)
+        self.credit = uikit.label("", "small", "muted", wrap=False)
         self.credit.setTextFormat(QtCore.Qt.RichText)
         self.credit.setOpenExternalLinks(True)
-        self.credit.setCursor(QtCore.Qt.PointingHandCursor)
         self._set_credit_text()
         row.addWidget(self.credit, 0)
-        self.github_button = QtWidgets.QPushButton()
-        self.github_button.setObjectName("aeroGhost")
-        self.github_button.setProperty("round", True)
-        self.github_button.setCursor(QtCore.Qt.PointingHandCursor)
-        self.github_button.setFixedSize(26, 26)
-        self.github_button.setIconSize(QtCore.QSize(GITHUB_ICON, GITHUB_ICON))
-        self.github_button.setToolTip(i18n.t("panel.github_tip"))
-        self.github_button.clicked.connect(self._open_github)
+        self.github_button = _icon_button(i18n.t("panel.github_tip"), self._open_github)
+        self.github_button.setFixedSize(uikit.px(tokens.CONTROL_H), uikit.px(tokens.CONTROL_H))
         row.addWidget(self.github_button, 0)
         row.addStretch(1)
         return row
 
     def _set_credit_text(self):
         link = '<a href="{url}" style="color:{color};text-decoration:none">{name}</a>'.format(
-            url=SITE_URL, color=theme.GREEN, name=SITE_NAME)
+            url=SITE_URL, color=tokens.ACCENT, name=SITE_NAME)
         self.credit.setText(i18n.t("panel.credit", site=link))
 
     def _open_github(self, _checked=False):
@@ -1358,35 +919,34 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             journal.write("Aero-GCP: GitHub link: {!r}".format(exc))
 
     # ------------------------------------------------------------------
-    # Theme
+    # Icons
     # ------------------------------------------------------------------
 
+    def refresh_skin(self):
+        """A skin change while the dock is open (the theme button): the icons and the colours of the table rows are painted from the
+        tokens when they are built, so build them again (live check: the light skin showed white row text on white)."""
+        try:
+            self._refresh_icons()
+            self._signature = None
+            self.refresh_markers()
+            self.grid.viewport().update()
+        except RuntimeError:
+            pass
+
     def _refresh_icons(self):
-        """Repaint all the icons in the colours of the active palette."""
+        """Paint all the icons in the colours of the kit."""
         try:
             self._apply_toggle(self._running)
-            self.more_button.setIcon(QtGui.QIcon(_gear_pixmap(theme.FG_2)))
-            self.close_button.setIcon(QtGui.QIcon(_close_pixmap("#4a4d52")))     # on the light banner
-            self.github_button.setIcon(QtGui.QIcon(_github_pixmap(theme.FG_2)))
+            self.more_button.setIcon(QtGui.QIcon(_gear_pixmap(tokens.TEXT)))
+            self.github_button.setIcon(QtGui.QIcon(_github_pixmap(tokens.TEXT_MUTED)))
             self.undo_button.setIcon(_undo_icon())
             self.redo_button.setIcon(_undo_icon(mirror=True))
-            self.export_button.setIcon(QtGui.QIcon(_export_pixmap(theme.GREEN_ON)))
-            self.export_menu.setStyleSheet(theme.menu_stylesheet())
-            self._paint_placeholder()
+            self.export_button.setIcon(QtGui.QIcon(_export_pixmap(tokens.TEXT)))
+            self.aigcp_button.setIcon(_run_icon())
             self.count_pointed.apply_theme()
             self.count_photos.apply_theme()
         except RuntimeError:
             pass
-
-    def _paint_placeholder(self):
-        """Search placeholder text in FG_2 (the QSS leaves it too pale
-        on some Qt versions)."""
-        palette = self.search.palette()
-        role = getattr(QtGui.QPalette, "PlaceholderText", None)
-        if role is None:
-            return
-        palette.setColor(role, _qcolor(theme.FG_2))
-        self.search.setPalette(palette)
 
     def _set_export_text(self):
         """Text of the Export button, elided if it is too long."""
@@ -1397,14 +957,13 @@ class FastGcpPanel(QtWidgets.QDockWidget):
 
     def _set_aigcp_texts(self):
         """Texts of the AI Detection card, displayed choices, button state."""
-        self._eyebrow_aigcp.set_full_text(i18n.t("panel.aigcp").upper())
+        self._ai_section.title.setText(i18n.t("panel.aigcp"))
         for key, combo in self._aigcp_combos.items():
             for index in range(combo.count()):
                 combo.setItemText(index, i18n.t(AIGCP_CHOICE_TEXTS[(key, combo.itemData(index))]))
-        self.aigcp_button.set_full_text(i18n.t("aigcp.run"))
-        self.aigcp_clear_button.set_full_text(i18n.t("aigcp.clear"))
-        self.aigcp_review_button.set_full_text(i18n.t("aigcp.review"))
-        self.aigcp_cancel_button.set_full_text(i18n.t("aigcp.cancel"))
+        self.aigcp_button.setText(i18n.t("aigcp.run"))
+        self.aigcp_clear_button.setText(i18n.t("aigcp.clear"))
+        self.aigcp_review_button.setText(i18n.t("aigcp.review"))
         self.update_aigcp()
 
     # ------------------------------------------------------------------
@@ -1448,12 +1007,11 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     def _apply_toggle(self, running):
         """Align the button, dot and state text with `running`."""
         self._running = bool(running)
-        self.toggle.set_on(running)
-        self.state_dot.setPixmap(_state_dot_pixmap(running))
-        self.state_text.set_full_text(
+        self.toggle.setChecked(bool(running))
+        self.toggle.setAccessibleName(i18n.t("panel.state_on" if running else "panel.state_off"))
+        self.state_text.setFullText(
             i18n.t("panel.state_on" if running else "panel.state_off"))
-        self.state_text.setObjectName("aeroState" if running else "aeroStateOff")
-        _repolish(self.state_text)
+        uikit.set_tone(self.state_text, None if running else "muted")
         self._update_undo_button()
 
     def _on_toggle_clicked(self):
@@ -1497,20 +1055,16 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             label = None
 
         if label:
-            wanted = "aeroValue"
-            self.active_value.set_full_text(short_label(label))
+            self.active_value.setFullText(short_label(label))
+            uikit.set_tone(self.active_value, None)
             self.active_value.setToolTip(label if label != short_label(label) else "")
             self.count_pointed.set_number(self._pointed_count(state.active_marker))
             self.count_photos.set_number(getattr(state, "last_photo_count", 0) or 0)
             self.counters.setVisible(True)
         else:
-            wanted = "aeroValueEmpty"
-            self.active_value.set_full_text("—")
+            self.active_value.setFullText("—")
+            uikit.set_tone(self.active_value, "faint")
             self.counters.setVisible(False)
-
-        if self.active_value.objectName() != wanted:
-            self.active_value.setObjectName(wanted)
-            _repolish(self.active_value)
         self._refresh_row(label)
 
     @staticmethod
@@ -1665,12 +1219,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
                 self._signature = None
                 return
             start = time.time()
-            signature = []
-            for marker in msapi.markers(chunk):
-                label = msapi.marker_label(marker)
-                if label:
-                    row = self._row_data(chunk, marker, label)
-                    signature.append((label, row["proj"], row["x"], row["y"], row["z"]))
+            signature = msapi.markers_signature(chunk)      # a few reads per marker: no error is computed just to compare
             self.poll_cost = time.time() - start
             previous, self._signature = self._signature, signature
             if previous is not None and previous != signature:
@@ -1735,6 +1284,14 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         finally:
             self.grid.setUpdatesEnabled(True)
             self.grid.blockSignals(False)
+        if rows:
+            self._pages.setCurrentWidget(self.grid)
+        else:
+            if needle and total:
+                self.empty.set_state(i18n.t("panel.empty_search"))
+            else:
+                self.empty.set_state(i18n.t("panel.empty_title"), i18n.t("panel.empty_text"))
+            self._pages.setCurrentWidget(self.empty)
 
         # The status only gives the number: "14", or "3/14" during a search.
         if chunk is None:
@@ -1778,10 +1335,10 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         id_font = QtGui.QFont(self.grid.font())
         id_font.setWeight(QtGui.QFont.Medium)
         item.setFont(0, id_font)
-        item.setForeground(0, QtGui.QBrush(_qcolor(theme.FG_0)))
-        muted = QtGui.QBrush(_qcolor(theme.FG_3))
-        normal = QtGui.QBrush(_qcolor(theme.FG_1))
-        warn = QtGui.QBrush(_qcolor(theme.OFF_TEXT))
+        item.setForeground(0, QtGui.QBrush(_qcolor(tokens.TEXT_STRONG)))
+        muted = QtGui.QBrush(_qcolor(tokens.TEXT_DISABLED))
+        normal = QtGui.QBrush(_qcolor(tokens.TEXT))
+        warn = QtGui.QBrush(_qcolor(tokens.WARNING))
         for column, (_title, key, _width) in enumerate(COLUMNS):
             if column == 0:
                 continue
@@ -1820,8 +1377,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         labels = self.selected_labels()
         if not labels:
             return
-        menu = QtWidgets.QMenu(self)
-        menu.setStyleSheet(theme.menu_stylesheet())
+        menu = QtWidgets.QMenu(self.grid)
         count = len(labels)
         for key, handler in (("panel.remove_projections", self._remove_projections),
                              ("panel.remove_markers", self._remove_markers)):
@@ -1831,9 +1387,9 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         run(self.grid.viewport().mapToGlobal(pos))
 
     def _confirm(self, text_key, labels):
-        from ... import dialogs
         shown = ", ".join(labels[:5]) + ("\u2026" if len(labels) > 5 else "")
-        return dialogs.ask(self, i18n.t("panel.remove_title"), i18n.t(text_key, n=len(labels), names=shown))
+        return uikit.confirm(self, i18n.t("panel.remove_title"), i18n.t(text_key, n=len(labels), names=shown),
+                             ok=i18n.t("panel.remove_title"), danger=True)
 
     def _markers_named(self, labels):
         chunk = msapi.chunk()
@@ -2040,18 +1596,26 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         points, why = msapi.marker_frame_points(chk)
         used, total = msapi.cameras_georeferenced(chk)
         return {"points": points, "why": why, "ppk": bool(total) and used >= 0.5 * total,
+                "context": msapi.chunk_identity(chk),
                 "enabled": {p["label"]: bool(msapi.marker_enabled(p["marker"])) for p in points}}
 
-    def _adjust_apply(self, labels):
-        """Tick these markers as check points and untick the others. Returns (number ticked, error)."""
+    def _adjust_apply(self, labels, context=None, analysed=None):
+        """Tick these markers as control points and untick the other analysed ones. Returns (number ticked, error).
+
+        `context`: chunk identity the result was computed for; another chunk or project: nothing is touched.
+        `analysed`: labels that were in the computation; the markers outside it (too few photos, added since) keep their box."""
         try:
             chk = msapi.chunk()
+            if context is not None and msapi.chunk_identity(chk) != context:
+                return 0, i18n.t("gcp.stale_result")
             points, why = msapi.marker_frame_points(chk)
             if not points:
                 return 0, why
             wanted, before = set(labels), []
             count = 0
             for point in points:
+                if analysed is not None and point["label"] not in analysed and point["label"] not in wanted:
+                    continue
                 before.append("{}={}".format(point["label"], msapi.marker_enabled(point["marker"])))
                 on = point["label"] in wanted
                 if msapi.set_marker_enabled(point["marker"], on):
@@ -2147,12 +1711,11 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         # then in proportion to the photos processed.
         progress = aigcp.progress_of(state) if running else None
         if progress is not None and progress[1] > 0:
-            self.aigcp_progress.setRange(0, progress[1])
-            self.aigcp_progress.setValue(min(progress[0], progress[1]))
+            self.aigcp_bar_row.set_progress(min(progress[0], progress[1]) / float(progress[1]), aigcp.bar_text(state))
+        elif running:
+            self.aigcp_bar_row.set_indeterminate(aigcp.bar_text(state))
         else:
-            self.aigcp_progress.setRange(0, 100)         # empty range = the text would not be displayed
-            self.aigcp_progress.setValue(0)
-        self.aigcp_progress.setFormat(aigcp.bar_text(state) if running else "")
+            self.aigcp_bar_row.reset()
         self.aigcp_bar_row.setVisible(bool(running))
 
     def _on_aigcp_combo(self, key, index):
@@ -2167,11 +1730,10 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         """Explain what is missing for the AI detection. With `target` (an engine the installer can
         install), the box offers to install it right away; without, it says what to do."""
         try:
-            from ... import dialogs
             if target is None:
-                dialogs.inform(self, i18n.t("aigcp.setup_title"), text)
+                uikit.inform(self, i18n.t("aigcp.setup_title"), text)
                 return
-            if dialogs.ask(self, i18n.t("aigcp.setup_title"), text):
+            if uikit.confirm(self, i18n.t("aigcp.setup_title"), text, ok=i18n.t("settings.install")):
                 from . import install_ui
                 install_ui.run(self, target, confirm=False)
                 self.update_aigcp()
@@ -2234,7 +1796,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         menu = self.export_menu
         size = menu.sizeHint()
         origin = button.mapToGlobal(
-            QtCore.QPoint(button.width() - size.width(), -size.height() - theme.PAD_S)
+            QtCore.QPoint(button.width() - size.width(), -size.height() - tokens.XS)
         )
         menu.popup(origin)
 
@@ -2246,6 +1808,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             function = getattr(report, "export_" + kind)
         except Exception as exc:
             self.set_status(i18n.t("panel.status.export_unavailable"))
+            self.show_banner("warning", i18n.t("panel.status.export_unavailable"))
             journal.write("Export {} unavailable: {!r}".format(name, exc))
             return
         journal.write("Export: {}".format(name))
@@ -2253,6 +1816,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
             function(self._state, self)
         except Exception as exc:
             self.set_status(i18n.t("panel.status.export_failed"))
+            self.show_banner("danger", i18n.t("panel.status.export_failed"), details=repr(exc))
             journal.write("Export {} failed: {!r}".format(name, exc))
 
     # ------------------------------------------------------------------
@@ -2266,7 +1830,7 @@ class FastGcpPanel(QtWidgets.QDockWidget):
     def set_status(self, text):
         """Status line of the panel footer."""
         try:
-            self.status.set_full_text(text or "")
+            self.status.setFullText(text or "")
         except RuntimeError:
             pass
 
@@ -2303,14 +1867,18 @@ class FastGcpPanel(QtWidgets.QDockWidget):
         margin = int(self.log.document().documentMargin() * 2)
         self.log.setFixedHeight(metrics.lineSpacing() * LOG_VISIBLE_LINES + frame + margin)
 
-    def _on_log_button(self):
-        self._set_log_open(not self._log_open, persist=True)
+    def _on_log_toggled(self, opened):
+        self._set_log_open(opened, persist=True)
 
     def _set_log_open(self, opened, persist):
         self._log_open = bool(opened)
         if self._log_open:
             self._fit_log_height()
-        self.log.setVisible(self._log_open)
+        if self.log_disclosure.is_open() != self._log_open:
+            self.log_disclosure.blockSignals(True)
+            self.log_disclosure.set_open(self._log_open)
+            self.log_disclosure.blockSignals(False)
+            self.log_disclosure.body.setVisible(self._log_open)
         if self._log_open:
             self._scroll_log_to_end()
         if persist:

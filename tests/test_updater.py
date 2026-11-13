@@ -38,6 +38,11 @@ def publish(root, files):
     return manifest
 
 
+@pytest.fixture(autouse=True)
+def no_waiting(monkeypatch):
+    monkeypatch.setattr(updater, "_sleep", lambda seconds: None)
+
+
 @pytest.fixture
 def world(tmp_path, local_appdata, monkeypatch):
     """A published repository (file://) and a local installation of an older version."""
@@ -64,7 +69,10 @@ def install_old(world):
     write(local, "install/run.bat", "@echo off\r\necho hi\r\n")
     write(local, "aerotools/old.py", "print('gone')\n")
     write(local, "aerotools/__init__.py", '__version__ = "1.0.0"\n')
-    previous = maker.build(str(local))
+    # The installation was built long before the repository of this test. With the clock's own "built" it was a coin toss: when the second
+    # changed between the fixture publishing the repository and this line, the installed build looked NEWER than the published one and
+    # apply() refused the update as a downgrade (the flaky failure of every test that applies an update).
+    previous = maker.build(str(local), built="2000-01-01T00:00:00")
     previous["files"]["aerotools/old.py"] = {"sha256": "0" * 64, "size": 1}
     with open(str(local / "manifest.json"), "w") as handle:
         json.dump(previous, handle)
@@ -93,7 +101,7 @@ def test_apply_installs_verifies_and_records_the_date(world):
     plugin, local = world["plugin"], world["local"]
     seen = []
     result = updater.apply(plugin, progress=lambda done, total, text: seen.append((done, total)))
-    assert result == {"ok": True, "updated": 4, "error": ""}
+    assert result == {"ok": True, "updated": 4, "error": "", "core_changed": True}
     assert (local / "aerotools" / "a.py").read_text() == "print('a2')\n"
     assert (local / "assets" / "sample.bin").stat().st_size == 3000
     assert not (local / "aerotools" / "old.py").exists()
@@ -118,7 +126,7 @@ def test_a_corrupted_download_touches_nothing(world):
     write(world["remote"], "aerotools/a.py", "print('corrupted')\n")          # the manifest announces something else
     before = (local / "aerotools" / "a.py").read_text()
     result = updater.apply(world["plugin"])
-    assert result["ok"] is False and "damaged" in result["error"]
+    assert result["ok"] is False and "does not match" in result["error"]
     assert (local / "aerotools" / "a.py").read_text() == before
     assert not (local / "assets" / "sample.bin").exists()
 

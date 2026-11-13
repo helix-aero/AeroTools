@@ -9,6 +9,10 @@ PHOTOS, CHECKS, PROJECT, RUN = range(4)
 STEP_KEYS = ("photos", "checks", "project", "run")
 
 
+# Options that the plan and the checks never read: changing one of them leaves the analysis as it is (the others redo it).
+NO_REPLAN = frozenset(("chunk_name", "frame", "calibration_fixed", "quick_test", "quick_test_photos", "pixel_cm", "ortho_epsg", "steps"))
+
+
 class WizardState(object):
     def __init__(self):
         self.root = ""                       # the folder chosen on the Photos screen
@@ -55,7 +59,9 @@ class WizardState(object):
     def set_option(self, key, value):
         """Changes one option; the analysis is made again (the plan depends on them)."""
         setattr(self.options, key, value)
-        self.refresh_analysis()
+        if key in NO_REPLAN and self.analysis is not None:
+            return self.analysis
+        return self.refresh_analysis()
 
     # -- the buttons ------------------------------------------------------------------------------
 

@@ -121,8 +121,10 @@ def test_lighten_copies_the_project_description_before_opening_it_for_writing(tm
     project = project_of(tmp_path, dense=1000, depth=3000, chunks=2)
     seen = []
 
+    from test_fastspace import FakeChunk
+
     class Doc(object):
-        chunks = []
+        chunks = [FakeChunk("C", "x", 0)]
 
         def save(self):
             pass
