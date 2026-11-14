@@ -20,6 +20,11 @@ def spy(monkeypatch, record):
     monkeypatch.setattr(external, "to_ecw", make("ecw"))
 
     def view(dem, out, look=None, **kwargs):
+        if kwargs.get("jpeg"):
+            open(out, "wb").write(b"jpeg")
+            open(os.path.splitext(out)[0] + ".jgw", "w").write("0.5\n0\n0\n-0.5\n1000.25\n2049.75\n")
+            record.append(("look", look))
+            return True, ""
         write_geotiff(out, 200, 100, 1000.0, 2050.0, 0.5)
         record.append(("look", look))
         return True, ""
@@ -77,12 +82,27 @@ def test_json_presets_can_add_a_coloured_dem_picture_next_to_the_dem(tmp_path):
     assert ecw.extra["view_ext"] == "ecw" and ecw.extra["view_path"].endswith("_dtm.ecw")
 
 
-def test_geotiff_presets_ignore_the_picture_option_because_the_name_would_be_the_dems(tmp_path):
-    for key in ("full", "quick", "jpeg"):
+def test_geotiff_presets_add_the_picture_as_a_separate_geotiff_that_never_takes_the_dems_name(tmp_path):
+    for key in ("full", "quick"):
         job = plan.build_jobs("ClientA", DAY, {"dem": 0.5}, key, str(tmp_path), version=1, dem_picture=True)[0]
-        assert job.extra is None
+        assert job.name.endswith("_dtm.tif") and job.extra["view_name"].endswith("_dtm_view.tif")
+        assert job.extra["view_path"] != job.path
+        plain = plan.build_jobs("ClientA", DAY, {"dem": 0.5}, key, str(tmp_path), version=1)[0]
+        assert plain.extra is None
     off = plan.build_jobs("ClientA", DAY, {"dem": 0.5}, "jp2", str(tmp_path), version=1)[0]
     assert off.extra is None
+
+
+def test_the_jpeg_preset_adds_the_picture_as_a_jpeg_with_a_world_file_and_keeps_the_heights_a_geotiff(tmp_path):
+    job = plan.build_jobs("ClientA", DAY, {"dem": 0.5}, "jpeg", str(tmp_path), version=1, dem_picture=True)[0]
+    assert job.name.endswith("_dtm.tif") and job.spec["ext"] == "tif"
+    assert job.extra["view_name"] == "ClientA_300704_50cm_dtm.jpg" and job.extra["view_ext"] == "jpg"
+    assert plan.view_aux_names(job.extra) == ["ClientA_300704_50cm_dtm.jgw"]
+    planned = [os.path.basename(p) for p in plan.planned_files([job], "jpeg")]
+    assert planned == ["ClientA_300704_50cm_dtm.tif", "ClientA_300704_50cm_dtm.jpg", "ClientA_300704_50cm_dtm.jgw"]
+    (tmp_path / "ClientA_300704_50cm_dtm.jgw").write_text("x")                       # the world file alone makes it a new version
+    again = plan.build_jobs("ClientA", DAY, {"dem": 0.5}, "jpeg", str(tmp_path), version=None, dem_picture=True)
+    assert again[0].version == 2
 
 
 def test_an_existing_picture_makes_the_next_export_a_new_version(tmp_path):

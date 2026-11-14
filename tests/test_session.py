@@ -57,10 +57,11 @@ def test_fixed_and_retired_options_ignore_writes():
     assert not os.path.exists(config.settings_path())
 
 
-def test_after_constants_are_kept_for_the_panel():
-    assert dict(session_mod.AFTER_LABELS)
-    assert {session_mod.AFTER_STAY, session_mod.AFTER_PAGEDOWN,
-            session_mod.AFTER_API} <= set(dict(session_mod.AFTER_LABELS))
+def test_the_next_photo_choice_is_fixed_and_the_dead_label_table_is_gone():
+    assert session_mod.option_is_fixed("after_place") if hasattr(session_mod, "option_is_fixed") else True
+    assert session_mod.FIXED["after_place"] == session_mod.AFTER_API
+    assert session_mod.AFTER_STAY != session_mod.AFTER_API
+    assert not hasattr(session_mod, "AFTER_LABELS")
 
 
 def test_non_bool_value_for_bool_option_falls_back():

@@ -23,6 +23,7 @@ Metashape APIs used:
 
 import builtins
 import math
+import time
 
 import Metashape
 
@@ -72,6 +73,15 @@ def chunk_key(chk):
         return chk.key if chk is not None else None
     except Exception:
         return None
+
+
+def chunk_identity(chk):
+    """(path of the open project, chunk key) or None without a chunk. A chunk key alone is only unique inside one
+    document: two projects can both have a chunk with key 1, so compare this, not `chunk_key`, across time."""
+    key = chunk_key(chk)
+    if key is None:
+        return None
+    return (document_path(), key)
 
 
 def chunk_label(chk):
@@ -224,11 +234,33 @@ def projection_cameras(marker, without_proposals=False):
 # Projections placed by the AI detection and not yet validated: (chunk, marker,
 # photo). Metashape does not tell a proposal from a blue point it computed
 # itself: it is remembered here, so as not to count them as placed.
-_PROPOSALS = set()
+# The set lives on `builtins`, not in this module: "Reload AeroTools" and every update purge the aerotools modules, and a set
+# kept here would be empty afterwards, turning each pending blue proposal into a projection counted as placed.
+_PROPOSALS_FLAG = "_AEROTOOLS_PROPOSALS"
+
+
+def _shared_proposals():
+    found = getattr(builtins, _PROPOSALS_FLAG, None)
+    if not isinstance(found, set):
+        found = set()
+        setattr(builtins, _PROPOSALS_FLAG, found)
+    return found
+
+
+_PROPOSALS = _shared_proposals()
+
+
+def marker_key(marker):
+    """What identifies a marker for good: its key (the label can be edited, and two markers can share one). The label only stands in
+    where Metashape gives no key."""
+    try:
+        return ("key", marker.key)
+    except Exception:
+        return ("label", marker_label(marker))
 
 
 def _proposal_key(marker, camera):
-    return (chunk_key(chunk()), marker_label(marker), camera_key(camera))
+    return (chunk_identity(chunk()), marker_key(marker), camera_key(camera))
 
 
 def mark_proposal(marker, camera):
@@ -415,6 +447,37 @@ def marker_enabled(marker):
         return None
 
 
+def markers_signature(chk):
+    """Cheap fingerprint of what the marker table shows: changes when a marker is added, removed or renamed, when a projection is
+    added or removed, when a position or reference moves, or when the chunk transform changes (cameras optimised). It reads a few
+    values per marker and never computes an error: the table is rebuilt only when this changes. None without a chunk."""
+    if chk is None:
+        return None
+    stamp = ()
+    try:
+        matrix = chk.transform.matrix
+        if matrix is not None:
+            stamp = tuple(round(float(matrix[i, j]), 9) for i in range(4) for j in range(4))
+    except Exception:
+        stamp = ()
+    rows = []
+    for marker in markers(chk):
+        label = marker_label(marker)
+        if not label:
+            continue
+        try:
+            count = len(marker.projections)
+        except Exception:
+            count = len(projection_cameras(marker))
+        try:
+            position = _components(marker.position) if marker.position is not None else None
+            reference = _components(marker.reference.location) if marker.reference.location is not None else None
+        except Exception:
+            position = reference = None
+        rows.append((label, count, position, reference))
+    return (stamp, tuple(rows))
+
+
 def set_marker_enabled(marker, value):
     """Tick or untick the marker in Reference. Returns True if done."""
     try:
@@ -463,10 +526,6 @@ def marker_frame_points(chk):
         return [], "no marker with an estimated position and a reference"
     if matrix is None:
         return [], "the chunk has no transformation matrix"
-    try:
-        scale = float(chk.transform.scale or 1.0)
-    except Exception:
-        scale = 1.0
 
     def local_path_a():
         origin = crs.unproject(items[0][2])
@@ -661,12 +720,86 @@ def _error_components(chk, position, reference, notes):
     return None
 
 
+_CAMERA_TABLES = {}                    # chunk identity -> (built at, number of cameras, rows, labels, keys)
+CAMERA_TABLE_TTL_S = 20.0              # a table older than this is read again (cameras can be re-aligned meanwhile)
+_NO_POSITION = (None, None, None)
+
+
+def invalidate_camera_tables():
+    """Forget the cached camera tables (chunk or document change, or after an alignment)."""
+    _CAMERA_TABLES.clear()
+
+
+def _xyz(vector):
+    try:
+        return float(vector.x), float(vector.y), float(vector.z)
+    except Exception:
+        try:
+            return float(vector[0]), float(vector[1]), float(vector[2])
+        except Exception:
+            return None
+
+
+def _same_cameras(rows, cams):
+    """Do the cached rows still describe these cameras? (first and last one compared: another project or chunk with the
+    same key and camera count is not mistaken for this one)"""
+    if not cams:
+        return not rows
+    try:
+        return rows[0][0] == cams[0] and rows[-1][0] == cams[-1]
+    except Exception:
+        return False
+
+
+def camera_table(chk):
+    """One read of the cameras of a chunk, shared by everything that scans them (a click, "All markers", the photo filter).
+
+    Returns (rows, labels, keys). A row is (camera, key, centre xyz or None, inverse transform or None, sensor width, sensor height)
+    and is built with the Metashape API once per chunk (and every CAMERA_TABLE_TTL_S seconds), not once per marker: the distance test
+    then runs on plain numbers. `rows` holds every camera; a camera with no transform (not aligned) has a None inverse."""
+    if chk is None:
+        return [], frozenset(), frozenset()
+    cams = _cameras(chk)
+    count = len(cams)
+    ident = chunk_identity(chk) or ("object", id(chk))
+    now = time.time()
+    cached = _CAMERA_TABLES.get(ident)
+    if cached is not None and cached[1] == count and now - cached[0] < CAMERA_TABLE_TTL_S and _same_cameras(cached[2], cams):
+        return cached[2], cached[3], cached[4]
+    rows, labels, keys = [], set(), set()
+    for cam in cams:
+        try:
+            key = cam.key
+        except Exception:
+            key = None
+        try:
+            labels.add(cam.label)
+        except Exception:
+            pass
+        centre, inverse, width, height = None, None, 0, 0
+        try:
+            transform = cam.transform
+            if transform is not None:
+                inverse = transform.inv()
+                centre = _xyz(cam.center)
+                width, height = cam.sensor.width, cam.sensor.height
+        except Exception:
+            centre, inverse = None, None
+        if key is not None:
+            keys.add(key)
+        rows.append((cam, key, centre, inverse, width, height))
+    labels, keys = frozenset(labels), frozenset(keys)
+    _CAMERA_TABLES[ident] = (now, count, rows, labels, keys)
+    return rows, labels, keys
+
+
 def cameras_seeing_marker(chk, marker, max_dist_m=MAX_FILTER_DIST_M):
     """Photos to offer for this marker, from the nearest to the farthest.
 
     First the projections already placed, then the aligned photos where the point
     falls inside the image, in front of the camera and within `max_dist_m`.
-    Returns (cameras, diagnostic).
+    Returns (cameras, diagnostic). The cameras are read once per chunk (`camera_table`); only the photos
+    near the point cost API calls here.
     """
     diagnostic = {}
     cameras = projection_cameras(marker)
@@ -680,9 +813,8 @@ def cameras_seeing_marker(chk, marker, max_dist_m=MAX_FILTER_DIST_M):
 
     point = marker_point(chk, marker)
     diagnostic["point"] = point is not None
-    diagnostic["aligned"] = sum(
-        1 for cam in _cameras(chk) if _camera_transform(cam) is not None
-    )
+    rows, _labels, _keys = camera_table(chk)
+    diagnostic["aligned"] = sum(1 for row in rows if row[3] is not None)
     diagnostic["near"] = diagnostic["in_front"] = diagnostic["in_image"] = 0
     if point is None:
         return cameras, diagnostic
@@ -693,24 +825,31 @@ def cameras_seeing_marker(chk, marker, max_dist_m=MAX_FILTER_DIST_M):
     except Exception:
         pass
     limit = max_dist_m / scale
+    target = _xyz(point)
 
     extra = []
-    for cam in _cameras(chk):
+    for cam, key, centre, inverse, width, height in rows:
         try:
-            if cam.key in seen or cam.transform is None or not cam.enabled:
+            if key in seen or inverse is None or centre is None:
                 continue
-            distance = (cam.center - point).norm()
-            if distance > limit:
+            if target is not None:
+                distance = math.sqrt((centre[0] - target[0]) ** 2 + (centre[1] - target[1]) ** 2 + (centre[2] - target[2]) ** 2)
+                if distance > limit:
+                    continue
+            if not cam.enabled:
                 continue
+            if target is None:
+                distance = (cam.center - point).norm()
+                if distance > limit:
+                    continue
             diagnostic["near"] += 1
-            local = cam.transform.inv().mulp(point)
+            local = inverse.mulp(point)
             if local.z <= 0:
                 continue
             diagnostic["in_front"] += 1
             uv = cam.project(point)
             if uv is None:
                 continue
-            width, height = cam.sensor.width, cam.sensor.height
             if 0 <= uv.x < width and 0 <= uv.y < height:
                 diagnostic["in_image"] += 1
                 extra.append((distance, cam))
@@ -740,12 +879,25 @@ def _camera_transform(cam):
 # Photo view
 # --------------------------------------------------------------------------
 
+_PHOTO_WIDGETS = {"size": None, "window": None, "widgets": []}     # the widgets found for the last size of the photo view
+
+
+def _still_the_photo_view(widget, width, height):
+    try:
+        return widget.isVisible() and abs(widget.width() - width) <= 2 and abs(widget.height() - height) <= 2
+    except RuntimeError:                                  # the Qt object was deleted (a tab was closed)
+        return False
+
+
 def photo_view_widgets():
     """Qt widgets that have exactly the size of the photo view.
 
     Metashape does not expose the photo view widget: it is found by its
     size, which the API gives (`photo_view.width` / `.height`), and the
     deepest one in the tree is kept.
+
+    Walking every widget of the main window costs tens of milliseconds and this runs at each click: the widgets found are kept for the
+    size of the view and checked cheaply (still visible, still that size); the window is walked again only when one of them is not.
     """
     view = photo_view()
     if view is None:
@@ -759,6 +911,10 @@ def photo_view_widgets():
     window = main_window()
     if window is None:
         return []
+    kept = _PHOTO_WIDGETS
+    if (kept["widgets"] and kept["window"] is window and kept["size"] == (width, height)
+            and all(_still_the_photo_view(widget, width, height) for widget in kept["widgets"])):
+        return list(kept["widgets"])
     try:
         children = list(window.findChildren(QtWidgets.QWidget))
     except RuntimeError:
@@ -779,7 +935,9 @@ def photo_view_widgets():
         except RuntimeError:
             continue
     candidates.sort(key=lambda item: -item[0])
-    return [widget for _depth, widget in candidates]
+    found = [widget for _depth, widget in candidates]
+    kept.update(size=(width, height), window=window, widgets=found)
+    return found
 
 
 def central_tab_under(global_pos):
@@ -826,13 +984,9 @@ def _title_is_photo(title, chk):
     # A tab that carries exactly the name of a photo of the chunk is a photo,
     # even if that name contains a word of the blacklist ("DEM_001", "model").
     if chk is not None:
-        for cam in _cameras(chk):
-            try:
-                label = cam.label
-            except Exception:
-                continue
-            if label == text or label == stem:
-                return True
+        _rows, labels, _keys = camera_table(chk)
+        if text in labels or stem in labels:
+            return True
     lowered = text.lower()
     for keyword in NON_PHOTO_KEYWORDS:
         if keyword in lowered:
@@ -908,19 +1062,21 @@ def image_coords_at(global_pos):
     return (img_x, img_y), None
 
 
-def set_projection(marker, camera, img_x, img_y, pinned=True):
+def set_projection(marker, camera, img_x, img_y, pinned=True, update=True):
     """Place the marker's projection on this camera. Returns (ok, message).
 
     `pinned=True`: operator pick (green flag in Metashape).
     `pinned=False`: projection proposed by an automatic detection (AIGCP),
     which Metashape shows in blue and may readjust.
+    `update=False`: does not refresh Metashape (the caller does it once for a whole series).
     """
     try:
         projection = Metashape.Marker.Projection(
             Metashape.Vector([img_x, img_y]), bool(pinned)
         )
         marker.projections[camera] = projection
-        refresh()
+        if update:
+            refresh()
         return True, ""
     except Exception as exc:
         return False, str(exc)
@@ -992,8 +1148,16 @@ def remove_marker(chk, marker):
 
 
 def camera_in_chunk(chk, camera):
+    """Is this camera one of the chunk's? Answered from the cached key set; an unknown key is checked once on the live chunk
+    (a photo may have been added since the table was read)."""
     try:
-        return camera.key in {cam.key for cam in _cameras(chk)}
+        key = camera.key
+        if key in camera_table(chk)[2]:
+            return True
+        if any(cam.key == key for cam in _cameras(chk)):
+            invalidate_camera_tables()
+            return True
+        return False
     except Exception:
         return False
 
@@ -1037,6 +1201,25 @@ def camera_key(camera):
         return camera.key
     except Exception:
         return None
+
+
+_EXIF_DATES = {}                                           # (chunk identity, camera key) -> "2026:11:12 10:20:30" ("" when the photo has none)
+
+
+def exif_date(chk, camera):
+    """EXIF date of a photo, read once: `camera.photo.meta` opens the file, and on a network drive each read is a visible stall of the
+    interface. A photo that cannot be read gives "" and is tried again next time."""
+    ident = (chunk_identity(chk) or ("object", id(chk)), camera_key(camera))
+    if ident[1] is not None and ident in _EXIF_DATES:
+        return _EXIF_DATES[ident]
+    try:
+        text = camera.photo.meta["Exif/DateTimeOriginal"]
+    except Exception:
+        return ""
+    text = str(text) if text else ""
+    if ident[1] is not None:
+        _EXIF_DATES[ident] = text
+    return text
 
 
 def open_photo(camera):
@@ -1614,6 +1797,13 @@ _TIFF_COMPRESSION = {"none": "TiffCompressionNone", "lzw": "TiffCompressionLZW",
 EXIF_DATE_SAMPLE = 60
 
 
+def open_document(path, read_only=False):
+    """A separate Metashape document opened from `path` (not the one shown in the application). Raises what Metashape raises."""
+    opened = Metashape.Document()
+    opened.open(path, read_only=read_only)
+    return opened
+
+
 def document_path():
     """Path of the .psx of the open document, or "" as long as it is not saved."""
     doc = document()
@@ -1738,12 +1928,9 @@ def raster_info(chk=None):
     try:
         cameras = list(chk.cameras)
         for camera in cameras[::max(1, len(cameras) // EXIF_DATE_SAMPLE)]:
-            try:
-                text = camera.photo.meta["Exif/DateTimeOriginal"]
-            except Exception:
-                continue
+            text = exif_date(chk, camera)
             if text:
-                info["dates"].append(str(text))
+                info["dates"].append(text)
     except Exception:
         pass
     return info
@@ -1923,21 +2110,21 @@ def add_menu_item(label, callback, shortcut=None):
         else:
             Metashape.app.addMenuItem(label, callback)
         return True
-    except Exception:
+    except Exception as exc:
+        if not shortcut:
+            journal.write("menu entry {!r} refused: {!r}".format(label, exc))
+            return False
+        # The shortcut may be what Metashape refused (taken by another entry). Retry without it, unless the first call already added the
+        # entry (then a second one would show up twice).
+        if _menu_has(label):
+            return True
+        journal.write("menu entry {!r}: shortcut {} refused ({!r}), added without it".format(label, shortcut, exc))
         try:
             Metashape.app.addMenuItem(label, callback)
             return True
-        except Exception:
+        except Exception as second:
+            journal.write("menu entry {!r} refused: {!r}".format(label, second))
             return False
-
-
-def add_menu_separator(menu):
-    """Add a separator line at the end of the menu `menu`. Returns True if Metashape accepted it."""
-    try:
-        Metashape.app.addMenuSeparator(menu)
-        return True
-    except Exception:
-        return False
 
 
 def _menu_has(label):
@@ -2003,6 +2190,37 @@ def find_menu(title):
     pins.pop(title, None)
     actions.pop(title, None)
     return None
+
+
+APP_MEMBERS = ("document", "photo_view", "photos_pane", "addMenuItem", "addMenuSeparator", "messageBox", "update")      # what the core relies on
+
+
+def probe_capabilities():
+    """One line for the journal at start-up: the Metashape version and which members of `Metashape.app` this code relies on are missing.
+    The zoom and the photo filter use parts of the interface that Metashape does not document; when a new version drops one, the
+    journal says so instead of a button that silently does nothing. Returns the list of the missing members."""
+    missing = []
+    try:
+        app = Metashape.app
+        missing = [name for name in APP_MEMBERS if not hasattr(app, name)]
+    except Exception:
+        missing = list(APP_MEMBERS)
+    try:
+        version = str(getattr(Metashape, "version", "") or "")
+    except Exception:
+        version = ""
+    journal.write("Metashape {}: {}".format(version or "(version unknown)",
+                                            "missing " + ", ".join(missing) if missing else "interface as expected"))
+    return missing
+
+
+def add_menu_separator(menu):
+    """Add a separator line at the end of the menu `menu`. Returns True if Metashape accepted it."""
+    try:
+        Metashape.app.addMenuSeparator(menu)
+        return True
+    except Exception:
+        return False
 
 
 def arrange_menu(title, groups):
@@ -2088,13 +2306,22 @@ def add_logo_button(title, image, tooltip="", height=16):
         button.setCursor(QtCore.Qt.PointingHandCursor)
         button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         button.setMenu(menu)
-        button.setStyleSheet("QToolButton{border:0;padding:2px 10px;}QToolButton::menu-indicator{image:none;}"
-                             "QToolButton:hover{background:rgba(30,202,89,0.18);}")
+        # The icon size goes in the button's own style sheet: Metashape's application style sheet gives every QToolButton a 16 x 16
+        # icon size at polish time, which squeezed the wordmark to a 16 x 3 px smear (seen live).
+        size = "{}px {}px".format(int(pixmap.width() / 2), height)
+        button.setStyleSheet("QToolButton{border:0;padding:2px 10px;qproperty-iconSize:%s;}QToolButton::menu-indicator{image:none;}"
+                             "QToolButton:hover{background:%s;}" % (size, _hover_tint()))
         bar.setCornerWidget(button, QtCore.Qt.TopRightCorner)
         button.show()
         return True
     except Exception:
         return False
+
+
+def _hover_tint():
+    """Hover colour of the suite's button in Metashape's menu bar: the accent tint of the active skin."""
+    from .uikit import tokens
+    return tokens.ACCENT_SOFT
 
 
 def message_box(text):

@@ -144,7 +144,7 @@ def filter_for_marker(state, marker, force=False):
         label = msapi.marker_label(marker)
         if not label:
             return
-        key = (msapi.chunk_key(chunk), label)
+        key = (msapi.chunk_identity(chunk), label)
         if not force and key == state.last_filter_key:
             return
         state.last_filter_key = key

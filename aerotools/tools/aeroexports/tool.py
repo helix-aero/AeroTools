@@ -13,8 +13,13 @@ def install():
         msapi.message_box(i18n.t("tool.no_window"))
         return
     theme.load_fonts(QtGui)
-    from . import dialog
-    _STATE["dialog"] = dialog.show(window, _STATE["dialog"])
+    try:
+        from . import dialog
+    except ImportError as exc:                              # a missing module is told in words, not as an exception of the menu
+        journal.write("Aero-Exports: cannot load: {!r}".format(exc))
+        msapi.message_box(i18n.t("export.err_import", error=exc))
+        return
+    _STATE["dialog"] = dialog.ExportDialog.open(window)
     journal.write("Aero-Exports opened")
 
 

@@ -95,12 +95,12 @@ def test_a_broken_palette_file_is_ignored_and_the_metashape_palette_always_exist
 
 # -- the render shared by the preview and the export --------------------------------------------------
 
-def hill_dem(path, nodata_rows=0, shape=(60, 80), pixel=0.5):
+def hill_dem(path, nodata_rows=0, shape=(60, 80), pixel=0.5, geographic=False):
     rows, cols = np.mgrid[0:shape[0], 0:shape[1]]
     z = (2.0 + 0.05 * cols + 0.8 * np.sin(rows / 5.0) + 0.5 * np.cos(cols / 7.0)).astype("<f4")
     if nodata_rows:
         z[:nodata_rows, :] = -32767.0
-    make_dem(path, z, 1000.0, 2400.0, pixel)
+    make_dem(path, z, 1000.0, 2400.0, pixel, geographic=geographic)
     return z
 
 
@@ -222,7 +222,7 @@ def test_the_void_colour_is_chosen_by_the_caller_and_nan_is_void_without_warning
 
 def test_a_geographic_dem_has_no_shading_but_is_still_coloured(tmp_path):
     dem, out = str(tmp_path / "dem.tif"), str(tmp_path / "view.tif")
-    z = hill_dem(dem, pixel=0.00001)                                                   # degrees
+    z = hill_dem(dem, pixel=0.00001, geographic=True)                                                   # degrees
     assert relief.render(dem, out)[0]
     flat = relief.colorize(z, float(z.min()), float(z.max()), relief.lookup_table())
     assert np.array_equal(read_rgb(out), flat)

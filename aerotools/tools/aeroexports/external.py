@@ -13,6 +13,7 @@ Nothing is downloaded or installed here. The purchase links are official address
 import glob
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -73,7 +74,7 @@ def _uninstall_locations(pattern):
 
 def _version_key(path):
     """Sort key: the numbers in the path (GlobalMapper26.0, AutoCAD 2023), to pick the most recent version."""
-    return [int(n) for n in re.findall(r"\d+", path)]
+    return [int(n) for n in re.findall(r"\d+", path.replace("(x86)", ""))]       # "Program Files (x86)" is not version 86
 
 
 def _newest(paths):
@@ -119,6 +120,9 @@ def find_gdal(saved=""):
         candidates += glob.glob(os.path.join(base, "QGIS*", "bin", "gdal_translate.exe"))
         candidates += glob.glob(os.path.join(base, "bin", "gdal_translate.exe"))
     best = _newest(candidates)
+    if not best:                                            # a GDAL on the PATH (conda, standalone)
+        found = shutil.which("gdal_translate")
+        best = found if found and os.path.basename(found).lower() == "gdal_translate.exe" else ""
     return os.path.dirname(best) if best else ""
 
 
@@ -205,15 +209,24 @@ def to_jp2_gdal(gdal_dir, src, dst, quality=JP2_QUALITY, tick=None):
         os.remove(dst)
     command = [os.path.join(gdal_dir, "gdal_translate.exe"), "-q", "-of", "JP2OpenJPEG", "-co", "QUALITY=%d" % quality,
                "-co", "REVERSIBLE=NO", "-co", "YCC=YES", src, dst]
-    try:
-        process = subprocess.Popen(command, env=gdal_env(gdal_dir), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                   creationflags=NO_WINDOW)
-    except OSError as exc:
-        return False, "GDAL: %s" % exc
-    if not _wait(process, GM_TIMEOUT_S, tick):
-        return False, "GDAL: timed out"
-    if process.returncode != 0 or not os.path.isfile(dst) or os.path.getsize(dst) == 0:
-        return False, "GDAL: JPEG 2000 failed"
+    # What GDAL prints goes to a file, not to a pipe nobody reads (a chatty child would block on a full pipe until the timeout), and
+    # its last lines say why a conversion failed.
+    with tempfile.TemporaryDirectory(prefix="aero_gdal_") as work:
+        log = os.path.join(work, "gdal.txt")
+        with open(log, "wb") as sink:
+            try:
+                process = subprocess.Popen(command, env=gdal_env(gdal_dir), stdout=sink, stderr=subprocess.STDOUT,
+                                           creationflags=NO_WINDOW)
+            except OSError as exc:
+                return False, "GDAL: %s" % exc
+            if not _wait(process, GM_TIMEOUT_S, tick):
+                return False, "GDAL: timed out"
+        if process.returncode != 0 or not os.path.isfile(dst) or os.path.getsize(dst) == 0:
+            try:
+                tail = [line.strip() for line in open(log, "rb").read().decode("utf-8", "replace").splitlines() if line.strip()][-3:]
+            except OSError:
+                tail = []
+            return False, "GDAL: JPEG 2000 failed" + (" (%s)" % " | ".join(tail) if tail else "")
     return True, ""
 
 

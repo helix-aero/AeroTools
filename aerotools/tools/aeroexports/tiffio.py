@@ -156,6 +156,23 @@ class Tiff(object):
                     top = index * self.block_h
                     yield top, 0, self._decode(payload, self.width, min(self.block_h, self.height - top))
 
+    def row_bands(self):
+        """(top, array) bands of whole rows, from the top of the image down, each decoded once: a row of tiles is joined into one band
+        (width x tile height), a strip is a band. Memory stays at one band, never the whole image."""
+        if not self.tiled:
+            for top, _left, block in self.blocks():
+                yield top, block
+            return
+        band, band_top = None, None
+        for top, left, block in self.blocks():
+            if band is None or top != band_top:
+                if band is not None:
+                    yield band_top, band[:self.height - band_top, :self.width]
+                band, band_top = np.empty((self.block_h, self.across * self.block_w), dtype=np.float32), top
+            band[:, left:left + self.block_w] = block
+        if band is not None:
+            yield band_top, band[:self.height - band_top, :self.width]
+
     def read_all(self):
         """The whole image (for a grid: a few KB)."""
         out = np.empty((self.height, self.width), dtype=np.float32)
@@ -173,25 +190,47 @@ class Tiff(object):
         overviews (the original overviews would no longer match the corrected values). Little-endian bytes only."""
         if self.end != "<":
             raise ValueError("rewriting: little-endian TIFF only")
-        compressed = []
-        for top, left, block in self.blocks():
-            new = np.ascontiguousarray(change(top, left, block), dtype="<f4")
-            compressed.append(zlib.compress(new.tobytes(), level))
-        big = sum(len(item) for item in compressed) > CLASSIC_LIMIT
-        self._write(dest, compressed, big)
+        # Blocks go to the file as they are compressed (only their sizes are kept). A classic TIFF is tried first; if the compressed
+        # data pass CLASSIC_LIMIT the file is started again as a BigTIFF (rare: a DEM of several GB), so the choice is the one that
+        # was always made (BigTIFF if and only if the compressed blocks together exceed the limit).
+        for big in (False, True):
+            if self._rewrite_stream(dest, change, level, big):
+                return
+
+    def _rewrite_stream(self, dest, change, level, big):
+        counts, total = [], 0
+        with open(dest, "wb") as out:
+            out.write(b"\0" * (16 if big else 8))               # the header is written last, when the IFD address is known
+            for top, left, block in self.blocks():
+                new = np.ascontiguousarray(change(top, left, block), dtype="<f4")
+                item = zlib.compress(new.tobytes(), level)
+                total += len(item)
+                if not big and total > CLASSIC_LIMIT:
+                    return False
+                out.write(item)
+                counts.append(len(item))
+            self._finish(out, counts, big)
+        return True
 
     def _write(self, dest, compressed, big):
+        with open(dest, "wb") as out:
+            out.write(b"\0" * (16 if big else 8))
+            for item in compressed:
+                out.write(item)
+            self._finish(out, [len(item) for item in compressed], big)
+
+    def _finish(self, out, counts, big):
+        """After the blocks (already written, `counts` bytes each): the IFD, its extra data, and the header at the start of the file."""
         end = "<"
         word = "Q" if big else "I"
         limit = 8 if big else 4
         head_size = 16 if big else 8
         offsets, cursor = [], head_size
-        for item in compressed:
+        for size in counts:
             offsets.append(cursor)
-            cursor += len(item)
+            cursor += size
         kind_off = 16 if big else 4
         tags = {tag: value for tag, value in self.tags.items() if tag not in OFFSET_TAGS}
-        counts = [len(item) for item in compressed]
         tags[T_COMPRESSION] = (3, 1, struct.pack(end + "H", 8))
         names = (T_TILE_OFFSETS, T_TILE_COUNTS) if self.tiled else (T_STRIP_OFFSETS, T_STRIP_COUNTS)
         for tag, values in zip(names, (offsets, counts)):
@@ -210,15 +249,13 @@ class Tiff(object):
                 slot = struct.pack(end + word, extra_base + len(extra))
                 extra += data + (b"\0" if len(data) % 2 else b"")
             entries.append(struct.pack(end + ("HHQ" if big else "HHI"), tag, kind, number) + slot)
-        with open(dest, "wb") as out:
-            if big:
-                out.write(b"II" + struct.pack(end + "HHHQ", 43, 8, 0, ifd_start))
-            else:
-                out.write(b"II" + struct.pack(end + "HI", 42, ifd_start))
-            for item in compressed:
-                out.write(item)
-            out.write(pad)
-            out.write(struct.pack(end + ("Q" if big else "H"), len(entries)))
-            out.write(b"".join(entries))
-            out.write(struct.pack(end + word, 0))
-            out.write(bytes(extra))
+        out.write(pad)
+        out.write(struct.pack(end + ("Q" if big else "H"), len(entries)))
+        out.write(b"".join(entries))
+        out.write(struct.pack(end + word, 0))
+        out.write(bytes(extra))
+        out.seek(0)
+        if big:
+            out.write(b"II" + struct.pack(end + "HHHQ", 43, 8, 0, ifd_start))
+        else:
+            out.write(b"II" + struct.pack(end + "HI", 42, ifd_start))

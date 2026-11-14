@@ -25,8 +25,13 @@ def uninstall():
     if shown is None:
         return
     try:
+        if shown.batch_running():
+            # A batch is running (Reload during Lighten): closing is refused, so the window is neither deleted nor forgotten.
+            journal.write("Aero-Space: reload while a batch is running: the window is kept until it ends")
+            return False
         shown.close()
         shown.deleteLater()
     except RuntimeError:
         pass
     _STATE["dialog"] = None
+    return True

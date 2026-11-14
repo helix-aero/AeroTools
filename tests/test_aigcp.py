@@ -271,7 +271,7 @@ def test_start_poll_places_unpinned_proposals_only(install, world):
     assert msapi.get_projection(marker, cams[3]) is None          # photo without a path
     assert msapi.projection_count(marker) == 1
     assert msapi.is_proposal(marker, cams[1]) and msapi.is_proposal(marker, cams[2])
-    assert "2 proposal(s)" in state.panel.statuses[-1]
+    assert "2 proposals" in state.panel.statuses[-1]
     assert len(state.aigcp_applied) == 2
 
 
@@ -484,7 +484,7 @@ def test_scope_all_places_proposals_for_every_confirmed_marker(ms, install, conf
     wait_done(state)
     assert msapi.get_projection(first, cams[2])[2] is False
     assert msapi.get_projection(second, cams[2])[2] is False
-    assert "2 marker(s)" in state.panel.statuses[-1]
+    assert "2 markers" in state.panel.statuses[-1]
     assert len(state.aigcp_applied) == 4
 
 
@@ -526,7 +526,7 @@ def test_several_selected_markers_run_together_in_marker_scope(ms, install, conf
     assert msapi.get_projection(first, cams[2]) is not None
     assert msapi.get_projection(third, cams[2]) is not None
     assert msapi.get_projection(second, cams[2]) is None          # not selected: untouched
-    assert "2 marker(s)" in state.panel.statuses[-1]
+    assert "2 markers" in state.panel.statuses[-1]
 
 
 def test_one_selected_marker_keeps_the_active_marker_behaviour(ms, install, confirmed):

@@ -58,3 +58,35 @@ def test_render_refuses_a_dem_without_any_data(tmp_path):
     make_dem(dem, np.full((10, 10), -32767.0, dtype="<f4"), 0.0, 0.0, 0.5)
     ok, message = relief.render(dem, str(tmp_path / "view.tif"))
     assert not ok and "without data" in message
+
+
+def test_render_can_write_a_jpeg_with_a_world_file_placed_like_the_dem(tmp_path, monkeypatch):
+    """The JPEG encoder is Qt's (the pytest session has a stand-in for Qt: the real encoding is checked in tests_qt/run_qt_aeroexports.py)."""
+    import sys
+    import types
+    saved = []
+
+    class Image(object):
+        Format_RGB888 = 13
+
+        def __init__(self, data, width, height, stride, fmt):
+            self.shape = (height, width, stride, bytes(data[:3]))
+
+        def save(self, path, kind, quality):
+            saved.append((path, kind, quality, self.shape))
+            open(path, "wb").write(b"jpeg")
+            return True
+
+    fake = types.ModuleType("aerotools.qt")
+    fake.QtGui = types.SimpleNamespace(QImage=Image)
+    monkeypatch.setitem(sys.modules, "aerotools.qt", fake)
+    monkeypatch.setattr(sys.modules["aerotools"], "qt", fake, raising=False)
+    height, width = 30, 50
+    z = (2.0 + 0.05 * np.arange(width) + np.zeros((height, 1))).astype("<f4")
+    dem, out = str(tmp_path / "dem.tif"), str(tmp_path / "view.jpg")
+    make_dem(dem, z, 1000.0, 2400.0, 0.5)
+    ok, message = relief.render(dem, out, jpeg=True)
+    assert ok, message
+    assert saved[0][1:] == ("JPEG", 90, (height, width, width * 3, saved[0][3][3]))
+    lines = open(str(tmp_path / "view.jgw")).read().split()
+    assert [float(v) for v in lines] == [0.5, 0.0, 0.0, -0.5, pytest.approx(1000.25), pytest.approx(2399.75)]   # centre of the top-left pixel

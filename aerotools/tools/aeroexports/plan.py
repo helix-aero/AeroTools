@@ -24,7 +24,11 @@ CAD = "cad"
 CAD_FORMATS = ("dxf", "dwg")
 CAD_IMAGES = ("jp2", "ecw")
 CAD_BASENAME = "TOPO"
-PICTURE_PRESETS = {"jp2": "jp2", "ecw": "ecw"}      # presets that can add a coloured DEM picture, and its extension
+# Presets that can add a coloured DEM picture, and its extension. JPEG 2000 / ECW follow the preset; with the others the picture is an
+# RGB GeoTIFF (named ..._dtm_view.tif so that it never takes the name of the heights); with the JPEG + world file preset it is a JPEG
+# (..._dtm.jpg + .jgw: no external tool needed, and a different extension from the heights ..._dtm.tif).
+PICTURE_PRESETS = {"full": "tif", "quick": "tif", "jpeg": "jpg", "jp2": "jp2", "ecw": "ecw"}
+VIEW_SUFFIX = "_view"
 
 # A file to write.
 # `pixel_m` goes into the name; `native`: Metashape's grid is kept (nothing is resampled);
@@ -91,10 +95,29 @@ def needs_bigtiff(width_px, height_px, bands=4, bytes_per_sample=1):
     return float(width_px) * float(height_px) * bands * bytes_per_sample > BIGTIFF_RAW_BYTES
 
 
+def picture_name(name, ext):
+    """Name of the coloured picture of a DEM file `name` (...dtm.tif) in the format `ext`. A GeoTIFF picture gets "_view" so that it
+    does not collide with the heights themselves (the other formats have another extension)."""
+    stem = os.path.splitext(name)[0]
+    return stem + (VIEW_SUFFIX if ext == "tif" else "") + "." + ext
+
+
+def values_wanted(job):
+    """False when only the coloured picture of the DEM is wanted (the heights themselves are not written)."""
+    return not (job.extra or {}).get("no_values")
+
+
 def aux_names(name, spec):
     """Files that Metashape writes next to the main file: world file and .prj of a JPEG."""
     stem = os.path.splitext(name)[0]
     return [stem + ".jgw", stem + ".prj"] if spec.get("world") else []
+
+
+def view_aux_names(extra):
+    """Side files of the coloured DEM picture: the world file of a JPEG picture (the picture is never a source for a .prj)."""
+    if (extra or {}).get("view_ext") == "jpg" and extra.get("view_name"):
+        return [os.path.splitext(extra["view_name"])[0] + ".jgw"]
+    return []
 
 
 def cad_dxf_name(version, fmt="dxf"):
@@ -134,14 +157,15 @@ def listing_of(folder):
 
 
 def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listing=None, native=(),
-               cad=None, version=None, dem_picture=False, tiled=False):
+               cad=None, version=None, dem_picture=False, tiled=False, dem_values=True):
     """List of the files to write.
 
     `wanted`: {"ortho": pixel size in metres, "dem": ...} for what is ticked (the others are absent).
     `native`: the types whose native grid is kept (pixel not changed by the user).
     `cad`: {"format": "dxf" | "dwg", "images": "jp2" | "ecw"} when the preset is CAD.
-    `dem_picture`: also write the coloured picture of the DTM (same name, extension .jp2 / .ecw): JPEG 2000 and ECW presets only
-    (with a GeoTIFF, the name would be that of the DTM itself).
+    `dem_picture`: also write the coloured picture of the DTM (same name, extension .jp2 / .ecw / .jpg + .jgw; a GeoTIFF
+    picture is named ..._dtm_view.tif so as not to take the name of the heights).
+    `dem_values`: False = the heights (GeoTIFF of the DTM) are not kept, only the picture (needs `dem_picture`).
     `version`: imposed number (1 = overwrite); otherwise the smallest one for which none of the planned files already exists
     in `folder` (the orthomosaic and the DTM of one export share the same number).
     `tiled`: the export is cut into tiles; the tiles already in the folder (..._R01C02_ortho.tif) then count as the files of that
@@ -161,10 +185,10 @@ def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listi
         if not is_cad:
             if kind == DEM and dem_picture and preset_key in PICTURE_PRESETS:      # coloured picture next to the DEM
                 ext = PICTURE_PRESETS[preset_key]
-                view = naming.build_name(site, date, wanted[kind], kind, ext, version=version_number,
-                                         date_style=date_style)
+                view = picture_name(name, ext)
                 return name, os.path.join(folder, name), {"layer_kind": "dem", "view_name": view,
-                                                          "view_path": os.path.join(folder, view), "view_ext": ext}
+                                                          "view_path": os.path.join(folder, view), "view_ext": ext,
+                                                          "no_values": not dem_values}
             return name, os.path.join(folder, name), None
         where = os.path.join(folder, dxfout.ASSETS, dxfout.ORTHO_DIR if kind == ORTHO else dxfout.DEM_DIR)
         if kind == ORTHO:
@@ -180,9 +204,12 @@ def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listi
         names = []
         for kind in kinds:
             name, path, extra = locate(kind, version_number)
-            names.append(os.path.relpath(path, folder).replace("\\", "/") if is_cad else name)
+            if not (extra and extra.get("no_values")):
+                names.append(os.path.relpath(path, folder).replace("\\", "/") if is_cad else name)
             if extra and extra.get("view_path"):
                 names.append(os.path.relpath(extra["view_path"], folder).replace("\\", "/"))
+                names.extend(os.path.relpath(os.path.join(os.path.dirname(extra["view_path"]), n), folder).replace("\\", "/")
+                             for n in view_aux_names(extra))
             names.extend(aux_names(name, spec_for(preset_key, kind, cad)))
         if is_cad:
             names.append(cad_dxf_name(version_number, "dxf"))
@@ -224,10 +251,12 @@ def planned_files(jobs, preset_key, cad=None):
     """Paths of everything an export writes (main files, side files, DXF / DWG): to know what already exists."""
     paths = []
     for job in jobs:
-        paths.append(job.path)
-        paths.extend(os.path.join(os.path.dirname(job.path), n) for n in aux_names(job.name, job.spec))
+        if values_wanted(job):
+            paths.append(job.path)
+            paths.extend(os.path.join(os.path.dirname(job.path), n) for n in aux_names(job.name, job.spec))
         if job.extra and job.extra.get("view_path"):
             paths.append(job.extra["view_path"])
+            paths.extend(os.path.join(os.path.dirname(job.extra["view_path"]), n) for n in view_aux_names(job.extra))
     if preset_key == CAD and jobs:
         folder = os.path.dirname(os.path.dirname(os.path.dirname(jobs[0].path)))
         fmt = (cad or {}).get("format", "dxf")

@@ -321,10 +321,14 @@ class Job(object):
     def start(self):
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         self._log = open(self.log_path, "wb")
-        self._process = subprocess.Popen(
-            [self._python, "-I", RUNNER, "--work", self.work_path, "--out", self.hits_path],
-            stdout=self._log, stderr=subprocess.STDOUT, env=child_env(),
-            creationflags=flags, cwd=self.run_dir)
+        try:
+            self._process = subprocess.Popen(
+                [self._python, "-I", RUNNER, "--work", self.work_path, "--out", self.hits_path],
+                stdout=self._log, stderr=subprocess.STDOUT, env=child_env(),
+                creationflags=flags, cwd=self.run_dir)
+        except BaseException:
+            self._close_log()                       # a missing Python must not leave the log file open
+            raise
         return self
 
     def running(self):
@@ -343,7 +347,8 @@ class Job(object):
         if self._process is not None and self._process.poll() is None:
             try:
                 self._process.terminate()
-            except OSError:
+                self._process.wait(timeout=5)      # the next run folder cleanup must not meet a folder still held by it
+            except (OSError, subprocess.TimeoutExpired):
                 pass
         self._close_log()
 
@@ -413,6 +418,14 @@ def _already_marked(marker, camera, projection, skip_green, skip_blue):
     return skip_blue
 
 
+def _marker_ident(marker):
+    """What tells one marker from another when two carry the same label (Metashape allows it): its key."""
+    try:
+        return ("key", marker.key)
+    except Exception:
+        return ("id", id(marker))
+
+
 def collect_items(chk, marker, index=0, limit=MAX_PHOTOS, skip_green=True, skip_blue=True):
     """Photos where the marker is expected and where the AI can propose: list of items.
 
@@ -438,7 +451,7 @@ def collect_items(chk, marker, index=0, limit=MAX_PHOTOS, skip_green=True, skip_
             skipped += 1
             continue
         items.append({"id": "{}:{}".format(index, msapi.camera_key(camera)),
-                      "marker": marker, "label": label, "camera": camera,
+                      "marker": marker, "marker_key": _marker_ident(marker), "label": label, "camera": camera,
                       "image_path": path, "x_est": estimate[0], "y_est": estimate[1],
                       "px_per_m": ppm, "gate_m": gate, "rescue": gate is None,
                       "seen": projection})
@@ -449,7 +462,7 @@ def collect_items(chk, marker, index=0, limit=MAX_PHOTOS, skip_green=True, skip_
     return items, skipped
 
 
-def collect_all(chk, skip_green=True, skip_blue=True, labels=None):
+def collect_all(chk, skip_green=True, skip_blue=True, labels=None, capped=None):
     """Items of all the markers that have a 3D position (no pin is required).
 
     `labels` (optional) restricts the search to these markers: the panel's
@@ -459,22 +472,31 @@ def collect_all(chk, skip_green=True, skip_blue=True, labels=None):
     search remains allowed and only the consistency between photos guards it. Returns
     (items, markers kept, markers ignored). The items of one photo are
     adjacent: the runner decodes it only once.
+
+    The total is capped at MAX_PHOTOS_ALL photos; no marker takes more than MAX_PHOTOS of them, so one marker cannot use every slot. The labels of the
+    markers left out because the cap was reached are appended to `capped` (a list, optional) and written to the journal.
     """
     items, used, ignored = [], 0, 0
     wanted = None if labels is None else set(labels)
+    left_out = []
     for index, marker in enumerate(msapi.markers(chk)):
-        if len(items) >= MAX_PHOTOS_ALL:
-            break
         if wanted is not None and msapi.marker_label(marker) not in wanted:
+            continue
+        if len(items) >= MAX_PHOTOS_ALL:
+            left_out.append(msapi.marker_label(marker))
             continue
         if msapi.marker_point(chk, marker) is None:
             ignored += 1
             continue
-        found, _skipped = collect_items(chk, marker, index, MAX_PHOTOS_ALL - len(items),
+        found, _skipped = collect_items(chk, marker, index, min(MAX_PHOTOS, MAX_PHOTOS_ALL - len(items)),
                                         skip_green, skip_blue)
         if found:
             used += 1
             items.extend(found)
+    if left_out:
+        journal.write("AI: photo limit ({}) reached, not tested: {}".format(MAX_PHOTOS_ALL, ", ".join(left_out)))
+        if capped is not None:
+            capped.extend(left_out)
     items.sort(key=lambda it: it["image_path"])
     return items, used, ignored
 
@@ -608,14 +630,18 @@ def _start(state, kind, scope, labels=None):
     if scope == "all" or several:
         # Several markers chosen: same processing and same messages as "all".
         scope = "all"
+        capped = []
         items, used, ignored = collect_all(chk, *skip_flags(state),
-                                           labels=labels if several else None)
+                                           labels=labels if several else None, capped=capped)
         if ignored:
             journal.write("AI: {} marker(s) ignored: no 3D position".format(ignored))
+
         if not items:
             _status(state, i18n.t("aigcp.no_markers"))
             return False
         text = i18n.t("aigcp.running_all", kind=kind_label(kind), n=len(items), k=used)
+        if capped:
+            text += " " + i18n.t("aigcp.capped", n=len(capped), limit=MAX_PHOTOS_ALL)
         shown = None
     else:
         marker = state.active_marker
@@ -688,18 +714,18 @@ def _apply(state, run, hits, errors):
             continue
         ok, reason = check_hit(hit, item, conf)
         if ok:
-            accepted.setdefault(item["label"], []).append((item, hit))
+            accepted.setdefault(item.get("marker_key") or item["label"], []).append((item, hit))
         elif reason == "gate":
             gated += 1
             journal.write("AI: {} discarded on {}: {:.1f} m from the expected position (limit {:.2f} m)".format(
                 item["label"], msapi.camera_label(item["camera"]), gap_m(hit, item), item["gate_m"]))
     to_place = []
-    for label, group in accepted.items():
+    for _group_key, group in accepted.items():
         kept, dropped = _consistent(chk, group)
         for item, hit in dropped:
             gated += 1
             journal.write("AI: {} discarded on {}: no 3D point in common with the other photos".format(
-                label, msapi.camera_label(item["camera"])))
+                item["label"], msapi.camera_label(item["camera"])))
         to_place.extend(kept)
     for item, hit in to_place:
         marker, camera = item["marker"], item["camera"]
@@ -707,7 +733,7 @@ def _apply(state, run, hits, errors):
         if current != item["seen"]:
             continue          # the photo was pinned or modified during the computation
         previous = current    # previous point (blue, or green if it was gone over), given back on clearing
-        done, message = msapi.set_projection(marker, camera, hit["x"], hit["y"], pinned=False)
+        done, message = msapi.set_projection(marker, camera, hit["x"], hit["y"], pinned=False, update=False)
         if not done:
             journal.write("AI: {} on {}: {}".format(item["label"], msapi.camera_label(camera), message))
             continue
@@ -717,6 +743,8 @@ def _apply(state, run, hits, errors):
         with_proposal.add(item["label"])
         journal.write("AI: {} proposed at ({:.0f}, {:.0f}) on {} (confidence {:.2f})".format(
             item["label"], hit["x"], hit["y"], msapi.camera_label(camera), hit["conf"]))
+    if placed:
+        msapi.refresh()                                   # once for all the proposals, not once each
     applied = getattr(state, "aigcp_applied", None)
     if applied is None:
         applied = state.aigcp_applied = []
@@ -800,12 +828,13 @@ def clear(state):
                 continue      # validated or already cleared: leave it alone
             if previous is not None:
                 done, _message = msapi.set_projection(
-                    marker, camera, previous[0], previous[1], previous[2])
+                    marker, camera, previous[0], previous[1], previous[2], update=False)
             else:
-                done, _message = msapi.remove_projection(marker, camera)
+                done, _message = msapi.remove_projection(marker, camera, update=False)
             removed += 1 if done else 0
         except Exception:
             continue          # marker or photo gone with the chunk
+    msapi.refresh()
     state.aigcp_applied = []
     state.aigcp_review = None
     state.aigcp_log = [e for e in (getattr(state, "aigcp_log", None) or [])

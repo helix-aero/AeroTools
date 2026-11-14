@@ -147,6 +147,23 @@ def check_menu():
 # 1. Windows open and close
 # --------------------------------------------------------------------------------------------------------------------------------
 
+def check_skin_switch(tool_id):
+    """The UI kit windows follow a live skin change: every open kit root gets the style sheet of the new skin (nothing is saved)."""
+    from aerotools.qt import QtWidgets
+    from aerotools.uikit import style, tokens
+    first = tokens.active_skin()
+    try:
+        for skin in ("light", "medium", first):
+            style.switch_skin(skin, save=False)
+            process_events(0.1)
+            sheet = style.stylesheet()
+            roots = [w for w in QtWidgets.QApplication.instance().allWidgets() if w.objectName() == "aeroPanel"]
+            stale = [type(w).__name__ for w in roots if w.styleSheet() != sheet]
+            check("skin {} restyles the windows of {}".format(skin, tool_id), not stale, stale)
+    finally:
+        style.switch_skin(first, save=False)
+
+
 @guarded
 def check_windows():
     section("Windows")
@@ -165,6 +182,7 @@ def check_windows():
             try:
                 module.install()
                 process_events(0.6)
+                check_skin_switch(tool_id)
                 module.uninstall()
                 process_events(0.3)
                 check("window " + tool_id, True, ("message: " + boxes[0][:80]) if boxes else "")
@@ -315,8 +333,11 @@ def check_space():
     check("lighten ok", result["ok"], result["error"])
     check("leftover folder removed", not os.path.exists(leftover))
     backup = result.get("backup") or ""
-    check("safety copy written", bool(backup) and os.path.isfile(os.path.join(backup, "RESTORE.txt"))
-          and os.path.isfile(os.path.join(backup, os.path.basename(path) + ".bak")), backup)
+    # Only a lightening that goes through the Metashape API (and saves) makes a safety copy; leftover folders alone are swept
+    # without opening the project for writing, so no copy is made (the project is not touched).
+    check("safety copy written when the API saved, none when only leftovers were swept",
+          (not backup) or (os.path.isfile(os.path.join(backup, "RESTORE.txt"))
+                           and os.path.isfile(os.path.join(backup, os.path.basename(path) + ".bak"))), backup or "(no copy needed)")
     reopened = Metashape.Document()
     reopened.open(path, read_only=True)
     check("chunk kept by the lightening", len(reopened.chunks) == 1 and reopened.chunks[0].label == "test")
