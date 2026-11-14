@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.facebook.com/groups/2408841503199237"><img alt="Community and support: HELIX Aero Tools Users (Metashape)" src="https://img.shields.io/badge/%F0%9F%92%AC%20Community%20%26%20Support-HELIX%20Aero%20Tools%20Users%20(Metashape)-1877F2?style=for-the-badge&labelColor=0b3d91" width="760"></a>
+  <a href="https://www.facebook.com/groups/1852563252425052"><img alt="Community and support: HELIX Aero Tools Users (Metashape)" src="https://img.shields.io/badge/%F0%9F%92%AC%20Community%20%26%20Support-HELIX%20Aero%20Tools%20Users%20(Metashape)-1877F2?style=for-the-badge&labelColor=0b3d91" width="760"></a>
 </p>
 
 <p align="center">
