@@ -276,7 +276,7 @@ def throwaway_settings(tmp_path, monkeypatch):
 
 @pytest.fixture
 def clean_bootstrap_flags():
-    flags = ("_AEROTOOLS_MENU_INSTALLED", "_AEROTOOLS_LAST_TOOL", "_AEROTOOLS_ROOT")
+    flags = ("_AEROTOOLS_MENU_INSTALLED", "_AEROTOOLS_LAST_TOOL", "_AEROTOOLS_ROOT", "_AEROTOOLS_MENU_GUARD", "_AEROTOOLS_MENU_RESTORES")
     for flag in flags:
         if hasattr(builtins, flag):
             delattr(builtins, flag)

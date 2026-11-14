@@ -52,6 +52,7 @@ def test_menu_still_installs_when_separators_are_unavailable(boot, ms, monkeypat
 
 
 def test_install_menu_force_registers_again(boot, ms):
+    # No menu bar to inspect here: the entries are registered again. With a menu bar they are not (see test_menu_guard.py).
     boot.install_menu()
     count = len(ms.app.menu_items)
     assert boot.install_menu(force=True) is True
