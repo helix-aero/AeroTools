@@ -1,4 +1,34 @@
 <p align="center">
+  <a href="https://helix.aero"><img alt="HELIX AERO" src="docs/images/brand/helix-aero-logotype-O.png" width="96"></a>
+</p>
+
+<p align="center">
+  <a href="https://www.facebook.com/groups/2408841503199237"><img alt="Community and support: HELIX Aero Tools Users (Metashape)" src="https://img.shields.io/badge/%F0%9F%92%AC%20Community%20%26%20Support-HELIX%20Aero%20Tools%20Users%20(Metashape)-1877F2?style=for-the-badge&labelColor=0b3d91" width="760"></a>
+</p>
+
+<p align="center">
+  <b>Community &amp; Support:</b> chat with other users, ask for updates, report bugs and request features here.<br>
+  <sub>Reporting a bug? Please include your Metashape version, your plugin version, the steps to reproduce it, and a screenshot or the log.</sub>
+</p>
+
+<p align="center">
+  <b>Follow us</b>&nbsp;&nbsp;
+  <a href="https://x.com/HELIXAERO"><img alt="X @HELIXAERO" src="https://img.shields.io/badge/X-@HELIXAERO-000000?style=flat-square&logo=x&logoColor=white"></a>
+  <a href="https://www.facebook.com/profile.php?id=61595988377946"><img alt="Facebook HELIX AERO" src="https://img.shields.io/badge/Facebook-HELIX%20AERO-1877F2?style=flat-square&logo=facebook&logoColor=white"></a>
+  <a href="https://www.instagram.com/helix_aero/"><img alt="Instagram @helix_aero" src="https://img.shields.io/badge/Instagram-@helix__aero-E4405F?style=flat-square&logo=instagram&logoColor=white"></a>
+  <a href="https://www.linkedin.com/company/aero-flight-planner-and-fms"><img alt="LinkedIn HELIX AERO" src="https://img.shields.io/badge/LinkedIn-HELIX%20AERO-0A66C2?style=flat-square&logo=linkedin&logoColor=white"></a>
+  <a href="https://www.youtube.com/@HELIX-AERO"><img alt="YouTube @HELIX-AERO" src="https://img.shields.io/badge/YouTube-@HELIX--AERO-FF0000?style=flat-square&logo=youtube&logoColor=white"></a>
+  <a href="https://helix.aero"><img alt="helix.aero" src="https://img.shields.io/badge/Web-helix.aero-1eca59?style=flat-square"></a>
+  <a href="https://docs.helix.aero"><img alt="Documentation" src="https://img.shields.io/badge/Docs-docs.helix.aero-1eca59?style=flat-square"></a>
+</p>
+
+<p align="center">
+  <img alt="HELIX AERO drone" src="docs/images/brand/helix-aero-banner-drone.jpg" width="800">
+</p>
+
+---
+
+<p align="center">
   <a href="https://www.youtube.com/watch?v=0VZGlWiIFQA"><img alt="Watch the Aero-GCP demo video (4 min)" src="docs/images/aero-gcp/08-demo-video.png" width="800"></a>
 </p>
 
