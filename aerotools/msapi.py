@@ -21,12 +21,21 @@ Metashape APIs used:
   confirmed with diag_zoom.py)
 """
 
+import builtins
 import math
 
 import Metashape
 
 from . import journal
 from .qt import QtCore, QtWidgets
+
+try:                                                  # the Shiboken module of the binding in use (Metashape 2.x: PySide2)
+    import shiboken2 as _shiboken
+except ImportError:                                   # pragma: no cover - depends on the Metashape version
+    try:
+        import shiboken6 as _shiboken
+    except ImportError:
+        _shiboken = None
 
 # Beyond this distance, a photo is not offered for a marker that has no
 # projection yet (otherwise a whole flight "sees" the point).
@@ -1903,7 +1912,11 @@ def export_raster(chk, kind, spec, path, pixel=None, box=None, big=False, progre
 # --------------------------------------------------------------------------
 
 def add_menu_item(label, callback, shortcut=None):
-    """Add a menu entry. Returns True if Metashape accepted it."""
+    """Add a menu entry. Returns True if Metashape accepted it.
+
+    An entry that is already in the menu is not added a second time (Metashape's API cannot remove one), so registering again is safe."""
+    if _menu_has(label):
+        return True
     try:
         if shortcut:
             Metashape.app.addMenuItem(label, callback, shortcut=shortcut)
@@ -1927,6 +1940,71 @@ def add_menu_separator(menu):
         return False
 
 
+def _menu_has(label):
+    """Is there already a menu entry with this label ("Aero/Name")? False when the menu cannot be inspected."""
+    try:
+        window = main_window()
+        title, _slash, name = label.partition("/")
+        if window is None:
+            return False
+        menu = find_menu(title)
+        if menu is not None:
+            return any(entry.text().replace("&", "") == name for entry in menu.actions())
+    except Exception:
+        pass
+    return False
+
+
+MENUS_FLAG = "_AEROTOOLS_MENUS"                 # on `builtins`, like the flags of bootstrap: survives the purge of sys.modules
+ACTIONS_FLAG = "_AEROTOOLS_MENU_ACTIONS"        # the QAction wrappers of those menus, pinned with them
+
+
+def is_valid(obj):
+    """False when the C++ object behind a Qt wrapper is gone (Shiboken), True otherwise, also when Shiboken cannot tell."""
+    if obj is None:
+        return False
+    if _shiboken is None:
+        return True
+    try:
+        return bool(_shiboken.isValid(obj))
+    except Exception:
+        return True
+
+
+def find_menu(title):
+    """The menu `title` of Metashape's menu bar, or None when it is not there (yet).
+
+    Only the action whose text matches gets its `.menu()` called. Shiboken makes the wrapper that `QAction.menu()` returns a Python
+    child of the QAction wrapper: when the action wrapper is released (the loop variable, as the function returns), its child is
+    invalidated, and, for a menu Python owns (Metashape's `addMenuItem` menus have no Qt parent), the C++ menu is deleted and leaves
+    the bar. So the action wrapper is pinned together with the menu, in two dicts on `builtins` (the menu is not reparented: it keeps
+    Metashape's own structure). Each call replaces the pins of `title`, and drops them when the menu is gone."""
+    pins = getattr(builtins, MENUS_FLAG, None)
+    if pins is None:
+        pins = {}
+        setattr(builtins, MENUS_FLAG, pins)
+    actions = getattr(builtins, ACTIONS_FLAG, None)
+    if actions is None:
+        actions = {}
+        setattr(builtins, ACTIONS_FLAG, actions)
+    window = main_window()
+    if window is None:
+        return None
+    for action in window.menuBar().actions():
+        if action.text().replace("&", "") == title:
+            menu = action.menu()
+            if menu is not None:
+                pins[title] = menu                      # replaces a stale pin
+                actions[title] = action                 # the parent of `menu` for Shiboken: it must outlive this call
+            else:
+                pins.pop(title, None)
+                actions.pop(title, None)
+            return menu
+    pins.pop(title, None)
+    actions.pop(title, None)
+    return None
+
+
 def arrange_menu(title, groups):
     """Puts the entries of the menu `title` in the order of `groups` (lists of labels, one separator between two lists).
 
@@ -1934,14 +2012,7 @@ def arrange_menu(title, groups):
     plain Qt menu: its actions are taken out and put back in the wanted order. Entries not listed keep their place after
     the listed ones. Returns True if the menu was found."""
     try:
-        window = main_window()
-        if window is None:
-            return False
-        menu = None
-        for action in window.menuBar().actions():
-            if action.menu() is not None and action.text().replace("&", "") == title:
-                menu = action.menu()
-                break
+        menu = find_menu(title)
         if menu is None:
             return False
         actions = list(menu.actions())
@@ -1985,13 +2056,20 @@ def add_logo_button(title, image, tooltip="", height=16):
         if window is None:
             return False
         bar = window.menuBar()
-        menu = None
-        for action in bar.actions():
-            if action.menu() is not None and action.text().replace("&", "") == title:
-                menu = action.menu()
-                break
+        menu = find_menu(title)
         if menu is None:
             return False
+        sign = "{}|{}|{}".format(image, height, tooltip)
+        # The button is kept only while it opens the menu that is in the bar now: a button whose menu is gone (None) or is another
+        # object is rebuilt, whatever else matches. (`menu` is pinned with its action by find_menu; `corner.menu()` returns that same
+        # wrapper, so the corner wrapper released here owns nothing.)
+        corner = bar.cornerWidget(QtCore.Qt.TopRightCorner)
+        try:
+            if (corner is not None and corner.objectName() == LOGO_BUTTON and corner.property("aeroLogoSign") == sign
+                    and corner.menu() is menu):
+                return True                              # already in place for this menu: nothing to rebuild
+        except Exception:
+            pass
         for old in window.findChildren(QtWidgets.QToolButton, LOGO_BUTTON):
             old.setParent(None)
             old.deleteLater()
@@ -2002,6 +2080,7 @@ def add_logo_button(title, image, tooltip="", height=16):
         pixmap.setDevicePixelRatio(2.0)
         button = QtWidgets.QToolButton(bar)
         button.setObjectName(LOGO_BUTTON)
+        button.setProperty("aeroLogoSign", sign)
         button.setIcon(QtGui.QIcon(pixmap))
         button.setIconSize(QtCore.QSize(int(pixmap.width() / 2), height))
         button.setToolTip(tooltip)
