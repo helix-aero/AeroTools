@@ -1,5 +1,5 @@
 {
- "built": "2026-11-13T17:34:41",
+ "built": "2026-11-14T10:50:55",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "258ef4a9be19fad68df99857346e9b9fd6debfd52a2c9c080fa3df2be1fa2a7c",
@@ -18,7 +18,7 @@
    "size": 8268
   },
   "aerotools/__init__.py": {
-   "sha256": "c9a29ab4bc3c040aab1f641031470f9a2d81dfbd80fffa73e1850c8775399884",
+   "sha256": "06b2f22086ab7c9e0afd516d3948f119e7fcbadd5a5b48ecd2f8246a8879170b",
    "size": 590
   },
   "aerotools/assets/ui/arrow_down.png": {
@@ -38,8 +38,8 @@
    "size": 2497
   },
   "aerotools/bootstrap.py": {
-   "sha256": "26b402bf2c275529aeb38513fb045a2a746ebeef1224f656704fccf83d6c1792",
-   "size": 14945
+   "sha256": "8e1b42f45e41fd2379a02d4ffa26ba73f47e745ed9aeda78f23c43add5092bb4",
+   "size": 18816
   },
   "aerotools/config.py": {
    "sha256": "b60dc7ff10975be9698ad3d1ac62c8a811db1b7b93d979cedb540fd249bd4f7c",
@@ -70,8 +70,8 @@
    "size": 70610
   },
   "aerotools/msapi.py": {
-   "sha256": "7c2a8ca8a1a6c56a8cc360758e8624341d36617b6143216aa4daa530254377ad",
-   "size": 83920
+   "sha256": "f5fb684e59a349e0f4eebc4dc5bc5aed645b69e03f07ef2364803458df7116ef",
+   "size": 86486
   },
   "aerotools/outputdir.py": {
    "sha256": "af981a49a9499e2142d9dd61777a6c18052676e8e008364b14ec6995fc0b7470",
@@ -772,5 +772,5 @@
   }
  ],
  "schema": 1,
- "version": "0.4.0"
+ "version": "0.4.1"
 }

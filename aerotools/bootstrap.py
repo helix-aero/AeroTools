@@ -30,8 +30,12 @@ _LAST_TOOL_FLAG = "_AEROTOOLS_LAST_TOOL"
 _ROOT_FLAG = "_AEROTOOLS_ROOT"
 _TOOLS_FLAG = "_AEROTOOLS_MENU_TOOLS"           # ids of the tools that already have their entry in the menu of this session
 _RETRY_FLAG = "_AEROTOOLS_MENU_RETRIES"         # how many times the menu layout was retried because the main window was not there yet
+_GUARD_FLAG = "_AEROTOOLS_MENU_GUARD"           # the guard timer of this session (on builtins: reload_all and install_menu(force) never stack a second)
+_RESTORES_FLAG = "_AEROTOOLS_MENU_RESTORES"     # how many times the guard had to bring the menu back
 ARRANGE_RETRIES = 5
 ARRANGE_RETRY_MS = 1000
+GUARD_MS = 1000
+GUARD_MAX_RESTORES = 5
 
 MENU = "Aero"
 
@@ -92,17 +96,26 @@ def install_menu(force=False):
     setattr(builtins, _TOOLS_FLAG, set())
     added = sum(1 for entry in config.TOOLS if add_tool_menu(entry["id"], arrange=False))
 
-    # Three blocks split by a line: the tools, maintenance (install, updates, reload, uninstall), information.
-    if added:
+    # Three blocks split by a line: the tools, maintenance (install, updates, reload, uninstall), information. A menu that is already
+    # there has its lines (arrange_menu below keeps or adds the ones it needs), so registering again does not pile separators.
+    fresh = msapi.find_menu(MENU) is None
+    if added and fresh:
         msapi.add_menu_separator(MENU)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.install")), install_plugins)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.update")), update_plugins)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.reload")), reload_all)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.uninstall")), open_uninstall)
-    msapi.add_menu_separator(MENU)
+    if fresh:
+        msapi.add_menu_separator(MENU)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.about")), about)
 
+    # Pin the menu before anything else touches it, even if the layout below fails (see msapi.find_menu).
+    try:
+        msapi.find_menu(MENU)
+    except Exception as exc:
+        print("[AeroTools] menu pin failed: {!r}".format(exc))
     arrange_menu()
+    start_guard()
     setattr(builtins, _MENU_FLAG, True)
     print(
         "[AeroTools] menu \"{}\" installed ({} {}) - root {}".format(
@@ -141,10 +154,16 @@ def arrange_menu():
     tools = [e["menu"] + (" " + i18n.t("menu.soon") if not e.get("ready", False) else "") for e in config.TOOLS]
     maintenance = [i18n.t(key) for key in ("menu.install", "menu.update", "menu.reload", "menu.uninstall")]
     done = msapi.arrange_menu(MENU, [tools, maintenance, [i18n.t("menu.about")]])
-    logo = msapi.add_logo_button(MENU, os.path.join(root(), "assets", "logo", "helix-aero-AERO-blanc-512px.png"), i18n.t("menu.logo_tip"))
+    logo = _logo_button()
     if not (done and logo):
         _retry_arrange()
     return done
+
+
+def _logo_button():
+    """The logo in the corner of the menu bar: built, or rebuilt when its menu is not the one in the bar."""
+    from . import i18n, msapi
+    return msapi.add_logo_button(MENU, os.path.join(root(), "assets", "logo", "helix-aero-AERO-blanc-512px.png"), i18n.t("menu.logo_tip"))
 
 
 def _retry_arrange():
@@ -166,6 +185,76 @@ def _retry_now():
         arrange_menu()
     except Exception as exc:
         print("[AeroTools] menu layout retry failed: {!r}".format(exc))
+
+
+# --------------------------------------------------------------------------
+# Menu guard
+# --------------------------------------------------------------------------
+# The menu is pinned with its QAction by msapi.find_menu (see there for why). The guard is a second line of defence: a timer follows
+# the menu in the bar, pins the current one, brings the menu back if it left for any reason, and rebuilds the logo button if it lost
+# its menu.
+
+def start_guard():
+    """Starts the menu guard once per Metashape session. The first tick runs after every startup script, then one every GUARD_MS. Returns True if it was scheduled now."""
+    from . import msapi
+    current = getattr(builtins, _GUARD_FLAG, None)
+    if current is not None and (current is True or msapi.is_valid(current)):
+        return False
+    setattr(builtins, _GUARD_FLAG, True)             # set now: a second call before the first tick must not schedule another
+    try:
+        from .qt import QtCore
+        QtCore.QTimer.singleShot(0, _guard_begin)
+        return True
+    except Exception as exc:
+        setattr(builtins, _GUARD_FLAG, None)
+        print("[AeroTools] menu guard not started: {!r}".format(exc))
+        return False
+
+
+def _guard_slot():
+    """What the timer calls. It looks the bootstrap up at each tick: after `reload_all()` the timer runs the new code, not the purged one."""
+    try:
+        importlib.import_module("aerotools.bootstrap").guard_tick()
+    except Exception:
+        pass
+
+
+def _guard_begin():
+    """First tick (after the startup scripts), then the timer. Never raises into Qt."""
+    try:
+        from . import msapi
+        from .qt import QtCore
+        timer = QtCore.QTimer(msapi.main_window())
+        timer.setInterval(GUARD_MS)
+        timer.timeout.connect(_guard_slot)
+        setattr(builtins, _GUARD_FLAG, timer)
+        timer.start()
+        guard_tick()
+    except Exception as exc:
+        setattr(builtins, _GUARD_FLAG, None)
+        print("[AeroTools] menu guard failed: {!r}".format(exc))
+
+
+def guard_tick():
+    """One check of the menu: pins the current Aero menu, brings it back if it is gone, rebuilds the logo button if needed.
+
+    Cheap (it only reads the menu-bar action texts) and exception-proof: it runs from a Qt timer."""
+    try:
+        from . import journal, msapi
+        if msapi.main_window() is None:
+            return False
+        if msapi.find_menu(MENU) is None:
+            restores = getattr(builtins, _RESTORES_FLAG, 0)
+            if restores >= GUARD_MAX_RESTORES:
+                return False                          # it keeps leaving: stop fighting, the journal has the lines
+            setattr(builtins, _RESTORES_FLAG, restores + 1)
+            journal.write("the Aero menu had left the menu bar: restored")
+            install_menu(force=True)
+            return True
+        _logo_button()
+    except Exception:
+        pass
+    return False
 
 
 def _make_launcher(tool_id):

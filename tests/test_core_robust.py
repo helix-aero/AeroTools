@@ -699,7 +699,7 @@ def test_a_menu_entry_that_exists_is_not_added_twice(ms, monkeypatch):
     monkeypatch.setattr(ms.app, "addMenuItem", add)
     monkeypatch.setattr(msapi, "_menu_has", lambda label: True)
     assert msapi.add_menu_item("Aero/Tool", lambda: None, "F8") is True
-    assert calls == ["Aero/Tool"]
+    assert calls == []                                # already there: Metashape is not asked at all
 
 
 def test_the_probe_names_what_the_interface_lacks(ms, monkeypatch):
