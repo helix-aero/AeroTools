@@ -163,7 +163,26 @@ _BASE_SQL = (
     "join geodetic_datum d on d.auth_name=g.datum_auth_name and d.code=g.datum_code "
     "join usage u on u.object_table_name='projected_crs' and u.object_auth_name=p.auth_name and u.object_code=p.code "
     "join extent e on e.auth_name=u.extent_auth_name and e.code=u.extent_code "
-    "where p.auth_name='EPSG' and p.deprecated=0 and e.deprecated=0")
+    "where p.auth_name='EPSG' and p.deprecated=0 and e.deprecated=0 "
+    # metres only: a pixel or a tile typed in metres would be read in feet by Metashape (and the DXF says metres)
+    "and not exists (select 1 from axis a where a.coordinate_system_auth_name=p.coordinate_system_auth_name "
+    "and a.coordinate_system_code=p.coordinate_system_code and a.uom_code<>9001)")
+
+
+METRE = 9001
+
+
+def is_metric(code):
+    """False when the EPSG projected CRS has an axis in another unit than the metre (feet, US survey feet...); True when it is metric
+    or unknown (then nothing is blocked)."""
+    try:
+        rows = projtool.proj_db().execute(
+            "select a.uom_code from projected_crs p join axis a on a.coordinate_system_auth_name=p.coordinate_system_auth_name "
+            "and a.coordinate_system_code=p.coordinate_system_code where p.auth_name='EPSG' and p.code=?",
+            (str(code).replace("EPSG:", "").strip(),)).fetchall()
+    except Exception:
+        return True
+    return all(int(row[0]) == METRE for row in rows)
 
 
 def utm_zone(lon):

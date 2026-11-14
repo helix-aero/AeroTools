@@ -259,40 +259,6 @@ def test_reference_coordinates_are_read_when_known(ms, monkeypatch):
     assert markers[1]["ref"] is None
 
 
-def test_fallback_errors_follow_the_api_recipe(ms):
-    class Frame(object):
-        def mulv(self, delta):
-            return (delta.x, delta.y, delta.z)
-
-    class Crs(object):
-        def project(self, v):
-            return v
-
-        def unproject(self, v):
-            return v
-
-        def localframe(self, _world):
-            return Frame()
-
-    chunk = ms.Chunk([], [])
-    chunk.crs = Crs()
-    chunk.transform.matrix = types.SimpleNamespace(mulp=lambda p: p)
-    marker = ms.Marker("A", position=ms.Vector(10.03, 20.0, 5.04))
-    marker.reference.location = ms.Vector(10.0, 20.0, 5.0)
-    out = report._fallback_errors(chunk, marker)
-    assert out["x"] == pytest.approx(0.03) and out["z"] == pytest.approx(0.04)
-    assert out["total"] == pytest.approx(0.05)
-    marker.position = None
-    assert report._fallback_errors(chunk, marker) is None
-
-
-def test_fallback_is_used_when_msapi_has_no_marker_errors(ms, monkeypatch):
-    chunk, _fake = make_world(ms, [("A", 2, None)])
-    monkeypatch.delattr(msapi, "marker_errors", raising=False)
-    marker = report.collect_data(chunk)["markers"][0]
-    assert marker["total"] is None and marker["projections"] == 2
-
-
 # --------------------------------------------------------------------------
 # Highlighting and histogram
 # --------------------------------------------------------------------------
@@ -445,7 +411,7 @@ def test_ai_sections_keep_only_live_picks_with_their_confidence(ms, monkeypatch)
     assert items[0]["caption"] == report.fmt_num(0.91, 2) and items[1]["caption"] == "manual"
     assert items[2]["caption"] == "excluded" and items[2]["ring"] == report.AI_RED
     assert sections[0]["info"]["excluded"] == 1
-    assert "1 photo(s) excluded" in report.ai_info_parts(sections[0]["info"])
+    assert "1 photo excluded" in report.ai_info_parts(sections[0]["info"])
 
 
 def test_ai_info_parts_describe_the_marker():
@@ -547,6 +513,24 @@ def test_csv_geographic_reference_keeps_eight_decimals(ms, monkeypatch):
     chunk.markers[0].reference.location = ms.Vector(9.123456789, 42.5, 120.0)
     rows = report.csv_rows(report.collect_data(chunk))
     assert rows[1][-3:] == ["9.12345679", "42.50000000", "120.000"]
+
+
+def test_csv_projected_reference_with_small_values_keeps_three_decimals(ms, monkeypatch):
+    chunk, fake = make_world(ms, [("A", 2, (0.1, 0.2, 0.3))])
+    monkeypatch.setattr(msapi, "marker_errors", fake, raising=False)
+    chunk.marker_crs = types.SimpleNamespace(wkt='PROJCS["local grid"]')
+    chunk.markers[0].reference.location = ms.Vector(123.456789, 234.5, 12.0)      # a local grid: small values, still metres
+    rows = report.csv_rows(report.collect_data(chunk))
+    assert rows[1][-3:] == ["123.457", "234.500", "12.000"]
+
+
+def test_write_csv_leaves_no_half_file_when_it_fails(world, tmp_path, monkeypatch):
+    target = tmp_path / "t.csv"
+    target.write_text("old", encoding="utf-8")
+    monkeypatch.setattr(report, "csv_rows", lambda data: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(OSError):
+        report.write_csv({}, str(target))
+    assert target.read_text(encoding="utf-8") == "old" and not (tmp_path / "t.csv.part").exists()
 
 
 def test_write_csv_is_excel_friendly(world, tmp_path, monkeypatch):

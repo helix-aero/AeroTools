@@ -20,20 +20,28 @@ Safe by construction
     fails midway, everything is put back as it was;
   - the local `manifest.json` is written last: as long as it has not changed, the "installed"
     version has not changed;
-  - a development copy (.git folder) is never updated: work is not overwritten.
+  - a development copy (.git folder) is never updated: work is not overwritten;
+  - the requests ask for fresh files (no-cache) and are repeated a few times on a transient error; the staging folder is removed
+    afterwards; there must be room on the disk; an older manifest than the installed one is refused;
+  - a journal in the staging folder lets the next start undo an update that was interrupted in the middle (recover).
 
 Hidden settings (settings.json, section `update`):
   channel   followed branch: "main" (default) or "dev"
   base_url  root of the files (default: https://raw.githubusercontent.com/<repo>/<branch>);
-            used by tests and mirrors. Also accepts file:///...
+            used by tests and mirrors. Also accepts file:///... ; plain http is refused except to localhost.
+A file channel.txt in the application folder (written by the installer for a copy of the dev branch) gives the channel when the
+settings do not.
 """
 
 import datetime
 import hashlib
+import http.client
 import json
 import os
 import shutil
+import socket
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -49,6 +57,14 @@ TEXT_EXTENSIONS = {".py", ".md", ".ps1", ".bat", ".tpl", ".json", ".txt", ".yml"
                    ".toml", ".svg", ".html", ".css", ".js", ".csv", ".ini", ".geojson"}
 CRLF_EXTENSIONS = {".bat", ".ps1"}
 KEEP_BACKUPS = 3
+RETRIES = 3                                   # attempts per request (a transient error or a digest not served yet)
+RETRY_DELAYS = (1.0, 3.0)                     # pause before the second and the third attempt, in seconds
+NO_CACHE = {"Cache-Control": "no-cache", "Pragma": "no-cache"}
+SPACE_MARGIN = 20 * 1024 * 1024               # free space kept on top of what an update needs
+JOURNAL = "journal.json"                      # in the staging folder: what to undo if the update is interrupted
+DIGEST_SETTLE_S = 1.0                         # a file changed less than this long ago is hashed again (timestamps are coarse)
+RESERVED_NAMES = {"con", "prn", "aux", "nul"} | {"com%d" % i for i in range(1, 10)} | {"lpt%d" % i for i in range(1, 10)}
+_sleep = time.sleep                           # replaced in the tests
 
 # The registered modules: just one for now, the updater can handle several.
 PLUGINS = [
@@ -74,14 +90,30 @@ def plugins():
     return out
 
 
+def _channel_hint():
+    """The channel the installer noted in channel.txt (application folder), or ""."""
+    try:
+        with open(os.path.join(config.ROOT, "channel.txt"), encoding="utf-8-sig") as handle:
+            return handle.readline().strip()
+    except OSError:
+        return ""
+
+
 def channel():
     value = config.get(SECTION, "channel")
-    return value if isinstance(value, str) and value.strip() else "main"
+    if isinstance(value, str) and value.strip():
+        return value
+    return _channel_hint() or "main"
 
 
 def set_channel(value):
-    """Remember the followed branch (workstation setting). Returns True if the write succeeded."""
-    return config.put(SECTION, "channel", value)
+    """Remember the followed branch (workstation setting). Returns True if the write succeeded.
+
+    The other branch may be older than what is installed: the next update is allowed to go back (see _check_not_older)."""
+    if not config.put(SECTION, "channel", value):
+        return False
+    config.put(SECTION, "allow_older", True)
+    return True
 
 
 def base_url(plugin):
@@ -89,6 +121,16 @@ def base_url(plugin):
     if isinstance(value, str) and value.strip():
         return value.rstrip("/")
     return "https://raw.githubusercontent.com/{}/{}".format(plugin["repo"], channel())
+
+
+def _check_scheme(url):
+    """Code comes from this address: https, a local file (tests, mirrors on disk), or plain http to this very computer only."""
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme in ("https", "file"):
+        return
+    if parts.scheme == "http" and (parts.hostname or "") in ("localhost", "127.0.0.1", "::1"):
+        return
+    raise UpdateError("address refused (only https is accepted for updates): {}".format(url.split("?")[0][:80]))
 
 
 def file_url(plugin, path):
@@ -125,6 +167,23 @@ def digest_file(path, name=None):
     return hashlib.sha256(data).hexdigest(), len(data)
 
 
+_DIGESTS = {}                                 # path -> ((mtime_ns, size), (digest, normalized size))
+
+
+def digest_file_cached(path, name=None):
+    """digest_file, remembered by (path, mtime, size): the files of a pack (models, PROJ data) are hashed once, not at every look at the
+    window. A file changed a moment ago is always read again. Use digest_file when the disk itself must be checked (verify)."""
+    info = os.stat(path)
+    signature = (info.st_mtime_ns, info.st_size)
+    hit = _DIGESTS.get(path)
+    if hit is not None and hit[0] == signature:
+        return hit[1]
+    result = digest_file(path, name)
+    if time.time() - info.st_mtime >= DIGEST_SETTLE_S:
+        _DIGESTS[path] = (signature, result)
+    return result
+
+
 def read_manifest(path):
     with open(path, "r", encoding="utf-8-sig") as handle:
         return _check_manifest(json.load(handle))
@@ -147,6 +206,9 @@ def _safe_relative(name):
     if (not clean or clean.startswith("/") or ".." in clean.split("/") or ":" in clean
             or os.path.isabs(name)):
         raise UpdateError("path refused in the manifest: {!r}".format(name))
+    for part in clean.split("/"):                    # names Windows reads as something else (CON, "a.", "a ")
+        if (not part or part != part.rstrip(". ") or part.split(".")[0].rstrip(" ").lower() in RESERVED_NAMES):
+            raise UpdateError("path refused in the manifest: {!r}".format(name))
     return clean
 
 
@@ -160,12 +222,27 @@ def local_manifest(plugin):
 
 
 def fetch(url, timeout=TIMEOUT):
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Cache-Control": "no-cache"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read()
+    """Bytes of a URL, asked fresh (no-cache) and tried again a few times on a transient error."""
+    last = None
+    for attempt in range(_attempts(url)):
+        if attempt:
+            _pause(attempt)
+        request = urllib.request.Request(url, headers=dict(NO_CACHE, **{"User-Agent": USER_AGENT}))
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.read()
+        except Exception as exc:
+            last = exc
+            if not _transient(exc):
+                raise
+    raise last
 
 
 def remote_manifest(plugin):
+    try:
+        _check_scheme(base_url(plugin))
+    except UpdateError:
+        raise
     try:
         raw = fetch(file_url(plugin, MANIFEST))
     except Exception as exc:
@@ -202,7 +279,7 @@ def compare(plugin, remote, local=None, packs=None):
             changes.append({"path": name, "action": "add", "size": info["size"]})
             continue
         try:
-            digest, _size = digest_file(path, name)
+            digest, _size = digest_file_cached(path, name)
         except OSError:
             digest = None
         if digest != info["sha256"]:
@@ -400,28 +477,143 @@ def _check_writable(plugin):
         raise UpdateError("installation folder not writable ({}): {!r}".format(plugin["root"], exc))
 
 
+def _free_bytes(path):
+    """Free space of the volume that holds `path` (the nearest folder that exists), or None when it cannot be told."""
+    probe = os.path.abspath(path)
+    while probe and not os.path.exists(probe):
+        parent = os.path.dirname(probe)
+        if parent == probe:
+            break
+        probe = parent
+    try:
+        return shutil.disk_usage(probe).free
+    except (OSError, ValueError):
+        return None
+
+
+def _same_volume(first, second):
+    return os.path.splitdrive(os.path.abspath(first))[0].lower() == os.path.splitdrive(os.path.abspath(second))[0].lower()
+
+
+def _check_space(plugin, total):
+    """Refuse before downloading when the disk cannot hold the update: the staging folder needs the download and the backups of the files it
+    replaces, the installation folder needs the new files."""
+    stage_base = os.path.join(config.settings_dir(), "updates")
+    needs = [(stage_base, 2 * total + SPACE_MARGIN), (plugin["root"], total + SPACE_MARGIN)]
+    if _same_volume(stage_base, plugin["root"]):
+        needs = [(stage_base, 3 * total + 2 * SPACE_MARGIN)]
+    for path, need in needs:
+        free = _free_bytes(path)
+        if free is not None and free < need:
+            raise UpdateError("not enough free disk space on {} ({} needed, {} free): nothing was changed".format(
+                os.path.splitdrive(os.path.abspath(path))[0] or path, format_size(need), format_size(free)))
+
+
+# --------------------------------------------------------------------------
+# Not older than what is installed
+# --------------------------------------------------------------------------
+
+def _version_tuple(text):
+    parts = []
+    for piece in str(text or "").split("."):
+        digits = "".join(ch for ch in piece if ch.isdigit())
+        parts.append(int(digits) if digits else 0)
+    return tuple(parts)
+
+
+def _parse_time(value):
+    try:
+        return datetime.datetime.fromisoformat(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def is_older(remote, local):
+    """True when the remote manifest is older than the installed one (build date first, version when the dates are missing)."""
+    if not local:
+        return False
+    remote_built, local_built = _parse_time(remote.get("built")), _parse_time(local.get("built"))
+    if remote_built and local_built:
+        return remote_built < local_built
+    if remote.get("version") and local.get("version"):
+        return _version_tuple(remote["version"]) < _version_tuple(local["version"])
+    return False
+
+
+def _check_not_older(plugin, remote, local):
+    """An older valid manifest (a stale mirror, a rolled-back branch, an attacker replaying an old release) is refused, except right after
+    the user switched the followed branch on purpose (set_channel raises the flag, the next successful update clears it)."""
+    if config.get(SECTION, "allow_older"):
+        return
+    if is_older(remote, local):
+        raise UpdateError("the published version ({}, {}) is older than the installed one ({}, {}): update refused. "
+                          "Choose the other branch in Aero > Updates if this is intended.".format(
+                              remote.get("version") or "?", describe_time(remote.get("built")) or "?",
+                              local.get("version") or "?", describe_time(local.get("built")) or "?"))
+
+
+# --------------------------------------------------------------------------
+# Downloading
+# --------------------------------------------------------------------------
+
+def _is_local_url(url):
+    return url.lower().startswith("file:")
+
+
+def _attempts(url):
+    return 1 if _is_local_url(url) else RETRIES
+
+
+def _transient(exc):
+    """A failure worth trying again: a timeout, a dropped connection, a server that is busy (5xx, 429)."""
+    if isinstance(exc, urllib.error.HTTPError):
+        return exc.code in (408, 425, 429) or exc.code >= 500
+    return isinstance(exc, (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError, http.client.HTTPException))
+
+
+def _pause(attempt):
+    """Wait before attempt number `attempt` (1, 2, ...): short, then longer."""
+    _sleep(RETRY_DELAYS[min(attempt - 1, len(RETRY_DELAYS) - 1)])
+
+
 def _download(plugin, name, info, target, progress, cancelled):
-    """Download a file into `target`, verify size and digest. Raises UpdateError."""
+    """Download a file into `target`, verify size and digest. Raises UpdateError.
+
+    The request carries no-cache headers (a CDN may still hold the previous file for minutes after a push) and is repeated a few times
+    on a transient error or a digest that does not match yet; the bytes of a failed attempt are taken back from the progress."""
     url = file_url(plugin, name)
     os.makedirs(os.path.dirname(target), exist_ok=True)
-    request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    try:
-        with urllib.request.urlopen(request, timeout=TIMEOUT) as response, open(target, "wb") as handle:
-            while True:
-                if cancelled():
-                    raise UpdateError("cancelled")
-                block = response.read(CHUNK)
-                if not block:
-                    break
-                handle.write(block)
-                progress(len(block))
-    except UpdateError:
-        raise
-    except Exception as exc:
-        raise UpdateError("download of {} failed: {!r}".format(name, exc))
-    digest, size = digest_file(target, name)
-    if digest != info["sha256"] or size != info["size"]:
-        raise UpdateError("{} received damaged (different digest): update interrupted".format(name))
+    last = None
+    for attempt in range(_attempts(url)):
+        if attempt:
+            _pause(attempt)
+        request = urllib.request.Request(url, headers=dict(NO_CACHE, **{"User-Agent": USER_AGENT}))
+        got = 0
+        try:
+            with urllib.request.urlopen(request, timeout=TIMEOUT) as response, open(target, "wb") as handle:
+                while True:
+                    if cancelled():
+                        raise UpdateError("cancelled")
+                    block = response.read(CHUNK)
+                    if not block:
+                        break
+                    handle.write(block)
+                    got += len(block)
+                    progress(len(block))
+        except UpdateError:
+            raise
+        except Exception as exc:
+            progress(-got)
+            last = UpdateError("download of {} failed: {!r}".format(name, exc))
+            if _transient(exc):
+                continue
+            raise last
+        digest, size = digest_file(target, name)
+        if digest == info["sha256"] and size == info["size"]:
+            return
+        progress(-got)
+        last = UpdateError("{} does not match the published list (the server may still be updating): try again in a few minutes".format(name))
+    raise last
 
 
 def _install_file(source, destination, name):
@@ -438,37 +630,96 @@ def _install_file(source, destination, name):
     os.replace(temp, destination)
 
 
-def apply(plugin, changes=None, progress=None, cancelled=None, packs=None):
+def _backup_file(destination, saved):
+    """Copy `destination` to `saved` so that `saved` only ever exists complete (a crash must not leave half a backup)."""
+    os.makedirs(os.path.dirname(saved), exist_ok=True)
+    shutil.copy2(destination, saved + ".part")
+    os.replace(saved + ".part", saved)
+
+
+def _write_journal(stage, plugin, status, entries):
+    """What an interrupted update needs to be undone at the next start: where the files are, which ones existed before."""
+    path = os.path.join(stage, JOURNAL)
+    data = {"root": plugin["root"], "status": status, "entries": entries, "pid": os.getpid()}
+    with open(path + ".tmp", "w", encoding="utf-8") as handle:
+        json.dump(data, handle)
+    os.replace(path + ".tmp", path)
+
+
+def _process_alive(pid):
+    """Is another process still running? (a second Metashape may be in the middle of its own update)"""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0 or pid == os.getpid():
+        return False
+    try:
+        if os.name == "nt":
+            import ctypes
+            kernel = ctypes.windll.kernel32
+            handle = kernel.OpenProcess(0x1000, 0, pid)               # PROCESS_QUERY_LIMITED_INFORMATION
+            if not handle:
+                return False
+            try:
+                code = ctypes.c_ulong()
+                return bool(kernel.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259   # STILL_ACTIVE
+            finally:
+                kernel.CloseHandle(handle)
+        os.kill(pid, 0)
+        return True
+    except Exception:
+        return False
+
+
+def _read_journal(stage):
+    try:
+        with open(os.path.join(stage, JOURNAL), encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def apply(plugin, changes=None, progress=None, cancelled=None, packs=None, allow_older=False):
     """Download, verify, then install the latest version of the installed packs (or of `packs`, to install new ones).
-    Returns {"ok", "updated", "error"}.
+    Returns {"ok", "updated", "error"} and, when files were replaced, "core_changed" (True when a file of the core changed: the code in
+    memory is then out of date and the caller should reload it).
 
     `progress(done_bytes, total_bytes, text)` is called during the download;
-    `cancelled()` returns True when the user cancels (before the replacement phase). Never raises."""
+    `cancelled()` returns True when the user cancels (before the replacement phase). Never raises.
+    The staging folder is removed afterwards (the backups of the replaced files stay for the last KEEP_BACKUPS updates, a failed update
+    keeps nothing); an older manifest than the installed one is refused unless `allow_older`."""
     progress = progress or (lambda done, total, text: None)
     cancelled = cancelled or (lambda: False)
     backup = None
+    stage = None
     done_files = []
+    rolled_back = False
     try:
         if is_dev_copy(plugin):
             raise UpdateError("development copy (git): update refused")
         remote, raw = remote_manifest(plugin)
         local = local_manifest(plugin)
+        if not allow_older:
+            _check_not_older(plugin, remote, local)
         changes = compare(plugin, remote, local, packs if packs is not None else installed_packs(plugin))
         if not changes:
             _write_state(plugin, remote)
             return {"ok": True, "updated": 0, "error": ""}
         _check_writable(plugin)
+        wanted = [c for c in changes if c["action"] != "delete"]
+        total = sum(c["size"] for c in wanted) or 1
+        _check_space(plugin, sum(c["size"] for c in wanted))
         stage = _stage_dir(plugin)
         backup = os.path.join(stage, "old")
         incoming = os.path.join(stage, "new")
-        wanted = [c for c in changes if c["action"] != "delete"]
-        total = sum(c["size"] for c in wanted) or 1
         state = {"done": 0}
         current = {"name": ""}
 
         def advance(count):
             state["done"] += count
-            progress(state["done"], total, current["name"])
+            progress(max(0, state["done"]), total, current["name"])
 
         for change in wanted:
             current["name"] = change["path"]
@@ -478,15 +729,17 @@ def apply(plugin, changes=None, progress=None, cancelled=None, packs=None):
             raise UpdateError("cancelled")
         progress(total, total, "")
 
-        # Replacement: back up each file before touching it.
+        # Replacement: back up each file before touching it. The journal says what to undo if Metashape dies in the middle.
+        entries = [{"path": c["path"], "existed": os.path.isfile(_local_path(plugin, c["path"]))} for c in changes]
+        entries.append({"path": MANIFEST, "existed": os.path.isfile(os.path.join(plugin["root"], MANIFEST))})
+        _write_journal(stage, plugin, "replacing", entries)
         for change in changes:
             name = change["path"]
             destination = _local_path(plugin, name)
             saved = None
             if os.path.isfile(destination):
                 saved = os.path.join(backup, *name.split("/"))
-                os.makedirs(os.path.dirname(saved), exist_ok=True)
-                shutil.copy2(destination, saved)
+                _backup_file(destination, saved)
             done_files.append((destination, saved))
             if change["action"] == "delete":
                 os.remove(destination)
@@ -497,28 +750,38 @@ def apply(plugin, changes=None, progress=None, cancelled=None, packs=None):
         saved = None
         if os.path.isfile(manifest_path):
             saved = os.path.join(backup, MANIFEST)
-            os.makedirs(backup, exist_ok=True)
-            shutil.copy2(manifest_path, saved)
+            _backup_file(manifest_path, saved)
         done_files.append((manifest_path, saved))
         with open(manifest_path + ".aeroupd", "wb") as handle:
             handle.write(raw)
         os.replace(manifest_path + ".aeroupd", manifest_path)
+        _write_journal(stage, plugin, "done", entries)
         _write_state(plugin, remote)
-        _prune(plugin)
         journal.write("Update {}: {} file(s)".format(plugin["id"], len(changes)))
-        return {"ok": True, "updated": len(changes), "error": ""}
+        return {"ok": True, "updated": len(changes), "error": "",
+                "core_changed": any(config.pack_of(c["path"]) == config.CORE for c in changes)}
     except UpdateError as exc:
-        _rollback(done_files)
+        rolled_back = _rollback(done_files) == 0
         journal.write("Update {}: {}".format(plugin["id"], exc))
         return {"ok": False, "updated": 0, "error": str(exc)}
     except Exception as exc:
-        _rollback(done_files)
+        rolled_back = _rollback(done_files) == 0
         journal.write("Update {}: failed {!r}".format(plugin["id"], exc))
         return {"ok": False, "updated": 0, "error": repr(exc)}
+    finally:
+        if stage:
+            status = _read_journal(stage).get("status")
+            shutil.rmtree(os.path.join(stage, "new"), ignore_errors=True)          # what was downloaded: not needed any more
+            if status is None or rolled_back:
+                # A failed update leaves nothing behind. A stage whose replacement started and was neither completed nor undone (the
+                # process was stopped inside it, or the undo itself failed) stays: recover() uses it at the next start.
+                shutil.rmtree(stage, ignore_errors=True)
+        _prune(plugin)
 
 
 def _rollback(done_files):
-    """Put the files already replaced back in their previous state (or remove the ones that were new)."""
+    """Put the files already replaced back in their previous state (or remove the ones that were new). Returns the number of failures."""
+    failures = 0
     for destination, saved in reversed(done_files):
         try:
             if saved and os.path.isfile(saved):
@@ -527,10 +790,53 @@ def _rollback(done_files):
             elif os.path.isfile(destination):
                 os.remove(destination)
         except OSError:
+            failures += 1
+    return failures
+
+
+def recover(plugin):
+    """At start-up: undo an update that was interrupted (Metashape closed or killed between the first and the last replaced file), so
+    that the installation is never left half old, half new. Returns the number of files put back. Never raises."""
+    base = os.path.join(config.settings_dir(), "updates", plugin["id"])
+    restored = 0
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return 0
+    finished = [i for i, name in enumerate(names) if _read_journal(os.path.join(base, name)).get("status") == "done"]
+    for name in names[(finished[-1] + 1) if finished else 0:]:         # an update that went through after it makes it obsolete
+        stage = os.path.join(base, name)
+        data = _read_journal(stage)
+        if data.get("status") != "replacing" or os.path.normcase(data.get("root", "")) != os.path.normcase(plugin["root"]):
+            continue
+        if _process_alive(data.get("pid")):                              # another Metashape is updating right now: not ours to undo
+            continue
+        failures = 0
+        for entry in reversed(data.get("entries", [])):
+            try:
+                relative = _safe_relative(entry["path"])
+                destination = _local_path(plugin, relative)
+                saved = os.path.join(stage, "old", *relative.split("/"))
+                if os.path.isfile(saved):
+                    os.makedirs(os.path.dirname(destination), exist_ok=True)
+                    shutil.copy2(saved, destination)
+                    restored += 1
+                elif not entry.get("existed") and os.path.isfile(destination):
+                    os.remove(destination)
+                    restored += 1
+            except (OSError, KeyError, UpdateError):
+                failures += 1
+        try:
+            _write_journal(stage, plugin, "recovered" if not failures else "replacing", data.get("entries", []))
+        except OSError:
             pass
+        journal.write("Update {}: an interrupted update was undone ({} file(s) put back{})".format(
+            plugin["id"], restored, ", {} failure(s)".format(failures) if failures else ""))
+    return restored
 
 
 def _write_state(plugin, remote):
+    config.put(SECTION, "allow_older", False)                          # the switch of branch has been honoured
     config.put(SECTION, plugin["id"], {
         "updated": datetime.datetime.now().isoformat(timespec="seconds"),
         "version": str(remote.get("version") or ""), "built": str(remote.get("built") or "")})

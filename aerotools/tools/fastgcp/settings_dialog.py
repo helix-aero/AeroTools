@@ -1,11 +1,10 @@
 """FastGCP Settings window (Qt): the gear of the panel.
 
-Four numbered steps, in the order in which the tool is built, then the options:
-  1 Detection   the engine that computes (light or precise) and its installation state;
-  2 Model       the AI model used to detect the targets;
-  3 Data        the folder where the corrected markings, the models and the trials are kept;
-  4 Training    corrections -> "Train" -> new model (the original model is never modified).
-Options: the check boxes and the log (the `panel.more` card, built by the panel).
+Three pages, so that nothing scrolls:
+  AI        the detection engine (light or precise) and its installation state, and the AI model;
+  Training  the folder where the corrected markings, the models and the trials are kept, and the
+            retraining: corrections -> "Train" -> new model (the original model is never modified);
+  Options   the check boxes and the log (the `panel.more` block, built by the panel).
 At the bottom: "Check for updates" and "Close".
 
 The training (training.py) runs in a separate Python and ties up the computer for a while
@@ -18,95 +17,19 @@ import datetime
 import functools
 import os
 
-from ... import i18n, journal, theme
+from ... import i18n, journal, uikit
 from ...qt import QtCore, QtGui, QtWidgets
-from ... import dialogs
-from . import aigcp, engines, training
-from . import install_ui
-from .review_dialog import _exec, _restyle, _styled_root
+from ...uikit import tokens
+from . import aigcp, engines, install_ui, training, widgets
 
 POLL_MS = 700
-WIDTH, HEIGHT = 540, 760
-BUTTON_HEIGHT = 40
+DESIGN_SIZE = (600, 0)
+PAGES = (("ai", "settings.page_ai"), ("train", "settings.page_train"), ("options", "settings.page_options"), ("appearance", "settings.page_appearance"))
 
 
-def _btn(text_key, handler, kind="aeroBtn", width=0):
-    """Big button: centred text, 40 px high. `aeroGo` = green (the action), `aeroBtn` = grey."""
-    button = QtWidgets.QPushButton(i18n.t(text_key))
-    button.setObjectName(kind)
-    button.setCursor(QtCore.Qt.PointingHandCursor)
-    button.setFixedHeight(BUTTON_HEIGHT)
-    if width:
-        button.setMinimumWidth(width)
-    button.setAutoDefault(False)
-    button.clicked.connect(lambda *_args: handler())
-    return button
-
-
-def _pane(title_key, number=None):
-    """Black section with a title strip: (frame, body layout, strip layout)."""
-    pane = QtWidgets.QFrame()
-    pane.setObjectName("aeroPane")
-    outer = QtWidgets.QVBoxLayout(pane)
-    outer.setContentsMargins(0, 0, 0, 0)
-    outer.setSpacing(0)
-    head = QtWidgets.QFrame()
-    head.setObjectName("aeroPaneHead")
-    head_layout = QtWidgets.QHBoxLayout(head)
-    head_layout.setContentsMargins(12, 8, 12, 8)
-    head_layout.setSpacing(theme.PAD)
-    if number is not None:
-        badge = QtWidgets.QLabel(str(number))
-        badge.setObjectName("aeroBadge")
-        badge.setFixedSize(20, 20)
-        badge.setAlignment(QtCore.Qt.AlignCenter)
-        head_layout.addWidget(badge)
-    title = QtWidgets.QLabel(i18n.t(title_key))
-    title.setObjectName("aeroPaneTitle")
-    head_layout.addWidget(title)
-    head_layout.addStretch(1)
-    outer.addWidget(head)
-    body = QtWidgets.QWidget()
-    body.setObjectName("aeroPaneBody")
-    layout = QtWidgets.QVBoxLayout(body)
-    layout.setContentsMargins(12, 10, 12, 12)
-    layout.setSpacing(theme.PAD)
-    outer.addWidget(body)
-    return pane, layout, head_layout
-
-
-def _tile(label_key):
-    """Small numbered tile: (frame, number label)."""
-    tile = QtWidgets.QFrame()
-    tile.setObjectName("aeroStat")
-    layout = QtWidgets.QVBoxLayout(tile)
-    layout.setContentsMargins(8, 6, 8, 6)
-    layout.setSpacing(0)
-    number = QtWidgets.QLabel("0")
-    number.setObjectName("aeroStatNum")
-    number.setAlignment(QtCore.Qt.AlignCenter)
-    caption = QtWidgets.QLabel(i18n.t(label_key))
-    caption.setObjectName("aeroStatLabel")
-    caption.setAlignment(QtCore.Qt.AlignCenter)
-    layout.addWidget(number)
-    layout.addWidget(caption)
-    return tile, number
-
-
-def _combo():
-    combo = QtWidgets.QComboBox()
-    combo.setObjectName("aeroCombo")
-    combo.setCursor(QtCore.Qt.PointingHandCursor)
-    combo.setFocusPolicy(QtCore.Qt.NoFocus)
-    return combo
-
-
-def _warn():
-    label = QtWidgets.QLabel()
-    label.setObjectName("aeroWarn")
-    label.setWordWrap(True)
-    label.setVisible(False)
-    return label
+def _run(dialog):
+    """Show a modal window and wait for it (the name of the call differs between the two Qt bindings)."""
+    return (getattr(dialog, "exec_", None) or getattr(dialog, "exec"))()
 
 
 def model_text(model):
@@ -120,168 +43,159 @@ def model_text(model):
     return "{} ({})".format(model["name"], day)
 
 
-class ManageDialog(QtWidgets.QDialog):
+class ManageDialog(uikit.ToolWindow):
     """List of the models: local ones can be deleted, never the original model."""
+    MARK = "tool_gcp"
+    CLOSE_ONLY = True
 
     def __init__(self, parent=None):
-        super(ManageDialog, self).__init__(parent)
-        self.setWindowTitle(i18n.t("settings.manage_title"))
-        self.setModal(True)
-        self.resize(420, 360)
-        root = _styled_root(self)
-        root.setProperty("settings", True)
-        layout = QtWidgets.QVBoxLayout(root)
-        pad = theme.PAD * 2
-        layout.setContentsMargins(pad, pad, pad, pad)
-        layout.setSpacing(theme.PAD)
-        self.list = QtWidgets.QListWidget()
-        self.list.setObjectName("aeroThumbs")
-        self.list.itemSelectionChanged.connect(self._update)
-        layout.addWidget(self.list, 1)
-        row = QtWidgets.QHBoxLayout()
-        row.setSpacing(theme.PAD)
-        row.addStretch(1)
-        self.delete_button = _btn("settings.delete", self._delete, width=110)
-        row.addWidget(self.delete_button)
-        row.addWidget(_btn("settings.close", self.accept, width=110))
-        layout.addLayout(row)
+        super(ManageDialog, self).__init__(parent, title=i18n.t("settings.manage_title"), modal=True, design_size=(480, 420))
+        self.table = uikit.DataTable([uikit.Column("name", i18n.t("settings.col_model"), stretch=True),
+                                      uikit.Column("active", i18n.t("settings.col_active"), width=80)], sortable=False)
+        self.table.selectionChanged.connect(self._update)
+        self.set_content(self.table)
+        self.delete_button = self.footer.add_left(uikit.button("settings.delete", self._delete, role="danger"))
+        self.next_button.hide()                      # nothing to confirm here: models are deleted one by one
+        self._models = []
         self._fill()
 
     def _fill(self):
-        self.list.clear()
         active = training.active_model()
-        for model in training.list_models():
-            item = QtWidgets.QListWidgetItem(model_text(model) + ("  *" if model["id"] == active else ""))
-            item.setData(QtCore.Qt.UserRole, model["id"])
-            item.setData(QtCore.Qt.UserRole + 1, bool(model.get("base")))
-            self.list.addItem(item)
+        self._models = list(training.list_models())
+        self.table.set_rows([[model_text(model), i18n.t("settings.active_mark") if model["id"] == active else ""]
+                             for model in self._models])
         self._update()
 
+    def _current(self):
+        rows = self.table.selected_rows()
+        return self._models[rows[0]] if rows else None
+
     def _update(self):
-        item = self.list.currentItem()
-        self.delete_button.setEnabled(item is not None and not item.data(QtCore.Qt.UserRole + 1))
+        model = self._current()
+        self.delete_button.setEnabled(model is not None and not model.get("base"))
 
     def _delete(self):
-        item = self.list.currentItem()
-        if item is None or item.data(QtCore.Qt.UserRole + 1):
+        model = self._current()
+        if model is None or model.get("base"):
             return
-        name = item.text().replace("  *", "")
-        if not dialogs.ask(self, i18n.t("settings.manage_title"), i18n.t("settings.delete_confirm", name=name)):
+        name = model_text(model)
+        if not uikit.confirm(self, i18n.t("settings.manage_title"), i18n.t("settings.delete_confirm", name=name),
+                             ok=i18n.t("settings.delete"), danger=True):
             return
         try:
-            training.delete_model(item.data(QtCore.Qt.UserRole))
+            training.delete_model(model["id"])
         except Exception as exc:
             journal.write("AI models: cannot delete: {!r}".format(exc))
+            self.show_error(exc)
         self._fill()
 
 
-class SettingsDialog(QtWidgets.QDialog):
+class _EngineRow(QtWidgets.QWidget):
+    """What a form row shows for an engine: "Installed", or the Install button."""
+
+    def __init__(self, on_install, parent=None):
+        super(_EngineRow, self).__init__(parent)
+        lay = uikit.hbox(spacing=tokens.S, parent=self)
+        self.chip = QtWidgets.QWidget()
+        chip_lay = uikit.hbox(spacing=tokens.S, parent=self.chip)
+        chip_lay.addWidget(uikit.Glyph("ok"))
+        chip_lay.addWidget(uikit.label(i18n.t("settings.installed"), "status", "success", wrap=False))
+        self.install = uikit.Button(i18n.t("settings.install"), "secondary", handler=on_install)
+        lay.addWidget(self.chip)
+        lay.addWidget(self.install)
+        lay.addStretch(1)
+
+    def set_state(self, installed, enabled):
+        self.chip.setVisible(installed)
+        self.install.setVisible(not installed)
+        self.install.setEnabled(enabled)
+
+
+class SettingsDialog(uikit.ToolWindow):
+    MARK = "tool_gcp"
+    CLOSE_ONLY = True
+
     def __init__(self, panel, parent=None):
-        super(SettingsDialog, self).__init__(parent)
+        super(SettingsDialog, self).__init__(parent, title=i18n.t("settings.title"), info=i18n.t("settings.info"), modal=True,
+                                             design_size=DESIGN_SIZE)
         self.panel = panel
         self._job = None
-        self.setWindowTitle(i18n.t("settings.title"))
-        self.resize(WIDTH, HEIGHT)
-        root = _styled_root(self)
-        root.setProperty("settings", True)
-        outer = QtWidgets.QVBoxLayout(root)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
+        self.engine_rows = {}
 
-        scroll = QtWidgets.QScrollArea()
-        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-        scroll.viewport().setAutoFillBackground(False)
-        outer.addWidget(scroll, 1)
         body = QtWidgets.QWidget()
-        scroll.setWidget(body)
-        # setWidget turns the background fill back on: it is turned off afterwards, to show the window background.
-        body.setAutoFillBackground(False)
-        layout = QtWidgets.QVBoxLayout(body)
-        pad = theme.PAD_L
-        layout.setContentsMargins(pad, pad, pad, pad)
-        layout.setSpacing(theme.PAD + theme.PAD_S)
+        lay = uikit.vbox(spacing=tokens.L, parent=body)
+        self.tabs = uikit.Segmented([(key, i18n.t(text)) for key, text in PAGES])
+        self.tabs.changed.connect(self._on_page)
+        lay.addWidget(self.tabs, 0, QtCore.Qt.AlignLeft)
+        self.pages = QtWidgets.QStackedWidget()
+        self.pages.addWidget(self._build_ai())
+        self.pages.addWidget(self._build_training())
+        self.pages.addWidget(self._build_options())
+        self.pages.addWidget(self._build_appearance())
+        lay.addWidget(self.pages, 1)
+        self.set_content(body)
 
-        layout.addWidget(self._build_detection())
-        layout.addWidget(self._build_model())
-        layout.addWidget(self._build_data())
-        layout.addWidget(self._build_training())
-        layout.addWidget(self._build_options())
-        layout.addStretch(1)
-
-        bottom = QtWidgets.QFrame()
-        bottom.setObjectName("aeroBottom")
-        row = QtWidgets.QHBoxLayout(bottom)
-        row.setContentsMargins(pad, theme.PAD + theme.PAD_S, pad, theme.PAD + theme.PAD_S)
-        row.setSpacing(theme.PAD)
-        row.addWidget(_btn("settings.update_open", self._open_updates, width=200))
-        row.addStretch(1)
-        row.addWidget(_btn("settings.close", self.close, width=120))
-        outer.addWidget(bottom)
+        self.footer.add_left(uikit.button("settings.update_open", self._open_updates))
+        self.next_button.hide()                      # every change is applied as it is made: only Close is needed
 
         self._timer = QtCore.QTimer(self)
         self._timer.setInterval(POLL_MS)
         self._timer.timeout.connect(self._poll)
         self.refresh()
 
+    def _on_page(self, key):
+        self.pages.setCurrentIndex([k for k, _t in PAGES].index(key))
+
     def _open_updates(self):
         from ... import update_dialog
         update_dialog.open_and_reload(self)
 
-    # -- 1. Detection ------------------------------------------------------------------
+    # -- AI: engine and model ----------------------------------------------------------
 
-    def _build_detection(self):
-        pane, layout, _head = _pane("settings.sec_detect", 1)
-        self.engine_combo = _combo()
-        for choice in engines.CHOICES:
-            self.engine_combo.addItem(i18n.t(engines.CHOICE_TEXT[choice]), choice)
-        self.engine_combo.activated.connect(self._on_engine)
-        layout.addWidget(self.engine_combo)
-        self.engine_rows = {}
+    def _build_ai(self):
+        page = QtWidgets.QWidget()
+        lay = uikit.vbox(spacing=tokens.XL, parent=page)
+
+        detect = uikit.Section(i18n.t("settings.sec_detect"), info=i18n.t("settings.sec_detect_info"))
+        form = detect.form()
+        self.engine_combo = uikit.ChoiceBox([(choice, i18n.t(engines.CHOICE_TEXT[choice])) for choice in engines.CHOICES])
+        self.engine_combo.changed.connect(self._on_engine)
+        form.add_row(i18n.t("settings.engine"), self.engine_combo)
         for key in ("light", "precise"):
-            layout.addLayout(self._engine_row(key))
-        self.engine_hint = _warn()
-        layout.addWidget(self.engine_hint)
-        return pane
+            row = _EngineRow(functools.partial(self._install, key))
+            self.engine_rows[key] = row
+            form.add_row(i18n.t(engines.NAME_TEXT[key]), row)
+        row = _EngineRow(functools.partial(self._install, "training"))
+        self.tools_widgets = row
+        form.add_row(i18n.t(engines.NAME_TEXT["training"]), row)
+        self.engine_hint = uikit.Banner("warning", "")
+        self.engine_hint.hide()
+        detect.add(self.engine_hint)
+        lay.addWidget(detect)
 
-    def _engine_row(self, key):
-        """One row: engine name, then "Installed" or the Install button."""
-        row = QtWidgets.QHBoxLayout()
-        row.setSpacing(theme.PAD)
-        name = QtWidgets.QLabel(i18n.t(engines.NAME_TEXT[key]))
-        row.addWidget(name, 1)
-        chip = QtWidgets.QLabel(i18n.t("settings.installed"))
-        chip.setObjectName("aeroChipOk")
-        chip.setAlignment(QtCore.Qt.AlignCenter)
-        row.addWidget(chip)
-        install = _btn("settings.install", functools.partial(self._install, key), width=110)
-        install.setFixedHeight(32)
-        row.addWidget(install)
-        self.engine_rows[key] = (chip, install)
-        return row
+        model = uikit.Section(i18n.t("settings.sec_model"), info=i18n.t("settings.sec_model_info"))
+        form = model.form()
+        holder = QtWidgets.QWidget()
+        row = uikit.hbox(spacing=tokens.S, parent=holder)
+        self.models = uikit.ChoiceBox()
+        self.models.changed.connect(self._on_model)
+        row.addWidget(self.models, 1)
+        row.addWidget(uikit.button("settings.manage", self._manage))
+        form.add_row(i18n.t("settings.active_model"), holder)
+        lay.addWidget(model)
+        lay.addStretch(1)
+        return page
 
     def refresh_engines(self):
         """State of the installed engines (a short query of the external Python)."""
         state = engines.status()
         busy = self._job is not None
-        index = self.engine_combo.findData(engines.selected())
-        self.engine_combo.blockSignals(True)
-        self.engine_combo.setCurrentIndex(max(0, index))
-        self.engine_combo.blockSignals(False)
+        self.engine_combo.set_value(engines.selected())
         can = engines.can_install()
-        for key, installed in engines.describe(state):
-            if key not in self.engine_rows:
-                continue
-            chip, button = self.engine_rows[key]
-            chip.setVisible(installed)
-            button.setVisible(not installed)
-            button.setEnabled(not busy and can)
-        training_chip, training_button = self.tools_widgets
-        installed_training = dict(engines.describe(state)).get("training", False)
-        training_chip.setVisible(installed_training)
-        training_button.setVisible(not installed_training)
-        training_button.setEnabled(not busy and can)
+        installed = dict(engines.describe(state))
+        for key, row in self.engine_rows.items():
+            row.set_state(bool(installed.get(key, False)), not busy and can)
+        self.tools_widgets.set_state(bool(installed.get("training", False)), not busy and can)
         if not can:
             self._warn(i18n.t("settings.engine_custom_python", path=aigcp.python_path()))
         elif engines.resolve(state=state) is None:
@@ -290,17 +204,19 @@ class SettingsDialog(QtWidgets.QDialog):
             self._warn("")
 
     def _warn(self, text):
-        self.engine_hint.setText(text)
-        self.engine_hint.setVisible(bool(text))
+        if text:
+            self.engine_hint.show_message("warning", text)
+        else:
+            self.engine_hint.hide()
 
-    def _on_engine(self, index):
-        choice = self.engine_combo.itemData(index)
+    def _on_engine(self, choice):
         engines.set_selected(choice)
         journal.write("Detection engine: {}".format(choice))
         wanted = engines.missing(choice)
         if wanted is not None and engines.can_install():
             what = i18n.t(engines.WHAT_TEXT[wanted])
-            if dialogs.ask(self, i18n.t("aigcp.setup_title"), i18n.t("settings.engine_missing_offer", what=what)):
+            if uikit.confirm(self, i18n.t("aigcp.setup_title"), i18n.t("settings.engine_missing_offer", what=what),
+                             ok=i18n.t("settings.install")):
                 install_ui.run(self, wanted, confirm=False)
         self.refresh()
 
@@ -313,117 +229,101 @@ class SettingsDialog(QtWidgets.QDialog):
             install_ui.run(self, key)
         self.refresh()
 
-    # -- 2. Model ----------------------------------------------------------------------
+    def _on_model(self, model_id):
+        training.set_active_model(model_id)
+        self.refresh()
 
-    def _build_model(self):
-        pane, layout, _head = _pane("settings.sec_model", 2)
-        row = QtWidgets.QHBoxLayout()
-        row.setSpacing(theme.PAD)
-        self.models = _combo()
-        self.models.activated.connect(self._on_model)
-        row.addWidget(self.models, 1)
-        row.addWidget(_btn("settings.manage", self._manage, width=110))
-        layout.addLayout(row)
-        return pane
+    def _manage(self):
+        _run(ManageDialog(self))
+        self.refresh()
 
-    # -- 3. Data -----------------------------------------------------------------------
+    # -- Training: data and retraining ---------------------------------------------------
 
-    def _build_data(self):
-        pane, layout, _head = _pane("settings.sec_data", 3)
-        row = QtWidgets.QHBoxLayout()
-        row.setSpacing(theme.PAD)
-        self.storage = QtWidgets.QLineEdit()
+    def _build_training(self):
+        page = QtWidgets.QWidget()
+        lay = uikit.vbox(spacing=tokens.XL, parent=page)
+
+        data = uikit.Section(i18n.t("settings.sec_data"), info=i18n.t("settings.sec_data_info"))
+        holder = QtWidgets.QWidget()
+        row = uikit.hbox(spacing=tokens.S, parent=holder)
+        self.storage = uikit.TextField()
         self.storage.setReadOnly(True)
         row.addWidget(self.storage, 1)
-        row.addWidget(_btn("settings.browse", self._browse, width=110))
-        row.addWidget(_btn("settings.open_folder", self._open_folder, width=90))
-        layout.addLayout(row)
-        tiles = QtWidgets.QHBoxLayout()
-        tiles.setSpacing(theme.PAD)
+        row.addWidget(uikit.button("ui.browse", self._browse))
+        row.addWidget(uikit.button("settings.open_folder", self._open_folder))
+        data.add(holder)
+        tiles = uikit.hbox(spacing=tokens.S)
         self.stat_numbers = {}
         for key, label in (("annotations", "settings.stat_notes"), ("models", "settings.stat_models"),
                            ("detections", "settings.stat_detections"), ("trainings", "settings.stat_trainings")):
-            tile, number = _tile(label)
+            tile = widgets.Stat(i18n.t(label))
             tiles.addWidget(tile, 1)
-            self.stat_numbers[key] = number
-        layout.addLayout(tiles)
-        self.use_refine = QtWidgets.QCheckBox(i18n.t("settings.use_refine"))
-        self.use_refine.setCursor(QtCore.Qt.PointingHandCursor)
+            self.stat_numbers[key] = tile
+        data.body.addLayout(tiles)
+        self.use_refine = uikit.Toggle(i18n.t("settings.use_refine"))
         self.use_refine.toggled.connect(self._on_use_refine)
-        layout.addWidget(self.use_refine)
-        return pane
+        data.add(self.use_refine)
+        lay.addWidget(data)
 
-    # -- 4. Training -------------------------------------------------------------------
-
-    def _build_training(self):
-        pane, layout, _head = _pane("settings.sec_train", 4)
-        flow = QtWidgets.QHBoxLayout()
-        flow.setSpacing(theme.PAD)
-        fixes, self.fixes_number = _tile("settings.flow_fixes")
-        flow.addWidget(fixes, 1)
-        flow.addWidget(self._arrow())
-        self.train_button = _btn("settings.refine_model", self._on_train, kind="aeroGo", width=120)
-        self.train_button.setFixedHeight(52)
+        train = uikit.Section(i18n.t("settings.sec_train"), info=i18n.t("settings.sec_train_info"))
+        flow = uikit.hbox(spacing=tokens.S)
+        self.fixes_tile = widgets.Stat(i18n.t("settings.flow_fixes"))
+        flow.addWidget(self.fixes_tile, 1)
+        flow.addWidget(widgets.arrow())
+        self.train_button = uikit.button("settings.refine_model", self._on_train)
         flow.addWidget(self.train_button, 1)
-        flow.addWidget(self._arrow())
-        active, self.active_number = _tile("settings.flow_model")
-        self.active_number.setStyleSheet("font-size: 11pt;")
-        flow.addWidget(active, 1)
-        layout.addLayout(flow)
-
-        row = QtWidgets.QHBoxLayout()
-        row.setSpacing(theme.PAD)
-        row.addWidget(QtWidgets.QLabel(i18n.t(engines.NAME_TEXT["training"])), 1)
-        chip = QtWidgets.QLabel(i18n.t("settings.installed"))
-        chip.setObjectName("aeroChipOk")
-        chip.setAlignment(QtCore.Qt.AlignCenter)
-        row.addWidget(chip)
-        install = _btn("settings.install", functools.partial(self._install, "training"), width=110)
-        install.setFixedHeight(32)
-        row.addWidget(install)
-        self.tools_widgets = (chip, install)
-        layout.addLayout(row)
-
-        self.revert_button = _btn("settings.revert", self._on_revert)
-        layout.addWidget(self.revert_button)
-
-        self.progress = QtWidgets.QProgressBar()
-        self.progress.setObjectName("aeroProgress")
-        self.progress.setTextVisible(False)
+        flow.addWidget(widgets.arrow())
+        self.active_tile = widgets.Stat(i18n.t("settings.flow_model"))
+        flow.addWidget(self.active_tile, 1)
+        train.body.addLayout(flow)
+        self.revert_button = uikit.Button("", "secondary", handler=self._on_revert)
+        train.add(self.revert_button)
+        self.progress = uikit.ProgressRow(cancellable=True)
+        self.progress.cancelRequested.connect(self._on_cancel)
         self.progress.setVisible(False)
-        layout.addWidget(self.progress)
-        self.train_status = QtWidgets.QLabel()
-        self.train_status.setObjectName("aeroMeta")
-        self.train_status.setWordWrap(True)
-        self.train_status.setVisible(False)
-        layout.addWidget(self.train_status)
-        self.cancel_button = _btn("settings.train_cancel", self._on_cancel)
-        self.cancel_button.setVisible(False)
-        layout.addWidget(self.cancel_button)
-        return pane
+        train.add(self.progress)
+        lay.addWidget(train)
+        lay.addStretch(1)
+        return page
 
-    def _status(self, text):
-        self.train_status.setText(text)
-        self.train_status.setVisible(bool(text))
+    def _status(self, text, kind="info"):
+        if text:
+            self.show_banner(kind, text)
+        else:
+            self.clear_banner()
 
-    @staticmethod
-    def _arrow():
-        label = QtWidgets.QLabel("→")
-        label.setObjectName("aeroArrow")
-        label.setAlignment(QtCore.Qt.AlignCenter)
-        return label
-
-    # -- Options -----------------------------------------------------------------------
+    # -- Options -------------------------------------------------------------------------
 
     def _build_options(self):
-        pane, layout, _head = _pane("settings.sec_options")
-        _restyle(self.panel.more, "aeroBare")
-        self.panel.more.setParent(pane)
-        layout.addWidget(self.panel.more)
+        page = QtWidgets.QWidget()
+        lay = uikit.vbox(spacing=tokens.XL, parent=page)
+        section = uikit.Section(i18n.t("settings.sec_options"))
+        self.panel.more.setParent(None)
+        section.add(self.panel.more)
         self.panel.more.show()
-        return pane
+        lay.addWidget(section)
+        lay.addStretch(1)
+        return page
 
-    # -- state -------------------------------------------------------------------------
+    def _build_appearance(self):
+        """Theme and font: the same two choices as the two round buttons of every header, and kept in sync with them."""
+        page = QtWidgets.QWidget()
+        lay = uikit.vbox(spacing=tokens.XL, parent=page)
+        section = uikit.Section(i18n.t("settings.page_appearance"), info=i18n.t("settings.appearance_info"))
+        form = uikit.FormGrid()
+        self.theme_choice = uikit.ThemeChoice()
+        self.font_choice = uikit.FontChoice()
+        form.add_row(i18n.t("ui.appearance_theme"), self.theme_choice)
+        form.add_row(i18n.t("ui.appearance_font"), self.font_choice)
+        self.font_sample = uikit.label(i18n.t("settings.appearance_sample"), "body")     # drawn in the font that is on
+        self.font_sample.setContentsMargins(uikit.px(tokens.LABEL_W + tokens.S), 0, 0, 0)
+        form.add_wide(self.font_sample)
+        section.add(form)
+        lay.addWidget(section)
+        lay.addStretch(1)
+        return page
+
+    # -- state ---------------------------------------------------------------------------
 
     def refresh(self):
         """Reread the settings, the models and the number of annotations."""
@@ -435,25 +335,19 @@ class SettingsDialog(QtWidgets.QDialog):
         self.storage.setCursorPosition(0)
         self.storage.setToolTip(training.storage_dir())
         summary = training.storage_summary()
-        for key, number in self.stat_numbers.items():
-            number.setText(str(summary.get(key, 0)))
+        for key, tile in self.stat_numbers.items():
+            tile.set_number(str(summary.get(key, 0)))
 
         counts = training.feedback_counts()
         positives = sum(c["positives"] for c in counts.values())
-        self.fixes_number.setText(str(positives))
+        self.fixes_tile.set_number(str(positives))
 
         models = training.list_models()
         active = training.active_model()
-        self.models.blockSignals(True)
-        self.models.clear()
-        for model in models:
-            self.models.addItem(model_text(model), model["id"])
-            if model["id"] == active:
-                self.models.setCurrentIndex(self.models.count() - 1)
-        self.models.blockSignals(False)
+        self.models.set_choices([(model["id"], model_text(model)) for model in models], active)
         current = [m for m in models if m["id"] == active]
         base = models[0]
-        self.active_number.setText(current[0]["name"] if current else base["name"])
+        self.active_tile.set_number(current[0]["name"] if current else base["name"])
         self.revert_button.setText(i18n.t("settings.revert", name=base["name"]))
         self.revert_button.setVisible(active != base["id"])
         self.revert_button.setEnabled(not training_on)
@@ -463,7 +357,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self.use_refine.setEnabled(not training_on)
         self.refresh_engines()
 
-    # -- settings ----------------------------------------------------------------------
+    # -- settings ------------------------------------------------------------------------
 
     def _on_use_refine(self, checked):
         training.set_collect(bool(checked))
@@ -495,44 +389,33 @@ class SettingsDialog(QtWidgets.QDialog):
         if not (before["annotations"] or before["models"]) or after["annotations"] or after["models"]:
             return
         text = i18n.t("settings.copy_confirm", a=before["annotations"], m=before["models"])
-        if not dialogs.ask(self, i18n.t("settings.sec_data"), text):
+        if not uikit.confirm(self, i18n.t("settings.sec_data"), text, ok=i18n.t("settings.copy")):
             return
         try:
             training.copy_storage(old, new)
             journal.write("AI models: data copied to {}".format(new))
         except Exception as exc:
             journal.write("AI models: cannot copy: {!r}".format(exc))
-            self._say(i18n.t("settings.copy_failed", message=str(exc)))
-
-    def _on_model(self, index):
-        training.set_active_model(self.models.itemData(index))
-        self.refresh()
-
-    def _manage(self):
-        _exec(ManageDialog(self))
-        self.refresh()
+            self._status(i18n.t("settings.copy_failed", message=str(exc)), "danger")
 
     def _on_revert(self):
         training.revert_to_base()
-        self._status(i18n.t("settings.reverted"))
+        self._status(i18n.t("settings.reverted"), "success")
         self.refresh()
 
-    # -- retraining --------------------------------------------------------------------
-
-    def _say(self, text):
-        dialogs.inform(self, i18n.t("settings.train_title"), text)
+    # -- retraining ----------------------------------------------------------------------
 
     def _on_train(self):
         if self._job is not None:
             return
         state = self.panel._state
         if state is not None and aigcp.busy(state):
-            self._say(i18n.t("settings.train_busy_detect"))
+            self._status(i18n.t("settings.train_busy_detect"), "warning")
             return
         missing = training.missing_tools()
         if missing:
             offer = i18n.t("settings.train_tools_offer", tools=", ".join(missing))
-            if not dialogs.ask(self, i18n.t("settings.train_title"), offer):
+            if not uikit.confirm(self, i18n.t("settings.train_title"), offer, ok=i18n.t("settings.install")):
                 return
             if not install_ui.run(self, None, training=True, confirm=False):
                 return
@@ -541,20 +424,20 @@ class SettingsDialog(QtWidgets.QDialog):
         positives = sum(c["positives"] for c in counts.values())
         negatives = sum(c["negatives"] for c in counts.values())
         text = i18n.t("settings.train_confirm", p=positives, r=negatives)
-        if not dialogs.ask(self, i18n.t("settings.train_title"), text):
+        if not uikit.confirm(self, i18n.t("settings.train_title"), text, ok=i18n.t("settings.refine_model")):
             return
         try:
             self._job = training.Training().start()
         except Exception as exc:
             self._job = None
-            self._status(i18n.t("settings.train_failed", message=str(exc)))
+            self._status(i18n.t("settings.train_failed", message=str(exc)), "danger")
             journal.write("AI models: cannot start: {!r}".format(exc))
             self.refresh()
             return
-        self.progress.setRange(0, 0)
+        self.clear_banner()
+        self.progress.reset()
+        self.progress.set_indeterminate(i18n.t("settings.training"))
         self.progress.setVisible(True)
-        self.cancel_button.setVisible(True)
-        self._status(i18n.t("settings.training"))
         self._timer.start()
         self.refresh()
 
@@ -576,7 +459,7 @@ class SettingsDialog(QtWidgets.QDialog):
     def _on_cancel(self):
         if self._job is not None:
             self._job.cancel()
-            self._status(i18n.t("settings.train_cancelling"))
+            self.progress.text.setFullText(i18n.t("settings.train_cancelling"))
 
     def _poll(self):
         job = self._job
@@ -589,57 +472,58 @@ class SettingsDialog(QtWidgets.QDialog):
             result = {"ok": False, "code": "failed", "message": str(exc)}
         if result is None:
             fraction, text = job.progress()
+            label = i18n.t("settings.training") + (" " + text if text else "")
             if fraction is None:
-                self.progress.setRange(0, 0)
+                self.progress.set_indeterminate(label)
             else:
-                self.progress.setRange(0, 1000)
-                self.progress.setValue(int(max(0.0, min(1.0, fraction)) * 1000))
-            self._status(i18n.t("settings.training") + (" " + text if text else ""))
+                self.progress.set_progress(max(0.0, min(1.0, fraction)), label)
             return
         self._timer.stop()
         self._job = None
         self.progress.setVisible(False)
-        self.cancel_button.setVisible(False)
         if result.get("ok"):
             training.set_active_model(result["model_id"])
             message = i18n.t("settings.train_done", name=result["name"])
+            kind = "success"
             if result.get("warnings"):
                 message += " " + i18n.t("settings.train_warning")
+                kind = "warning"
         elif result.get("code") == "cancelled":
-            message = i18n.t("settings.train_cancelled")
+            message, kind = i18n.t("settings.train_cancelled"), "info"
         else:
-            message = i18n.t("settings.train_failed", message=self._failure_text(result))
-        self._status(message)
+            message, kind = i18n.t("settings.train_failed", message=self._failure_text(result)), "danger"
+        self._status(message, kind)
         journal.write("AI models: {}".format(message))
         self.refresh()
-        self._say(message)
 
-    # -- window life -------------------------------------------------------------------
+    # -- window life ---------------------------------------------------------------------
+
+    def can_close(self):
+        return self._job is None and super(SettingsDialog, self).can_close()
 
     def closeEvent(self, event):
         if self._job is not None:
-            self._say(i18n.t("settings.train_running_close"))
+            self._status(i18n.t("settings.train_running_close"), "warning")
             event.ignore()
             return
         super(SettingsDialog, self).closeEvent(event)
 
     def release(self):
-        """Give the options card back to the panel before the window disappears."""
-        _restyle(self.panel.more, "aeroCard")
+        """Give the options block back to the panel before the window disappears."""
         self.panel.more.setParent(None)
 
 
 def show(panel, existing=None):
     """Open the Settings window (modal). Reuses the instance already built."""
-    dialog = existing
+    window = existing
     try:
-        if dialog is not None:
-            dialog.objectName()
+        if window is not None:
+            window.objectName()
     except RuntimeError:
-        dialog = None
-    if dialog is None:
-        dialog = SettingsDialog(panel, panel)
-    dialog.refresh()
-    dialog.setModal(True)
-    _exec(dialog)
-    return dialog
+        window = None
+    if window is None:
+        window = SettingsDialog(panel, panel)
+    window.refresh()
+    window.setModal(True)
+    _run(window)
+    return window

@@ -119,8 +119,9 @@ def consensus(rays, threshold, seed=0):
 
     `rays`: list of (origin, direction); None is accepted for a detection without a
     ray. Returns (flags, point): `flags[i]` is true if ray i passes within
-    `threshold` of the point; (None, None) if there are fewer than MIN_RAYS usable
-    rays or if no point emerges.
+    `threshold` of the point. (None, None) means "cannot be judged": fewer than MIN_RAYS usable
+    rays. When there are enough rays but no point emerges (all the pairs nearly parallel or
+    singular), the answer is ([False, ...], None): nothing gathers, nothing is confirmed.
     """
     clean = _clean(rays)
     usable = [i for i, ray in enumerate(clean) if ray is not None]
@@ -141,7 +142,7 @@ def consensus(rays, threshold, seed=0):
         if best is None or score > best[0]:
             best = (score, flags, point)
     if best is None:
-        return None, None
+        return [False] * len(clean), None
     flags, point = best[1], best[2]
     for _ in range(2):
         chosen = [clean[i] for i, ok in enumerate(flags) if ok]

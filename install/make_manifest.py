@@ -2,7 +2,11 @@
 
 Run before each publication (the test suite reminds you if you forget):
 
-    python install/make_manifest.py
+    python install/make_manifest.py            write manifest.json
+    python install/make_manifest.py --check    change nothing, exit 1 and list the differences when it is stale
+
+The output is deterministic: running it twice on the same tree gives the same bytes (`built` only moves when the files, the packs or
+the version change; set SOURCE_DATE_EPOCH to pin it).
 
 The update inside Metashape (aerotools/updater.py) compares the files on disk with this manifest.
 Only the files useful to the user are listed: code, models, installer, assets, docs.
@@ -22,7 +26,7 @@ from aerotools import config, updater  # noqa: E402
 
 FOLDERS = ("aerotools", "install", "models", "assets")
 DOC_FOLDER = "docs"
-DOC_EXTENSIONS = (".md", ".py")
+DOC_EXTENSIONS = (".md",)           # no script of docs/ (debug helpers) travels to the users
 TOP_FILES = ("README.md", "LICENSE", "THIRD_PARTY.md", "CLICK HERE TO INSTALL.bat")
 MODELS = {"checker.pt", "checker.onnx", "spray.pt", "spray.onnx", "NOTICE.txt"}
 SKIP_FOLDERS = {"__pycache__", ".git", ".pytest_cache"}
@@ -66,8 +70,15 @@ def version(root=ROOT):
     return match.group(1) if match else "0"
 
 
-def build(root=ROOT):
-    """Manifest content (dict)."""
+def _built_now():
+    epoch = os.environ.get("SOURCE_DATE_EPOCH", "")
+    if epoch.isdigit():
+        return datetime.datetime.fromtimestamp(int(epoch)).isoformat(timespec="seconds")
+    return datetime.datetime.now().isoformat(timespec="seconds")
+
+
+def build(root=ROOT, built=None):
+    """Manifest content (dict). `built` defaults to now."""
     files = {}
     for relative in listing(root):
         digest, size = updater.digest_file(os.path.join(root, *relative.split("/")), relative)
@@ -75,11 +86,48 @@ def build(root=ROOT):
     # The packs are listed too: the installer (install_core.ps1, plain PowerShell) copies the files that belong to none of them.
     packs = [{"id": entry["id"], "paths": entry["paths"], "requires": entry["requires"]} for entry in config.PACKS]
     return {"schema": updater.SCHEMA, "name": "HELIX AERO TOOLS", "version": version(root),
-            "built": datetime.datetime.now().isoformat(timespec="seconds"), "packs": packs, "files": files}
+            "built": built or _built_now(), "packs": packs, "files": files}
+
+
+def _previous(root):
+    try:
+        with open(os.path.join(root, updater.MANIFEST), encoding="utf-8-sig") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
+def _content(manifest):
+    return {key: value for key, value in manifest.items() if key != "built"}
+
+
+def stale(root=ROOT):
+    """What differs between manifest.json on disk and the tree: a list of readable lines (empty when it is up to date)."""
+    previous = _previous(root)
+    if previous is None:
+        return ["manifest.json is missing or unreadable"]
+    now = build(root, built=str(previous.get("built") or ""))
+    problems = []
+    old_files, new_files = previous.get("files") or {}, now["files"]
+    for name in sorted(set(old_files) | set(new_files)):
+        if name not in new_files:
+            problems.append("listed but not on disk (or not published any more): " + name)
+        elif name not in old_files:
+            problems.append("on disk but not listed: " + name)
+        elif old_files[name] != new_files[name]:
+            problems.append("changed since the manifest was written: " + name)
+    for key in ("version", "packs", "schema", "name"):
+        if previous.get(key) != now[key]:
+            problems.append("{} differs".format(key))
+    return problems
 
 
 def write(root=ROOT):
-    manifest = build(root)
+    previous = _previous(root)
+    manifest = build(root, built=str(previous.get("built") or "") if previous else None)
+    if previous and _content(previous) != _content(manifest):
+        manifest["built"] = _built_now()                 # something changed: a new build; otherwise keep the date (identical bytes)
     path = os.path.join(root, updater.MANIFEST)
     with open(path, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(manifest, handle, indent=1, sort_keys=True, ensure_ascii=False)
@@ -88,6 +136,12 @@ def write(root=ROOT):
 
 
 if __name__ == "__main__":
+    if "--check" in sys.argv[1:]:
+        differences = stale()
+        for line in differences:
+            print(line)
+        print("manifest.json is up to date" if not differences else "manifest.json is stale: run python install/make_manifest.py")
+        sys.exit(1 if differences else 0)
     result = write()
     total = sum(info["size"] for info in result["files"].values())
     print("manifest.json: {} files, {:.1f} MB, version {}".format(

@@ -73,8 +73,9 @@ class Preview(object):
     """A small DEM and everything needed to paint it: `grid` (NaN = no data), the pixel size (metres, or degrees), and `exact`,
     the exact (minimum, maximum) of the full DEM when Metashape gave it."""
 
-    def __init__(self, grid, pixel_x, pixel_y, exact=None):
+    def __init__(self, grid, pixel_x, pixel_y, exact=None, geographic=None):
         self.grid = np.asarray(grid, dtype=np.float32)
+        self._geographic = geographic                       # None: guessed from the pixel size
         self.pixel_x, self.pixel_y = float(pixel_x), float(pixel_y)
         self.void = relief.nodata_mask(self.grid)
         good = self.grid[~self.void]
@@ -86,7 +87,7 @@ class Preview(object):
     def from_tiff(cls, path, exact=None, target=TARGET):
         tiff = tiffio.Tiff(path)
         grid, px, py = reduce(tiff, reduction_factor(tiff.width, tiff.height, target))
-        return cls(grid, px, py, exact)
+        return cls(grid, px, py, exact, geographic=relief.is_geographic(tiff, relief.pixel_size(tiff)[0]))
 
     def _checked(self, exact):
         """Metashape's minimum and maximum, when they are sane and bracket the small DEM; otherwise the small DEM's own."""
@@ -108,7 +109,7 @@ class Preview(object):
     @property
     def geographic(self):
         """Pixels in degrees: slopes cannot be computed, so there is no shading (same rule as the export)."""
-        return self.pixel_x < 0.01
+        return self.pixel_x < 0.01 if self._geographic is None else self._geographic
 
     def span(self):
         """(minimum, maximum) height: the exact one of the full DEM if known, else the small DEM's."""

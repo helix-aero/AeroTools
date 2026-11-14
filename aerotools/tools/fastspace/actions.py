@@ -31,12 +31,13 @@ import ctypes
 import datetime
 import gc
 import os
+import re
 import shutil
 import stat
 import subprocess
 import time
 
-from ... import config, i18n, journal
+from ... import config, i18n, journal, msapi
 from . import scanner
 
 RECYCLE = "recycle"
@@ -62,8 +63,7 @@ def confirmed(text):
 def current_document_path():
     """Path of the project open in this Metashape ("" if none)."""
     try:
-        import Metashape
-        return Metashape.app.document.path or ""
+        return msapi.document_path() or ""
     except Exception:
         return ""
 
@@ -83,22 +83,24 @@ def recheck_lock(project):
     return state
 
 
-def refusal(project):
-    """Reason why this project is left alone ("" if it can be touched)."""
+def refusal(project, here=None):
+    """Reason why this project is left alone ("" if it can be touched). `here`: path of the project open in this Metashape,
+    read by the caller on the UI thread (read here when None)."""
     if project.lock == scanner.UNKNOWN:
         return "the lock file cannot be read (network or disk error): treated as open"
     if project.in_use:
         return "open in a Metashape (lock file held)"
-    if not project.orphan and same_path(project.path, current_document_path()):
+    if not project.orphan and same_path(project.path, current_document_path() if here is None else here):
         return "open in this Metashape"
     return ""
 
 
-def delete_refusal(project):
+def delete_refusal(project, here=None):
     """Absolute reason not to delete ("" if it can be): the project open here is never deleted.
 
-    A lock held by another Metashape can be overridden ("Confirm delete" screen): it is `refusal` that reports it."""
-    if not project.orphan and same_path(project.path, current_document_path()):
+    A lock held by another Metashape can be overridden ("Confirm delete" screen): it is `refusal` that reports it.
+    `here`: see `refusal` (the delete worker thread must not ask Metashape itself)."""
+    if not project.orphan and same_path(project.path, current_document_path() if here is None else here):
         return "open in this Metashape"
     return ""
 
@@ -140,16 +142,12 @@ def recycle_available(path):
 # Recycle bin and deletion
 # --------------------------------------------------------------------------
 
-def recycle(paths):
-    """Send files or folders to the Windows recycle bin. Returns (ok, message).
+NOT_IN_BIN = "not in the recycle bin"        # message prefix: the items are gone, but not (verifiably) to the bin
 
-    If an item exceeds the size of the bin, Windows asks the question (its confirmation is not
-    overridden): a refusal gives ok=False and nothing is deleted."""
-    paths = [os.path.abspath(p) for p in paths if os.path.exists(p)]
-    if not paths:
-        return True, ""
-    if os.name != "nt":
-        return False, "recycle bin unavailable outside Windows"
+
+def _shfileop(paths, hwnd=0):
+    """SHFileOperationW(FO_DELETE, undo). Returns (code, aborted, mapped): `mapped` is {old path: new path} of the items that
+    Windows moved (the new path is inside the bin), or None when Windows gave no name mappings."""
     from ctypes import wintypes
 
     class SHFILEOPSTRUCTW(ctypes.Structure):
@@ -157,18 +155,69 @@ def recycle(paths):
                     ("pTo", ctypes.c_void_p), ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL),
                     ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR)]
 
-    FO_DELETE, FOF_ALLOWUNDO, FOF_NOERRORUI = 3, 0x0040, 0x0400
+    class SHNAMEMAPPINGW(ctypes.Structure):
+        _fields_ = [("pszOldPath", wintypes.LPWSTR), ("pszNewPath", wintypes.LPWSTR),
+                    ("cchOldPath", ctypes.c_int), ("cchNewPath", ctypes.c_int)]
+
+    class HANDLETOMAPPINGS(ctypes.Structure):
+        _fields_ = [("uNumberOfMappings", wintypes.UINT), ("lpSHNameMapping", ctypes.POINTER(SHNAMEMAPPINGW))]
+
+    FO_DELETE, FOF_WANTMAPPINGHANDLE, FOF_ALLOWUNDO, FOF_NOERRORUI, FOF_WANTNUKEWARNING = 3, 0x0020, 0x0040, 0x0400, 0x4000
     buffer = ctypes.create_unicode_buffer("\0".join(paths) + "\0\0")
     operation = SHFILEOPSTRUCTW()
+    operation.hwnd = hwnd or None
     operation.wFunc = FO_DELETE
     operation.pFrom = ctypes.addressof(buffer)
-    operation.fFlags = FOF_ALLOWUNDO | FOF_NOERRORUI
+    operation.fFlags = FOF_ALLOWUNDO | FOF_NOERRORUI | FOF_WANTNUKEWARNING | FOF_WANTMAPPINGHANDLE
     code = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(operation))
-    if code != 0 or operation.fAnyOperationsAborted:
+    mapped = None
+    if operation.hNameMappings:
+        mapped = {}
+        try:
+            table = ctypes.cast(operation.hNameMappings, ctypes.POINTER(HANDLETOMAPPINGS)).contents
+            for index in range(table.uNumberOfMappings):
+                entry = table.lpSHNameMapping[index]
+                mapped[entry.pszOldPath] = entry.pszNewPath
+        except Exception:
+            mapped = None
+        finally:
+            try:
+                ctypes.windll.shell32.SHFreeNameMappings(ctypes.c_void_p(operation.hNameMappings))
+            except Exception:
+                pass
+    return code, bool(operation.fAnyOperationsAborted), mapped
+
+
+def _in_bin(path):
+    lowered = path.lower().replace("/", "\\")
+    return "\\$recycle.bin\\" in lowered or "\\recycler\\" in lowered
+
+
+def recycle(paths, hwnd=0):
+    """Send files or folders to the Windows recycle bin. Returns (ok, message).
+
+    (True, "")             every item went to the bin, confirmed by the name mappings Windows returned;
+    (True, NOT_IN_BIN...)  the items are gone but it is not confirmed (or it is known) that they are NOT in the bin: Windows asked
+                           "delete permanently?" (item bigger than the bin, bin off for the drive) and the answer was yes. The caller
+                           must report a permanent deletion, never "in the bin";
+    (False, message)       nothing was deleted (refused or failed)."""
+    paths = [os.path.abspath(p) for p in paths if os.path.exists(p)]
+    if not paths:
+        return True, ""
+    if os.name != "nt":
+        return False, "recycle bin unavailable outside Windows"
+    code, aborted, mapped = _shfileop(paths, hwnd)
+    if code != 0 or aborted:
         return False, "recycle bin refused (code {})".format(code)
     leftover = [p for p in paths if os.path.exists(p)]
     if leftover:
         return False, "not everything went to the recycle bin: {}".format(leftover[0])
+    if mapped is None:
+        return True, NOT_IN_BIN + ": Windows gave no proof that it went there"
+    done = {os.path.normcase(os.path.abspath(old)): new for old, new in mapped.items()}
+    missing = [p for p in paths if not _in_bin(done.get(os.path.normcase(p), "") or "")]
+    if missing:
+        return True, NOT_IN_BIN + ": deleted permanently ({})".format(os.path.basename(missing[0]))
     return True, ""
 
 
@@ -250,10 +299,33 @@ def removable_paths(project, items=scanner.DEFAULT_ITEMS):
 
 
 def _open(path, read_only):
-    import Metashape
-    document = Metashape.Document()
-    document.open(path, read_only=read_only)
-    return document
+    return msapi.open_document(path, read_only)
+
+
+def _meta_keys(cloud):
+    """Lower-case keys of the cloud's meta (what Metashape wrote when it was built or imported); [] if unreadable."""
+    try:
+        meta = cloud.meta
+        return [str(key).lower() for key in meta.keys()]
+    except Exception:
+        return []
+
+
+def is_rebuildable(cloud):
+    """True only when the cloud is PROVABLY one Metashape built from the photos (its meta carries a `build...` parameter) and not
+    one that was imported (LAS/LAZ/PLY...: it cannot be rebuilt). When in doubt: False, and the cloud is kept."""
+    keys = _meta_keys(cloud)
+    if any("import" in key for key in keys):
+        return False
+    return any(key.startswith("build") for key in keys)
+
+
+def split_clouds(chunk):
+    """(clouds that can be removed, clouds that are kept) of a chunk."""
+    build, keep = [], []
+    for cloud in _dense_list(chunk)[1]:
+        (build if is_rebuildable(cloud) else keep).append(cloud)
+    return build, keep
 
 
 def _dense_list(chunk):
@@ -290,12 +362,13 @@ def _orthomosaics(chunk):
 
 
 def strip_chunk(chunk, items=scanner.DEFAULT_ITEMS):
-    """Remove from a chunk what `items` asks for (dense, depth, ortho). Returns what was removed."""
+    """Remove from a chunk what `items` asks for (dense, depth, ortho). Returns what was removed. Point clouds that are not provably
+    rebuildable (imported ones) are never removed."""
     removed = []
     if "dense" in items:
-        _name, dense = _dense_list(chunk)
-        if dense:
-            chunk.remove(dense)
+        build, _keep = split_clouds(chunk)
+        if build:
+            chunk.remove(build)
             removed.append("dense")
     if "depth" in items:
         sets = getattr(chunk, "depth_maps_sets", None)
@@ -312,15 +385,19 @@ def strip_chunk(chunk, items=scanner.DEFAULT_ITEMS):
     return removed
 
 
-def check_snapshots(before, after, items=scanner.DEFAULT_ITEMS):
-    """None if the project is as before (except what `items` removes), otherwise the text of the problem."""
+def check_snapshots(before, after, items=scanner.DEFAULT_ITEMS, kept_dense=None):
+    """None if the project is as before (except what `items` removes), otherwise the text of the problem.
+    `kept_dense`: per chunk, the number of clouds that had to stay (imported): they must still be there."""
     if len(before) != len(after):
         return "different number of chunks ({} -> {})".format(len(before), len(after))
-    for old, new in zip(before, after):
+    for index, (old, new) in enumerate(zip(before, after)):
         for key in ("cameras", "markers"):
             if old[key] != new[key]:
                 return "chunk {}: {} different ({} -> {})".format(old["label"], key, old[key], new[key])
-        if ("dense" in items and new["dense"]) or ("depth" in items and new["depth"]):
+        keep = kept_dense[index] if kept_dense and index < len(kept_dense) else 0
+        if "dense" in items and new["dense"] < keep:
+            return "chunk {}: a point cloud that had to be kept is gone".format(old["label"])
+        if ("dense" in items and new["dense"] > keep) or ("depth" in items and new["depth"]):
             return "chunk {}: dense cloud or depth maps remain".format(old["label"])
     return None
 
@@ -369,6 +446,7 @@ def safety_copy(project, now=None):
     now = now or datetime.datetime.now()
     stem = os.path.splitext(os.path.basename(project.path))[0]
     root = os.path.join(os.path.dirname(project.path), "{}{}{}".format(stem, BACKUP_MARK, now.strftime("%Y%m%d_%H%M%S")))
+    created = False
     try:
         sources = _metadata_files(project.files_dir)
         sizes = [os.path.getsize(path) for path in sources]
@@ -376,6 +454,7 @@ def safety_copy(project, now=None):
         if total > BACKUP_TOTAL_MAX or any(size > BACKUP_FILE_MAX for size in sizes):
             raise SpaceError("the description files are unexpectedly large ({:.0f} MB)".format(total / 1048576.0))
         os.makedirs(root)
+        created = True
         shutil.copy2(project.path, os.path.join(root, os.path.basename(project.path) + ".bak"))
         for path in sources:                                # not under a name ending in ".files": the scan would list it as an orphan
             target = os.path.join(root, BACKUP_FILES, os.path.relpath(path, project.files_dir))
@@ -384,19 +463,44 @@ def safety_copy(project, now=None):
         with open(os.path.join(root, "RESTORE.txt"), "w", encoding="utf-8") as handle:
             handle.write(BACKUP_NOTE.format(psx=os.path.basename(project.path), files=BACKUP_FILES))
     except (OSError, SpaceError) as exc:
-        shutil.rmtree(root, ignore_errors=True)
+        if created:                                         # only a folder made by this call: never an earlier copy
+            shutil.rmtree(root, ignore_errors=True)
         raise SpaceError(i18n.t("space.err_backup", error=exc))
     return root
 
 
-def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
+def project_version(path):
+    """(major, minor) written in the header of the .psx (`<document version="2.1.0">`), or None."""
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(2048).decode("utf-8", "replace")
+    except OSError:
+        return None
+    match = re.search(r'<document[^>]*\sversion="(\d+)\.(\d+)', head)
+    return (int(match.group(1)), int(match.group(2))) if match else None
+
+
+def running_version():
+    match = re.match(r"\s*(\d+)\.(\d+)", msapi.app_version() or "")
+    return (int(match.group(1)), int(match.group(2))) if match else None
+
+
+def upgrade_note(project):
+    """Text if saving this project here would write it in a newer format than the one it has ("" otherwise or if unknown)."""
+    written, running = project_version(project.path), running_version()
+    if written and running and running > written:
+        return "written by Metashape {}.{}, this is {}.{}".format(written[0], written[1], running[0], running[1])
+    return ""
+
+
+def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS, allow_upgrade=False):
     """Lighten a project: removes what `items` asks for (dense, depth, ortho). Returns {ok, freed, in_bin, error, steps}.
 
     To be run in Metashape's main thread (the API cannot work elsewhere).
     `progress(text)` announces each step."""
     items = tuple(item for item in scanner.ITEMS if item in items)
     progress = progress or (lambda text: None)
-    result = {"ok": False, "freed": 0, "in_bin": 0, "error": "", "steps": [], "backup": ""}
+    result = {"ok": False, "freed": 0, "in_bin": 0, "error": "", "steps": [], "backup": "", "kept_clouds": 0, "nothing": False}
 
     def step(text):
         result["steps"].append(text)
@@ -433,32 +537,55 @@ def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
         step("reading")
         document = _open(project.path, True)
         snap_before = snapshot(document)
-        document = None
-        gc.collect()
-        step("safety copy")
-        result["backup"] = safety_copy(project)
-        journal.write("Aero-Space: safety copy of {} in {}".format(project.name, result["backup"]))
-        step("cleaning the project")
-        document = _open(project.path, False)
+        api_work, mosaics, kept_clouds, kept_dense = 0, False, 0, []
         for chunk in document.chunks:
-            strip_chunk(chunk, items)
-        document.save()
+            build, keep = split_clouds(chunk) if "dense" in items else ([], [])
+            api_work, kept_clouds = api_work + len(build), kept_clouds + len(keep)
+            kept_dense.append(len(keep))
+            if "depth" in items:
+                api_work += len(_depth_list(chunk))
+            mosaics = mosaics or bool(_orthomosaics(chunk))
         document = None
         gc.collect()
-        left = removable_paths(project, items)
+        result["kept_clouds"] = kept_clouds
+        # A folder of a kept (imported) cloud is never swept as a "leftover".
+        sweep = tuple(item for item in items if not (item == "dense" and kept_clouds))
+        need_api = api_work > 0 or (mosaics and "ortho" in items and bool(removable_paths(project, ("ortho",))))
+        left = removable_paths(project, sweep)
+        if not need_api and not left:
+            result["ok"] = result["nothing"] = True         # nothing to remove: no copy, no save, the project is not touched
+            step("nothing to remove")
+            return result
+        if need_api:
+            note = "" if allow_upgrade else upgrade_note(project)
+            if note:
+                raise SpaceError(i18n.t("space.err_upgrade", note=note))
+            step("safety copy")
+            result["backup"] = safety_copy(project)
+            journal.write("Aero-Space: safety copy of {} in {}".format(project.name, result["backup"]))
+            step("cleaning the project")
+            document = _open(project.path, False)
+            for chunk in document.chunks:
+                strip_chunk(chunk, items)
+            document.save()
+            document = None
+            gc.collect()
+            left = removable_paths(project, sweep)
         if left:
             step("remaining folders")
             for path in left:
                 remove_path(path)
         step("checking")
         document = _open(project.path, True)
-        problem = check_snapshots(snap_before, snapshot(document), items)
+        problem = check_snapshots(snap_before, snapshot(document), items, kept_dense)
         document = None
         gc.collect()
         if problem:
             raise SpaceError("check: " + problem)
         after = scanner.measure_project(project.path)
         result["freed"] = max(0, before - after.removable(items))
+        if kept_clouds:
+            journal.write("Aero-Space: {} kept {} point cloud(s) not built by Metashape".format(project.name, kept_clouds))
         result["ok"] = True
         project.parts, project.files_size = after.parts, after.files_size
     except Exception as exc:
@@ -473,21 +600,24 @@ def lighten(project, mode, progress=None, items=scanner.DEFAULT_ITEMS):
 # Deleting the project
 # --------------------------------------------------------------------------
 
-def delete_project(project, mode, force=False):
-    """Delete the project (.psx and .files only), or the orphan folder. Returns {ok, freed, in_bin, error}.
+def delete_project(project, mode, force=False, here=None, hwnd=0):
+    """Delete the project (.psx and .files only), or the orphan folder. Returns {ok, freed, in_bin, error, note}.
 
     The lock is read again here, not taken from the scan. A project that is open now, or that the scan saw open and the user did not
     confirm, is refused.
     `force`: the user confirmed THIS project despite a lock held by another Metashape (the "Confirm delete" screen); it only counts
-    for a project that the scan saw open. The project open in this Metashape is always refused."""
-    result = {"ok": False, "freed": 0, "in_bin": 0, "error": ""}
-    reason = delete_refusal(project)
+    for a project that the scan saw open. The project open in this Metashape is always refused.
+    `here`: path of the project open in this Metashape, read on the UI thread by the caller (this runs in a worker thread).
+    `hwnd`: window that owns the Windows prompt (recycle mode).
+    `note` is set when the deletion worked but not the way that was asked (recycle mode: the items did not go to the bin)."""
+    result = {"ok": False, "freed": 0, "in_bin": 0, "error": "", "note": ""}
+    reason = delete_refusal(project, here)
     if not reason:
         seen_busy = project.in_use
         state = recheck_lock(project)
         busy_now = state in (scanner.OPEN, scanner.UNKNOWN)
         if (seen_busy or busy_now) and not (force and seen_busy):
-            reason = refusal(project) if project.in_use else "open in a Metashape (lock file held)"
+            reason = refusal(project, here) if project.in_use else "open in a Metashape (lock file held)"
             if not seen_busy:
                 reason += " (opened since the scan)"
     if reason:
@@ -500,14 +630,20 @@ def delete_project(project, mode, force=False):
             if len(os.path.abspath(target)) < 8:
                 raise SpaceError("path too short to be a project: " + target)
         if mode == RECYCLE:
-            ok, message = recycle(targets)
+            ok, message = recycle(targets, hwnd=hwnd) if hwnd else recycle(targets)
             if not ok:
                 raise SpaceError(message)
-            result["in_bin"] = size
-        else:
+            if message:                                     # gone, but not provably into the bin: never say "recoverable"
+                result["freed"] = size
+                result["note"] = message
+            else:
+                result["in_bin"] = size
+        elif mode == PERMANENT:
             for target in targets:                          # the .psx first: a leftover = a visible orphan
                 remove_path(target)
             result["freed"] = size
+        else:
+            raise SpaceError("unknown deletion mode: {!r}".format(mode))
         result["ok"] = True
     except Exception as exc:
         result["error"] = str(exc) if isinstance(exc, SpaceError) else repr(exc)

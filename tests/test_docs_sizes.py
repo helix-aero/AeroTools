@@ -1,7 +1,7 @@
 """The sizes the README gives for the install must match the manifest of the tree that holds the README.
 
-The core is what `CLICK HERE TO INSTALL.bat` copies (every file no pack owns); the total is every file of the manifest. Each
-channel has its own figures, so the check only runs on the filtered tree of a channel (the private repository holds the tools of
+The core is what `CLICK HERE TO INSTALL.bat` copies (every file no pack owns); the total is every file of the manifest. Both
+channels state the same figures today (they hold the same core), so the check only runs on the filtered tree of a channel (the private repository holds the tools of
 no channel in particular: the check is skipped there, and the release script runs it on each public tree).
 """
 import json
@@ -13,8 +13,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MIB = 1024.0 * 1024.0
 
-CORE_RE = re.compile(r"about (\d+) MB on the stable version, about (\d+) MB on the dev version")
-TOTAL_RE = re.compile(r"about (\d+) MB \(stable version\) or about (\d+) MB \(dev version\)")
+CORE_RE = re.compile(r"a few seconds, about (\d+) MB")
+TOTAL_RE = re.compile(r"all the tools together take about (\d+) MB")
 
 
 def read(path):
@@ -34,10 +34,9 @@ def manifest_sizes():
     return manifest, core / MIB, total / MIB
 
 
-def channel_index(manifest):
-    """0 for the stable channel (one pack), 1 for the dev channel (three packs), None for the private repository (all the packs)."""
-    count = len(manifest["packs"])
-    return {1: 0, 3: 1}.get(count)
+def is_channel_tree(manifest):
+    """True for the tree of a release channel (the stable and the dev channels hold three or four packs), False for the private repository."""
+    return len(manifest["packs"]) in (3, 4)
 
 
 def close(stated, real, floor):
@@ -46,16 +45,15 @@ def close(stated, real, floor):
 
 def test_readme_install_sizes_match_the_manifest():
     manifest, core, total = manifest_sizes()
-    index = channel_index(manifest)
-    if index is None:
+    if not is_channel_tree(manifest):
         pytest.skip("not the tree of a release channel")
     text = read("README.md")
     core_match = CORE_RE.search(text)
     total_match = TOTAL_RE.search(text)
-    assert core_match, "README: the install size of the core is not stated as 'about N MB on the stable version, about N MB on the dev version'"
-    assert total_match, "README: the size of all the tools is not stated as 'about N MB (stable version) or about N MB (dev version)'"
-    stated_core = int(core_match.group(index + 1))
-    stated_total = int(total_match.group(index + 1))
+    assert core_match, "README: the install size of the core is not stated as 'a few seconds, about N MB'"
+    assert total_match, "README: the size of all the tools is not stated as 'all the tools together take about N MB'"
+    stated_core = int(core_match.group(1))
+    stated_total = int(total_match.group(1))
     assert close(stated_core, core, 1.0), "README says {} MB for the core, the manifest says {:.1f} MB".format(stated_core, core)
     assert close(stated_total, total, 3.0), "README says {} MB in all, the manifest says {:.1f} MB".format(stated_total, total)
 

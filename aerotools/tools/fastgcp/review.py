@@ -188,9 +188,17 @@ def record(review, entry, action, x=None, y=None):
 
 def _forget(state, entry):
     """Removes the entry from the proposals that "Clear" must undo."""
-    mine = (entry["label"], msapi.camera_key(entry["camera"]))
-    state.aigcp_applied = [t for t in (getattr(state, "aigcp_applied", None) or [])
-                           if (msapi.marker_label(t[0]), msapi.camera_key(t[1])) != mine]
+    _forget_many(state, [entry])
+
+
+def _forget_many(state, entries):
+    """Removes these entries from the proposals that "Clear" must undo, in one pass: the Metashape reads are one per entry and one per
+    applied proposal, not one per pair (accepting 800 proposals used to be about 640 000 reads)."""
+    applied = getattr(state, "aigcp_applied", None) or []
+    if not entries or not applied:
+        return
+    mine = {(entry["label"], msapi.camera_key(entry["camera"])) for entry in entries}
+    state.aigcp_applied = [t for t in applied if (msapi.marker_label(t[0]), msapi.camera_key(t[1])) not in mine]
 
 
 def _own(entry):
@@ -221,7 +229,10 @@ def remove(state, review, entry):
     _forget(state, entry)
     entry["was"] = was
     entry["state"] = REMOVED
-    record(review, entry, "rejected")
+    if own:
+        record(review, entry, "rejected")
+    # else: the operator had already pinned the photo by hand, so the spot was kept: it is not a false detection and the
+    # training feedback must not say so.
     return True
 
 
@@ -286,18 +297,23 @@ def accept_kept(state, review, progress=None):
     """
     done_count = 0
     pending = [entry for entry in review.entries if entry["state"] == KEPT]
-    for index, entry in enumerate(pending):
-        if progress is not None:
-            progress(index, len(pending))
-        marker, camera = entry["marker"], entry["camera"]
-        if not _own(entry):
-            continue          # the operator has already pinned this photo
-        done, _message = msapi.set_projection(marker, camera, entry["ai_x"], entry["ai_y"], pinned=True)
-        if not done:
-            continue
-        msapi.unmark_proposal(marker, camera)
-        _forget(state, entry)
-        entry["state"] = ACCEPTED
-        record(review, entry, "accepted", entry["ai_x"], entry["ai_y"])
-        done_count += 1
+    accepted = []
+    try:
+        for index, entry in enumerate(pending):
+            if progress is not None:
+                progress(index, len(pending))
+            marker, camera = entry["marker"], entry["camera"]
+            if not _own(entry):
+                continue          # the operator has already pinned this photo
+            done, _message = msapi.set_projection(marker, camera, entry["ai_x"], entry["ai_y"], pinned=True, update=False)
+            if not done:
+                continue
+            msapi.unmark_proposal(marker, camera)
+            entry["state"] = ACCEPTED
+            accepted.append(entry)
+            record(review, entry, "accepted", entry["ai_x"], entry["ai_y"])
+            done_count += 1
+    finally:
+        _forget_many(state, accepted)
+        msapi.refresh()                                  # once for the whole series
     return done_count

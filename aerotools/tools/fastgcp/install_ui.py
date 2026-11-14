@@ -6,9 +6,8 @@ that displays "Please wait..."; this window stays in front of Metashape, says no
 close it, and says at the end whether everything went well.
 """
 
-from ... import i18n, journal, ui
-from ...qt import QtWidgets
-from ... import dialogs
+from ... import i18n, journal, uikit
+from ...qt import QtCore, QtWidgets
 from . import engines
 
 POLL_MS = 1000
@@ -29,32 +28,25 @@ def what_text(engine, training):
     return text
 
 
-class _Progress(QtWidgets.QDialog):
+class _Progress(uikit.ToolWindow):
     """Modal window during the installation: text, endless bar, cancel."""
 
     def __init__(self, parent, what, job):
-        super(_Progress, self).__init__(parent)
+        super(_Progress, self).__init__(parent, title=i18n.t("install.title"), info=i18n.t("install.note"), modal=True,
+                                        design_size=(520, 0))
         self.job = job
         self.result = None
-        self.setWindowTitle(i18n.t("install.title"))
-        self.setModal(True)
-        self.setMinimumWidth(460)
-        root = ui.styled_root(self)
-        layout = QtWidgets.QVBoxLayout(root)
-        pad = 20
-        layout.setContentsMargins(pad, pad, pad, pad)
-        layout.setSpacing(14)
-        layout.addWidget(ui.label(i18n.t("install.running", what=what)))
-        bar = QtWidgets.QProgressBar()
-        bar.setObjectName("aeroProgress")
-        bar.setTextVisible(False)
-        bar.setRange(0, 0)
-        layout.addWidget(bar)
-        row = QtWidgets.QHBoxLayout()
-        row.addStretch(1)
-        row.addWidget(ui.button("install.cancel", self._on_cancel, width=110))
-        layout.addLayout(row)
-        self._clock = ui.timer(self, POLL_MS, self._poll)
+        body = QtWidgets.QWidget()
+        lay = uikit.vbox(spacing=uikit.tokens.M, parent=body)
+        lay.addWidget(uikit.label(i18n.t("install.running", what=what)))
+        self.row = uikit.ProgressRow()
+        self.row.set_indeterminate("")
+        lay.addWidget(self.row)
+        self.set_content(body)
+        self.next_button.hide()                      # nothing to confirm: the window closes by itself at the end
+        self._clock = QtCore.QTimer(self)
+        self._clock.setInterval(POLL_MS)
+        self._clock.timeout.connect(self._poll)
         self._clock.start()
 
     def _poll(self):
@@ -69,15 +61,16 @@ class _Progress(QtWidgets.QDialog):
         self.accept()
 
     def _on_cancel(self):
-        if dialogs.ask(self, i18n.t("install.title"), i18n.t("install.cancel_confirm")):
+        if uikit.confirm(self, i18n.t("install.title"), i18n.t("install.cancel_confirm"), ok=i18n.t("install.stop"),
+                         cancel=i18n.t("install.keep")):
             self.job.cancel()
             self._clock.stop()
             self.result = {"ok": False, "code": "cancelled"}
             self.accept()
 
     def reject(self):
-        """Escape does not close the window: only the end or the Cancel button do."""
-        return None
+        """Escape and Cancel ask first: only the end of the installation or a confirmed stop close the window."""
+        self._on_cancel()
 
     def closeEvent(self, event):
         if self.result is None:
@@ -92,31 +85,31 @@ def run(parent, engine=None, training=False, confirm=True):
     Returns True if the installation finished correctly. Never raises."""
     try:
         what = what_text(engine, training)
-        if confirm and not dialogs.ask(parent, i18n.t("install.title"), i18n.t("install.confirm", what=what)):
+        if confirm and not uikit.confirm(parent, i18n.t("install.title"), i18n.t("install.confirm", what=what), ok=i18n.t("settings.install")):
             return False
         if not engines.can_install():
-            dialogs.inform(parent, i18n.t("install.title"), i18n.t("install.manual", script=engines.script_path()))
+            uikit.inform(parent, i18n.t("install.title"), i18n.t("install.manual", script=engines.script_path()), "warning")
             return False
         try:
             job = engines.InstallJob(engine, training).start()
         except Exception as exc:
             journal.write("Installation: could not start: {!r}".format(exc))
-            dialogs.inform(parent, i18n.t("install.title"), i18n.t("install.not_started", error=str(exc)))
+            uikit.error(parent, i18n.t("install.title"), i18n.t("install.not_started", error=str(exc)))
             return False
         journal.write("Installation: {} started".format(what))
         window = _Progress(parent, what, job)
-        ui.run(window)
+        (getattr(window, "exec_", None) or getattr(window, "exec"))()
         result = window.result or {"ok": False, "code": "?"}
         engines.forget()
         if result.get("ok"):
             journal.write("Installation: finished")
-            dialogs.inform(parent, i18n.t("install.title"), i18n.t("install.done", what=what))
+            uikit.inform(parent, i18n.t("install.title"), i18n.t("install.done", what=what), "success")
             return True
         journal.write("Installation: failed ({})".format(result.get("code")))
         if result.get("code") == "cancelled":
-            dialogs.inform(parent, i18n.t("install.title"), i18n.t("install.cancelled"))
+            uikit.inform(parent, i18n.t("install.title"), i18n.t("install.cancelled"))
         else:
-            dialogs.inform(parent, i18n.t("install.title"), i18n.t("install.failed", code=result.get("code")))
+            uikit.error(parent, i18n.t("install.title"), i18n.t("install.failed", code=result.get("code")))
         return False
     except Exception as exc:
         journal.write("Installation: {!r}".format(exc))

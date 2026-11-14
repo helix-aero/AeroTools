@@ -20,6 +20,7 @@ from . import crs, projdb, tiffio
 NODATA_LIMIT = -1000.0          # an undulation smaller than this is a "no data" value
 LATTICE_STEP_M = 100.0          # spacing of the lattice of points where the undulation of a DTM is computed (it varies by a few cm per km)
 MAX_LATTICE = 400
+DEM_NODATA_LIMIT = -9000.0      # a height lower than this in a DEM is "no data" (Metashape writes -32767), same rule as relief.py
 
 
 class Grid(object):
@@ -194,7 +195,7 @@ def correct_dem(src, dst, grid, lonlat, reference=None, progress=None, samples=5
         v = (top + np.arange(h) + 0.5) / float(height) * (rows - 1)
         n = _bilinear(n_field, u[np.newaxis, :], v[:, np.newaxis])
         part = block[:h, :w].astype(np.float64)
-        valid = np.isfinite(part)
+        valid = np.isfinite(part) & (part >= DEM_NODATA_LIMIT)     # a DEM that lost its nodata tag still has -32767 holes
         if nodata is not None:
             valid &= part != nodata
         out = block.copy()
@@ -204,7 +205,7 @@ def correct_dem(src, dst, grid, lonlat, reference=None, progress=None, samples=5
                 state["worst"] = max(state["worst"], abs(float(direct) - float(n[row - top, col - left])))
         state["done"] += 1
         if progress:
-            progress(state["done"] / float(total))
+            progress(min(1.0, state["done"] / float(total)))
         return out
 
     tmp = dst + ".part"

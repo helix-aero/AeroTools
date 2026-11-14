@@ -270,18 +270,21 @@ def test_transform_box_gives_up_with_a_reason(meta):
     assert msapi.transform_box.last_error == "no path"
 
 
-def test_every_shared_widget_the_export_window_asks_ui_for_exists():
-    """A revert once removed ui.OptionCard: the window no longer started (AttributeError). The names are read again."""
-    import re
-    root = os.path.join(os.path.dirname(__file__), "..", "aerotools")
-    dialog = open(os.path.join(root, "tools", "aeroexports", "dialog.py"), encoding="utf-8").read()
-    shared = open(os.path.join(root, "ui.py"), encoding="utf-8").read()
-    wanted = set(re.findall(r"(?<![\w.])ui\.([A-Za-z_]\w*)", dialog))
-    defined = set(re.findall(r"^(?:def|class) (\w+)", shared, re.M)) | set(re.findall(r"^(\w+) *=", shared, re.M))
-    missing = [name for name in sorted(wanted) if name not in defined]
-    assert missing == []
-
-
+def test_every_kit_name_the_export_windows_ask_for_exists():
+    """The windows are built from the UI kit: a name they ask `uikit` for must exist there (a revert once removed a shared widget and
+    the window no longer started). The names are read from the sources."""
+    import re
+    root = os.path.join(os.path.dirname(__file__), "..", "aerotools")
+    kit = open(os.path.join(root, "uikit", "__init__.py"), encoding="utf-8").read()
+    known = set(re.findall(r'"(\w+)": "\w+"', kit))
+    wanted = set()
+    for name in ("dialog.py", "previewwin.py", "widgets.py"):
+        source = open(os.path.join(root, "tools", "aeroexports", name), encoding="utf-8").read()
+        wanted |= set(re.findall(r"(?<![\w.])uikit\.([A-Za-z_]\w*)", source))
+    missing = [name for name in sorted(wanted) if name not in known]
+    assert missing == []
+
+
 # -- tiled exports and the "already exists" guard --------------------------------------------------------
 
 def _touch_all(folder, names):

@@ -8,20 +8,22 @@ caller saves it (look.save), and the export paints the DXF's DEM image with the 
 
 import numpy as np
 
-from ... import i18n, theme, ui
+from ... import i18n, uikit
 from ...qt import QtCore, QtGui, QtWidgets
-from ... import controls
+from ...uikit import tokens
+from ...uikit.blocks import hbox, vbox
+from ...uikit.controls import Button, ChoiceBox, IconButton, NumberField, label, parse_number
+from ...uikit.metrics import font, px
 from . import look as looks
-from ...controls import parse_number  # noqa: F401  (kept here: the tests and older code import it from this module)
+from .widgets import SliderRow
 
 DELAY_MS = 35
-WIDTH, HEIGHT = 1120, 740
-PANEL_WIDTH = 410
-SCREEN_MARGIN = 70
 LEGEND_WIDTH = 96
-THUMB = (112, 76)
+THUMB = (96, 64)
 SHADE_KEYS = {looks.NONE: "export.shade_none", looks.SUN: "export.shade_sun", looks.LIGHTS4: "export.shade_lights4",
               looks.SLOPE: "export.shade_slope"}
+RANGE_KEYS = ((looks.AUTO, "export.range_auto"), (looks.FULL, "export.range_full"), (looks.CUSTOM, "export.range_custom"))
+Qt = QtCore.Qt
 
 
 def qimage(rgba):
@@ -31,9 +33,10 @@ def qimage(rgba):
     return QtGui.QImage(data.data, cols, rows, 4 * cols, QtGui.QImage.Format_RGBA8888).copy()
 
 
-def thumbnail(rgba, size=THUMB):
+def thumbnail(rgba, size=None):
     """Small QPixmap of a rendered preview, for the card of the export window."""
-    return QtGui.QPixmap.fromImage(qimage(rgba).scaled(size[0], size[1], QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation))
+    size = size or (px(THUMB[0]), px(THUMB[1]))
+    return QtGui.QPixmap.fromImage(qimage(rgba).scaled(size[0], size[1], Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
 
 def shading_name(shading):
@@ -59,7 +62,7 @@ class ImageView(QtWidgets.QWidget):
     def __init__(self):
         super(ImageView, self).__init__()
         self._image = None
-        self.setMinimumSize(480, 360)
+        self.setMinimumSize(px(440), px(320))
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
 
     def set_image(self, image):
@@ -68,11 +71,11 @@ class ImageView(QtWidgets.QWidget):
 
     def paintEvent(self, _event):
         painter = QtGui.QPainter(self)
-        painter.fillRect(self.rect(), QtGui.QColor(theme.PANE))
+        painter.fillRect(self.rect(), QtGui.QColor(tokens.SURFACE))
         if self._image is not None and not self._image.isNull():
             painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
             scaled = self._image.size()
-            scaled.scale(self.width(), self.height(), QtCore.Qt.KeepAspectRatio)
+            scaled.scale(self.width(), self.height(), Qt.KeepAspectRatio)
             target = QtCore.QRect(0, 0, scaled.width(), scaled.height())
             target.moveCenter(self.rect().center())
             painter.drawImage(target, self._image)
@@ -85,8 +88,8 @@ class LegendBar(QtWidgets.QWidget):
     def __init__(self):
         super(LegendBar, self).__init__()
         self._image, self._ticks = None, []
-        self.setFixedWidth(LEGEND_WIDTH)
-        self.setMinimumHeight(240)
+        self.setFixedWidth(px(LEGEND_WIDTH))
+        self.setMinimumHeight(px(240))
 
     def set_data(self, bar, ticks):
         """`bar`: palette as rows x 3 uint8, highest first. `ticks`: [(fraction 0..1 from the bottom, text)]."""
@@ -97,132 +100,111 @@ class LegendBar(QtWidgets.QWidget):
 
     def paintEvent(self, _event):
         painter = QtGui.QPainter(self)
-        margin = 10
+        margin = px(10)
+        bar_w, tick = px(22), px(6)
         top, bottom = margin, self.height() - margin
         if self._image is not None and bottom > top:
-            painter.drawImage(QtCore.QRect(0, top, 22, bottom - top), self._image)
-            painter.setPen(QtGui.QColor(theme.FG_1))
+            painter.drawImage(QtCore.QRect(0, top, bar_w, bottom - top), self._image)
+            painter.setFont(font("small"))
+            painter.setPen(QtGui.QColor(tokens.TEXT))
             metrics = painter.fontMetrics()
             for fraction, text in self._ticks:
                 y = bottom - fraction * (bottom - top)
-                painter.drawLine(22, int(y), 28, int(y))
-                painter.drawText(32, int(y + metrics.ascent() / 2.0 - 1), text)
+                painter.drawLine(bar_w, int(y), bar_w + tick, int(y))
+                painter.drawText(bar_w + tick + px(4), int(y + metrics.ascent() / 2.0 - 1), text)
         painter.end()
 
 
-class PreviewWindow(QtWidgets.QDialog):
+class PreviewWindow(uikit.ToolWindow):
     """Choose palette, light and colour range; `result_look` is the look to keep once "Use this look" was clicked (else None).
 
     `void`: "transparent" or "white" (what is painted where the DEM has no data). `custom_allowed`: False when the colour range
     cannot be typed in the project's heights (the export converts them)."""
+    MARK = "tool_exports"
+
+    DESIGN_SIZE = (1040, 640)
 
     def __init__(self, parent, preview, look, void="transparent", note="", custom_allowed=True):
-        super(PreviewWindow, self).__init__(parent)
+        super(PreviewWindow, self).__init__(parent, title=i18n.t("export.look_title"), info=i18n.t("export.look_intro"), modal=True)
         self.preview, self.void, self.result_look = preview, void, None
         self._look = looks.normalized(look)
         self._custom_allowed = custom_allowed
-        self._busy = False
-        self.setWindowTitle(i18n.t("export.look_title"))
-        self.setModal(True)
-        self.resize(*self._size())
-        root = ui.dark_root(self)
-        layout = QtWidgets.QHBoxLayout(root)
-        pad = theme.PAD_L
-        layout.setContentsMargins(pad, pad, pad, pad)
-        layout.setSpacing(pad)
+        body = QtWidgets.QWidget()
+        layout = hbox(spacing=tokens.L, parent=body)
         # left: the picture, as large as the window allows
         self.view = ImageView()
         layout.addWidget(self.view, 1)
         self.legend = LegendBar()
         layout.addWidget(self.legend)
 
-        # right: the settings, in a column of fixed width; the buttons stay visible under it
-        side = QtWidgets.QVBoxLayout()
-        side.setSpacing(theme.PAD)
+        # right: the settings
+        side = vbox(spacing=tokens.M)
         layout.addLayout(side)
-        page = QtWidgets.QWidget()
-        form = QtWidgets.QVBoxLayout(page)
-        form.setContentsMargins(0, 0, theme.PAD, 0)
-        form.setSpacing(theme.PAD)
-        form.addWidget(ui.label(i18n.t("export.look_intro")))
         grid = QtWidgets.QGridLayout()
-        grid.setHorizontalSpacing(theme.PAD)
-        grid.setVerticalSpacing(theme.PAD)
+        grid.setHorizontalSpacing(px(tokens.S))
+        grid.setVerticalSpacing(px(tokens.M))
         grid.setColumnStretch(1, 1)
-        self.palette_box, self.palette_reset = self._combo(grid, 0, "export.look_palette", self._reset_palette)
+        grid.setColumnMinimumWidth(0, px(112))
+        self.palette_box, self.palette_reset = self._choice(grid, 0, "export.look_palette", self._reset_palette)
         for ident, entry in looks.palettes().items():
             self.palette_box.addItem(QtGui.QIcon(self._swatch(entry)), looks.label(entry), ident)
-        self.shading_box, self.shading_reset = self._combo(grid, 1, "export.look_shading", self._reset_shading)
+        self.shading_box, self.shading_reset = self._choice(grid, 1, "export.look_shading", self._reset_shading)
         for shading in looks.SHADINGS:
             self.shading_box.addItem(shading_name(shading), shading)
         default = looks.DEFAULT
-        self.direction, self.direction_text, self.direction_reset = controls.slider_row(
-            grid, 2, "export.look_direction", 0, 359, lambda v: "{}° ({})".format(v, compass(v)), int(default.azimuth),
-            modulo=360, typed_high=360)
-        self.height, self.height_text, self.height_reset = controls.slider_row(
-            grid, 3, "export.look_height", int(looks.ALTITUDE_RANGE[0]), int(looks.ALTITUDE_RANGE[1]),
-            lambda v: "{}°".format(v), int(default.altitude))
-        self.strength, self.strength_text, self.strength_reset = controls.slider_row(
-            grid, 4, "export.look_strength", 0, 100, lambda v: "{} %".format(v), int(round(default.strength * 100)))
-        for widget, tip_key in ((self.palette_reset, "export.look_palette"), (self.shading_reset, "export.look_shading"),
-                                (self.direction_reset, "export.look_direction"), (self.height_reset, "export.look_height"),
-                                (self.strength_reset, "export.look_strength")):
+        self._direction = SliderRow(grid, 2, i18n.t("export.look_direction"), 0, 359, "°", int(default.azimuth), modulo=360, typed_high=360)
+        self._height = SliderRow(grid, 3, i18n.t("export.look_height"), int(looks.ALTITUDE_RANGE[0]), int(looks.ALTITUDE_RANGE[1]), "°",
+                                 int(default.altitude))
+        self._strength = SliderRow(grid, 4, i18n.t("export.look_strength"), 0, 100, "%", int(round(default.strength * 100)))
+        self.direction, self.direction_text, self.direction_reset = self._direction.slider, self._direction.field, self._direction.reset
+        self.light_height, self.height_text, self.height_reset = self._height.slider, self._height.field, self._height.reset
+        self.strength, self.strength_text, self.strength_reset = self._strength.slider, self._strength.field, self._strength.reset
+        for widget, tip_key, handler in ((self.direction_reset, "export.look_direction", lambda: self._reset_slider(self._direction, default.azimuth)),
+                                         (self.height_reset, "export.look_height", lambda: self._reset_slider(self._height, default.altitude)),
+                                         (self.strength_reset, "export.look_strength",
+                                          lambda: self._reset_slider(self._strength, default.strength * 100))):
             widget.setToolTip(i18n.t("export.reset_one", name=i18n.t(tip_key)))
-        top = QtCore.Qt.AlignTop
-        grid.addWidget(ui.label(i18n.t("export.look_range"), "aeroMeta", wrap=False), 5, 0, top)
-        holder = QtWidgets.QVBoxLayout()
-        holder.setSpacing(theme.PAD_S)
-        self.range_group = QtWidgets.QButtonGroup(self)
-        self.range_radios = {}
-        for value, key in ((looks.AUTO, "export.range_auto"), (looks.FULL, "export.range_full"), (looks.CUSTOM, "export.range_custom")):
-            radio = QtWidgets.QRadioButton(i18n.t(key))
-            radio.setProperty("value", value)
-            radio.setCursor(QtCore.Qt.PointingHandCursor)
-            self.range_group.addButton(radio)
-            holder.addWidget(radio)
-            self.range_radios[value] = radio
-            radio.toggled.connect(self._on_range_choice)
-        self.range_radios[looks.AUTO].setToolTip(i18n.t("export.range_auto_tip"))
-        self.range_radios[looks.CUSTOM].setEnabled(custom_allowed)
-        grid.addLayout(holder, 5, 1, 1, 2)
-        self.range_reset = controls.reset_button(self._reset_range, i18n.t("export.reset_one", name=i18n.t("export.look_range")))
-        grid.addWidget(self.range_reset, 5, 3, top)
-        self.low_edit, self.high_edit = ui.SelectAllEdit(), ui.SelectAllEdit()
+            widget.clicked.connect(lambda *_a, h=handler: h())
+        grid.addWidget(label(i18n.t("export.look_range"), "body", "muted", wrap=False), 5, 0)
+        self.range_box = ChoiceBox([(value, i18n.t(key)) for value, key in RANGE_KEYS])
+        self.range_box.setToolTip(i18n.t("export.range_auto_tip"))
+        if not custom_allowed:
+            item = self.range_box.model().item(self.range_box.findData(looks.CUSTOM))
+            item.setEnabled(False)
+        grid.addWidget(self.range_box, 5, 1, 1, 2)
+        self.range_reset = IconButton("refresh", i18n.t("export.reset_one", name=i18n.t("export.look_range")), self._reset_range)
+        grid.addWidget(self.range_reset, 5, 3)
+        self.low_edit, self.high_edit = NumberField(0, None, None, 3, 1, "", width=96), NumberField(0, None, None, 3, 1, "", width=96)
         for edit in (self.low_edit, self.high_edit):
-            edit.setFixedWidth(80)
-            edit.setAlignment(QtCore.Qt.AlignRight)
-            edit.setMaxLength(12)
             edit.textChanged.connect(self._on_range_text)
-        numbers = QtWidgets.QHBoxLayout()
-        numbers.setSpacing(theme.PAD)
+        numbers = hbox(spacing=tokens.S)
         numbers.addWidget(self.low_edit)
-        numbers.addWidget(ui.label(i18n.t("export.look_to"), "aeroMeta", wrap=False))
+        numbers.addWidget(label(i18n.t("export.look_to"), "body", "muted", wrap=False))
         numbers.addWidget(self.high_edit)
         numbers.addStretch(1)
-        grid.addLayout(numbers, 6, 1, 1, 2)
-        self.range_error = ui.label(i18n.t("export.look_range_bad"), "aeroMeta")
+        grid.addLayout(numbers, 6, 1, 1, 3)
+        self.range_error = label(i18n.t("export.look_range_bad"), "small", "danger")
         self.range_error.setVisible(False)
         grid.addWidget(self.range_error, 7, 1, 1, 3)
-        form.addLayout(grid)
+        side.addLayout(grid)
         if preview.geographic:
             note = (note + chr(10) if note else "") + i18n.t("export.look_no_shade")
-        self.note = ui.label(note, "aeroMeta")
+        self.note = label(note, "small", "muted")
         self.note.setVisible(bool(note))
-        form.addWidget(self.note)
-        form.addStretch(1)
-        side.addWidget(controls.scroll_page(page, preferred=PANEL_WIDTH, cap=self._panel_cap()), 1)
+        side.addWidget(self.note)
+        side.addStretch(1)
+        side.setSizeConstraint(QtWidgets.QLayout.SetMinimumSize)
+        self.set_content(body)
 
-        buttons = QtWidgets.QHBoxLayout()
-        buttons.setSpacing(theme.PAD)
-        self.apply_button = ui.big_button("export.look_apply", self._apply, "aeroGo", width=170)
-        buttons.addWidget(self.apply_button, 1)
-        buttons.addWidget(ui.big_button("export.cancel", self.reject, "aeroBtn", width=100))
-        side.addWidget(ui.big_button("export.look_reset", self._reset, "aeroBtn"))
-        side.addLayout(buttons)
+        self.set_primary(i18n.t("export.look_apply"), self._apply)
+        self.apply_button = self.next_button
+        self.reset_button = Button(i18n.t("export.look_reset"), "quiet", handler=self._reset)
+        self.footer.add_left(self.reset_button)
 
         self.palette_box.activated.connect(self._on_change)
         self.shading_box.activated.connect(self._on_change)
-        for slider in (self.direction, self.height, self.strength):
+        self.range_box.activated.connect(self._on_range_choice)
+        for slider in (self.direction, self.light_height, self.strength):
             slider.valueChanged.connect(self._on_change)
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
@@ -231,33 +213,15 @@ class PreviewWindow(QtWidgets.QDialog):
         self.paints = 0                                   # repaints done (the tests read it)
         self._show_look(self._look)
 
-    @staticmethod
-    def _panel_cap():
-        """Widest minimum asked of the settings panel: what a small screen leaves beside the picture (its own minimum) and the legend."""
-        return max(320, controls.screen_width() - SCREEN_MARGIN - 480 - LEGEND_WIDTH - 5 * theme.PAD_L)
-
-    def showEvent(self, event):
-        super(PreviewWindow, self).showEvent(event)
-        if not getattr(self, "_fitted", False):
-            self._fitted = True
-            controls.fit_window(self)
-
     # -- building ----------------------------------------------------------------------------
 
     @staticmethod
-    def _size():
-        area = controls.screen_area()
-        return min(WIDTH, area.width() - SCREEN_MARGIN), min(HEIGHT, area.height() - SCREEN_MARGIN)
-
-    @staticmethod
-    def _combo(grid, row, key, reset):
+    def _choice(grid, row, key, reset):
         """A drop-down with its label and its reset button: returns (box, reset button)."""
-        grid.addWidget(ui.label(i18n.t(key), "aeroMeta", wrap=False), row, 0)
-        box = ui.combo()
-        box.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToMinimumContentsLengthWithIcon)
-        box.setMinimumContentsLength(10)
+        grid.addWidget(label(i18n.t(key), "body", "muted", wrap=False), row, 0)
+        box = ChoiceBox()
         grid.addWidget(box, row, 1, 1, 2)
-        button = controls.reset_button(reset)
+        button = IconButton("refresh", i18n.t("export.reset_one", name=i18n.t(key)), reset)
         grid.addWidget(button, row, 3)
         return box, button
 
@@ -274,19 +238,17 @@ class PreviewWindow(QtWidgets.QDialog):
 
     def _show_look(self, look):
         """Put `look` in the controls (without triggering repaints one by one), then paint it once."""
-        widgets = (self.palette_box, self.shading_box, self.direction, self.height, self.strength, self.low_edit, self.high_edit,
-                   *self.range_radios.values())
+        widgets = (self.palette_box, self.shading_box, self.direction, self.light_height, self.strength, self.low_edit, self.high_edit,
+                   self.range_box)
         for widget in widgets:
             widget.blockSignals(True)
         self.palette_box.setCurrentIndex(max(0, self.palette_box.findData(look.palette)))
         self.shading_box.setCurrentIndex(max(0, self.shading_box.findData(look.shading)))
-        self.direction.setValue(int(round(look.azimuth)) % 360)
-        self.height.setValue(int(round(look.altitude)))
-        self.strength.setValue(int(round(look.strength * 100)))
-        for slider, text in ((self.direction, self.direction_text), (self.height, self.height_text), (self.strength, self.strength_text)):
-            text.set_value(slider.value())
+        self._direction.set_value(int(round(look.azimuth)) % 360)
+        self._height.set_value(int(round(look.altitude)))
+        self._strength.set_value(int(round(look.strength * 100)))
         stretch = look.stretch if (look.stretch != looks.CUSTOM or self._custom_allowed) else looks.FULL
-        self.range_radios[stretch].setChecked(True)
+        self.range_box.set_value(stretch)
         low, high = (look.low, look.high) if stretch == looks.CUSTOM else self.preview.span()
         self.low_edit.setText(self._text(low))
         self.high_edit.setText(self._text(high))
@@ -301,10 +263,7 @@ class PreviewWindow(QtWidgets.QDialog):
         return "" if value is None else "{:.3f}".format(value).rstrip("0").rstrip(".")
 
     def _range_choice(self):
-        for value, radio in self.range_radios.items():
-            if radio.isChecked():
-                return value
-        return looks.FULL
+        return self.range_box.value() or looks.FULL
 
     def _read(self):
         """The look the controls describe (an unusable custom range keeps the previous valid look and shows the message)."""
@@ -316,29 +275,24 @@ class PreviewWindow(QtWidgets.QDialog):
         if bad:
             return None
         return looks.normalized(looks.Look(self.palette_box.currentData(), self.shading_box.currentData(), float(self.direction.value()),
-                                           float(self.height.value()), self.strength.value() / 100.0, stretch,
+                                           float(self.light_height.value()), self.strength.value() / 100.0, stretch,
                                            low if stretch == looks.CUSTOM else None, high if stretch == looks.CUSTOM else None))
 
     def _refresh_enabled(self):
         shading = self.shading_box.currentData()
         lit = shading in (looks.SUN, looks.LIGHTS4) and not self.preview.geographic
-        self.direction.setEnabled(lit)
-        self.height.setEnabled(lit)
-        self.strength.setEnabled(shading != looks.NONE and not self.preview.geographic)
+        self._direction.set_enabled(lit)
+        self._height.set_enabled(lit)
+        self._strength.set_enabled(shading != looks.NONE and not self.preview.geographic)
         self.shading_box.setEnabled(not self.preview.geographic)
         custom = self._range_choice() == looks.CUSTOM
         self.low_edit.setEnabled(custom)
         self.high_edit.setEnabled(custom)
-        self.direction_text.set_value(self.direction.value())
-        self.height_text.set_value(self.height.value())
-        self.strength_text.set_value(self.strength.value())
-        for text, slider in ((self.direction_text, self.direction), (self.height_text, self.height), (self.strength_text, self.strength)):
-            text.setEnabled(slider.isEnabled())
         default = looks.DEFAULT
         self.palette_reset.setEnabled(self.palette_box.currentData() != default.palette)
         self.shading_reset.setEnabled(self.shading_box.isEnabled() and self.shading_box.currentData() != default.shading)
         self.direction_reset.setEnabled(self.direction.isEnabled() and self.direction.value() != int(default.azimuth))
-        self.height_reset.setEnabled(self.height.isEnabled() and self.height.value() != int(default.altitude))
+        self.height_reset.setEnabled(self.light_height.isEnabled() and self.light_height.value() != int(default.altitude))
         self.strength_reset.setEnabled(self.strength.isEnabled() and self.strength.value() != int(round(default.strength * 100)))
         self.range_reset.setEnabled(self._range_choice() != default.stretch)
 
@@ -348,9 +302,7 @@ class PreviewWindow(QtWidgets.QDialog):
         self._refresh_enabled()
         self._schedule()
 
-    def _on_range_choice(self, checked=True):
-        if not checked:
-            return
+    def _on_range_choice(self, *_args):
         if self._range_choice() == looks.CUSTOM and self._look.stretch != looks.CUSTOM:
             low, high = self.preview.colour_range(self._look)    # start from what the picture uses now: the user edits real numbers
             self.low_edit.setText(self._text(low))
@@ -387,9 +339,14 @@ class PreviewWindow(QtWidgets.QDialog):
         self.shading_box.setCurrentIndex(max(0, self.shading_box.findData(looks.DEFAULT.shading)))
         self._on_change()
 
+    @staticmethod
+    def _reset_slider(row, value):
+        row.set_value(int(round(value)))
+
     def _reset_range(self):
         """The colour range goes back to "lowest to highest" (the typed numbers follow the DEM again)."""
-        self.range_radios[looks.DEFAULT.stretch].setChecked(True)
+        self.range_box.set_value(looks.DEFAULT.stretch)
+        self._on_range_choice()
 
     def _apply(self):
         look = self._read()
