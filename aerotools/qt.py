@@ -13,6 +13,15 @@ except ImportError:  # pragma: no cover - depends on the Metashape version
     BINDING = "PySide6"
 
 
+try:                                              # the binding's Shiboken: `delete()` destroys a C++ object at a moment we choose
+    import shiboken2 as shiboken  # noqa: F401
+except ImportError:  # pragma: no cover
+    try:
+        import shiboken6 as shiboken  # noqa: F401
+    except ImportError:
+        shiboken = None
+
+
 # QShortcut is in QtWidgets in Qt5 (PySide2) and in QtGui in Qt6 (PySide6).
 QShortcut = getattr(QtWidgets, "QShortcut", None) or getattr(QtGui, "QShortcut", None)
 

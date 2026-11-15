@@ -419,6 +419,19 @@ def render_all(scale):
     check(pop.isVisible() and pop.owner is info, "info popover shows at {}%".format(int(scale * 100)))
     info.hide_tip()
     holder.close()
+    # The bubble is a parentless window that only a Python reference holds: it is destroyed when the application quits (Metashape crashed on
+    # quit when it was left to the interpreter's clean-up), and hiding an "i" never builds one.
+    check(uikit.controls.Popover.peek() is pop, "the bubble that was shown is the shared one")
+    QtWidgets.QApplication.instance().aboutToQuit.emit()
+    check(uikit.controls.Popover.peek() is None, "the bubble is released when the application quits")
+    from aerotools.qt import shiboken
+    check(shiboken is None or not shiboken.isValid(pop), "...and its window is really destroyed, not just forgotten")
+    other = uikit.InfoButton("another tip")
+    other.hide_tip()
+    other.hide()                                             # hideEvent -> hide_tip
+    check(uikit.controls.Popover.peek() is None, "hiding an info button builds no bubble")
+    other.show_tip()
+    check(uikit.controls.Popover.peek() is not None and uikit.controls.Popover.shared().owner is other, "the bubble is built again when a tip is asked for")
     page_controls.close()
     page_blocks.close()
 
