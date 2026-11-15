@@ -369,14 +369,17 @@ class Banner(QtWidgets.QFrame):
     aboutToChange = QtCore.Signal()            # just before it is shown, changed or hidden (a window notes its height first)
     changed = QtCore.Signal()                  # shown, hidden or its text changed: the window may need another height
 
-    def __init__(self, kind="info", text="", title="", action=None, details="", closable=True, parent=None):
+    def __init__(self, kind="info", text="", title="", action=None, details="", closable=True, parent=None, actions_below=False):
         super(Banner, self).__init__(parent)
         self.setProperty("ui", "banner")
         self.setProperty("kind", kind)
         self.setAttribute(Qt.WA_StyledBackground, True)
         self._action_callback = None
         self._closable = closable
-        outer = hbox((tokens.M, tokens.S + 2, tokens.S, tokens.S + 2), tokens.M, parent=self)
+        self._below = bool(actions_below)
+        root = vbox((tokens.M, tokens.S + 2, tokens.S, tokens.S + 2), tokens.S, parent=self)
+        outer = hbox(spacing=tokens.M)
+        root.addLayout(outer)
         self.glyph = Glyph(kind)
         outer.addWidget(self.glyph, 0, Qt.AlignTop)
         column = vbox(spacing=tokens.XS)
@@ -391,8 +394,18 @@ class Banner(QtWidgets.QFrame):
         self.details_button = Button(i18n.t("ui.details"), "quiet", handler=self._toggle_details)
         self.action_button = Button("", "secondary", handler=self._run_action)
         self.close_button = IconButton("cross", i18n.t("ui.dismiss"), self.clear)
-        for widget in (self.details_button, self.action_button, self.close_button):
-            outer.addWidget(widget, 0, Qt.AlignTop)
+        if self._below:
+            # the message takes the whole width of the card (next to its mark); the buttons sit in a row of their own, bottom right
+            outer.addWidget(self.close_button, 0, Qt.AlignTop)
+            self.bottom_row = QtWidgets.QWidget()
+            bottom = hbox(spacing=tokens.S, parent=self.bottom_row)
+            bottom.addStretch(1)
+            bottom.addWidget(self.details_button)
+            bottom.addWidget(self.action_button)
+            root.addWidget(self.bottom_row)
+        else:
+            for widget in (self.details_button, self.action_button, self.close_button):
+                outer.addWidget(widget, 0, Qt.AlignTop)
         self.show_message(kind, text, title or None, action, details or None, closable)
         if not text and not title:
             self.hide()
@@ -423,6 +436,8 @@ class Banner(QtWidgets.QFrame):
         if action:
             self.action_button.setText(action[0])
         self.action_button.setVisible(bool(action))
+        if self._below:
+            self.bottom_row.setVisible(bool(action) or bool(details))
         self.close_button.setVisible(self._closable if closable is None else bool(closable))
         self.setAccessibleName(text or title or "")
         self.show()

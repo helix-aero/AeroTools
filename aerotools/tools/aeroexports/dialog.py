@@ -1,8 +1,10 @@
 """Aero-Exports window (Qt): tick the orthomosaic and / or the DEM, say what is written for each, choose the coordinates, export.
 
-Two panels. Left: what to export. Each ticked item shows what it will write: the orthomosaic in the chosen format, the DEM as heights
-(always a GeoTIFF: heights cannot go into a JPEG) and / or as a coloured picture. Right: the format, the names and a live list of the
-exact files that will be written, so the result can be predicted before pressing Export.
+Two panels. Left: what to export. Each ticked item shows what it will write: the orthomosaic without its white background, the DEM as
+heights (always a GeoTIFF: heights cannot go into a JPEG) and / or as a coloured picture. Right: the site name, the formats (tick one or
+several) and the export list. "Add" turns each ticked format into a planned export with the settings of that moment (they are frozen: later
+changes do not touch it); each planned export shows its format, its key options and how many files it writes, the exact files being behind
+its "i". "Export" / "Run all exports" runs the list in order; one that fails does not stop the others.
 
 The files go to an `Outputs` folder next to the .psx, with a short name (`SITE_YYMMDD_3cm_ortho.tif`, `SITE_YYMMDD_3cm_dtm.tif`).
 If the export already exists, the window asks: a new version (`_v2`, the default), or overwrite.
@@ -31,8 +33,8 @@ from ...uikit.blocks import hbox, vbox
 from ...uikit.controls import Button, ChoiceBox, ElidedLabel, IconButton, InfoButton, NumberField, Segmented, TextField, Toggle, label, parse_number
 from ...uikit.metrics import px
 from ...uikit.tasks import Cancelled
-from . import crs, external, look as looks, naming, pipeline, plan, projdb, tiling
-from .widgets import ClickLabel, ItemCard, OutputRow, StatusLine
+from . import crs, exportqueue, external, look as looks, naming, pipeline, plan, projdb, tiling
+from .widgets import ClickLabel, ItemCard, OutputRow, QueueRow, StatusLine
 
 try:
     import numpy  # noqa: F401  (Metashape ships it; without it only the exports that do not need it are offered)
@@ -51,8 +53,7 @@ SAME = "same"
 NEW_VERSION, OVERWRITE = "new", "overwrite"
 TILE_CHOICES = 6
 THUMB = (72, 48)                                     # design px of the small DEM picture
-# What each preset writes for the orthomosaic and for the coloured DEM picture (text keys), and what an extension is called.
-ORTHO_OUT = {"full": "export.out_tif", "quick": "export.out_quick", "jpeg": "export.out_jpeg", "jp2": "export.img_jp2", "ecw": "export.img_ecw"}
+# What each preset writes for the coloured DEM picture (text keys), and what an extension is called.
 PICTURE_OUT = {"tif": "export.out_tif_colour", "jpg": "export.out_jpeg", "jp2": "export.img_jp2", "ecw": "export.img_ecw"}
 EXT_TEXT = {"tif": "export.out_tif", "jpg": "export.out_jpeg_short", "jp2": "export.img_jp2", "ecw": "export.img_ecw"}
 WORLD_SIDE = {".jgw": "export.what_world", ".prj": "export.what_prj"}
@@ -105,20 +106,24 @@ class ExportDialog(uikit.ToolWindow):
         self.tools = {}
         self.chunk_title = self.header.subtitle             # which chunk this window works on, always in view
 
+        self.queue = []                                     # exportqueue.Item list: what Export runs, in this order
+        self._queue_pin = None                              # (pin, signature) the queue was planned on: another one empties it
+
         body = QtWidgets.QWidget()
         columns = hbox(spacing=tokens.L, parent=body)
         left = QtWidgets.QWidget()
-        layout = vbox(spacing=tokens.L, parent=left)
-        columns.addWidget(left, 1)
+        layout = vbox(spacing=tokens.M, parent=left)
+        columns.addWidget(left, 10)
         columns.addWidget(uikit.Divider(vertical=True))
         right = QtWidgets.QWidget()
         right_layout = vbox(spacing=tokens.M, parent=right)
-        columns.addWidget(right, 1)
+        columns.addWidget(right, 11)
 
         # -- what to export -------------------------------------------------------------------------
         what = uikit.Section(i18n.t("export.what_section"))
+        what.body.setSpacing(px(tokens.S))
         self.cards, self.fields, self.native_labels = {}, {}, {}
-        self.raster_details, self.raster_warnings = {}, {}
+        self.raster_details, self.raster_warnings, self.raster_tips = {}, {}, {}
         for kind in plan.KINDS:
             card = ItemCard(i18n.t(KIND_TITLE[kind]))
             native = label("", "small", "muted", wrap=False)
@@ -129,16 +134,22 @@ class ExportDialog(uikit.ToolWindow):
             card.head.addWidget(field)
             card.button.toggled.connect(self._refresh_names)
             field.textChanged.connect(self._refresh_names)
-            detail = label("", "small")                      # exactly which raster is exported (the chunk's default one): its size is a value, in the text colour
-            detail.setVisible(False)                         # no empty line: it appears with its text
+            detail_row = QtWidgets.QWidget()                  # exactly which raster is exported (the chunk's default one): its size is a value, in the text colour
+            detail_line = hbox(spacing=tokens.S, parent=detail_row)
+            detail = label("", "small", wrap=False)
+            tip = InfoButton("")                              # "1 of 2 orthomosaics: double-click ..." behind an "i", only when there are several
+            detail_line.addWidget(detail)
+            detail_line.addWidget(tip)
+            detail_line.addStretch(1)
+            detail_row.setVisible(False)                      # no empty line: it appears with its text
             warn = StatusLine("warning")                     # a warning when it is a poor choice
-            card.rows.addWidget(detail)
+            card.rows.addWidget(detail_row)
             card.rows.addWidget(warn)
             what.add(card)
             self.cards[kind], self.fields[kind], self.native_labels[kind] = card, field, native
-            self.raster_details[kind], self.raster_warnings[kind] = detail, warn
-        self.ortho_saved = label("", "body", wrap=False)     # what the orthomosaic will be written as: the value that matters, in the text colour
-        self.cards[plan.ORTHO].rows.addWidget(self.ortho_saved)
+            self.raster_details[kind], self.raster_warnings[kind], self.raster_tips[kind] = detail, warn, tip
+            detail.row = detail_row
+        self._build_clip_row()
         self._build_dem_rows()
         layout.addWidget(what)
         self._build_boundary_row(layout)
@@ -161,26 +172,48 @@ class ExportDialog(uikit.ToolWindow):
         self.vert_box = ChoiceBox()
         self.vert_box.activated.connect(self._on_vertical)
         form.add_row(i18n.t("export.vertical"), self.vert_box, info=i18n.t("export.vertical_tip"))
+        form.layout().setSpacing(px(tokens.S))               # closer rows: the window is tall enough as it is
         self.coords.add(form)
         more.addWidget(self.coords)
-        self.geoid_card = uikit.Banner("warning", "", closable=True)
+        self.geoid_card = uikit.Banner("warning", "", closable=True, actions_below=True)     # the message on the whole width, the button bottom right
         self.geoid_card.dismissed.connect(self._geoid_not_now)
         self.geoid_card.hide()
         more.addWidget(self.geoid_card)
         layout.addStretch(1)
 
-        # -- format -----------------------------------------------------------------------------------
-        fmt = uikit.Section(i18n.t("export.preset"))
-        row = hbox(spacing=tokens.S)
-        self.preset = ChoiceBox([(item["key"], i18n.t(item["title"])) for item in plan.PRESETS])
-        saved = config.get(SECTION, "preset")
-        if self.preset.findData(saved) >= 0:
-            self.preset.setCurrentIndex(self.preset.findData(saved))
-        self.preset.activated.connect(self._on_preset)
-        row.addWidget(self.preset, 1)
-        self.preset_tip = InfoButton("")                    # what the chosen format is, behind the "i"
-        row.addWidget(self.preset_tip)
-        fmt.add(self._wrap(row))
+        # -- names ------------------------------------------------------------------------------------
+        names = hbox(spacing=tokens.S)
+        names.addWidget(label(i18n.t("export.site"), "body", "muted", wrap=False))
+        self.site = TextField()
+        self.site.setMinimumWidth(px(120))
+        self.site.textChanged.connect(self._refresh_names)
+        names.addWidget(self.site, 1)
+        names.addWidget(label(i18n.t("export.date"), "body", "muted", wrap=False))
+        self.date = label("", "body", wrap=False)
+        names.addWidget(self.date)
+        names.addWidget(InfoButton(i18n.t("export.files_tip")))
+        right_layout.addLayout(names)
+
+        # -- format: tick one or several, then Add -----------------------------------------------------
+        fmt = uikit.Section(i18n.t("export.preset"), info=i18n.t("export.preset_tip"))
+        fmt.body.setSpacing(px(tokens.S))
+        saved = config.get(SECTION, "presets")
+        if not isinstance(saved, list):
+            saved = [config.get(SECTION, "preset") or "full"]
+        grid = QtWidgets.QGridLayout()
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(px(tokens.M))
+        grid.setVerticalSpacing(px(tokens.XS))
+        self.preset_checks = {}
+        for index, item in enumerate(plan.PRESETS):
+            tick = Toggle(i18n.t(item["title"]), item["key"] in saved)
+            tick.setToolTip(i18n.t(item["tip"]))
+            tick.toggled.connect(self._on_preset)
+            grid.addWidget(tick, index // 2, index % 2)
+            self.preset_checks[item["key"]] = tick
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        fmt.add(self._wrap(grid))
 
         self.cad_box = QtWidgets.QWidget()
         cad = vbox(spacing=tokens.S, parent=self.cad_box)
@@ -199,22 +232,11 @@ class ExportDialog(uikit.ToolWindow):
         cad_row.addWidget(InfoButton(i18n.t("export.img_jp2_tip") + " " + i18n.t("export.img_ecw_tip")))
         cad_row.addStretch(1)
         cad.addLayout(cad_row)
-        self.cad_clip = Toggle(i18n.t("export.cad_clip"), config.get(SECTION, "cad_clip") is not False and HAS_NUMPY)
-        self.cad_clip_row = QtWidgets.QWidget()
-        clip = hbox(spacing=tokens.S, parent=self.cad_clip_row)
-        clip.addWidget(self.cad_clip)
-        clip.addWidget(InfoButton(i18n.t("export.cad_clip_tip") if HAS_NUMPY else i18n.t("export.look_no_numpy")))
-        clip.addStretch(1)
-        if not HAS_NUMPY:
-            self.cad_clip.setEnabled(False)
-            self.cad_clip.setToolTip(i18n.t("export.look_no_numpy"))
-        self.cad_clip.toggled.connect(self._on_cad_choice)
-        cad.addWidget(self.cad_clip_row)
         fmt.add(self.cad_box)
 
-        self.tool_card = QtWidgets.QWidget()                 # a program the format needs is missing
+        self.tool_card = QtWidgets.QWidget()                 # a program a ticked format needs is missing
         tool = vbox(spacing=tokens.S, parent=self.tool_card)
-        self.tool_banner = uikit.Banner("warning", "", closable=False)
+        self.tool_banner = uikit.Banner("warning", "", closable=False, actions_below=True)
         self.tool_text = self.tool_banner.message
         tool.addWidget(self.tool_banner)
         tool_row = hbox(spacing=tokens.S)
@@ -240,38 +262,46 @@ class ExportDialog(uikit.ToolWindow):
         tiles.addWidget(InfoButton(i18n.t("export.tiles_tip")))
         tiles.addStretch(1)
         self.advanced.add(self._wrap(tiles))
-        fmt.add(self.advanced)
+        add_row = hbox(spacing=tokens.S)
+        add_row.addWidget(self.advanced, 1, QtCore.Qt.AlignTop)
+        self.add_button = Button(i18n.t("export.add"), "secondary", handler=self._on_add)
+        add_row.addWidget(self.add_button, 0, QtCore.Qt.AlignTop)
+        fmt.add(self._wrap(add_row))
         right_layout.addWidget(fmt)
 
-        # -- names and the live list of files ----------------------------------------------------------
-        files = vbox(spacing=tokens.S)
-        files_head = hbox(spacing=tokens.S)
-        files_head.addWidget(label(i18n.t("export.names"), "lead", wrap=False))
-        files_head.addWidget(InfoButton(i18n.t("export.files_tip")))
-        files_head.addStretch(1)
-        files_head.addWidget(label(i18n.t("export.site"), "body", "muted", wrap=False))
-        self.site = TextField()
-        self.site.setFixedWidth(px(180))
-        self.site.textChanged.connect(self._refresh_names)
-        files_head.addWidget(self.site)
-        files_head.addWidget(label(i18n.t("export.date"), "body", "muted", wrap=False))
-        self.date = label("", "body", wrap=False)
-        files_head.addWidget(self.date)
-        files.addLayout(files_head)
+        # -- the list of planned exports -----------------------------------------------------------------
+        listing = vbox(spacing=tokens.S)
+        list_head = hbox(spacing=tokens.S)
+        list_head.addWidget(label(i18n.t("export.queue"), "lead", wrap=False))
+        list_head.addWidget(InfoButton(i18n.t("export.queue_tip")))
+        list_head.addStretch(1)
+        listing.addLayout(list_head)
+        self.queue_card = QtWidgets.QFrame()
+        self.queue_card.setProperty("ui", "card")
+        self.queue_rows = vbox((tokens.S, tokens.XS, tokens.S, tokens.XS), 0, parent=self.queue_card)
+        self.queue_empty = label(i18n.t("export.queue_empty"), "small", "muted")
+        self.queue_rows.addWidget(self.queue_empty)
+        listing.addWidget(self.queue_card)
+        self.queue_total = label("", "small", "muted", wrap=False)            # the total, under the list
+        self.queue_total.setVisible(False)
+        listing.addWidget(self.queue_total, 0, QtCore.Qt.AlignRight)
+        self.files_view = uikit.Disclosure(i18n.t("export.preview_files"))     # what the ticked formats would write, collapsed
         self.files = uikit.DataTable([uikit.Column("file", i18n.t("export.col_file"), stretch=True),
                                       uikit.Column("what", i18n.t("export.col_what"))], selection="none", sortable=False,
                                      empty_title=i18n.t("export.nothing"))
         self.files.setMinimumHeight(px(tokens.CONTROL_H) * 3)
-        files.addWidget(self.files, 1)
+        self.files_view.add(self.files)
         self.files_note = label("", "small", "muted")
-        files.addWidget(self.files_note)
+        self.files_view.add(self.files_note)
+        listing.addWidget(self.files_view)
         folder_row = hbox(spacing=tokens.S)
         self.folder = ElidedLabel("", "small", mode="middle")          # where the files will be written: a value that matters, in the text colour
         folder_row.addWidget(self.folder, 1)
         self.open_button = IconButton("folder", i18n.t("export.open_folder"), self._open_folder)
         folder_row.addWidget(self.open_button)
-        files.addLayout(folder_row)
-        right_layout.addLayout(files, 1)
+        listing.addLayout(folder_row)
+        right_layout.addLayout(listing)
+        right_layout.addStretch(1)
 
         self.set_content(body)
         self.set_primary(i18n.t("export.go"), self._on_export)
@@ -315,7 +345,11 @@ class ExportDialog(uikit.ToolWindow):
         """Enabled state of the Export button and of the controls: nothing is editable while an export runs."""
         busy = self.is_busy()
         blocked = bool(self._missing) or bool(self._geoid_missing)
-        self.next_button.setEnabled(bool(self._jobs) and not busy and not blocked)
+        ready = bool(self._jobs) and not blocked              # what is ticked can be added (or run at once, with an empty list)
+        self.add_button.setEnabled(ready and not busy and len(self.queue) < exportqueue.MAX_ITEMS)
+        self.add_button.setText(i18n.t("export.add_n", n=len(self._ticked())) if len(self._ticked()) > 1 else i18n.t("export.add"))
+        self.next_button.setEnabled((bool(self.queue) or ready) and not busy)
+        self.footer.set_primary(i18n.t("export.go_all", n=len(self.queue)) if len(self.queue) > 1 else i18n.t("export.go"), self.next_button.role())
         self.stack.currentWidget().setEnabled(not busy)
         self.open_button.setEnabled(bool(self._folder()) and os.path.isdir(self._folder()))
         self.vert_box.setEnabled(not busy and self.crs_box.currentData() != SAME)
@@ -379,6 +413,39 @@ class ExportDialog(uikit.ToolWindow):
             self._chunk_label, self._pin[1], raster("dem"), self._info.get("n_dems"), raster("ortho"), self._info.get("n_orthos"),
             self._info.get("boundaries"), self._boundary_clip())
 
+    # -- the white background -------------------------------------------------------------------------------
+
+    def _build_clip_row(self):
+        """Under the orthomosaic: leave its white / empty background out. On by default, for every format that can (a JPEG cannot)."""
+        self.clip_row = QtWidgets.QWidget()
+        line = hbox(spacing=tokens.S, parent=self.clip_row)
+        self.clip_check = Toggle(i18n.t("export.cad_clip"), config.get(SECTION, "clip_white") is not False)
+        self.cad_clip = self.clip_check
+        self.clip_tip = InfoButton(i18n.t("export.clip_tip"))
+        line.addWidget(self.clip_check)
+        line.addWidget(self.clip_tip)
+        line.addStretch(1)
+        self.clip_check.toggled.connect(self._on_clip)
+        self.cards[plan.ORTHO].rows.addWidget(self.clip_row)
+
+    def _on_clip(self, *_args):
+        if self.clip_check.isEnabled():
+            config.put(SECTION, "clip_white", bool(self.clip_check.isChecked()))
+        self._refresh_names()
+
+    def _sync_clip_row(self):
+        """The switch follows the ticked formats: a JPEG alone cannot be transparent (switch off and locked, with the reason); the drawing
+        crops with a polygon, which needs numpy."""
+        keys = self._ticked() or ["full"]
+        possible = [k for k in keys if plan.clip_white_possible(k)]
+        usable = bool(possible) and (HAS_NUMPY or possible != [plan.CAD])
+        on = bool(config.get(SECTION, "clip_white") is not False) and usable
+        self.clip_check.blockSignals(True)
+        self.clip_check.setChecked(on)
+        self.clip_check.blockSignals(False)
+        self.clip_check.setEnabled(usable)
+        self.clip_tip.set_text(i18n.t("export.clip_tip") if usable else (i18n.t("export.clip_jpeg_tip") if not possible else i18n.t("export.look_no_numpy")))
+
     # -- the DEM outputs ---------------------------------------------------------------------------------
 
     def _build_dem_rows(self):
@@ -418,17 +485,20 @@ class ExportDialog(uikit.ToolWindow):
             self.look_button.setEnabled(False)
             self.look_button.setToolTip(i18n.t("export.look_no_numpy"))
 
-    def _picture_wanted(self):
+    def _ticked(self):
+        """Keys of the formats ticked in the Format list, in the order of the list."""
+        return [item["key"] for item in plan.PRESETS if self.preset_checks[item["key"]].isChecked()]
+
+    def _picture_wanted(self, key):
         """True when the coloured DEM picture is asked next to a GeoTIFF, JPEG 2000 or ECW export."""
-        return HAS_NUMPY and self.preset.currentData() in plan.PICTURE_PRESETS and self._picture_choice
+        return HAS_NUMPY and key in plan.PICTURE_PRESETS and self._picture_choice
 
-    def _values_wanted(self):
+    def _values_wanted(self, key):
         """True when the heights (the DEM GeoTIFF) are written: always, unless only the picture was asked."""
-        return self._values_choice or not self._picture_wanted()
+        return self._values_choice or not self._picture_wanted(key)
 
-    def _picture_ext(self):
-        """Extension of the coloured DEM picture for the chosen format."""
-        key = self.preset.currentData()
+    def _picture_ext(self, key):
+        """Extension of the coloured DEM picture for the format `key`."""
         if key == plan.CAD:
             return self._value(self.cad_images) or "jp2"
         return plan.PICTURE_PRESETS.get(key, "tif")
@@ -440,22 +510,25 @@ class ExportDialog(uikit.ToolWindow):
         switch.setEnabled(bool(enabled))
 
     def _sync_dem_rows(self):
-        """Show what the DEM will write for the chosen format: the heights (a GeoTIFF, always) and the coloured picture."""
-        key = self.preset.currentData()
-        cad = key == plan.CAD
+        """Show what the DEM will write for the ticked formats: the heights (a GeoTIFF, always) and the coloured picture."""
+        keys = self._ticked()
+        cad_only = keys == [plan.CAD]
         dem_on = self.cards[plan.DEM].button.isChecked() and bool(self._info.get(plan.DEM))
-        self._set_checked(self.picture_check, True if cad else (self._picture_choice and HAS_NUMPY), dem_on and HAS_NUMPY and not cad)
-        wanted = self._picture_wanted()
-        forced = cad or not wanted                           # nothing else would be written: the heights stay
+        self._set_checked(self.picture_check, True if cad_only else (self._picture_choice and HAS_NUMPY), dem_on and HAS_NUMPY and not cad_only)
+        wanted = any(self._picture_wanted(k) for k in keys)
+        forced = cad_only or not wanted                      # nothing else would be written: the heights stay
         self._set_checked(self.values_check, True if forced else self._values_choice, dem_on and not forced)
         self.heights_row.set_format(i18n.t("export.out_tif_always"))
-        self.picture_row.set_format(i18n.t("export.out_cad", fmt=i18n.t(EXT_TEXT[self._picture_ext()])) if cad
-                                    else i18n.t(PICTURE_OUT[self._picture_ext()]))
         tip = i18n.t("export.dem_picture_tip")
-        if not cad and self._picture_ext() == "tif":
-            tip += " " + i18n.t("export.picture_tif_note")
+        if len(keys) == 1:                                   # with several formats the picture follows each of them: nothing to name
+            ext = self._picture_ext(keys[0])
+            self.picture_row.set_format(i18n.t("export.out_cad", fmt=i18n.t(EXT_TEXT[ext])) if cad_only else i18n.t(PICTURE_OUT[ext]))
+            if not cad_only and ext == "tif":
+                tip += " " + i18n.t("export.picture_tif_note")
+        else:
+            self.picture_row.set_format("")
         self.picture_row.info.set_text(tip)
-        self.look_row.setVisible(dem_on and (cad or wanted))
+        self.look_row.setVisible(dem_on and (plan.CAD in keys or wanted))
         self._refresh_look_text()
 
     def _refresh_look_row(self):
@@ -480,7 +553,7 @@ class ExportDialog(uikit.ToolWindow):
 
     def _void(self):
         """What the preview paints where the DEM has no data: nothing when the drawing crops the white background, else white."""
-        return "transparent" if self.preset.currentData() == plan.CAD and self.cad_clip.isChecked() else "white"
+        return "transparent" if self._ticked() == [plan.CAD] and self.clip_check.isChecked() else "white"
 
     def _on_picture(self, *_args):
         """A switch of the DEM outputs was clicked by the user (the programmatic changes of `_sync_dem_rows` do not come here)."""
@@ -592,6 +665,10 @@ class ExportDialog(uikit.ToolWindow):
         self._sig = msapi.raster_signature(self._chunk)
         self._preview, self._preview_key = None, None       # the small DEM of the look window belongs to the previous chunk
         self._jobs = []
+        stale = bool(self.queue) and self._queue_pin != (self._pin, self._sig)      # planned on another chunk, or other default rasters
+        if stale:
+            self.queue = []
+            self._render_queue()
         self.set_subtitle(i18n.t("export.chunk", name=self._chunk_label) if self._chunk is not None else i18n.t("export.chunk_none"))
         crs_object = self._info.get("crs_object")
         self._project_epsg = msapi.project_epsg(crs_object) if crs_object is not None else None
@@ -636,6 +713,8 @@ class ExportDialog(uikit.ToolWindow):
         self.clear_banner()
         self._fill_tiles()
         self._refresh_names()
+        if stale:
+            self.show_banner("info", i18n.t("export.queue_cleared"))
 
     @staticmethod
     def _cm_text(pixel_m):
@@ -663,34 +742,34 @@ class ExportDialog(uikit.ToolWindow):
         for kind in plan.KINDS:
             item = self._info.get(kind + "_default")
             detail, warn = self.raster_details[kind], self.raster_warnings[kind]
-            text, warning = "", ""
+            text, warning, several = "", "", ""
             if item:
                 text = i18n.t(DEFAULT_TEXT[kind], w=item["width"], h=item["height"], cm=self._cm_text(item["resolution"]))
                 count = self._info.get("n_dems" if kind == plan.DEM else "n_orthos") or 0
                 if count > 1:
-                    text += " " + i18n.t(SEVERAL_TEXT[kind], n=count)
+                    text += " " + i18n.t("export.several_of", n=count)
+                    several = i18n.t(SEVERAL_TEXT[kind], n=count)
             ortho = self._info.get("ortho_default")
             if kind == plan.DEM and item and ortho and ortho["resolution"] > 0 and item["resolution"] / ortho["resolution"] > COARSE_RATIO:
                 warning = i18n.t("export.dem_coarse", cm=self._cm_text(item["resolution"]))
             detail.setText(text)
-            detail.setVisible(bool(text))
+            detail.row.setVisible(bool(text))
+            self.raster_tips[kind].set_text(several)
+            self.raster_tips[kind].setVisible(bool(several))
             warn.setText(warning)
             warn.setVisible(bool(warning))
 
     def _build_boundary_row(self, layout):
         """A switch, shown only when the chunk has boundary shapes: Metashape cuts an export to them unless told not to."""
         self.boundary_row = QtWidgets.QWidget()
-        column = vbox(spacing=tokens.XS, parent=self.boundary_row)
-        line = hbox(spacing=tokens.S)
+        line = hbox(spacing=tokens.S, parent=self.boundary_row)
         self.boundary_check = Toggle(i18n.t("export.boundary"), config.get(SECTION, "clip_to_boundary_shapes") is True)   # off by default: the export covers the whole default DEM, as seen in Metashape
         self.boundary_check.toggled.connect(self._on_boundary)
         self.boundary_label = self.boundary_check
         line.addWidget(self.boundary_check)
-        line.addWidget(InfoButton(i18n.t("export.boundary_tip")))
+        self.boundary_tip = InfoButton(i18n.t("export.boundary_tip"))       # what the switch does, and what is exported now
+        line.addWidget(self.boundary_tip)
         line.addStretch(1)
-        column.addLayout(line)
-        self.boundary_note = label("", "small", "muted")
-        column.addWidget(self.boundary_note)
         self.boundary_row.setVisible(False)
         layout.addWidget(self.boundary_row)
 
@@ -701,12 +780,14 @@ class ExportDialog(uikit.ToolWindow):
 
     def _refresh_boundary_note(self):
         count = self._info.get("boundaries") or 0
+        tip = i18n.t("export.boundary_tip")
         if not count:
-            self.boundary_note.setText("")
+            pass
         elif not self.boundary_check.isChecked():
-            self.boundary_note.setText(i18n.t("export.boundary_off"))
+            tip += " " + i18n.t("export.boundary_off")
         else:
-            self.boundary_note.setText(i18n.t("export.boundary_one" if count == 1 else "export.boundary_many", n=count))
+            tip += " " + i18n.t("export.boundary_one" if count == 1 else "export.boundary_many", n=count)
+        self.boundary_tip.set_text(tip)
 
     def _clips_boundary(self):
         """True when the exports are cut to boundary shapes that exist in the chunk."""
@@ -733,11 +814,18 @@ class ExportDialog(uikit.ToolWindow):
                       "gdal": external.find_gdal(config.get(SECTION, "path_gdal") or "")}
 
     def _requirement(self):
-        """(tool, text key) of the first program that is missing for the chosen format, or None."""
-        key = self.preset.currentData()
+        """(tool, text key) of the first program that is missing for a ticked format, or None."""
+        for key in self._ticked():
+            missing = self._requirement_of(key)
+            if missing:
+                return missing
+        return None
+
+    def _requirement_of(self, key):
+        """(tool, text key) of the program that is missing for the format `key`, or None."""
         if key == "ecw" and not self.tools["gm"]:
             return "gm", "export.need_ecw"
-        if key == "jp2" and self._picture_wanted() and not (self.tools["gdal"] or self.tools["gm"]):
+        if key == "jp2" and self._picture_wanted(key) and not (self.tools["gdal"] or self.tools["gm"]):
             return "gdal", "export.need_jp2"                # the coloured DEM picture needs an encoder (the ortho can use Metashape's)
         if key == plan.CAD:
             if not HAS_NUMPY and self.cards[plan.DEM].button.isChecked():
@@ -786,12 +874,20 @@ class ExportDialog(uikit.ToolWindow):
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
 
     def _cancel_tool(self):
-        """Give up: back to the last format that works."""
-        self.preset.setCurrentIndex(max(0, self.preset.findData("full")))
+        """Give up: the formats that cannot be written here are unticked (a format that works is ticked if none is left)."""
+        for key in self._ticked():
+            if self._requirement_of(key):
+                self.preset_checks[key].blockSignals(True)
+                self.preset_checks[key].setChecked(False)
+                self.preset_checks[key].blockSignals(False)
         if self._value(self.cad_images) == "ecw" and not self.tools["gm"]:
             self.cad_images.set_value("jp2")                    # JPEG 2000
         if self._value(self.cad_format) == "dwg" and not self.tools["acad"]:
             self.cad_format.set_value("dxf")                    # DXF
+        if not self._ticked():
+            self.preset_checks["full"].blockSignals(True)
+            self.preset_checks["full"].setChecked(True)
+            self.preset_checks["full"].blockSignals(False)
         self._on_preset()
 
     # -- coordinates ----------------------------------------------------------------------
@@ -959,14 +1055,14 @@ class ExportDialog(uikit.ToolWindow):
         if current in (None, SAME):
             self.coords.set_open(True)                      # a choice is awaited, and it is in there
 
-    def _degrees_blocks(self, jobs):
+    def _degrees_blocks(self, jobs, key):
         """True when the export would ask for metres from a raster in degrees: a drawing, a pixel in cm or tiles, with no projected system."""
         if self.crs_box.currentData() not in (None, SAME):
             return False
         kinds = [kind for kind in self._degrees_kinds() if any(job.kind == kind for job in jobs)]
         if not kinds:
             return False
-        return self.preset.currentData() == plan.CAD or bool(self._tile_m()) or any(not self._is_native(kind) for kind in kinds)
+        return key == plan.CAD or bool(self._tile_m()) or any(not self._is_native(kind) for kind in kinds)
 
     def _on_vertical(self, *_args):
         self._check_geoid()
@@ -1113,13 +1209,12 @@ class ExportDialog(uikit.ToolWindow):
     # -- names ------------------------------------------------------------------------------
 
     def _on_preset(self, *_args):
-        key = self.preset.currentData()
-        self.preset_tip.set_text(i18n.t(plan.preset(key)["tip"]))
-        if self.sender() is self.preset:
-            self._previous_preset = config.get(SECTION, "preset")
-            config.put(SECTION, "preset", key)
-        self.cad_box.setVisible(key == plan.CAD)
-        self.cad_clip_row.setVisible(key == plan.CAD)           # "Crop white background" only concerns the drawings
+        """A format was ticked or unticked (or the formats were re-read): what depends on them follows."""
+        sender = self.sender()
+        if sender in self.preset_checks.values():
+            config.put(SECTION, "presets", self._ticked())
+        self.cad_box.setVisible(plan.CAD in self._ticked())
+        self._sync_clip_row()
         self._check_tools()
         self._refresh_names()
 
@@ -1128,14 +1223,17 @@ class ExportDialog(uikit.ToolWindow):
             config.put(SECTION, "cad_format", self._value(self.cad_format))
         if self._value(self.cad_images):
             config.put(SECTION, "cad_images", self._value(self.cad_images))
-        if HAS_NUMPY:
-            config.put(SECTION, "cad_clip", bool(self.cad_clip.isChecked()))
         self._check_tools()
         self._refresh_names()
 
+    def _clip_for(self, key):
+        """True when the orthomosaic written for the format `key` leaves its white background out (the switch is on and the format can)."""
+        return (bool(self.clip_check.isChecked()) and self.clip_check.isEnabled() and plan.clip_white_possible(key)
+                and (HAS_NUMPY or key != plan.CAD))
+
     def _cad(self):
         return {"format": self._value(self.cad_format) or "dxf", "images": self._value(self.cad_images) or "jp2",
-                "clip": bool(self.cad_clip.isChecked()) and HAS_NUMPY}
+                "clip": self._clip_for(plan.CAD)}
 
     def _wanted(self):
         return {kind: self._pixel(kind) for kind in plan.KINDS
@@ -1144,32 +1242,45 @@ class ExportDialog(uikit.ToolWindow):
     def _folder(self):
         return outputdir.outputs_folder(self._psx) if self._psx else ""
 
-    def _plan(self, version=1):
-        """List of the files for a version number (1 = base names; None = first free number)."""
+    # -- what an export is made of: read from the window now, then frozen in a queue item -----------------
+
+    def _settings(self, key):
+        """Everything an export in the format `key` needs, read from the window at this moment. The queue keeps this copy: what is changed
+        in the window afterwards does not reach it. `error`: why it cannot be planned (a system Metashape refuses), else ''."""
         wanted = self._wanted()
-        return plan.build_jobs(self.site.text().strip(), self._date, wanted, self.preset.currentData(), self._folder(),
-                               native={k for k in wanted if self._is_native(k)}, cad=self._cad(),
-                               version=version, dem_picture=self._picture_wanted(), tiled=bool(self._tile_m()),
-                               dem_values=self._values_wanted())
+        target, error = self._target()
+        return {"key": key, "chunk": self._chunk, "info": self._info, "chunk_label": self._chunk_label, "psx": self._psx,
+                "folder": self._folder(), "site": self.site.text().strip(), "date": self._date, "wanted": dict(wanted),
+                "native": {k for k in wanted if self._is_native(k)}, "cad": self._cad(), "tile_m": self._tile_m(),
+                "picture": self._picture_wanted(key), "values": self._values_wanted(key), "clip_white": self._clip_for(key),
+                "clip_boundary": self._boundary_clip(), "target": target, "error": error,
+                "epsg": int(self.crs_box.currentData()) if target is not None else None, "vertical": self._vertical_choice(),
+                "look": looks.load(), "tools": dict(self.tools), "project_epsg": self._project_epsg,
+                "crs_same": self.crs_box.currentData() in (None, SAME), "crs_epsg": self.crs_box.currentData(),
+                "pixels": {k: self._cm_text(v) for k, v in wanted.items()}, "tile_text": int(self._tile_m()) if self._tile_m() else 0}
 
-    def _existing(self, jobs):
-        return plan.existing_files(jobs, self.preset.currentData(), self._cad(), tiled=bool(self._tile_m()))
+    @staticmethod
+    def _plan_for(settings, version=1, reserved=()):
+        """List of the files for a version number (1 = base names; None = first free number, `reserved` names counted as taken)."""
+        wanted = settings["wanted"]
+        return plan.build_jobs(settings["site"], settings["date"], wanted, settings["key"], settings["folder"],
+                               native=settings["native"], cad=settings["cad"], version=version, dem_picture=settings["picture"],
+                               tiled=bool(settings["tile_m"]), dem_values=settings["values"], clip_white=settings["clip_white"],
+                               reserved=reserved)
 
-    def _ortho_saved_text(self):
-        """What the orthomosaic is written as, for the chosen format (shown under its card)."""
-        key = self.preset.currentData()
-        if key == plan.CAD:
-            return i18n.t("export.out_cad", fmt=i18n.t(EXT_TEXT[self._value(self.cad_images) or "jp2"]))
-        return i18n.t(ORTHO_OUT.get(key, "export.out_tif"))
+    @staticmethod
+    def _existing_of(item):
+        s = item.settings
+        return plan.existing_files(item.jobs, item.key, s["cad"], tiled=bool(s["tile_m"]))
 
-    def _file_rows(self, jobs, folder):
-        """[(relative name, what it holds)] for the Files list: every file the jobs write, in the order they are written."""
+    @staticmethod
+    def _file_rows(settings, jobs, folder):
+        """[(relative name, what it holds)]: every file the jobs write, in the order they are written."""
         rows = []
-        key = self.preset.currentData()
-        if key == plan.CAD:
-            rows.append((plan.cad_dxf_name(1, "dxf"), i18n.t("export.what_drawing")))
-            if self._cad()["format"] == "dwg":
-                rows.append((plan.cad_dxf_name(1, "dwg"), i18n.t("export.what_drawing")))
+        if settings["key"] == plan.CAD and jobs:
+            rows.append((plan.cad_dxf_name(jobs[0].version, "dxf"), i18n.t("export.what_drawing")))
+            if settings["cad"]["format"] == "dwg":
+                rows.append((plan.cad_dxf_name(jobs[0].version, "dwg"), i18n.t("export.what_drawing")))
         for job in jobs:
             what = i18n.t("export.what_ortho" if job.kind == plan.ORTHO else "export.what_heights")
             if plan.values_wanted(job):
@@ -1192,12 +1303,11 @@ class ExportDialog(uikit.ToolWindow):
         if hasattr(self, "tile_box"):
             self._fill_tiles()
         self._refresh_crs_title()
-        self.ortho_saved.setText(i18n.t("export.saved_as", fmt=self._ortho_saved_text()))
-        self.ortho_saved.setEnabled(self.cards[plan.ORTHO].button.isChecked() and bool(self._info.get(plan.ORTHO)))
         self._jobs, rows, empty, note = [], [], "", ""
         folder = self._folder()
         wanted = self._wanted()
         site = self.site.text().strip()
+        keys = self._ticked()
         if not self._psx:
             empty = i18n.t("export.unsaved")
         elif not self._info.get(plan.ORTHO) and not self._info.get(plan.DEM):
@@ -1206,18 +1316,23 @@ class ExportDialog(uikit.ToolWindow):
             empty = i18n.t("export.nothing")
         elif not naming.sanitize_token(site):
             empty = i18n.t("export.site_missing")
+        elif not keys:
+            empty = i18n.t("export.no_format")
         else:
             try:
-                jobs = self._plan(1)
-                self._jobs = jobs
-                rows = self._file_rows(jobs, folder)
                 notes = []
+                for key in keys:                            # the files each ticked format would write (the first version number)
+                    settings = self._settings(key)
+                    jobs = self._plan_for(settings, 1)
+                    self._jobs += jobs
+                    rows += self._file_rows(settings, jobs, folder)
+                    existing = plan.existing_files(jobs, key, settings["cad"], tiled=bool(settings["tile_m"]))
+                    if existing:
+                        notes.append(i18n.t("export.exists_note", n=len(existing)))
                 if self._tile_m():
-                    notes.append(i18n.t("export.tiles_note", m=int(self._tile_m())))
-                if self._existing(jobs):
-                    notes.append(i18n.t("export.exists_note", n=len(self._existing(jobs))))
+                    notes.insert(0, i18n.t("export.tiles_note", m=int(self._tile_m())))
                 note = " ".join(notes)
-                too_long = naming.check_path_length(folder, [os.path.relpath(j.path, folder) for j in jobs])
+                too_long = naming.check_path_length(folder, [os.path.relpath(j.path, folder) for j in self._jobs])
                 if too_long:
                     self._jobs, rows = [], []
                     empty = i18n.t("export.too_long")
@@ -1233,6 +1348,112 @@ class ExportDialog(uikit.ToolWindow):
         self.files_note.setText(note)
         self.files_note.setVisible(bool(note))
         self.folder.setFullText(i18n.t("export.folder", path=folder) if folder else "")
+        self.refresh_buttons()
+
+    # -- the export list ------------------------------------------------------------------------
+
+    def _item_options(self, settings):
+        """The key options of an export on one short line: pixels, system, tiles, and for a drawing its file type and images."""
+        parts = []
+        for kind in plan.KINDS:
+            if kind in settings["pixels"]:
+                parts.append(i18n.t("export.q_" + kind, cm=settings["pixels"][kind]))
+        if settings["key"] == plan.CAD:
+            parts.append("{} · {}".format(settings["cad"]["format"].upper(), settings["cad"]["images"].upper()))
+        if not settings["crs_same"]:
+            parts.append(i18n.t("export.q_epsg", epsg=settings["crs_epsg"]))
+        if settings["tile_text"]:
+            parts.append(i18n.t("export.q_tiles", m=settings["tile_text"]))
+        return " · ".join(parts)
+
+    def _item_details(self, item):
+        """The text behind the "i" of a row: every option, then every file the export writes."""
+        s = item.settings
+        lines = [self._item_options(s)]
+        if s["clip_white"]:
+            lines.append(i18n.t("export.cad_clip"))
+        lines += ["{}  ({})".format(name, what) for name, what in item.rows]
+        return "\n".join(line for line in lines if line)
+
+    def _make_item(self, key):
+        """The queue item for the format `key` from the window as it is now, or (None, the reason it cannot be added)."""
+        settings = self._settings(key)
+        if settings["error"]:
+            return None, settings["error"]
+        folder = settings["folder"]
+        taken = []                                          # names the items already in the list will write: a new one takes other names
+        for other in self.queue:
+            taken += plan.planned_names(other.jobs, other.key, other.settings["folder"], other.settings["cad"])
+        try:
+            jobs = self._plan_for(settings, 1)
+            mine = [name.lower() for name in plan.planned_names(jobs, key, folder, settings["cad"])]
+            if taken and any(name.lower() in set(t.lower() for t in taken) for name in mine):
+                jobs = self._plan_for(settings, None, taken)
+        except ValueError as exc:
+            return None, str(exc)
+        feet = [e for e in (settings["project_epsg"] if settings["crs_same"] else settings["crs_epsg"],)
+                if e and projdb.available() and not projdb.is_metric(e)]
+        if feet and (settings["tile_m"] or any(not self._is_native(job.kind) for job in jobs) or key == plan.CAD):
+            return None, i18n.t("export.crs_feet")          # pixel / tile sizes are in metres here, the system is not
+        if self._degrees_blocks(jobs, key):                 # told here, in words, before any file is written
+            return None, self._degrees_sentence() + " " + self._degrees_advice()
+        return exportqueue.Item(key, settings, jobs, self._file_rows(settings, jobs, folder)), ""
+
+    def _on_add(self):
+        """Add: every ticked format becomes a planned export with the settings of this moment; the ticks are cleared."""
+        if self.is_busy() or not self._jobs or self._missing or self._geoid_missing:
+            return
+        if self._follow_chunk(deep=True):                   # never plan on a chunk the user has not seen
+            return
+        if self._add_ticked() and self.queue:
+            for key in self._ticked():
+                self.preset_checks[key].blockSignals(True)
+                self.preset_checks[key].setChecked(False)
+                self.preset_checks[key].blockSignals(False)
+            self._on_preset()
+
+    def _add_ticked(self):
+        """Put the ticked formats in the list. False (with the reason in a banner) when one cannot be added; the ones before it stay."""
+        for key in self._ticked():
+            if len(self.queue) >= exportqueue.MAX_ITEMS:
+                self.show_banner("warning", i18n.t("export.queue_full", n=exportqueue.MAX_ITEMS))
+                return False
+            item, problem = self._make_item(key)
+            if item is None:
+                self.show_banner("danger", problem)
+                return False
+            self.queue.append(item)
+        self._queue_pin = (self._pin, self._sig)
+        self.clear_banner()
+        self._render_queue()
+        return True
+
+    def _remove_item(self, item):
+        if self.is_busy() or item not in self.queue:
+            return
+        self.queue.remove(item)
+        self._render_queue()
+
+    def _render_queue(self):
+        """Draw the list: one row per planned export, the total under it."""
+        while self.queue_rows.count():
+            widget = self.queue_rows.takeAt(0).widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+        self.queue_empty = label(i18n.t("export.queue_empty"), "small", "muted")
+        self.queue_rows.addWidget(self.queue_empty)
+        self.queue_empty.setVisible(not self.queue)
+        self.queue_row_widgets = []
+        for item in self.queue:
+            row = QueueRow(i18n.t("export.short_" + item.key), self._item_options(item.settings),
+                           i18n.t("export.queue_files", n=item.files), self._item_details(item), i18n.t("export.queue_remove"),
+                           lambda item=item: self._remove_item(item), failed=item.failed)
+            self.queue_rows.addWidget(row)
+            self.queue_row_widgets.append(row)
+        total = exportqueue.total_files(self.queue)
+        self.queue_total.setText(i18n.t("export.queue_total", n=len(self.queue), files=total) if self.queue else "")
+        self.queue_total.setVisible(bool(self.queue))
         self.refresh_buttons()
 
     # -- export -----------------------------------------------------------------------------
@@ -1257,101 +1478,146 @@ class ExportDialog(uikit.ToolWindow):
         finally:
             self._dialog_open -= 1
 
+    def _context(self, item):
+        """The pipeline's context for one planned export, from its frozen settings."""
+        s = item.settings
+        return pipeline.Context(s["chunk"], s["info"], s["folder"], s["site"], s["date"], item.key, msapi.export_raster,
+                                tools=dict(s["tools"]), crs=s["target"], tile_m=s["tile_m"], cad=s["cad"], snap=msapi.snapped_box,
+                                transform=msapi.transform_box, tick=QtWidgets.QApplication.processEvents, vertical=s["vertical"],
+                                proj=projtool.Proj(geoid_dir=crs.own_dir()), epsg=s["epsg"], look=s["look"],
+                                clip_boundary=s["clip_boundary"], log=lambda text: journal.write("Aero-Exports: " + text))
+
     def _on_export(self):
+        """Export / Run all exports: the list runs in order. With an empty list, what is ticked is added first (one format, no Add needed)."""
         if self.is_busy():
             return
         if self._follow_chunk(deep=True):                   # never export silently on a chunk the user has not seen
             return
-        if not self._jobs:
+        if not self.queue:
+            if not self._jobs or self._missing or self._geoid_missing or not self._add_ticked():
+                return
+        items = list(self.queue)
+        if not items:
             return
-        chunk = self._chunk                                 # the pinned chunk, the one named at the top of the window
-        if chunk is None:
+        if any(item.settings["chunk"] is None for item in items):
             self.show_banner("danger", i18n.t("export.no_chunk"))
             return
         if self._geoid_ids and self.geoid_card.isVisible():     # grids of the zone: Download or Later first
             self._flash_geoid()
             return
-        jobs = list(self._jobs)
-        if self._existing(jobs):                            # the export already exists: a new version, or overwrite
+        existing = sum(len(self._existing_of(item)) for item in items)
+        if existing:                                        # the export already exists: a new version, or overwrite
             try:
-                following = self._plan(None)[0].version
+                following = self._plan_for(items[0].settings, None)[0].version
             except ValueError:
                 following = 2
-            choice = self._ask_exists(len(self._existing(jobs)), following)
+            choice = self._ask_exists(existing, following)
             if choice is None:
                 return
-            if choice == OVERWRITE and not self._confirm_overwrite(len(self._existing(jobs))):
+            if choice == OVERWRITE and not self._confirm_overwrite(existing):
                 return
             if choice == NEW_VERSION:
-                jobs = self._plan(None)
-        feet = [e for e in (self._project_epsg if self.crs_box.currentData() in (None, SAME) else self.crs_box.currentData(),)
-                if e and projdb.available() and not projdb.is_metric(e)]
-        if feet and (self._tile_m() or any(not self._is_native(job.kind) for job in jobs) or self.preset.currentData() == plan.CAD):
-            self.show_banner("danger", i18n.t("export.crs_feet"))        # pixel / tile sizes are in metres here, the system is not
-            return
-        if self._degrees_blocks(jobs):                      # told here, in words, before any file is written
-            self.show_banner("danger", self._degrees_sentence() + " " + self._degrees_advice())
-            return
-        target, error = self._target()
-        if error:
-            self.show_banner("danger", error)
-            return
-        try:
-            os.makedirs(self._folder(), exist_ok=True)
-        except OSError as exc:
-            self.show_banner("danger", i18n.t("export.failed", name=self._folder(), error=exc))
-            return
-        ctx = pipeline.Context(chunk, self._info, self._folder(), self.site.text().strip(), self._date, self.preset.currentData(),
-                               msapi.export_raster, tools=dict(self.tools), crs=target, tile_m=self._tile_m(), cad=self._cad(),
-                               snap=msapi.snapped_box, transform=msapi.transform_box,
-                               tick=QtWidgets.QApplication.processEvents, vertical=self._vertical_choice(),
-                               proj=projtool.Proj(geoid_dir=crs.own_dir()),
-                               epsg=int(self.crs_box.currentData()) if target is not None else None, look=looks.load(),
-                               clip_boundary=self._boundary_clip(), log=lambda text: journal.write("Aero-Exports: " + text))
+                taken = []
+                for item in items:
+                    item.jobs = self._plan_for(item.settings, None, taken)
+                    item.rows = self._file_rows(item.settings, item.jobs, item.settings["folder"])
+                    taken += plan.planned_names(item.jobs, item.key, item.settings["folder"], item.settings["cad"])
+                self._render_queue()
+        for folder in sorted(set(item.settings["folder"] for item in items)):
+            try:
+                os.makedirs(folder, exist_ok=True)
+            except OSError as exc:
+                self.show_banner("danger", i18n.t("export.failed", name=folder, error=exc))
+                return
+        contexts = [self._context(item) for item in items]
         journal.write("Aero-Exports: export of {}".format(self._describe()))
-        total = len(jobs)
+        total = sum(len(item.jobs) for item in items)
+        self._run_done = []                                 # the items that went through: they leave the list when the run ends
 
         def work(progress):
             started = set()
+            summary = exportqueue.Summary()
+            before = 0                                      # jobs of the items already run: the bar counts them all
 
-            def report(fraction, name):
-                text = i18n.t("export.working", name=name, i=min(total, int(fraction * total) + 1), n=total) if name else ""
-                new_file = bool(name) and name not in started       # the first call for a file comes before anything of it is written
-                started.add(name)
+            def reporter(item, count, before):
+                def report(fraction, name):
+                    overall = (before + fraction * count) / float(total)
+                    text = i18n.t("export.working", name=name, i=min(total, int(overall * total) + 1), n=total) if name else ""
+                    new_file = bool(name) and (id(item), name) not in started   # the first call for a file comes before anything of it is written
+                    started.add((id(item), name))
+                    try:
+                        progress(overall, text)
+                    except Cancelled:
+                        if new_file:                        # stop between two files, never in the middle of one
+                            raise
+                return report
+
+            for index, (item, ctx) in enumerate(zip(items, contexts)):
+                journal.write("Aero-Exports: item {}/{}: {}".format(index + 1, len(items), item.key))
+                item.failed = ""
                 try:
-                    progress(fraction, text)
+                    result = pipeline.run(ctx, item.jobs, reporter(item, len(item.jobs), before))
+                    summary.done.append((item, result))
+                    self._run_done.append(item)
                 except Cancelled:
-                    if new_file:                            # stop between two files, never in the middle of one
-                        raise
-            try:
-                return pipeline.run(ctx, jobs, report)
-            except Cancelled:
-                raise
-            except pipeline.Failure as exc:
-                journal.write("Aero-Exports: {}: {}".format(ctx.failed, exc))
-                raise pipeline.Failure(i18n.t("export.failed", name=ctx.failed or jobs[0].name, error=exc))
-            except Exception as exc:
-                journal.write("Aero-Exports: {!r}".format(exc))
-                journal.write("Aero-Exports: {}".format(traceback.format_exc().strip().replace("\n", " | ")))
-                raise RuntimeError(i18n.t("export.failed", name=ctx.failed or jobs[0].name, error=repr(exc)))
+                    raise
+                except pipeline.Failure as exc:
+                    journal.write("Aero-Exports: {}: {}".format(ctx.failed, exc))
+                    item.failed = i18n.t("export.failed", name=ctx.failed or item.jobs[0].name, error=exc)
+                    summary.failed.append((item, item.failed))
+                except Exception as exc:
+                    journal.write("Aero-Exports: {!r}".format(exc))
+                    journal.write("Aero-Exports: {}".format(traceback.format_exc().strip().replace("\n", " | ")))
+                    item.failed = i18n.t("export.failed", name=ctx.failed or item.jobs[0].name, error=repr(exc))
+                    summary.failed.append((item, item.failed))
+                before += len(item.jobs)
+            if summary.failed and not summary.done:         # nothing went through: the error banner, with Retry
+                raise RuntimeError("\n".join(text for _item, text in summary.failed))
+            return summary
 
         self.run(work, mode="cooperative", name="export", on_done=self._exported, on_error=self._export_failed,
                  on_cancel=self._export_cancelled, retry=False)
 
-    def _exported(self, result):
-        for path, _size in result.files:
+    def _end_run(self):
+        """What ran leaves the list; what failed stays (with its reason), what was not reached stays."""
+        done = getattr(self, "_run_done", [])
+        self.queue = [item for item in self.queue if item not in done]
+        self._run_done = []
+        self._render_queue()
+
+    def _exported(self, summary):
+        results = [result for _item, result in summary.done]
+        files = [pair for result in results for pair in result.files]
+        for path, _size in files:
             journal.write("Aero-Exports: {}".format(path))
-        written = sum(size for _path, size in result.files)
-        text = i18n.t("export.done", n=len(result.files), size=size_text(written)) + self._cad_report(result)
-        clean = not result.warnings and not (result.check and result.check["failed"])
-        self.show_banner("success" if clean else "warning", text, action=(i18n.t("export.open_folder"), self._open_folder))
+        written = sum(size for _path, size in files)
+        if len(summary.done) + len(summary.failed) == 1:
+            text = i18n.t("export.done", n=len(files), size=size_text(written)) + self._cad_report(results[0])
+        else:
+            text = i18n.t("export.done_all", n=len(summary.done), files=len(files), size=size_text(written))
+            if summary.failed:
+                text = i18n.t("export.partial", done=len(summary.done), n=len(summary.done) + len(summary.failed),
+                              failed=len(summary.failed))
+            reports = []
+            for result in results:
+                for line in self._cad_report(result).split("\n"):
+                    if line and line not in reports:
+                        reports.append(line)
+            text += ("\n" + "\n".join(reports)) if reports else ""
+        clean = not summary.failed and all(not r.warnings and not (r.check and r.check["failed"]) for r in results)
+        details = "\n".join(reason for _item, reason in summary.failed)
+        self.show_banner("success" if clean else "warning", text, action=(i18n.t("export.open_folder"), self._open_folder),
+                         details=details or None)
+        self._end_run()
         self._refresh_names()                           # the next version number is updated
 
     def _export_failed(self, exc):
         self.show_error(RuntimeError(str(exc)), retry=self._on_export, trace=self.runner().trace)
+        self._end_run()
 
     def _export_cancelled(self):
         self.show_banner("info", i18n.t("export.cancelled"))
+        self._end_run()
         self._refresh_names()
 
     @staticmethod

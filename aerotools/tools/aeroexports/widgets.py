@@ -4,6 +4,7 @@
     ItemCard     a card for one thing to export (head row with the tick, the pixel size, then rows below)
     OutputRow    one file the item will write: a switch, what it is written as, an optional "i"
     ClickLabel   a label that calls a handler when clicked (the small DEM picture)
+    QueueRow     one planned export of the list: its format, its key options, how many files, the details behind an "i", a remove button
     SliderRow    label, slider, typed value, reset button (the look window)
 
 Kit requests (kept here until the kit has them): a checkbox-style "choice row", a slider row with a typed value.
@@ -58,13 +59,13 @@ class ItemCard(QtWidgets.QFrame):
     def __init__(self, title):
         super(ItemCard, self).__init__()
         self.setProperty("ui", "card")
-        outer = vbox((tokens.M, tokens.M, tokens.M, tokens.M), tokens.S, parent=self)
+        outer = vbox((tokens.M, tokens.S, tokens.M, tokens.S), tokens.XS, parent=self)
         self.head = hbox(spacing=tokens.S)
         self.button = Toggle(title, True)
         self.head.addWidget(self.button)
         self.head.addStretch(1)
         outer.addLayout(self.head)
-        self.rows = vbox(spacing=tokens.S)
+        self.rows = vbox(spacing=tokens.XS)
         outer.addLayout(self.rows)
 
 
@@ -85,6 +86,25 @@ class OutputRow(QtWidgets.QWidget):
 
     def set_format(self, text):
         self.format.setText(text)
+
+
+class QueueRow(QtWidgets.QWidget):
+    """One planned export, on one line: format, key options, number of files, an "i" with the exact files, and a remove button. The
+    options wrap onto a second line when they do not fit (nothing is cut). A failed item says why, in the colour of an error."""
+
+    def __init__(self, title, options, count, details, remove_text, handler, failed=""):
+        super(QueueRow, self).__init__()
+        row = hbox(spacing=tokens.S, parent=self)
+        self.title = label(title, "body", wrap=False)
+        row.addWidget(self.title)
+        self.options = label(failed or options, "small", "danger" if failed else "muted", wrap=True)
+        row.addWidget(self.options, 1)
+        self.count = label(count, "small", "muted", wrap=False)
+        row.addWidget(self.count)
+        self.info = InfoButton(details)
+        row.addWidget(self.info)
+        self.remove = IconButton("cross", remove_text, handler)
+        row.addWidget(self.remove)
 
 
 class SliderRow(object):

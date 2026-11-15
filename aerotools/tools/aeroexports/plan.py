@@ -29,6 +29,9 @@ CAD_BASENAME = "TOPO"
 # (..._dtm.jpg + .jgw: no external tool needed, and a different extension from the heights ..._dtm.tif).
 PICTURE_PRESETS = {"full": "tif", "quick": "tif", "jpeg": "jpg", "jp2": "jp2", "ecw": "ecw"}
 VIEW_SUFFIX = "_view"
+# Orthomosaic formats that can leave the empty background out: the GeoTIFF and the two converted formats keep it transparent (alpha
+# channel instead of a white fill), a drawing crops it with a clip polygon. A JPEG cannot hold transparency, so it stays white.
+CLIP_WHITE_PRESETS = ("full", "quick", "jp2", "ecw", "cad")
 
 # A file to write.
 # `pixel_m` goes into the name; `native`: Metashape's grid is kept (nothing is resampled);
@@ -81,12 +84,21 @@ def preset(key):
     return PRESETS[0]
 
 
-def spec_for(preset_key, kind, cad=None):
-    """Settings of a file type. In CAD, the extension follows the image choice (jp2 / ecw)."""
+def clip_white_possible(preset_key):
+    """True when an orthomosaic written with this preset can be delivered without its white / empty background."""
+    return preset_key in CLIP_WHITE_PRESETS
+
+
+def spec_for(preset_key, kind, cad=None, clip_white=False):
+    """Settings of a file type. In CAD, the extension follows the image choice (jp2 / ecw).
+    `clip_white`: the orthomosaic leaves its empty background out: an alpha channel instead of a white fill (a drawing does it with
+    its clip polygon instead, see pipeline._clip_ortho)."""
     spec = dict(preset(preset_key)[kind])
     if preset_key == CAD and kind == ORTHO:
         images = (cad or {}).get("images", "jp2")
         spec["ext"], spec["post"] = images, images
+    elif kind == ORTHO and clip_white and clip_white_possible(preset_key):
+        spec.update(white=False, alpha=True)
     return spec
 
 
@@ -157,7 +169,8 @@ def listing_of(folder):
 
 
 def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listing=None, native=(),
-               cad=None, version=None, dem_picture=False, tiled=False, dem_values=True):
+               cad=None, version=None, dem_picture=False, tiled=False, dem_values=True, clip_white=False,
+               reserved=()):
     """List of the files to write.
 
     `wanted`: {"ortho": pixel size in metres, "dem": ...} for what is ticked (the others are absent).
@@ -166,6 +179,9 @@ def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listi
     `dem_picture`: also write the coloured picture of the DTM (same name, extension .jp2 / .ecw / .jpg + .jgw; a GeoTIFF
     picture is named ..._dtm_view.tif so as not to take the name of the heights).
     `dem_values`: False = the heights (GeoTIFF of the DTM) are not kept, only the picture (needs `dem_picture`).
+    `clip_white`: the orthomosaic is written without its white background (see `spec_for`).
+    `reserved`: relative names that other planned exports of the same folder will write: they count as existing when a free version
+    number is looked for (an export queue holds several exports that must not take each other's names).
     `version`: imposed number (1 = overwrite); otherwise the smallest one for which none of the planned files already exists
     in `folder` (the orthomosaic and the DTM of one export share the same number).
     `tiled`: the export is cut into tiles; the tiles already in the folder (..._R01C02_ortho.tif) then count as the files of that
@@ -179,7 +195,7 @@ def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listi
 
     def locate(kind, version_number):
         """(name, path, extra) of what one type produces for a version number."""
-        spec = spec_for(preset_key, kind, cad)
+        spec = spec_for(preset_key, kind, cad, clip_white)
         name = naming.build_name(site, date, wanted[kind], kind, spec["ext"], version=version_number,
                                  date_style=date_style)
         if not is_cad:
@@ -210,7 +226,7 @@ def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listi
                 names.append(os.path.relpath(extra["view_path"], folder).replace("\\", "/"))
                 names.extend(os.path.relpath(os.path.join(os.path.dirname(extra["view_path"]), n), folder).replace("\\", "/")
                              for n in view_aux_names(extra))
-            names.extend(aux_names(name, spec_for(preset_key, kind, cad)))
+            names.extend(aux_names(name, spec_for(preset_key, kind, cad, clip_white)))
         if is_cad:
             names.append(cad_dxf_name(version_number, "dxf"))
             if cad["format"] == "dwg":
@@ -220,12 +236,16 @@ def build_jobs(site, date, wanted, preset_key, folder, date_style="short", listi
     if version is None:
         found = listing if listing is not None else (
             listing_of(folder) if (is_cad or tiled) and os.path.isdir(folder) else None)
+        if reserved:
+            if found is None:
+                found = os.listdir(folder) if os.path.isdir(folder) else []
+            found = list(found) + [name.replace("\\", "/").lower() for name in reserved]
         if tiled and found is not None:
             found = with_tiles(found)
         version = naming.next_free_version(folder, planned, listing=found)
     jobs = []
     for kind in kinds:
-        spec = spec_for(preset_key, kind, cad)
+        spec = spec_for(preset_key, kind, cad, clip_white)
         name, path, extra = locate(kind, version)
         jobs.append(Job(kind, name, path, wanted[kind], spec, version, kind in native, extra))
     return jobs
@@ -264,3 +284,8 @@ def planned_files(jobs, preset_key, cad=None):
         if fmt == "dwg":
             paths.append(os.path.join(folder, cad_dxf_name(jobs[0].version, "dwg")))
     return paths
+
+
+def planned_names(jobs, preset_key, folder, cad=None):
+    """Relative names (forward slashes) of everything `jobs` write, from the Outputs folder `folder`: what `build_jobs(reserved=...)` takes."""
+    return [os.path.relpath(path, folder).replace("\\", "/") for path in planned_files(jobs, preset_key, cad)]
