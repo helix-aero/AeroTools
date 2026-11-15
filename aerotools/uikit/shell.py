@@ -424,6 +424,17 @@ def focus_chain(widget):
     return out
 
 
+class _FlatLayout(QtWidgets.QVBoxLayout):
+    """The layout of a `ToolWindow` itself. It holds one widget, whose wrapped texts make its height depend on its width; this layout says it
+    does not. A top-level widget whose layout has a height for width is sized by the window system to that height, whatever the least size
+    the window declared: on Windows the native window then became taller than the screen ("Unable to set geometry ... Resulting geometry"),
+    and the pictured window and the places that answer clicks no longer matched. The window asks `ToolWindow._flow` for its heights
+    instead, and declares them itself, clamped to the screen (`ToolWindow._sync_minimum`)."""
+
+    def hasHeightForWidth(self):
+        return False
+
+
 class ToolWindow(QtWidgets.QDialog):
     """The shell of every tool window.
 
@@ -462,13 +473,17 @@ class ToolWindow(QtWidgets.QDialog):
         self._status_override = False
         self.screens = []
 
-        outer = vbox(parent=self)
-        outer.setSizeConstraint(QtWidgets.QLayout.SetMinimumSize)
+        outer = _FlatLayout(self)                                      # the window's own layout never says "my height depends on my width": see _FlatLayout
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.setSizeConstraint(QtWidgets.QLayout.SetNoConstraint)     # the minimum size is declared by `_sync_minimum`, which knows the screen
+        self._syncing = False
         self.root = QtWidgets.QWidget()
         self.root.setAttribute(Qt.WA_StyledBackground, True)
         style.apply(self.root)
         outer.addWidget(self.root)
         frame = vbox(parent=self.root)
+        self._flow = frame                                              # the layout that knows the wrapped texts (heights for a width)
         self.band = HeaderBand()
         band_lay = vbox((tokens.WINDOW_MARGIN, tokens.WINDOW_MARGIN, tokens.WINDOW_MARGIN,
                          tokens.M + tokens.RULE_H if (tokens.HEADER_FILL or tokens.HEADER_RULE) else 0), 0, parent=self.band)
@@ -484,6 +499,7 @@ class ToolWindow(QtWidgets.QDialog):
         if self.steps is not None:
             lay.addWidget(self.steps)
         self.stack = QtWidgets.QStackedWidget()
+        self.stack.currentChanged.connect(lambda _i: QtCore.QTimer.singleShot(0, self._sync_minimum))      # another page, another least size
         lay.addWidget(self.stack, 1)
         self.banner = Banner("info", "")
         self.banner.hide()
@@ -826,8 +842,70 @@ class ToolWindow(QtWidgets.QDialog):
             if frame.bottom() > area.bottom() or frame.top() < area.top():          # a taller window must stay on the screen
                 self.move(frame.left(), max(area.top(), min(frame.top(), area.bottom() - frame.height() + 1)))
 
+    def _sync_minimum(self):
+        """Declare to the window system the least size the content really needs, at the width the window has. A layout with wrapped
+        texts needs more height at a narrower width, but Qt only reports its minimum at the narrowest width: a drag below the real need
+        was refused ("Unable to set geometry" in the console) and a window could end up taller than the screen. The least width is raised,
+        when it must be, so that the content fits the screen height; the least height follows the width (see `resizeEvent`) unless the window has a
+        design size.
+        A window with a fixed size is left alone."""
+        lay = self.layout()
+        if self._syncing or lay is None or (self.minimumSize() == self.maximumSize() and not self.minimumSize().isEmpty()):
+            return
+        self._syncing = True
+        try:
+            area = screen_area(self)
+            room_w, room_h = max(px(200), area.width() - px(tokens.SCREEN_MARGIN)), max(px(200), area.height() - px(tokens.SCREEN_MARGIN))
+            need = lay.totalMinimumSize()
+            flow = self._flow
+            hfw = flow.hasHeightForWidth()
+
+            def height_at(wide):
+                return max(need.height(), flow.minimumHeightForWidth(wide)) if hfw else need.height()
+
+            width = min(need.width(), room_w)
+            least = height_at(width)
+            best = height_at(room_w)
+            # A wider window needs less height only when the content wraps: widen the least width just as far as that helps. When more
+            # width does not lower the height (a page that is tall whatever its width), the width stays: it would only make the
+            # window jump to the full screen width for nothing.
+            while least > max(room_h, best) and width < room_w:
+                width = min(room_w, width + px(16))
+                least = height_at(width)
+            self._true_need = QtCore.QSize(width, height_at(min(need.width(), room_w)))
+            self._sync_width = self.width()
+            # A window of a fixed design size does not follow its banners: it declares the height it needs at its least width, whatever
+            # width it has, so that narrowing it never asks for more height than was declared. The others follow their width.
+            # What is declared never exceeds the work area, whatever the content asks (a window the native one cannot hold is refused by
+            # the window system and then drawn at a size its hit areas do not follow).
+            self.setMinimumSize(min(width, room_w), min(height_at(width if self._design else max(self.width(), width)), room_h))
+            self._keep_on_screen(area)
+        finally:
+            self._syncing = False
+
+    def _keep_on_screen(self, area):
+        """A window that is not maximised is never larger than the work area of its screen (a screen change or a content change that
+        grew it must not leave it past the edge)."""
+        if not self.isVisible() or self.isMaximized() or self.isFullScreen():
+            return
+        width, height = min(self.width(), area.width()), min(self.height(), area.height())
+        if (width, height) != (self.width(), self.height()):
+            self.resize(width, height)
+            self._sync_width = self.width()
+
+    def _screen_changed(self, *_args):
+        self._sync_minimum()
+
+    def event(self, event):
+        result = super(ToolWindow, self).event(event)
+        if event.type() == QtCore.QEvent.LayoutRequest:
+            self._sync_minimum()
+        return result
+
     def resizeEvent(self, event):
         super(ToolWindow, self).resizeEvent(event)
+        if self._fitted and self.width() != getattr(self, "_sync_width", None):
+            self._sync_minimum()                           # another width, another least height
         if self._fitted and self._banner_state is not None and self.banner.isVisible() == self._banner_state:
             self._h_base = self.height() - self._banner_h        # what the window is without its banner (the user may resize it)
 
@@ -835,9 +913,10 @@ class ToolWindow(QtWidgets.QDialog):
         """Size the window: its design size or its content size, never smaller than the content needs, never larger than the screen."""
         self.ensurePolished()
         self.layout().activate()
+        self._sync_minimum()
         area = screen_area(self)
         room_w, room_h = area.width() - px(tokens.SCREEN_MARGIN), area.height() - px(tokens.SCREEN_MARGIN)
-        need = self.layout().totalMinimumSize()
+        need = getattr(self, "_true_need", None) or self.layout().totalMinimumSize()
         if self._design:
             width, height = px(self._design[0]), px(self._design[1])
         else:
@@ -845,9 +924,9 @@ class ToolWindow(QtWidgets.QDialog):
             width, height = max(hint.width(), px(tokens.MIN_WINDOW_W)), hint.height()
         width = min(max(width, need.width()), room_w)
         height = min(max(height, need.height()), room_h)
-        if self.layout().hasHeightForWidth():
-            wanted = self.layout().totalHeightForWidth(width)        # wrapped texts measured at the real width, not the narrowest
-            height = min(max(height if self._design else wanted, self.layout().minimumHeightForWidth(width)), room_h)
+        if self._flow.hasHeightForWidth():
+            wanted = self._flow.totalHeightForWidth(width)           # wrapped texts measured at the real width, not the narrowest
+            height = min(max(height if self._design else wanted, self._flow.minimumHeightForWidth(width)), room_h)
         self.resize(width, height)
         frame = QtCore.QRect(0, 0, width, height)
         frame.moveCenter(area.center())
@@ -865,6 +944,10 @@ class ToolWindow(QtWidgets.QDialog):
             self.refresh_buttons()
             self.fix_tab_order()
             self.focus_initial()
+        handle = self.windowHandle()
+        if handle is not None and not getattr(self, "_screen_watched", False):
+            self._screen_watched = True
+            handle.screenChanged.connect(self._screen_changed)          # another screen: its work area, its least size
         super(ToolWindow, self).showEvent(event)
 
     def focus_initial(self):

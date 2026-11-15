@@ -414,9 +414,10 @@ def open_dialog():
     from aerotools.tools.aeroexports import dialog
     from aerotools import msapi
     config.put("aeroexports", "dem_look", None)
+    config.put("aeroexports", "clip_white", None)
     config.put("aeroexports", "dem_picture", False)
     config.put("aeroexports", "dem_values", True)
-    config.put("aeroexports", "preset", "full")
+    config.put("aeroexports", "presets", ["full"])
     path = os.path.join(tempfile.mkdtemp(prefix="aerotools_qt_card_"), "SITE.psx")
     open(path, "w").write("x")
     msapi.document_path = lambda: path
@@ -433,9 +434,10 @@ def open_dialog():
     return box
 
 
-def choose_preset(box, key):
-    box.preset.setCurrentIndex(box.preset.findData(key))
-    box.preset.activated.emit(box.preset.currentIndex())
+def choose_preset(box, *keys):
+    """Tick exactly these formats (what choosing one in the old drop-down did)."""
+    for other, tick in box.preset_checks.items():
+        tick.setChecked(other in keys)
     pump(80)
 
 
@@ -527,16 +529,25 @@ def _():
     return ok and (shot.width(), shot.height()) == (width, height) and [float(v) for v in lines] == [0.5, 0.0, 0.0, -0.5, 1000.25, 2399.75],         "ok={} {} size={}x{} world={}".format(ok, message, shot.width(), shot.height(), lines)
 
 
-@case("export window: the ortho card says what the chosen format writes", needs_numpy=False)
+@case("export window: the white background is cropped by default for every ortho format that can (a JPEG cannot), and reaches the files' settings")
 def _():
+    from aerotools.tools.aeroexports import plan
     box = open_dialog()
-    texts = {}
+    seen = {}
     for key in ("full", "quick", "jpeg", "jp2", "ecw", "cad"):
         choose_preset(box, key)
-        texts[key] = box.ortho_saved.text()
+        jobs = box._jobs
+        ortho = [job for job in jobs if job.kind == "ortho"][0]
+        seen[key] = (box.clip_check.isChecked(), box.clip_check.isEnabled(), ortho.spec.get("alpha"), ortho.spec.get("white"),
+                     box._cad()["clip"])
     box.close()
-    return texts == {"full": "Saved as GeoTIFF", "quick": "Saved as GeoTIFF, compressed", "jpeg": "Saved as JPEG + world file",
-                     "jp2": "Saved as JPEG 2000", "ecw": "Saved as ECW", "cad": "Saved as JPEG 2000 in the drawing"}, texts
+    want = {"full": (True, True, True, False, False), "quick": (True, True, True, False, False), "jpeg": (False, False, False, True, False),
+            "jp2": (True, True, True, False, False), "ecw": (True, True, True, False, False),
+            "cad": (True, True, True, True, True)}
+    want["cad"] = (True, True, False, True, True)              # a drawing crops with a clip polygon: the image itself keeps its fill
+    seen = {k: v if k == "cad" else v[:4] for k, v in seen.items()}
+    want = {k: v if k == "cad" else v[:4] for k, v in want.items()}
+    return seen == want, "seen={}".format(seen)
 
 
 @case("export window: the saved look is what the card says, and the saved look reaches the export context", needs_numpy=True)
@@ -592,7 +603,8 @@ def open_trap_dialog(ortho_in_degrees=True, dem_crs=LAMBERT93, preset="full", wi
     path = os.path.join(tempfile.mkdtemp(prefix="aerotools_qt_proj_"), "SITE.psx")
     open(path, "w").write("x")
     config.put("aeroexports", "dem_look", None)
-    config.put("aeroexports", "preset", preset)
+    config.put("aeroexports", "clip_white", None)
+    config.put("aeroexports", "presets", [preset])
     msapi.document_path = lambda: path
     msapi.chunk = lambda: object()
     dialog.crs.check_geoid_presence = lambda choice: {"status": "ok", "spec": {}}
@@ -623,8 +635,8 @@ def _():
         def x_of(widget):
             return widget.mapTo(box, QtCore.QPoint(0, 0)).x()
         left = max(x_of(box.cards["ortho"]), x_of(box.cards["dem"]))
-        right = min(x_of(box.preset), x_of(box.files), x_of(box.go_button))
-        layout_ok = x_of(box.cards["dem"]) == x_of(box.cards["ortho"]) < x_of(box.preset) and left < right
+        right = min(x_of(box.preset_checks["full"]), x_of(box.queue_card), x_of(box.go_button))
+        layout_ok = x_of(box.cards["dem"]) == x_of(box.cards["ortho"]) < x_of(box.preset_checks["full"]) and left < right
         areas = [a for a in box.findChildren(QtWidgets.QScrollArea) if a.verticalScrollBar().maximum() > 0]
         buttons_in_view = box.go_button.isVisible() and box.go_button.mapTo(box, QtCore.QPoint(0, 0)).y() + box.go_button.height() <= box.height()
         order = x_of(box.close_button) < x_of(box.go_button)
@@ -865,7 +877,8 @@ def open_chunk_dialog(label=None, scale=1.0, size=(1080, 740)):
     path = os.path.join(tempfile.mkdtemp(prefix="aerotools_qt_chunk_"), "SITE.psx")
     open(path, "w").write("x")
     config.put("aeroexports", "dem_look", None)
-    config.put("aeroexports", "preset", "full")
+    config.put("aeroexports", "clip_white", None)
+    config.put("aeroexports", "presets", ["full"])
     ACTIVE["chunk"] = JULY
     JULY.label = label or "July"
     MAY.elevation = MAY.elevations[0]
@@ -991,7 +1004,7 @@ def _():
     banner = box.banner
     ok = (len(calls) == 2 and banner.isVisible() and banner.kind() == "success" and "2 files exported" in plain(banner.message.text())
           and banner.action_button.isVisible() and banner.action_button.text() == "Open folder"
-          and not box.is_busy() and box.files_note.isVisible() and box.next_button.property("role") == "primary")
+          and not box.is_busy() and not box.files_note.isHidden() and box.next_button.property("role") == "primary")
     banner.action_button.click()
     ok = ok and opened == [1]
     box.close()
@@ -1124,10 +1137,10 @@ def _():
     box = open_chunk_dialog()
     shown_july = not box.boundary_row.isHidden()
     default_off = not box.boundary_check.isChecked()
-    note_off = box.boundary_note.text()
+    note_off = box.boundary_tip.text_tip()
     box.boundary_check.setChecked(True)
     saved_on = config.get("aeroexports", "clip_to_boundary_shapes")
-    note_on = box.boundary_note.text()
+    note_on = box.boundary_tip.text_tip()
     ACTIVE["chunk"] = MAY                                   # 5 shapes, none of them a boundary: nothing to clip
     box._follow_chunk()
     hidden_may = box.boundary_row.isHidden()
@@ -1176,17 +1189,19 @@ def _():
 def _():
     box = open_chunk_dialog()
     july_dem = box.raster_details["dem"].text()
+    july_tip = box.raster_tips["dem"].text_tip()
     july_ortho = box.raster_details["ortho"].text()
     july_warn = box.raster_warnings["dem"].isHidden()
     ACTIVE["chunk"] = MAY
     box._follow_chunk()
     may_dem = box.raster_details["dem"].text()
+    may_tip = box.raster_tips["dem"].text_tip()
     may_warn = box.raster_warnings["dem"].text()
     may_visible = not box.raster_warnings["dem"].isHidden()
     box.close()
-    return ("Default DEM: 5200 x 6400 px, 1.25 cm/px." in july_dem and "1 of 4 DEMs" in july_dem and "Workspace" in july_dem
-            and "Default orthomosaic: 2019 x 2395 px, 5 cm/px." in july_ortho and "double-click" not in july_ortho and july_warn
-            and "Default DEM: 172 x 165 px, 50 cm/px." in may_dem and "1 of 3 DEMs" in may_dem
+    return ("Default: 5200 x 6400 px, 1.25 cm/px (1 of 4)" in july_dem and "4 DEMs" in july_tip and "Workspace" in july_tip
+            and "Default: 2019 x 2395 px, 5 cm/px" in july_ortho and "(1 of" not in july_ortho and july_warn
+            and "Default: 172 x 165 px, 50 cm/px (1 of 3)" in may_dem and "3 DEMs" in may_tip
             and may_visible and "coarse (50 cm/px)" in may_warn), \
         "{!r} / {!r} / {} / {!r} / {!r}".format(july_dem, july_ortho, july_warn, may_dem, may_warn)
 
@@ -1417,6 +1432,431 @@ def _():
     if options.choice() != ("both", True):
         problems.append("engine options choice: {}".format(options.choice()))
     return not problems, "; ".join(problems)
+
+
+# --------------------------------------------------------------------------------------------------
+# The export queue: tick formats, Add, a list of planned exports, Run all
+# --------------------------------------------------------------------------------------------------
+
+def tick(box, *keys):
+    """Tick exactly these formats."""
+    choose_preset(box, *keys)
+
+
+def queued(box):
+    return [(item.key, item.files, [job.name for job in item.jobs]) for item in box.queue]
+
+
+@case("queue: Add turns each ticked format into a planned export; the row says its format, options and file count; remove and total work")
+def _():
+    box = open_chunk_dialog()
+    start = (len(box.queue), box.queue_empty.isVisible(), box.queue_total.isVisible())
+    tick(box, "full", "jp2")
+    box._on_add()
+    pump(80)
+    two = [(row.title.text(), row.count.text(), row.options.text()) for row in box.queue_row_widgets]
+    total = box.queue_total.text()
+    ticks_after = box._ticked()                                           # the ticks are cleared once the formats are in the list
+    tick(box, "quick")
+    box._on_add()
+    pump(80)
+    three = len(box.queue)
+    box.queue_row_widgets[1].remove.click()                               # the second row: JPEG 2000
+    pump(80)
+    after_remove = [item.key for item in box.queue]
+    total_after = box.queue_total.text()
+    box.close()
+    ok = (start == (0, True, False) and two[0][0] == "GeoTIFF full" and two[1][0] == "JPEG 2000"
+          and all(c == "2 files" for _t, c, _o in two) and "Ortho 5 cm" in two[0][2] and "DEM 1.25 cm" in two[0][2]
+          and total == "2 exports · 4 files" and ticks_after == [] and three == 3 and after_remove == ["full", "quick"]
+          and total_after == "2 exports · 4 files")
+    return ok, "start={} rows={} total={!r} ticks={} three={} after={} total_after={!r}".format(start, two, total, ticks_after, three, after_remove, total_after)
+
+
+@case("queue: the run button says Export for one item and Run all exports (N) for several; Add counts the ticked formats")
+def _():
+    box = open_chunk_dialog()
+    texts = [box.next_button.text()]
+    tick(box, "full", "quick", "jp2")
+    texts.append(box.add_button.text())
+    box._on_add()
+    pump(60)
+    texts.append(box.next_button.text() + "/" + str(len(box.queue)))
+    box.queue_row_widgets[1].remove.click()
+    box.queue_row_widgets[1].remove.click()
+    pump(60)
+    texts.append(box.next_button.text())
+    box.queue_row_widgets[0].remove.click()
+    pump(60)
+    texts.append(box.next_button.text() + "/" + str(box.next_button.isEnabled()))
+    box.close()
+    return texts == ["Export", "Add (3)", "Run all exports (3)/3", "Export", "Export/False"], texts
+
+
+@case("queue: two formats that would write the same names get different versions, so one never overwrites the other")
+def _():
+    box = open_chunk_dialog()
+    tick(box, "full", "quick")
+    box._on_add()
+    names = [[os.path.basename(job.path) for job in item.jobs] for item in box.queue]
+    box.close()
+    return len(names) == 2 and not set(names[0]) & set(names[1]) and all("_v2" in n for n in names[1]) and not any("_v2" in n for n in names[0]), names
+
+
+@case("queue: the settings of an item are frozen when it is added (pixel, site, system, tiles, crop, boundary clip)")
+def _():
+    box = open_chunk_dialog()
+    tick(box, "full")
+    box._on_add()
+    first = queued(box)
+    settings = dict(box.queue[0].settings)
+    box.fields["ortho"].setText("10")
+    box.site.setText("OTHER")
+    box.clip_check.setChecked(False)
+    box.boundary_check.setChecked(True)
+    box.cards["dem"].button.setChecked(False)
+    box.picture_check.setChecked(True)
+    pump(80)
+    tick(box, "jp2")
+    box._on_add()
+    pump(60)
+    again = queued(box)[0]
+    item = box.queue[0]
+    second = box.queue[1]
+    box.close()
+    ok = (again == first[0] and item.settings["wanted"] == settings["wanted"] and item.settings["site"] == "SITE"
+          and item.settings["clip_white"] is True and item.settings["clip_boundary"] is False and second.settings["clip_boundary"] is True
+          and item.jobs[0].spec["alpha"] is True
+          and second.settings["site"] == "OTHER" and second.settings["clip_white"] is False and second.jobs[0].spec["white"] is True
+          and len(second.jobs) == 1 and abs(second.jobs[0].pixel_m - 0.10) < 1e-9)
+    return ok, "first={} again={} settings_site={} second={}".format(first, again, item.settings["site"], queued(box)[1:])
+
+
+@case("queue: Export runs the list in order with one progress; a failing item does not stop the others, the summary names it, it stays listed")
+def _():
+    from aerotools import msapi
+    from aerotools.tools.aeroexports import dialog
+    box = open_chunk_dialog()
+    calls = []
+    msapi.export_raster = fake_export(calls)
+    tick(box, "full", "jpeg", "quick")
+    box._on_add()
+    pump(60)
+    order = [item.key for item in box.queue]
+    real = dialog.pipeline.run
+    seen, bars = [], []
+
+    def run(ctx, jobs, progress):
+        seen.append(ctx.preset)
+        bars.append(box.footer.progress.isVisible())
+        if ctx.preset == "jpeg":
+            ctx.failed = jobs[0].name
+            raise dialog.pipeline.Failure("Empty raster")
+        return real(ctx, jobs, progress)
+
+    dialog.pipeline.run = run
+    try:
+        box._on_export()
+    finally:
+        dialog.pipeline.run = real
+    text = plain(box.banner.message.text())
+    details = plain(box.banner.details.text())
+    left = [(item.key, bool(item.failed)) for item in box.queue]
+    painted = [(row.options.text()) for row in box.queue_row_widgets]
+    kind = box.banner.kind()
+    done_paths = sorted(os.path.basename(c["path"]) for c in calls)
+    box.close()
+    ok = (seen == order == ["full", "quick", "jpeg"] and all(bars) and kind == "warning" and "2 of 3 exports done, 1 failed" in text
+          and "Empty raster" in details and left == [("jpeg", True)] and "Empty raster" in painted[0] and len(calls) == 4
+          and not box.is_busy())
+    return ok, "seen={} bars={} kind={} text={!r} details={!r} left={} calls={}".format(seen, bars, kind, text, details, left, done_paths)
+
+
+@case("queue: every item succeeding empties the list and the banner sums up the run; all failing is the error banner with Retry, the list kept")
+def _():
+    from aerotools import msapi
+    from aerotools.tools.aeroexports import dialog
+    box = open_chunk_dialog()
+    calls = []
+    msapi.export_raster = fake_export(calls)
+    asked = []
+    box._ask_exists = lambda count, following: asked.append(count) or dialog.NEW_VERSION
+    tick(box, "full", "jpeg")
+    box._on_add()
+    box._on_export()
+    text = plain(box.banner.message.text())
+    ok_run = box.banner.kind() == "success" and "2 exports done" in text and "4 files" in text and box.queue == [] \
+        and box.next_button.text() == "Export" and not box.next_button.isEnabled()
+    tick(box, "full", "jpeg")
+    box._on_add()
+    real = dialog.pipeline.run
+
+    def fail(ctx, jobs, progress):
+        ctx.failed = jobs[0].name
+        raise dialog.pipeline.Failure("Disk full")
+
+    dialog.pipeline.run = fail
+    try:
+        box._on_export()
+    finally:
+        dialog.pipeline.run = real
+    shown = plain(box.banner.message.text() + " " + box.banner.details.text())
+    ok_fail = (box.banner.kind() == "danger" and "Disk full" in shown and box.banner.action_button.text() == "Retry"
+               and len(box.queue) == 2 and all(item.failed for item in box.queue))
+    box.close()
+    return ok_run and ok_fail, "run={} {!r} fail={} {!r}".format(ok_run, text, ok_fail, shown)
+
+
+@case("queue: an empty list runs what is ticked (one format needs no Add); the list is only emptied of what went through")
+def _():
+    from aerotools import msapi
+    box = open_chunk_dialog()
+    calls = []
+    msapi.export_raster = fake_export(calls)
+    tick(box, "full")
+    box._on_export()
+    ok = len(calls) == 2 and box.queue == [] and box._ticked() == ["full"]
+    box.close()
+    return ok, "calls={} ticked={}".format(len(calls), box._ticked())
+
+
+@case("queue: the list belongs to its chunk: another chunk or default raster empties it, with a notice")
+def _():
+    box = open_chunk_dialog()
+    tick(box, "full", "jp2")
+    box._on_add()
+    kept = len(box.queue)
+    box.refresh()                                                          # nothing changed: the list stays
+    still = len(box.queue)
+    ACTIVE["chunk"] = MAY
+    box._follow_chunk()
+    gone = len(box.queue)
+    text = plain(box.banner.message.text())
+    box.close()
+    return kept == 2 and still == 2 and gone == 0 and "export list was emptied" in text, \
+        "kept={} still={} gone={} banner={!r}".format(kept, still, gone, text)
+
+
+@case("queue: Add is refused with a reason when the list is full, and the list never needs a scroll bar")
+def _():
+    from aerotools.tools.aeroexports import exportqueue
+    box = open_chunk_dialog()
+    for _i in range(exportqueue.MAX_ITEMS):
+        tick(box, "full")
+        box._on_add()
+    full = len(box.queue)
+    tick(box, "full")
+    disabled = not box.add_button.isEnabled()
+    box._add_ticked()
+    text = plain(box.banner.message.text())
+    scrolls = [a for a in box.findChildren(QtWidgets.QScrollArea) if a.verticalScrollBar().maximum() > 0]
+    box.close()
+    return full == exportqueue.MAX_ITEMS and disabled and "list is full" in text and not scrolls, \
+        "full={} disabled={} text={!r} scroll={}".format(full, disabled, text, scrolls)
+
+
+@case("queue: files that will be generated are collapsed; each row has them behind its i, and the preview list still follows the ticks")
+def _():
+    box = open_chunk_dialog()
+    collapsed = not box.files_view.is_open() and box.files.isHidden() or not box.files.isVisible()
+    tick(box, "full", "jpeg")
+    rows = [tuple(box.files.row_data(i)) for i in range(box.files.row_count())]
+    box._on_add()
+    tip = box.queue_row_widgets[1].info.text_tip()
+    box.close()
+    return collapsed and len(rows) == 6 and "SITE_" in tip and ".jgw" in tip and "Ortho 5 cm" in tip, \
+        "collapsed={} rows={} tip={!r}".format(collapsed, len(rows), tip)
+
+
+# --------------------------------------------------------------------------------------------------
+# White background, layout in three themes, shrinking and minimising without a console error
+# --------------------------------------------------------------------------------------------------
+
+@case("white background: every ortho format but JPEG is written without it by default; the switch is remembered; a drawing crops by polygon")
+def _():
+    box = open_chunk_dialog()
+    seen = {}
+    for key in ("full", "quick", "jp2", "ecw", "cad", "jpeg"):
+        tick(box, key)
+        jobs = box._plan_for(box._settings(key), 1)
+        ortho = [job for job in jobs if job.kind == "ortho"][0]
+        seen[key] = (ortho.spec["alpha"], ortho.spec["white"], box._settings(key)["cad"]["clip"])
+    tick(box, "full")
+    box.clip_check.setChecked(False)
+    off = box._plan_for(box._settings("full"), 1)[0].spec
+    saved = config.get("aeroexports", "clip_white")
+    box.close()
+    return (seen == {"full": (True, False, True), "quick": (True, False, True), "jp2": (True, False, True), "ecw": (True, False, True),
+                     "cad": (False, True, True), "jpeg": (False, True, False)}
+            and off["alpha"] is True and saved is False), "seen={} saved={}".format(seen, saved)
+
+
+def ushell_area():
+    from aerotools.uikit import shell
+    return shell.screen_area(None)
+
+
+def px_(value):
+    from aerotools.uikit.metrics import px
+    return px(value)
+
+
+class Console(object):
+    """Collects what would reach Metashape's console: Python exceptions (sys.excepthook) and Qt warnings (qInstallMessageHandler)."""
+    QUIET = ("propagateSizeHints", "QFontDatabase", "Note that Qt", "Populating font family", "OpenType support missing")
+
+    def __init__(self):
+        self.lines = []
+
+    def __enter__(self):
+        self.hook, sys.excepthook = sys.excepthook, lambda t, v, tb: self.lines.append("PY " + "".join(traceback.format_exception(t, v, tb)))
+        self.previous = QtCore.qInstallMessageHandler(self._qt)
+        return self
+
+    def _qt(self, mode, context, message):
+        if not any(q in message for q in self.QUIET):
+            self.lines.append("QT {}".format(message))
+
+    def __exit__(self, *_exc):
+        sys.excepthook = self.hook
+        QtCore.qInstallMessageHandler(self.previous)
+
+
+def shrink_and_minimise(window, sizes=((1, 1), (0, 0), (50, 30), (700, 5), (5, 500), (300, 200), (640, 480), (900, 700))):
+    """What a user does to a window: drags it tiny and wide, paints it, minimises and restores it, hides it while its timers run."""
+    for size in sizes:
+        window.resize(*size)
+        pump(30)
+        window.grab()
+        window.repaint()
+    for _round in range(2):
+        window.showMinimized()
+        pump(120)
+        window.showNormal()
+        pump(120)
+    window.hide()
+    pump(450)                                                              # the 400 ms watch timer fires on a hidden window
+    window.show()
+    window.setWindowState(QtCore.Qt.WindowMinimized)
+    pump(450)
+    window.setWindowState(QtCore.Qt.WindowNoState)
+    pump(100)
+
+
+@case("shrink and minimise: the export window (with a list, a geoid warning, a result banner) and the look window raise nothing and warn nothing")
+def _():
+    box = open_chunk_dialog()
+    tick(box, "full", "jp2", "cad")
+    box._on_add()
+    box.geoid_card.show_message("warning", "The grid for RGF93 v1 + NGF-IGN69 height (RAF20) is not on this computer (25 MB to download).", None,
+                                ("Download", lambda: None), None, True)
+    box.show_banner("success", "3 exports done · 7 files, 1.2 GB")
+    box.files_view.set_open(True)
+    box.coords.set_open(True)
+    pump(100)
+    with Console() as console:
+        shrink_and_minimise(box)
+        if np is not None:
+            window = previewwin.PreviewWindow(None, small_preview(), looks.DEFAULT, note="A note " * 8)
+            window.show()
+            pump(100)
+            shrink_and_minimise(window)
+            window.close()
+        box.close()
+    return not console.lines, "\n".join(console.lines[:6])
+
+
+@case("shrink and minimise: the least size the window declares is the least its content needs at its width (no refused geometry in the console)")
+def _():
+    box = open_chunk_dialog()
+    tick(box, "full", "jp2", "cad")
+    box._on_add()
+    box.geoid_card.show_message("warning", "The grid for RGF93 v1 + NGF-IGN69 height (RAF20) is not on this computer (25 MB to download). AeroTools needs it to convert heights.", None,
+                                ("Download", lambda: None), None, True)
+    box.coords.set_open(True)
+    pump(100)
+    problems = []
+    layout = box.layout()
+    area = ushell_area()
+    with Console() as console:
+        for width in range(box.minimumWidth(), box.minimumWidth() + 400, 53):
+            box.resize(width, 900)
+            pump(40)
+            need = layout.minimumHeightForWidth(box.width())
+            if box.minimumHeight() < min(need, area.height() - 48) or box.height() < min(need, area.height() - 48):
+                problems.append("width {}: declared least height {} / height {} below the {} the content needs".format(
+                    box.width(), box.minimumHeight(), box.height(), need))
+        for step in range(40):                                              # drag the bottom edge up, then down
+            box.resize(box.width(), max(1, box.height() - 17))
+            pump(10)
+        problems.append("fits the screen" if box.minimumHeight() <= area.height() else "taller than the screen: {}".format(box.minimumHeight()))
+    box.close()
+    problems = [p for p in problems if p != "fits the screen"] + console.lines
+    return not problems, "; ".join(problems[:4])
+
+
+@case("layout: the export window with a list and every warning shows its whole text, no scroll bar, nothing cut, on the three themes at 100, 125 and 150 %")
+def _():
+    from aerotools.uikit import style
+    from aerotools.uikit.controls import ElidedLabel
+    problems = []
+    set_screen(SCREEN)
+    try:
+        for factor in SCALES:
+            set_screen(SCREEN_AT[factor])
+            for skin in ("dark", "medium", "light"):
+                box = open_chunk_dialog(scale=factor)
+                style.switch_skin(skin, save=False)
+                tick(box, "full", "jp2", "cad")
+                box._on_add()
+                tick(box, "quick")
+                box._on_add()
+                box.geoid_card.show_message("warning", "The grid for RGF93 v1 / Lambert-93 + NGF-IGN69 height (RAF20) is not on this computer (25 MB to download). AeroTools needs it to convert heights.",
+                                            None, ("Download", lambda: None), None, True)
+                box.coords.set_open(True)
+                pump(150)
+                where = "{} x{}".format(skin, factor)
+                for text in cut_off(box):
+                    problems.append("{}: {}".format(where, text))
+                for area in box.findChildren(QtWidgets.QScrollArea):
+                    if area.isVisible() and area.verticalScrollBar().maximum() > 0:
+                        problems.append("{}: a scroll bar".format(where))
+                for widget in box.findChildren(QtWidgets.QLabel):
+                    if not widget.isVisibleTo(box) or widget is box.folder:
+                        continue
+                    if isinstance(widget, ElidedLabel):
+                        if widget.text() != widget.fullText():
+                            problems.append("{}: cut text {!r}".format(where, widget.fullText()[:40]))
+                    elif not widget.wordWrap() and widget.width() < widget.minimumSizeHint().width():
+                        problems.append("{}: label {!r} narrower than its text".format(where, widget.text()[:40]))
+                    elif widget.wordWrap() and widget.height() < widget.heightForWidth(widget.width()) - 2:
+                        problems.append("{}: wrapped text {!r} taller than its room".format(where, widget.text()[:40]))
+                if box.height() > SCREEN_AT[factor].height():
+                    problems.append("{}: taller than the screen ({})".format(where, box.height()))
+                box.close()
+                unscale()
+    finally:
+        unscale()
+        style.switch_skin("dark", save=False)
+        set_screen(QtCore.QRect(0, 0, 1086, 800))
+    return not problems, "; ".join(problems[:6])
+
+
+@case("layout: the missing-grid warning has its message on the whole width of the card and its button at the bottom right")
+def _():
+    box = open_chunk_dialog()
+    box.geoid_card.show_message("warning", "The grid for RGF93 v1 / Lambert-93 + NGF-IGN69 height (RAF20) is not on this computer (25 MB to download).",
+                                None, ("Download", lambda: None), None, True)
+    box.coords.set_open(True)
+    pump(120)
+    card, message, button = box.geoid_card, box.geoid_card.message, box.geoid_card.action_button
+    right = button.mapTo(card, QtCore.QPoint(button.width(), 0)).x()
+    below = button.mapTo(card, QtCore.QPoint(0, 0)).y() >= message.mapTo(card, QtCore.QPoint(0, message.height())).y() - 1
+    wide = message.width() >= card.width() * 0.7
+    close_top = box.geoid_card.close_button.mapTo(card, QtCore.QPoint(0, 0)).y() < message.height()
+    ok = below and card.width() - right <= px_(24) and wide and close_top
+    box.close()
+    return ok, "button_right_gap={} below={} message_width={}/{} close_top={}".format(card.width() - right, below, message.width(), card.width(), close_top)
 
 
 def main():

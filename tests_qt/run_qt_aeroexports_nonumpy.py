@@ -65,6 +65,7 @@ msapi.document_path = lambda: os.path.join(GUARD.temp, "Project.psx")
 
 def open_dialog():
     config.put("aeroexports", "dem_look", None)
+    config.put("aeroexports", "presets", ["full"])
     box = dialog.ExportDialog(None)
     box.show()
     box.refresh()
@@ -74,8 +75,8 @@ def open_dialog():
 
 
 def choose(box, key):
-    box.preset.setCurrentIndex(box.preset.findData(key))
-    box.preset.activated.emit(box.preset.currentIndex())
+    for other, tick in box.preset_checks.items():          # tick exactly this format
+        tick.setChecked(other == key)
     pump()
 
 
@@ -100,8 +101,10 @@ def _():
 @case("the window opens; the preview, the DEM picture and the crop of the drawing are disabled with the numpy explanation")
 def _():
     box = open_dialog()
-    ok = (not box.look_button.isEnabled() and not box.picture_check.isEnabled() and not box.cad_clip.isEnabled()
-          and "numpy" in box.look_button.toolTip() and "numpy" in box.cad_clip.toolTip())
+    plain_clip = box.clip_check.isEnabled()                  # a GeoTIFF is made transparent without numpy
+    choose(box, plan.CAD)                                   # the drawing crops with a polygon, which needs numpy
+    ok = (not box.look_button.isEnabled() and not box.picture_check.isEnabled() and plain_clip and not box.clip_check.isEnabled()
+          and "numpy" in box.look_button.toolTip() and "numpy" in box.clip_tip.text_tip())
     box.close()
     return ok
 
