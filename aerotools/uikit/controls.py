@@ -431,6 +431,7 @@ class Popover(QtWidgets.QFrame):
     _shared = None
 
     def __init__(self):
+        # A top-level window with no Qt parent: nothing but `_shared` owns it. It must not outlive the QApplication (see release()).
         super(Popover, self).__init__(None, Qt.ToolTip | Qt.FramelessWindowHint)
         self.setObjectName("uikitPopover")
         self.setAttribute(Qt.WA_ShowWithoutActivating, True)
@@ -448,7 +449,36 @@ class Popover(QtWidgets.QFrame):
     def shared(cls):
         if cls._shared is None:
             cls._shared = cls()
+            try:
+                QtWidgets.QApplication.instance().aboutToQuit.connect(cls.release)
+            except Exception:
+                pass
         return cls._shared
+
+    @classmethod
+    def peek(cls):
+        """The shared bubble if it exists, else None: asking to hide a tip must not build a window."""
+        return cls._shared
+
+    @classmethod
+    def release(cls):
+        """Destroys the shared bubble while the application is still there (called when it quits, and by anyone who wants it gone).
+
+        It is a parentless top-level widget kept alive only by a Python reference: left to the interpreter's final clean-up it was destroyed
+        after Qt had torn the application down, and Metashape crashed natively on quit (exit 1, Crash Reporter) as soon as one window
+        with an "i" button had been shown, even if it was closed before. Deleting the C++ object here, before the quit, avoids that."""
+        popover, cls._shared = cls._shared, None
+        if popover is None:
+            return
+        try:
+            popover.hide()
+        except Exception:
+            pass
+        try:
+            from ..qt import shiboken
+            shiboken.delete(popover)
+        except Exception:
+            pass
 
     def show_for(self, anchor, text):
         self.owner = anchor
@@ -509,11 +539,13 @@ class InfoButton(_Ring, QtWidgets.QAbstractButton):
             Popover.shared().show_for(self, self._text)
 
     def hide_tip(self):
-        Popover.shared().hide_for(self)
+        pop = Popover.peek()
+        if pop is not None:                                 # hideEvent calls this: no bubble yet means nothing to hide (and none to build)
+            pop.hide_for(self)
 
     def tip_visible(self):
-        pop = Popover.shared()
-        return pop.isVisible() and pop.owner is self
+        pop = Popover.peek()
+        return pop is not None and pop.isVisible() and pop.owner is self
 
     def enterEvent(self, event):
         super(InfoButton, self).enterEvent(event)

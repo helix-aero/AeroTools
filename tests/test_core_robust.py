@@ -60,6 +60,7 @@ def test_a_tool_that_needs_a_missing_package_says_so_and_imports_nothing(boot, m
     import importlib
     cfg = sys.modules["aerotools.config"]
     monkeypatch.setattr(cfg, "missing_modules", lambda tool_id: ["numpy"])
+    monkeypatch.setattr(sys.modules["aerotools.deps"], "module_available", lambda name: False)   # (this machine may have numpy)
 
     def forbidden(name, *args, **kwargs):
         raise AssertionError("the tool must not be imported: " + name)

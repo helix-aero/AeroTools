@@ -102,6 +102,7 @@ def install_menu(force=False):
     if added and fresh:
         msapi.add_menu_separator(MENU)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.install")), install_plugins)
+    msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.dependencies")), open_dependencies)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.update")), update_plugins)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.reload")), reload_all)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.uninstall")), open_uninstall)
@@ -152,7 +153,7 @@ def arrange_menu():
     """Tools first (in the order of the registry), then maintenance, then information: also for a tool installed during the session."""
     from . import config, i18n, msapi
     tools = [e["menu"] + (" " + i18n.t("menu.soon") if not e.get("ready", False) else "") for e in config.TOOLS]
-    maintenance = [i18n.t(key) for key in ("menu.install", "menu.update", "menu.reload", "menu.uninstall")]
+    maintenance = [i18n.t(key) for key in ("menu.install", "menu.dependencies", "menu.update", "menu.reload", "menu.uninstall")]
     done = msapi.arrange_menu(MENU, [tools, maintenance, [i18n.t("menu.about")]])
     logo = _logo_button()
     if not (done and logo):
@@ -257,6 +258,19 @@ def guard_tick():
     return False
 
 
+def open_dependencies():
+    """Aero > Dependencies menu: the Python packages of the installed tools, to install before using a tool."""
+    ensure_on_path()
+    from . import i18n, journal, msapi
+    try:
+        from . import deps, deps_dialog
+        deps.refresh_modules()
+        deps_dialog.show(msapi.main_window())
+    except Exception as exc:
+        journal.write("dependencies window failed: {!r}".format(exc))
+        msapi.message_box(i18n.t("boot.deps_failed", error=repr(exc)))
+
+
 def _make_launcher(tool_id):
     def _run():
         launch(tool_id)
@@ -281,6 +295,29 @@ def _module_named_in(exc):
     return ""
 
 
+def offer_dependencies(tool_id, title, modules, restart=True):
+    """A tool cannot start for lack of Python packages: open the Dependencies window (only what is missing, with an Install button each)
+    instead of failing. Returns True when the packages are there and the person chose to start the tool now; `restart=False` is for a tool
+    that already failed to load once: the window is shown but the tool is left for the next click. Without the window (no Qt) the plain
+    message is shown and nothing is installed."""
+    from . import i18n, journal, msapi
+    try:
+        from . import config, deps, deps_dialog
+        deps.refresh_modules()                     # a package installed since Metashape started may already be there
+        if restart and not [m for m in modules if not deps.module_available(m)]:
+            return True
+        known = [m for m in modules if m in config.MODULES]
+        if not restart and not known:              # a package we do not know how to install: the plain message
+            msapi.message_box(i18n.t("boot.missing_module", title=title, modules=_missing_text(modules)))
+            return False
+        started = deps_dialog.show(msapi.main_window(), tool_id=tool_id, modules=known)
+        return bool(started and restart)
+    except Exception as exc:
+        journal.write("dependencies window failed: {!r}".format(exc))
+        msapi.message_box(i18n.t("boot.missing_module", title=title, modules=_missing_text(modules)))
+        return False
+
+
 def launch(tool_id):
     """Loads a tool and installs it. Returns True if the tool started."""
     ensure_on_path()
@@ -301,11 +338,11 @@ def launch(tool_id):
         return False
 
     missing = config.missing_modules(tool_id)
-    if missing:                                    # one clear line, before anything of the tool is imported
+    if missing:                                    # before anything of the tool is imported
         journal.write("{} not started: missing Python {} {}".format(
             tool_id, i18n.plural(len(missing), "package", "packages"), _missing_text(missing)))
-        msapi.message_box(i18n.t("boot.missing_module", title=entry["title"], modules=_missing_text(missing)))
-        return False
+        if not offer_dependencies(tool_id, entry["title"], missing):
+            return False
 
     module_name = "aerotools.tools.{}.tool".format(tool_id)
     try:
@@ -313,7 +350,7 @@ def launch(tool_id):
     except Exception as exc:
         journal.write("failed to load {}: {!r}".format(tool_id, exc))
         if _module_named_in(exc):
-            msapi.message_box(i18n.t("boot.missing_module", title=entry["title"], modules=_module_named_in(exc)))
+            offer_dependencies(tool_id, entry["title"], [_module_named_in(exc)], restart=False)
         else:
             msapi.message_box(i18n.t("boot.load_failed", tool=tool_id, error=repr(exc)))
         return False
@@ -323,7 +360,7 @@ def launch(tool_id):
     except Exception as exc:
         journal.write("failed to start {}: {!r}".format(tool_id, exc))
         if _module_named_in(exc):
-            msapi.message_box(i18n.t("boot.missing_module", title=entry["title"], modules=_module_named_in(exc)))
+            offer_dependencies(tool_id, entry["title"], [_module_named_in(exc)], restart=False)
         else:
             msapi.message_box(i18n.t("boot.start_failed", tool=tool_id, error=repr(exc)))
         return False

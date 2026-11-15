@@ -91,8 +91,9 @@ def tool(tool_id):
 #             (PROJ engine in aerotools/vendor/proj, PDF drawing kit, Outputs folder) is core: no tool imports another tool.
 #   marker    a file that exists only when the pack is installed
 #   requires  other packs this one imports code from (tests/test_packs.py checks it against the imports)
-#   requires_modules  optional: Python packages the tool imports that Metashape may not ship (numpy). Checked before the tool is installed
-#             and before it starts, so the user reads one clear line instead of a ModuleNotFoundError. Nothing is installed for them.
+#   requires_modules  optional: Python packages the tool imports that Metashape may not ship (numpy). Checked before the tool starts: when
+#             one is missing, the Dependencies window (aerotools/deps_dialog.py) lists it and installs it into Metashape's Python, instead
+#             of the tool failing with a ModuleNotFoundError. Every name must have an entry in MODULES below (tests/test_deps.py).
 #   setup     optional: module (by name, the core never imports a tool) whose `run(parent, engine, training, confirm)` finishes the
 #             installation once the files are there (Aero-GCP: the AI detection engine)
 CORE = "core"
@@ -106,6 +107,21 @@ PACKS = [
     {"id": "aerol3", "paths": ["aerotools/tools/aerol3/"], "marker": "aerotools/tools/aerol3/tool.py",
      "requires": []},
 ]
+
+
+# Python packages the tools may need (the names of `requires_modules`): what pip installs for each, and the i18n key of its one-line
+# description in the Dependencies window. The single source of truth: the window, the checker and the pip command all read this.
+#   pip   requirement given to `pip install`; the range holds what Metashape's Python (3.9) can take and what the code was tested with
+#   title name shown in the window
+#   info  i18n key of the line that says what it is and why the tools need it
+MODULES = {
+    "numpy": {"title": "NumPy", "pip": "numpy>=1.21,<2.1", "info": "deps.numpy_info"},
+}
+
+
+def module_entry(name):
+    """MODULES entry of a package; a name nobody declared still gets a usable one (plain pip name, no description)."""
+    return MODULES.get(name) or {"title": name, "pip": name, "info": ""}
 
 
 def pack(pack_id):

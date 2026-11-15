@@ -71,6 +71,10 @@ files are there, a `setup` module in its pack (loaded by name: the core never im
 - Python 3.9 syntax, PySide2 first, PySide6 as well. Import Qt through `aerotools/qt.py`.
 - No third-party dependency. Anything heavy (onnxruntime, numpy, opencv; torch and ultralytics for training only) stays out of Metashape's Python.
 - The report and the panel only use Qt for drawing, so they work inside Metashape.
+- A tool that needs a Python package Metashape does not ship (NumPy) declares it in `requires_modules` of its pack and the package in
+  `config.MODULES` (pip requirement for Python 3.9, title, description). When it is missing the tool does not fail: the Dependencies
+  window (`deps_dialog.py`, also Aero > Dependencies) lists it and runs `python.exe -m pip install --user` from Metashape's own folder
+  (`deps.py`, no Qt). `tests/test_deps.py` checks that every third-party import of a tool is declared.
 
 ## Tests
 

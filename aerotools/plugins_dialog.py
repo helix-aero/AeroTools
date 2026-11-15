@@ -8,8 +8,8 @@ The network and disk work runs in the window's task (`ToolWindow.run`, a worker 
 stays in front. Without a connection the rows still show what is installed and can remove it; only installing needs the server. Reading the
 installed files (digests, to tell what needs an update) is part of that work: the window itself only reads what the task brought back.
 
-A tool that needs a Python package this Metashape does not have (config.PACKS `requires_modules`) says so on its row and asks before
-downloading. When an installation replaced files of the core, the code in memory is out of date: AeroTools reloads once the window closes.
+A tool that needs a Python package this Metashape does not have (config.PACKS `requires_modules`) says so on its row; once the tool is installed
+the Dependencies window (aerotools/deps_dialog.py) opens to install the package. When an installation replaced files of the core, the code in memory is out of date: AeroTools reloads once the window closes.
 """
 
 import functools
@@ -224,11 +224,6 @@ class PluginsDialog(uikit.ToolWindow):
             return
         entry = config.tool(tool_id)
         choice = None
-        missing = self._modules.get(tool_id)
-        if missing and not updater.tool_installed(tool_id):
-            if not uikit.confirm(self, entry["title"], i18n.t("plugins.module_ask", title=entry["title"], modules=", ".join(missing)),
-                                 ok=i18n.t("plugins.install")):
-                return
         if OPTIONS.get(tool_id) == "engine" and not updater.tool_installed(tool_id):
             options = EngineOptions(entry["title"], self)
             _run_modal(options)
@@ -268,6 +263,22 @@ class PluginsDialog(uikit.ToolWindow):
         self.show_banner("success", i18n.t("plugins.done_install", title=title))
         if choice and (choice[0] or choice[1]):
             self._install_engine(choice)
+        self._offer_dependencies(tool_id)
+
+    def _offer_dependencies(self, tool_id):
+        """The tool is installed: if it needs a Python package this Metashape lacks, the Dependencies window opens on it (only what is
+        missing). The tool is not started from here."""
+        missing = config.missing_modules(tool_id)
+        self._modules[tool_id] = missing
+        if not missing:
+            return
+        try:
+            from . import deps_dialog
+            deps_dialog.show(self, tool_id=tool_id, offer_start=False)
+        except Exception as exc:
+            journal.write("plugins: dependencies window failed: {!r}".format(exc))
+        self._modules = {entry["id"]: config.missing_modules(entry["id"]) for entry in config.TOOLS}
+        self.refresh()
 
     def _install_engine(self, choice):
         """Aero-GCP: its files are there, now the detection engine of the choice (the installer's own window runs)."""
