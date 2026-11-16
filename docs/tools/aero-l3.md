@@ -9,11 +9,33 @@ Package `aerotools/tools/aerol3/`: a pure core (no Metashape, no Qt), one Metash
 
 ## The wizard
 
+<table>
+  <tr>
+    <td width="50%"><img alt="Step 1: pick the folder of the mission, then Scan" src="../images/aero-l3/01-folder.png"><br><sub>Step 1: pick the folder of the mission, then Scan</sub></td>
+    <td width="50%"><img alt="Step 1: one row per flight; calibration flights start unticked" src="../images/aero-l3/02-flights.png"><br><sub>Step 1: one row per flight; calibration flights start unticked</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="Step 2: both lenses, their tilt and every check passed" src="../images/aero-l3/03-checks.png"><br><sub>Step 2: both lenses, their tilt and every check passed</sub></td>
+    <td width="50%"><img alt="Step 2: a To check line is shown and does not block" src="../images/aero-l3/04-checks-warning.png"><br><sub>Step 2: a To check line is shown and does not block</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="Step 2: a Blocking line stops the project, here photos of two L3 units" src="../images/aero-l3/05-checks-blocked.png"><br><sub>Step 2: a Blocking line stops the project, here photos of two L3 units</sub></td>
+    <td width="50%"><img alt="Step 3: name of the chunk, frame of the positions, steps to run afterwards" src="../images/aero-l3/06-project.png"><br><sub>Step 3: name of the chunk, frame of the positions, steps to run afterwards</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="Step 3, Advanced: accuracies, height shift, angle tolerance, calibration" src="../images/aero-l3/07-project-advanced.png"><br><sub>Step 3, Advanced: accuracies, height shift, angle tolerance, calibration</sub></td>
+    <td width="50%"><img alt="Step 4: the chunk is created, then aligned" src="../images/aero-l3/08-creating.png"><br><sub>Step 4: the chunk is created, then aligned</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="Step 4: done, with one line per step and what to do next" src="../images/aero-l3/09-done.png"><br><sub>Step 4: done, with one line per step and what to do next</sub></td>
+  </tr>
+</table>
+
 1. **L3 folder.** Pick a flight folder, a folder with several flights, or the whole mission. The header of every photo is read (about 1 000
    photos a second, the pictures are not opened), plus the `*_Timestamp.MRK` of each flight. Photos sorted in `LV` / `RV` folders work too.
 2. **Flights.** One row per flight (photos, shots, RTK fixed share, lens tilt, files). Flights of three shots or fewer and flights looking
    mostly sideways (calibration flights) start unticked.
-3. **Checks**, before anything is created. A red *STOP* blocks the project; an orange *CHECK* is shown and does not block.
+3. **Checks**, before anything is created. A *Blocking* line stops the project; a *To check* line is shown and does not block.
 4. **Project.** Name of the chunk (`L3_<site>_<YYMMDD>`), frame of the positions, accuracies, height shift, calibration fixed or free, photos
    without partner, and the steps to run afterwards.
 5. **Create.** Progress bar, Cancel (it stops the whole batch), then one line per step and what to do next. The tool never saves the project.

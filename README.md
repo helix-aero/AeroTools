@@ -110,6 +110,10 @@ menu to Metashape, with one entry per tool.
     <td width="50%"><a href="docs/tools/aero-space.md"><img alt="Aero-Space lists the heaviest Metashape projects on a drive" src="docs/images/aero-space/01-scan.png"></a></td>
     <td width="50%"><a href="docs/tools/aero-exports.md"><img alt="Aero-Exports writes the ortho and the DEM, including an AutoCAD drawing" src="docs/images/aero-exports/01-window.png"></a></td>
   </tr>
+  <tr>
+    <td width="50%"><a href="docs/tools/aero-l3.md"><img alt="Aero-L3 reads the flights of a DJI Zenmuse L3 mission" src="docs/images/aero-l3/02-flights.png"></a></td>
+    <td width="50%"><a href="docs/tools/aero-l3.md"><img alt="Aero-L3 checks the photos before it creates the chunk" src="docs/images/aero-l3/03-checks.png"></a></td>
+  </tr>
 </table>
 
 ## Install
