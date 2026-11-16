@@ -103,11 +103,16 @@ menu to Metashape, with one entry per tool.
 | **Aero-GCP** | Mark ground control points by hand, or let an AI propose the marks and review them. Check the marking, choose the control markers, export a PDF report. | [Aero-GCP guide](docs/tools/aero-gcp.md) |
 | **Aero-Space** | Scan a drive for old Metashape projects, then lighten or delete them to free disk space. | [Aero-Space guide](docs/tools/aero-space.md) |
 | **Aero-Exports** | Export the orthomosaic and the DEM with short file names, in several formats, pixel sizes and coordinate systems. | [Aero-Exports guide](docs/tools/aero-exports.md) |
+| **Aero-L3** | Turn the photos of a DJI Zenmuse L3 into a Metashape chunk ready to align: both lenses, positions with their accuracy, and a starting orientation that keeps the pictures from coming out flipped. | [Aero-L3 guide](docs/tools/aero-l3.md) |
 
 <table>
   <tr>
     <td width="50%"><a href="docs/tools/aero-space.md"><img alt="Aero-Space lists the heaviest Metashape projects on a drive" src="docs/images/aero-space/01-scan.png"></a></td>
     <td width="50%"><a href="docs/tools/aero-exports.md"><img alt="Aero-Exports writes the ortho and the DEM, including an AutoCAD drawing" src="docs/images/aero-exports/01-window.png"></a></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/tools/aero-l3.md"><img alt="Aero-L3 reads the flights of a DJI Zenmuse L3 mission" src="docs/images/aero-l3/02-flights.png"></a></td>
+    <td width="50%"><a href="docs/tools/aero-l3.md"><img alt="Aero-L3 checks the photos before it creates the chunk" src="docs/images/aero-l3/03-checks.png"></a></td>
   </tr>
 </table>
 

@@ -14,3 +14,6 @@ diag_*.txt
 *.log
 
 install_debug.txt
+
+# test runners given a mistyped option write their screenshots into a folder of that name
+--*/

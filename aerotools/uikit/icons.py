@@ -175,6 +175,7 @@ TOOLS = (
     "gcp",
     "space",
     "exports",
+    "l3",
     "suite",
 )
 TOOL_NAMES = tuple("tool_" + k for k in TOOLS)       # header version: the rounded gradient tile with the glyph in white
@@ -244,6 +245,13 @@ def _glyph(p, box, key, color, w):
         poly((8, 15), (8, 3.5), (14, 3.5), (17, 6.5), (17, 15))
         poly((14, 3.5), (14, 6.5), (17, 6.5))
         line(10.5, 10.5, 14.5, 10.5)
+    elif key == "l3":
+        p.drawRoundedRect(QtCore.QRectF(g(8, 3.5), g(16, 8.5)), box.side * 0.08, box.side * 0.08)
+        line(2.5, 6, 8, 6)
+        line(16, 6, 21.5, 6)
+        line(12, 9.5, 3.5, 20.5)
+        line(12, 9.5, 20.5, 20.5)
+        arc(12, 9.5, 11, 11, 232, 76)
 
 
 def _paint_mark(p, box):

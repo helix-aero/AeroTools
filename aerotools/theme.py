@@ -14,6 +14,7 @@ from .uikit import tokens as _t
 # Colours (aliases of the kit tokens)
 # --------------------------------------------------------------------------
 
+GROUND_0 = _t.mix(_t.BG, "#000000", 0.85)
 GROUND_1 = _t.BG
 GROUND_2 = _t.SURFACE
 GROUND_3 = _t.SURFACE
