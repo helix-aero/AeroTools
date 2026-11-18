@@ -1,5 +1,5 @@
 {
- "built": "2026-11-18T10:36:05",
+ "built": "2026-11-18T11:54:36",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "258ef4a9be19fad68df99857346e9b9fd6debfd52a2c9c080fa3df2be1fa2a7c",
@@ -18,8 +18,12 @@
    "size": 8268
   },
   "aerotools/__init__.py": {
-   "sha256": "634cc129c550598c89738e3db31231025032728312f47e5a195741e6572577ac",
+   "sha256": "f0478495048abe0f42481395c18a2bcab4f43bca728e0a6c370c5e4ca9ab1b2b",
    "size": 590
+  },
+  "aerotools/about_dialog.py": {
+   "sha256": "0dd3c59eddaadb3d50aefb42c349f4e1489de1f32f430d09f1d7fc6ce32fced4",
+   "size": 7395
   },
   "aerotools/assets/ui/arrow_down.png": {
    "sha256": "bef7058e31698663eb9bd84ad9b5e0cae63f86a7cbe293c027b4bba975c2d4f0",
@@ -38,12 +42,12 @@
    "size": 2497
   },
   "aerotools/bootstrap.py": {
-   "sha256": "f9148f272b1a2a8f252ac3de374e9f44381da8b276684a029e391fc942a59278",
-   "size": 20836
+   "sha256": "a2564cb25d3775e48395250d8fde123e75ce2cbdcc3ea6d99f0a3a0f3d026e2b",
+   "size": 24914
   },
   "aerotools/config.py": {
-   "sha256": "3484045f9f66df8bcb396ecb37d561172ddb5d58647937b65d0108d081fa1e61",
-   "size": 15082
+   "sha256": "ef3f80b90f5db715150020ce786cc26ba4415740f3262dbccac8d72b28078a57",
+   "size": 16089
   },
   "aerotools/controls.py": {
    "sha256": "8892af76bf70db5ded3a00b4d64ed28a4d275dbcdd9312379dd70de26a17dec1",
@@ -74,28 +78,36 @@
    "size": 257
   },
   "aerotools/lang/en.py": {
-   "sha256": "ea15463a90f954950f3005a0f31defd354d594e452fb0053e30f8c8c8f6e69d1",
-   "size": 74175
+   "sha256": "3905eb629fe45138c9406026d5e6ec5c35dee9575ef71a16ee881baf23ceb012",
+   "size": 75032
   },
   "aerotools/msapi.py": {
-   "sha256": "f5fb684e59a349e0f4eebc4dc5bc5aed645b69e03f07ef2364803458df7116ef",
-   "size": 86486
+   "sha256": "e58e2d3e1cda291ffac41928f5e9da9b9768e707be55d3fe58a44250834a49bc",
+   "size": 85402
+  },
+  "aerotools/news.py": {
+   "sha256": "e994544c5c4e14a42eb125f8534d878683e09f2cce33347168191c2390cc62cf",
+   "size": 10200
+  },
+  "aerotools/news_dialog.py": {
+   "sha256": "90a95bf75ed3d9cf9bed5fb8941f248983df470e3523f9e5c47321370960a41b",
+   "size": 3697
   },
   "aerotools/outputdir.py": {
    "sha256": "af981a49a9499e2142d9dd61777a6c18052676e8e008364b14ec6995fc0b7470",
    "size": 332
   },
   "aerotools/pdfkit.py": {
-   "sha256": "303fac292a845c336e71ae77ac9a62038b67e745e83f89730d2beae0001020e4",
-   "size": 14535
+   "sha256": "c32d8080f6de92abe0a3804eee4a647efdfbf673158bd6711c40d79549f78421",
+   "size": 18435
   },
   "aerotools/plugins_dialog.py": {
-   "sha256": "76d26abd04892afdbc37de3a6a1e23bdb3f335bcbebc9af5346297e9a04ea03d",
-   "size": 16504
+   "sha256": "175db42f47fff298794dfb86f47fc225bb96013ad7678a7704eaef9cdbe9a8dd",
+   "size": 17205
   },
   "aerotools/projtool.py": {
-   "sha256": "777ce46854af273e191731a488069a736f26008e53823cdedb89e7b1e0a0312c",
-   "size": 9359
+   "sha256": "214e1868897e59a12d9c12c66cf939c9ed0a49a49f741b03b444f6e83f71f320",
+   "size": 11062
   },
   "aerotools/qt.py": {
    "sha256": "9a6a691f752abe66292408296fe6b032d18409a8561aae6e870cd4e095af267a",
@@ -358,8 +370,8 @@
    "size": 6864
   },
   "aerotools/tools/fastgcp/report.py": {
-   "sha256": "5b1d1e9c9c542d68eae2a24fc47ebe37a27c123b64b3584cd163065c7d09d46d",
-   "size": 71545
+   "sha256": "dc005b4f6842f9d6b11407bfe23cb8f9adb287998eb796b7333961d5fdadb479",
+   "size": 70012
   },
   "aerotools/tools/fastgcp/review.py": {
    "sha256": "b78056b9e6545f6d4b72f11aff90f39f29c018ee1ab54c9b26d0a8f4d842b65a",
@@ -422,24 +434,24 @@
    "size": 2317
   },
   "aerotools/uikit/blocks.py": {
-   "sha256": "6e3102ce17b35a1781c120a29da52950d24db16572e62e6d5e245ec30dd128bc",
-   "size": 22453
+   "sha256": "77eb47eacd5fbdee24ece01801ed12139c198ded23c3d0a336bd56e79b7b9e8d",
+   "size": 24667
   },
   "aerotools/uikit/cards.py": {
-   "sha256": "e6d7648ef7861a3e901e3a7754a041f70c229ac8bc8b7ac20c8ddc986c578d5c",
-   "size": 27770
+   "sha256": "022b9cf67bf3b68eefd4afe3a5efcce1449862d09de628f536ed99b68212c715",
+   "size": 27919
   },
   "aerotools/uikit/controls.py": {
-   "sha256": "476e5a90df9d9a6092e0103a7b91c363481ba296e92548fc9b8c97ccae4ba073",
-   "size": 46656
+   "sha256": "bb955e205470a5e5d07c2969d7340e09be631d9873e553340b32e215644a133e",
+   "size": 51954
   },
   "aerotools/uikit/fonts.py": {
    "sha256": "0abc8d5dc07e89fab312c38553f9593e2f840de01f36ee99ae44f6453fb520dc",
    "size": 6172
   },
   "aerotools/uikit/icons.py": {
-   "sha256": "0e4a4c4bf84dacccfe3334558bac0f1a5d6e7bd04f5f3db71ffe2cd2ac413cca",
-   "size": 17281
+   "sha256": "07e8e8497db5fa2f71a4700537df35820af53a4e7a02a82e2a39010885397556",
+   "size": 18030
   },
   "aerotools/uikit/messages.py": {
    "sha256": "55fa14c11933dd7fbf8db555682518f7b34b436bfd5498681b416f315372116c",
@@ -454,8 +466,8 @@
    "size": 8004
   },
   "aerotools/uikit/shell.py": {
-   "sha256": "03f04cc3e260f6d2e5a1e4e1d785757736fa0fb2b02436c5d61c5400597fd779",
-   "size": 46286
+   "sha256": "a5149701222fccd9547fdf03ecd1fe9c2f5154239f2db8a6f5f0a16d0d543448",
+   "size": 53101
   },
   "aerotools/uikit/skins/__init__.py": {
    "sha256": "ebc059b4117d40831c327adc47eab615a56902f78e83d905bb8beb3096f69215",
@@ -478,12 +490,12 @@
    "size": 23771
   },
   "aerotools/uikit/table.py": {
-   "sha256": "ef9794ed7cf69d656e21daab6695e627426b289fbefc49011ab3982bc5e908b6",
-   "size": 25738
+   "sha256": "e1439f6f5137e166783ac41268c469d665015a670a2285391155f07f9770d616",
+   "size": 27853
   },
   "aerotools/uikit/tasks.py": {
-   "sha256": "49730ca63c61010cd9e7b39ea5e56a219b4e9df19b7e846d815dd8c1de764786",
-   "size": 8269
+   "sha256": "0883519a612dc5e671f35b553b5660f934ec627a45d2fad6ba8f94d0b538e1f7",
+   "size": 8642
   },
   "aerotools/uikit/tokens.py": {
    "sha256": "6a8b4530748a7ae9439674d1b43153b695797fecbb1c97e107190869196d1be0",
@@ -502,8 +514,8 @@
    "size": 10959
   },
   "aerotools/updater.py": {
-   "sha256": "99f88f5e7ac326484a737440ed2be5afdafceb9f021d371bbef9de198d27d8c5",
-   "size": 37600
+   "sha256": "b3ed05c66deaf202e23bfa3e6537b9d5dffcfe3024702cbb7d9bb302207c9dcc",
+   "size": 38012
   },
   "aerotools/vendor/THIRD_PARTY.txt": {
    "sha256": "56c08a21a8ff71810267f6133f3758024a31c4516a60d44034357374a8dc27e2",
@@ -697,6 +709,10 @@
    "sha256": "42051f97b5f9bb19e102a0200b7e90aa2a0deac7b28792fcc00d110ac6016af1",
    "size": 48361
   },
+  "docs/NEWS.md": {
+   "sha256": "d14bcffeff884a3c195d1385edbe1f11dc0ff714d0b0915d00876060d5991bdf",
+   "size": 2363
+  },
   "docs/UIKIT.md": {
    "sha256": "763d3139667b5bbe98c41582156f1c71367e0e01936e92fcd6c26bb75e05a40b",
    "size": 13300
@@ -784,5 +800,5 @@
   }
  ],
  "schema": 1,
- "version": "0.6.0"
+ "version": "0.6.1"
 }

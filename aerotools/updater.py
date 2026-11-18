@@ -271,7 +271,7 @@ def compare(plugin, remote, local=None, packs=None):
     comparison to the files of those packs: the others are not installed here, so nothing is missing or out of date."""
     changes = []
     for name in sorted(remote["files"]):
-        if packs is not None and config.pack_of(name) not in packs:
+        if packs is not None and config.owner_of(name) not in packs:
             continue
         info = remote["files"][name]
         path = _local_path(plugin, name)
@@ -286,7 +286,7 @@ def compare(plugin, remote, local=None, packs=None):
             changes.append({"path": name, "action": "replace", "size": info["size"]})
     if local:
         for name in sorted(set(local["files"]) - set(remote["files"])):
-            if packs is not None and config.pack_of(name) not in packs:
+            if packs is not None and config.owner_of(name) not in packs:
                 continue
             if os.path.isfile(_local_path(plugin, name)):
                 changes.append({"path": name, "action": "delete", "size": 0})
@@ -757,9 +757,13 @@ def apply(plugin, changes=None, progress=None, cancelled=None, packs=None, allow
         os.replace(manifest_path + ".aeroupd", manifest_path)
         _write_journal(stage, plugin, "done", entries)
         _write_state(plugin, remote)
+        # A tool the channel no longer ships is gone file by file: its folders (and their __pycache__) go with it, like in remove_pack.
+        for owner in sorted({config.owner_of(c["path"]) for c in changes if c["action"] == "delete"} - {config.CORE}):
+            for prefix in (config.pack(owner) or {"paths": []})["paths"]:
+                _remove_empty_folders(_local_path(plugin, prefix.rstrip("/")))
         journal.write("Update {}: {} file(s)".format(plugin["id"], len(changes)))
         return {"ok": True, "updated": len(changes), "error": "",
-                "core_changed": any(config.pack_of(c["path"]) == config.CORE for c in changes)}
+                "core_changed": any(config.owner_of(c["path"]) == config.CORE for c in changes)}
     except UpdateError as exc:
         rolled_back = _rollback(done_files) == 0
         journal.write("Update {}: {}".format(plugin["id"], exc))
@@ -849,7 +853,7 @@ def verify(plugin):
         return 0, ["manifest.json"]
     bad = []
     packs = installed_packs(plugin)
-    files = {name: info for name, info in manifest["files"].items() if config.pack_of(name) in packs}
+    files = {name: info for name, info in manifest["files"].items() if config.owner_of(name) in packs}
     for name, info in files.items():
         path = _local_path(plugin, name)
         try:

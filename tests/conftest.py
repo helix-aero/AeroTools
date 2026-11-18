@@ -274,9 +274,21 @@ def throwaway_settings(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "workstation"))
 
 
+@pytest.fixture(autouse=True)
+def no_news_network(monkeypatch):
+    """The startup news never reaches the network from a test: its fetch is offline unless a test brings its own."""
+    from aerotools import news
+
+    def offline(address, timeout):
+        raise OSError("offline (tests)")
+
+    monkeypatch.setattr(news, "_open", offline)
+
+
 @pytest.fixture
 def clean_bootstrap_flags():
-    flags = ("_AEROTOOLS_MENU_INSTALLED", "_AEROTOOLS_LAST_TOOL", "_AEROTOOLS_ROOT", "_AEROTOOLS_MENU_GUARD", "_AEROTOOLS_MENU_RESTORES")
+    flags = ("_AEROTOOLS_MENU_INSTALLED", "_AEROTOOLS_LAST_TOOL", "_AEROTOOLS_ROOT", "_AEROTOOLS_MENU_GUARD", "_AEROTOOLS_MENU_RESTORES",
+             "_AEROTOOLS_NEWS_STARTED", "_AEROTOOLS_LOGO_CLEANED")
     for flag in flags:
         if hasattr(builtins, flag):
             delattr(builtins, flag)

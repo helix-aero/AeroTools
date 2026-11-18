@@ -144,6 +144,23 @@ def pack_of(path):
     return best
 
 
+FOREIGN = "?"                                   # prefix of the owner of a file that belongs to a tool this code does not know
+
+
+def owner_of(path):
+    """pack_of, but a file inside the folder of a tool this code has no pack for gets "?<tool>" instead of CORE.
+
+    The channels ship different tools, and the config.py of a channel declares only its own: the code of the main channel does not know a
+    tool that only dev ships. When it follows dev, the remote manifest lists that tool's files; pack_of would call them core and the update
+    would install the tool without the user asking. With "?<tool>" they belong to no installed pack, so the update leaves them alone: the
+    new config.py arrives with the update, and the tool then shows as "not installed" in Install plugins."""
+    owner = pack_of(path)
+    parts = path.replace("\\", "/").split("/")
+    if owner == CORE and len(parts) > 3 and parts[0] == "aerotools" and parts[1] == "tools":
+        return FOREIGN + parts[2]
+    return owner
+
+
 def pack_closure(pack_ids):
     """The packs asked for plus everything they require, requirements first."""
     order = []

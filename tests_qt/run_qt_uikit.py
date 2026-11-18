@@ -582,6 +582,53 @@ def behaviours():
     check(toggle.isChecked(), "Toggle: Space switches it")
     toggle.close()
 
+    # a locked (disabled) option that is on must look on: the accent track (dimmed) and the knob on the right, not the grey of an off switch
+    def look(on, enabled):
+        one = uikit.Toggle("", on)
+        one.setEnabled(enabled)
+        shown(one)
+        pump(20)
+        image = one.grab().toImage()
+        track = uikit.px(uikit.tokens.TOGGLE_W)
+        y = image.height() // 2
+        left, right = image.pixelColor(uikit.px(8), y), image.pixelColor(track - uikit.px(8), y)
+        one.close()
+        return left, right
+
+    def near(a, b, tolerance=30):
+        return abs(a.red() - b.red()) + abs(a.green() - b.green()) + abs(a.blue() - b.blue()) <= tolerance
+
+    locked_left, locked_right = look(True, False)
+    off_left, off_right = look(False, False)
+    live_left, _live_right = look(True, True)
+    dimmed = uikit.tokens.mix(uikit.tokens.ACCENT, uikit.tokens.SURFACE, 0.55)
+    check(near(locked_left, QtGui.QColor(dimmed)), "Toggle: locked and on, the track is the dimmed accent colour")
+    check(not near(locked_left, off_left, 40), "Toggle: locked and on does not look like an off switch")
+    check(near(locked_right, QtGui.QColor(uikit.tokens.ON_ACCENT), 60), "Toggle: locked and on, the knob sits on the right")
+    check(not near(live_left, locked_left, 25), "Toggle: locked and on is dimmer than the live one")
+
+    # the pages of a CappedStack: only the page on show counts for the size
+    stack = uikit.controls.CappedStack()
+    short, tall = QtWidgets.QLabel("short"), QtWidgets.QWidget()
+    tall.setMinimumHeight(500)
+    short.setMinimumHeight(40)
+    stack.addWidget(short)
+    stack.addWidget(tall)
+    seen = []
+    stack.currentChanged.connect(seen.append)
+    check(stack.currentIndex() == 0 and stack.minimumSizeHint().height() < 100, "CappedStack: the least height is that of the page on show")
+    stack.setCurrentIndex(1)
+    check(seen == [1] and stack.currentWidget() is tall and stack.minimumSizeHint().height() >= 500, "CappedStack: another page, another least height")
+    stack.setCurrentWidget(short)
+    check(stack.currentIndex() == 0 and stack.count() == 2 and stack.widget(1) is tall, "CappedStack: the API of the stacked widget")
+
+    # Progress.poll answers instead of raising, and lets Qt breathe
+    ticks, stop = [], [False]
+    prog = uikit.tasks.Progress(None, lambda: stop[0], tick=lambda: ticks.append(1))
+    first = prog.poll()
+    stop[0] = True
+    check(first is False and prog.poll() is True and len(ticks) == 2, "Progress.poll: ticks, then says whether to stop (no exception)")
+
     choice = uikit.ChoiceBox([("a", "Alpha"), ("b", "Beta")])
     check(choice.focusPolicy() == Qt.StrongFocus and choice.value() == "a", "ChoiceBox is reachable by Tab and returns keys")
     choice.set_value("b")

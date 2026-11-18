@@ -2,7 +2,7 @@
 
 `paint(painter, name, rect, color)` draws into a rectangle; `icon(name, color, size)` makes a QIcon for a button.
 Names: info, check, cross, warn, error, success, chevron_right, chevron_down, chevron_left, chevron_up, folder, search, plus, minus,
-refresh, inbox, dot, arrow_right, gear, undo, redo, export, play, fit, spinner (a 100 degree arc, `angle` turns it),
+refresh, inbox, dot, arrow_right, gear, undo, redo, export, play, fit, eye, spinner (a 100 degree arc, `angle` turns it),
 mark (the HELIX AERO tool mark). Colours are given by the caller (tokens read when drawing), nothing is fixed here.
 """
 
@@ -150,6 +150,21 @@ def paint(p, name, rect, color, width=None, angle=0, background=None):
     elif name == "fit":
         for u, v, du, dv in ((0.14, 0.14, 1, 1), (0.86, 0.14, -1, 1), (0.14, 0.86, 1, -1), (0.86, 0.86, -1, -1)):
             box.poly(p, (u + du * 0.24, v), (u, v), (u, v + dv * 0.24))
+    elif name == "eye":
+        path = QtGui.QPainterPath()
+        path.moveTo(box.pt(0.08, 0.5))
+        path.cubicTo(box.pt(0.26, 0.24), box.pt(0.74, 0.24), box.pt(0.92, 0.5))
+        path.cubicTo(box.pt(0.74, 0.76), box.pt(0.26, 0.76), box.pt(0.08, 0.5))
+        p.drawPath(path)
+        p.drawEllipse(box.pt(0.5, 0.5), box.side * 0.13, box.side * 0.13)
+    elif name == "lock":
+        p.drawRoundedRect(box.rect(0.2, 0.46, 0.6, 0.4), box.side * 0.07, box.side * 0.07)
+        shackle = QtGui.QPainterPath()
+        shackle.moveTo(box.pt(0.32, 0.46))
+        shackle.lineTo(box.pt(0.32, 0.34))
+        shackle.arcTo(box.rect(0.32, 0.12, 0.36, 0.44), 180, -180)
+        shackle.lineTo(box.pt(0.68, 0.46))
+        p.drawPath(shackle)
     elif name == "dot":
         p.setPen(QtCore.Qt.NoPen)
         p.setBrush(_color(color))
@@ -182,7 +197,7 @@ TOOL_NAMES = tuple("tool_" + k for k in TOOLS)       # header version: the round
 GLYPH_NAMES = tuple("glyph_" + k for k in TOOLS)     # glyph alone, one colour, for lists and buttons
 NAMES = ("info", "check", "cross", "warn", "error", "success", "chevron_right", "chevron_down", "chevron_left", "chevron_up",
          "folder", "search", "plus", "minus", "refresh", "inbox", "dot", "arrow_right", "gear", "undo", "redo", "export", "play", "fit",
-         "spinner", "mark") + TOOL_NAMES + GLYPH_NAMES
+         "spinner", "eye", "mark") + TOOL_NAMES + GLYPH_NAMES
 
 
 def _tile(p, box):

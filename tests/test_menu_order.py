@@ -150,3 +150,19 @@ def test_the_menu_returned_is_valid_after_the_function_returns_and_gc(monkeypatc
     assert msapi.is_valid(found)
     assert found.title() == "Aero"
     assert [a.text() for a in window.menuBar().actions()] == ["Aero"]
+
+
+def test_arranging_the_menu_adds_no_logo_and_retries_only_for_the_layout(monkeypatch):
+    """The corner of the menu bar stays empty (the Aero logo is gone): a menu that was laid out is never retried because of a logo."""
+    from aerotools import bootstrap
+    assert not hasattr(msapi, "add_logo_button") and not hasattr(bootstrap, "_logo_button")
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    window = QtWidgets.QMainWindow()
+    window.menuBar().addMenu("Aero").addAction("About")
+    monkeypatch.setattr(msapi, "main_window", lambda: window)
+    monkeypatch.setattr(msapi, "arrange_menu", lambda title, groups: True)
+    scheduled = []
+    monkeypatch.setattr(bootstrap, "_retry_arrange", lambda: scheduled.append(1))
+    assert bootstrap.arrange_menu() is True
+    assert scheduled == [] and window.menuBar().cornerWidget() is None
+    assert app is not None

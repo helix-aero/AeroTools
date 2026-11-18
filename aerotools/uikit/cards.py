@@ -94,6 +94,8 @@ class KeyValue(QtWidgets.QWidget):
 
     def set_items(self, items):
         for key_label, value_label in self.rows:
+            key_label.hide()                      # gone at once, not when the event loop gets to the deferred delete
+            value_label.hide()
             key_label.deleteLater()
             value_label.deleteLater()
         self.rows = []

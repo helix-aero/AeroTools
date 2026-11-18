@@ -2103,6 +2103,7 @@ def add_menu_item(label, callback, shortcut=None):
 
     An entry that is already in the menu is not added a second time (Metashape's API cannot remove one), so registering again is safe."""
     if _menu_has(label):
+        set_menu_item_visible(label, True)             # an entry hidden when its tool went comes back with the tool
         return True
     try:
         if shortcut:
@@ -2125,6 +2126,22 @@ def add_menu_item(label, callback, shortcut=None):
         except Exception as second:
             journal.write("menu entry {!r} refused: {!r}".format(label, second))
             return False
+
+
+def set_menu_item_visible(label, visible):
+    """Shows or hides the entry "Aero/Name" of a menu (the API cannot remove one). Returns True if the entry was found. Never raises."""
+    try:
+        title, _slash, name = label.partition("/")
+        menu = find_menu(title)
+        if menu is None:
+            return False
+        for entry in menu.actions():
+            if entry.text().replace("&", "") == name:
+                entry.setVisible(bool(visible))
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def _menu_has(label):
@@ -2261,67 +2278,35 @@ def arrange_menu(title, groups):
         return False
 
 
-LOGO_BUTTON = "AeroLogoButton"
+LOGO_BUTTON = "AeroLogoButton"     # object name of the logo button that versions up to 0.5.0 put in the corner of the menu bar
 
 
-def add_logo_button(title, image, tooltip="", height=16):
-    """A small button with the logotype at the right end of Metashape's menu bar, opening the menu `title` (the tools list).
-
-    Added once: a button left by a previous code load is replaced. Returns True if it is in place."""
+def remove_logo_button():
+    """Takes away the logo button of an older AeroTools loaded in this Metashape session (the corner of the menu bar, then any stray
+    one). The logo is gone for good; this only cleans what an older version left. Returns True if something was removed."""
     try:
-        from .qt import QtGui
         window = main_window()
         if window is None:
             return False
         bar = window.menuBar()
-        menu = find_menu(title)
-        if menu is None:
-            return False
-        sign = "{}|{}|{}".format(image, height, tooltip)
-        # The button is kept only while it opens the menu that is in the bar now: a button whose menu is gone (None) or is another
-        # object is rebuilt, whatever else matches. (`menu` is pinned with its action by find_menu; `corner.menu()` returns that same
-        # wrapper, so the corner wrapper released here owns nothing.)
+        removed = False
         corner = bar.cornerWidget(QtCore.Qt.TopRightCorner)
-        try:
-            if (corner is not None and corner.objectName() == LOGO_BUTTON and corner.property("aeroLogoSign") == sign
-                    and corner.menu() is menu):
-                return True                              # already in place for this menu: nothing to rebuild
-        except Exception:
-            pass
+        if corner is not None and corner.objectName() == LOGO_BUTTON:
+            bar.setCornerWidget(None, QtCore.Qt.TopRightCorner)
+            corner.setMenu(None)                         # the button must not hold the Aero menu when it goes
+            corner.hide()
+            corner.setParent(None)
+            corner.deleteLater()
+            removed = True
         for old in window.findChildren(QtWidgets.QToolButton, LOGO_BUTTON):
+            old.setMenu(None)
+            old.hide()
             old.setParent(None)
             old.deleteLater()
-        pixmap = QtGui.QPixmap(image)
-        if pixmap.isNull():
-            return False
-        pixmap = pixmap.scaledToHeight(height * 2, QtCore.Qt.SmoothTransformation)
-        pixmap.setDevicePixelRatio(2.0)
-        button = QtWidgets.QToolButton(bar)
-        button.setObjectName(LOGO_BUTTON)
-        button.setProperty("aeroLogoSign", sign)
-        button.setIcon(QtGui.QIcon(pixmap))
-        button.setIconSize(QtCore.QSize(int(pixmap.width() / 2), height))
-        button.setToolTip(tooltip)
-        button.setAutoRaise(True)
-        button.setCursor(QtCore.Qt.PointingHandCursor)
-        button.setPopupMode(QtWidgets.QToolButton.InstantPopup)
-        button.setMenu(menu)
-        # The icon size goes in the button's own style sheet: Metashape's application style sheet gives every QToolButton a 16 x 16
-        # icon size at polish time, which squeezed the wordmark to a 16 x 3 px smear (seen live).
-        size = "{}px {}px".format(int(pixmap.width() / 2), height)
-        button.setStyleSheet("QToolButton{border:0;padding:2px 10px;qproperty-iconSize:%s;}QToolButton::menu-indicator{image:none;}"
-                             "QToolButton:hover{background:%s;}" % (size, _hover_tint()))
-        bar.setCornerWidget(button, QtCore.Qt.TopRightCorner)
-        button.show()
-        return True
+            removed = True
+        return removed
     except Exception:
         return False
-
-
-def _hover_tint():
-    """Hover colour of the suite's button in Metashape's menu bar: the accent tint of the active skin."""
-    from .uikit import tokens
-    return tokens.ACCENT_SOFT
 
 
 def message_box(text):

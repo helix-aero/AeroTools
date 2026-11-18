@@ -343,6 +343,20 @@ class Canvas(object):
     def image(self, image, x, y, w, h):
         self.p.drawImage(QtCore.QRectF(x, y, w, h), image)
 
+    def polygon(self, points, fill=None, line=None, line_w=0.6, alpha=1.0):
+        p = self.p
+        p.setPen(QtGui.QPen(qcolor(line), line_w) if line else QtCore.Qt.NoPen)
+        p.setBrush(qcolor(fill, alpha) if fill else QtCore.Qt.NoBrush)
+        p.drawPolygon(QtGui.QPolygonF([QtCore.QPointF(x, y) for x, y in points]))
+
+    def clip(self, x, y, w, h):
+        """Restrict drawing to a rectangle until `unclip()`."""
+        self.p.save()
+        self.p.setClipRect(QtCore.QRectF(x, y, w, h))
+
+    def unclip(self):
+        self.p.restore()
+
 
 
 # --------------------------------------------------------------------------
@@ -366,6 +380,19 @@ def rule(cv, W, height=3.0):
 
 
 
+def arrow(cv, x1, y1, x2, y2, color, width=1.0, head=4.6, alpha=1.0):
+    """A line from (x1, y1) to (x2, y2) with a filled head at the end (the head shrinks on a very short arrow)."""
+    length = math.hypot(x2 - x1, y2 - y1)
+    if length < 0.3:
+        return
+    size = min(head, length * 0.6)
+    ux, uy = (x2 - x1) / length, (y2 - y1) / length
+    bx, by = x2 - ux * size, y2 - uy * size
+    cv.line(x1, y1, bx, by, color, width, alpha=alpha)
+    cv.polygon([(x2, y2), (bx - uy * size * 0.5, by + ux * size * 0.5), (bx + uy * size * 0.5, by - ux * size * 0.5)], fill=color, alpha=alpha)
+
+
+
 def kpi_card(cv, x, y, w, h, label, value, sub=None, accent=GREEN):
     cv.card(x, y, w, h)
     cv.rect(x, y + 12, 3, h - 24, fill=accent, radius=1.5)
@@ -380,6 +407,70 @@ def card_title(cv, x, y, title, subtitle=None):
     cv.text(x + 14, y + 22, title, 11.5, INK, "display", 2)
     if subtitle:
         cv.text(x + 14, y + 35, subtitle, 7.6, MUTED)
+
+
+
+def footer(cv, W, H, page, total, tool):
+    """Footer rule, credit line (`tool` is the name of the tool, e.g. "Aero-GCP") and "Page n of N"."""
+    y = H - 34.0
+    cv.line(MARGIN, y, W - MARGIN, y, LINE, 0.6)
+    credit = "HELIX AERO {} AeroTools {} {} ".format(DOT, tool, DOT)
+    cv.text(MARGIN, y + 15.0, credit, 7.5, MUTED)
+    start = MARGIN + cv.width(credit, 7.5)
+    cv.text(start, y + 15.0, SITE_TEXT, 7.5, GREEN_DEEP, "body", 2)
+    cv.link(start, y + 15.0, SITE_TEXT, 7.5, SITE_URL, "body", 2)
+    cv.text(W - MARGIN, y + 15.0, i18n.t("report.footer.page", page=page, total=total), 7.5, MUTED, align="r")
+
+
+
+def page_background(cv, W, H):
+    cv.rect(0, 0, W, H, fill=PAPER)
+
+
+
+def page_title(cv, W, title, right=None, subtitle=None):
+    """Gradient rule, page title on the left, `right` (project / chunk / date) on the right, `subtitle` under the title."""
+    rule(cv, W)
+    cv.text(MARGIN, 52.0, title, 17, INK, "display", 2)
+    if right:
+        cv.text(W - MARGIN, 52.0, cv.fit(right, 8.5, 260), 8.5, MUTED, align="r")
+    if subtitle:
+        cv.text(MARGIN, 66.0, subtitle, 8.5, MUTED)
+
+
+
+def band(cv, W, title, tool, cells, weights, height=132.0):
+    """Title band of the first page: gradient, HELIX AERO, the tool, the title and a row of (LABEL, value) cells."""
+    cv.p.setPen(QtCore.Qt.NoPen)
+    cv.p.setBrush(gradient_brush(0, height, W, 0))
+    cv.p.drawRect(QtCore.QRectF(0, 0, W, height))
+    cv.text(MARGIN, 36.0, "HELIX AERO", 9, "#ffffff", "display", 2, spacing=1.8)
+    cv.link(MARGIN, 36.0, "HELIX AERO", 9, SITE_URL, "display", 2)
+    cv.text(W - MARGIN, 36.0, "AeroTools {} {}".format(DOT, tool), 9, "#ffffff", "display", 1, align="r", alpha=0.85)
+    cv.text(MARGIN, 76.0, title, 29, "#ffffff", "display", 2)
+    inner = W - 2 * MARGIN
+    x = MARGIN
+    for (label, value), share in zip(cells, weights):
+        cell_w = inner * share
+        cv.text(x, height - 28.0, label, 6.8, "#ffffff", "body", 2, alpha=0.72, spacing=1.2)
+        cv.text(x, height - 13.0, cv.fit(value, 10.5, cell_w - 10), 10.5, "#ffffff", "body", 2)
+        x += cell_w
+
+
+
+def table_header(cv, x, y, w, height=TABLE_HEAD_H):
+    """The grey header strip of a table card (rounded on top)."""
+    cv.rect(x + 0.3, y + 0.3, w - 0.6, height, fill="#ecece8", radius=6.5)
+    cv.rect(x + 0.3, y + height - 8, w - 0.6, 8.6, fill="#ecece8")
+
+
+
+def chip(cv, right, base, text, fg, bg, px=7.0, weight=2):
+    """A small rounded label whose right edge is at `right` (baseline `base`). Returns its left edge."""
+    width = cv.width(text, px, "body", weight)
+    cv.rect(right - width - 8, base - px - 1.6, width + 8, px + 4.2, fill=bg, radius=3)
+    cv.text(right - 4, base, text, px, fg, "body", weight, align="r")
+    return right - width - 8
 
 
 

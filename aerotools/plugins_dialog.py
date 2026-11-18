@@ -15,7 +15,7 @@ the Dependencies window (aerotools/deps_dialog.py) opens to install the package.
 import functools
 import importlib
 
-from . import config, i18n, journal, uikit, updater, workers
+from . import config, i18n, journal, news, uikit, updater, workers
 from .qt import QtCore, QtGui, QtWidgets
 
 ENGINE_CHOICES = (("none", "plugins.opt_none"), ("light", "plugins.opt_light"), ("precise", "plugins.opt_precise"),
@@ -147,6 +147,14 @@ class PluginsDialog(uikit.ToolWindow):
         lay.addWidget(uikit.Divider())
         self.appearance = uikit.AppearanceBar()                # the same two choices as the "Aa" and theme buttons of the header
         lay.addWidget(self.appearance)
+        line = uikit.hbox(spacing=uikit.tokens.S)                # Notifications: the startup news (aerotools/news.py)
+        line.addWidget(uikit.label(i18n.t("news.setting_caption"), "field", wrap=False))
+        self.notifications = uikit.Toggle(i18n.t("news.setting"), checked=news.enabled())
+        self.notifications.toggled.connect(lambda on: news.set_enabled(on))
+        line.addWidget(self.notifications)
+        line.addWidget(uikit.InfoButton(i18n.t("news.setting_tip")))
+        line.addStretch(1)
+        lay.addLayout(line)
         self.set_content(body)
         self.next_button.hide()                            # nothing to confirm here: every row has its own action
         self.refresh()
@@ -317,6 +325,8 @@ class PluginsDialog(uikit.ToolWindow):
         self._status = result.get("status") or self._status
         self.refresh()
         if result.get("ok"):
+            from . import bootstrap
+            bootstrap.sync_menu()                              # the entry of the tool leaves the menu with its files
             self.show_banner("success", i18n.t("plugins.done_remove", title=config.tool(tool_id)["title"]))
         else:
             self.show_banner("danger", i18n.t("plugins.failed", message=result.get("error", "")))
