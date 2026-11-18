@@ -1,5 +1,5 @@
 {
- "built": "2026-11-16T21:24:58",
+ "built": "2026-11-18T10:36:05",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "258ef4a9be19fad68df99857346e9b9fd6debfd52a2c9c080fa3df2be1fa2a7c",
@@ -42,16 +42,16 @@
    "size": 20836
   },
   "aerotools/config.py": {
-   "sha256": "b199728ee7b4c9309ef2ba19bf361c20092748a728c794eb78e59ae73e304448",
-   "size": 14485
+   "sha256": "3484045f9f66df8bcb396ecb37d561172ddb5d58647937b65d0108d081fa1e61",
+   "size": 15082
   },
   "aerotools/controls.py": {
    "sha256": "8892af76bf70db5ded3a00b4d64ed28a4d275dbcdd9312379dd70de26a17dec1",
    "size": 7011
   },
   "aerotools/deps.py": {
-   "sha256": "f2062c19bb3f6bd1006470d6b36fc237ed484e51ebab24b43249350a453bd5bc",
-   "size": 16102
+   "sha256": "05980763b099f9572ed8212f86e3006e62c2edb947471f344adea871c1b78fcc",
+   "size": 18186
   },
   "aerotools/deps_dialog.py": {
    "sha256": "9d907fa3be7dd2705a92a9711c590bd9baae90720995a22d2d1dd9275233279a",

@@ -140,6 +140,22 @@ def test_a_module_hidden_in_sys_modules_counts_as_missing(monkeypatch):
     assert deps.module_version("numpy") == ""
 
 
+def test_a_package_that_is_found_but_does_not_load_counts_as_missing(monkeypatch, tmp_path):
+    # Metashape 2.4.0 kept a numpy built for Python 3.9 in its folder: find_spec sees it, the import fails
+    package = tmp_path / "aero_broken_pkg"
+    package.mkdir()
+    (package / "__init__.py").write_text("from . import _not_built_for_this_python\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.setitem(config.MODULES, "aero_broken_pkg", {"title": "Broken", "pip": "aero_broken_pkg", "info": ""})
+    assert config.module_available("aero_broken_pkg") is False
+    assert not [key for key in sys.modules if key.startswith("aero_broken_pkg")]
+    (package / "__init__.py").write_text("")                           # a good copy installed meanwhile loads in the same session
+    import importlib
+    importlib.invalidate_caches()
+    assert config.module_available("aero_broken_pkg") is True
+    sys.modules.pop("aero_broken_pkg", None)
+
+
 def test_pip_is_looked_up_in_process(monkeypatch):
     monkeypatch.setitem(sys.modules, "pip", None)
     assert deps.pip_version() == ""
@@ -183,6 +199,25 @@ def test_the_pip_command_installs_into_the_user_folder_with_the_pinned_range():
     assert "--disable-pip-version-check" in args and "--no-input" in args
     assert args[-1] == "numpy>=1.21,<2.1"
     assert args[args.index("--timeout") + 1] == "30"
+
+
+def test_over_a_broken_copy_pip_ignores_what_is_installed():
+    assert "--ignore-installed" not in deps.pip_command("py", "numpy")
+    args = deps.pip_command("py", "numpy", over_broken=True)
+    assert "--user" in args and args[-2:] == ["--ignore-installed", "numpy>=1.21,<2.1"]
+
+
+def test_install_one_installs_over_a_copy_that_does_not_load(monkeypatch):
+    run = fake_run([(0, ["Successfully installed numpy-2.0.2"])])
+    states = iter(["", "2.0.2", "2.0.2"])
+    monkeypatch.setattr(deps, "run_command", run)
+    monkeypatch.setattr(deps, "refresh_modules", lambda: None)
+    monkeypatch.setattr(deps, "distribution_version", lambda name: "2.0.2")
+    monkeypatch.setattr(deps, "state_of", lambda name: next(states))
+    log = []
+    assert deps.install_one("numpy", "py", log.append)["ok"] is True
+    assert "--ignore-installed" in run.calls[0][0]
+    assert any("does not load" in line for line in log)
 
 
 def test_ensurepip_is_tried_twice_the_second_time_with_upgrade():
@@ -357,6 +392,44 @@ def test_refresh_modules_adds_the_user_site_once_it_exists(monkeypatch, tmp_path
     monkeypatch.setattr(sys, "path", list(sys.path))
     deps.refresh_modules()
     assert added == [str(tmp_path)]
+
+
+def test_the_user_folder_of_metashape_24_is_found_on_sys_path():
+    base = os.path.join("C:" + os.sep, "Users", "me", "AppData", "Local", "Agisoft", "Metashape Pro", "user-packages-py312")
+    path = [os.path.join("C:" + os.sep, "Metashape", "python", "Lib"), os.path.join(base, "Python312", "site-packages")]
+    assert deps.metashape_user_base(path) == base
+    assert deps.metashape_user_base([os.path.join("C:" + os.sep, "Users", "me", "AppData", "Roaming", "Python", "Python39",
+                                                  "site-packages")]) == ""
+
+
+def test_pip_writes_to_the_user_folder_of_metashape_24_when_there_is_one(monkeypatch):
+    seen = {}
+
+    class Proc(object):
+        stdout = types.SimpleNamespace(readline=lambda: b"")
+
+        def wait(self, timeout=None):
+            return 0
+
+    def popen(args, **kwargs):
+        seen.update(kwargs)
+        return Proc()
+
+    monkeypatch.setattr(deps, "metashape_user_base", lambda path=None: "C:/ms/user-packages-py312")
+    deps.run_command(["x"], popen=popen)
+    assert seen["env"]["PYTHONUSERBASE"] == "C:/ms/user-packages-py312"
+    monkeypatch.setattr(deps, "metashape_user_base", lambda path=None: "")
+    monkeypatch.delenv("PYTHONUSERBASE", raising=False)
+    deps.run_command(["x"], popen=popen)
+    assert "PYTHONUSERBASE" not in seen["env"]
+
+
+def test_refresh_modules_forgets_that_the_metashape_user_folder_was_missing(monkeypatch, tmp_path):
+    folder = str(tmp_path / "user-packages-py312" / "Python312" / "site-packages")
+    monkeypatch.setattr(sys, "path", [folder] + list(sys.path))
+    monkeypatch.setitem(sys.path_importer_cache, folder, None)
+    deps.refresh_modules()
+    assert sys.path_importer_cache.get(folder, None) is None and folder not in sys.path_importer_cache
 
 
 # --------------------------------------------------------------------------

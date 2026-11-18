@@ -6,6 +6,7 @@ each PC keeps its own ticked boxes.
 
 import copy
 import datetime
+import importlib
 import importlib.util
 import json
 import os
@@ -166,11 +167,23 @@ def dependents(pack_id):
 
 
 def module_available(name):
-    """True when the Python package `name` can be imported in this Metashape (looked up, not imported: cheap and without side effects)."""
+    """True when the Python package `name` can be imported in this Metashape. Looked up only, except the packages of MODULES: those are
+    really imported once, because a copy built for another Python (a numpy left in the folder by an older Metashape) is found but does
+    not load. A failed import leaves nothing in sys.modules, so a copy installed afterwards loads in the same session."""
     try:
-        return importlib.util.find_spec(name) is not None
+        if importlib.util.find_spec(name) is None:
+            return False
     except (ImportError, ValueError, AttributeError):
         return sys.modules.get(name) is not None
+    if name not in MODULES or name in sys.modules:
+        return True
+    try:
+        importlib.import_module(name)
+        return True
+    except Exception:
+        for key in [key for key in sys.modules if key == name or key.startswith(name + ".")]:
+            del sys.modules[key]
+        return False
 
 
 def missing_modules(pack_id):
