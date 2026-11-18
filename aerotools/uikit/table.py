@@ -223,7 +223,23 @@ class _Table(QtWidgets.QTableWidget):
             self.owner._toggle_selected()
             event.accept()
             return
+        if event.key() == Qt.Key_Delete and self.owner is not None and self.owner.row_actions:
+            self.owner.deletePressed.emit()
+            event.accept()
+            return
         super(_Table, self).keyPressEvent(event)
+
+    def contextMenuEvent(self, event):
+        """A right-click on a row: the row is selected (when the table selects) and `rowContextMenu(source row, global position)` says so."""
+        item = self.itemAt(event.pos())
+        if item is None or self.owner is None or not self.owner.row_actions:
+            super(_Table, self).contextMenuEvent(event)
+            return
+        source = item.data(Qt.UserRole)
+        if self.selectionMode() != QtWidgets.QAbstractItemView.NoSelection and not self.selectionModel().isRowSelected(item.row(), QtCore.QModelIndex()):
+            self.selectRow(item.row())                       # a right-click inside a selection keeps it (the menu acts on all of it)
+        self.owner.rowContextMenu.emit(source, event.globalPos())
+        event.accept()
 
     owner = None
 
@@ -236,6 +252,8 @@ class DataTable(QtWidgets.QWidget):
     selectionChanged = QtCore.Signal()
     rowActivated = QtCore.Signal(int)
     checkedChanged = QtCore.Signal()
+    rowContextMenu = QtCore.Signal(int, QtCore.QPoint)       # right-click on a row: its source index and the global position (`row_actions`)
+    deletePressed = QtCore.Signal()                          # the Delete key, with the table focused (`row_actions`)
 
     def __init__(self, columns, selection="single", sortable=True, empty_title="", empty_text="", parent=None):
         super(DataTable, self).__init__(parent)
@@ -302,9 +320,15 @@ class DataTable(QtWidgets.QWidget):
         self._stack.setCurrentWidget(self.empty if (empty_title or empty_text) else self.table)
         self._guard = False
         self._saved_min = None
+        self.row_actions = False                             # True: a right-click on a row and the Delete key are signals (`rowContextMenu`, `deletePressed`)
 
     def sizeHint(self):
         return QtCore.QSize(px(520), px(tokens.CONTROL_H) * 7)
+
+    def set_min_rows(self, rows):
+        """The least height of the table, in rows (default 4): a page with more than one list lets them share the height."""
+        self._base_min_h = px(tokens.CONTROL_H) * int(rows)
+        self.updateGeometry()
 
     def minimumSizeHint(self):
         return QtCore.QSize(px(280), max(self._base_min_h, self._empty_need()))
@@ -432,6 +456,15 @@ class DataTable(QtWidgets.QWidget):
         visual = self._visual(source_row)
         if visual >= 0:
             self.table.selectRow(visual)
+
+    def select_rows(self, source_rows):
+        """Select exactly these rows (source indexes; needs `selection="extended"` for more than one)."""
+        model = self.table.selectionModel()
+        model.clearSelection()
+        for source_row in source_rows:
+            visual = self._visual(source_row)
+            if visual >= 0:
+                model.select(self.table.model().index(visual, 0), QtCore.QItemSelectionModel.Select | QtCore.QItemSelectionModel.Rows)
 
     def sort_by(self, key, descending=False):
         for index, column in enumerate(self.columns):

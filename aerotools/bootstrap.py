@@ -29,9 +29,12 @@ _MENU_FLAG = "_AEROTOOLS_MENU_INSTALLED"
 _LAST_TOOL_FLAG = "_AEROTOOLS_LAST_TOOL"
 _ROOT_FLAG = "_AEROTOOLS_ROOT"
 _TOOLS_FLAG = "_AEROTOOLS_MENU_TOOLS"           # ids of the tools that already have their entry in the menu of this session
+_LABELS_FLAG = "_AEROTOOLS_MENU_LABELS"         # {tool id: menu label} of those entries: the label is needed to hide an entry whose tool the code no longer knows
+_SYNC_FLAG = "_AEROTOOLS_MENU_SYNCED"           # the set of installed tool ids the menu entries were last brought in line with
 _RETRY_FLAG = "_AEROTOOLS_MENU_RETRIES"         # how many times the menu layout was retried because the main window was not there yet
 _GUARD_FLAG = "_AEROTOOLS_MENU_GUARD"           # the guard timer of this session (on builtins: reload_all and install_menu(force) never stack a second)
 _RESTORES_FLAG = "_AEROTOOLS_MENU_RESTORES"     # how many times the guard had to bring the menu back
+_LOGO_FLAG = "_AEROTOOLS_LOGO_CLEANED"          # the logo button of an older version was looked for (and removed) in this session
 ARRANGE_RETRIES = 5
 ARRANGE_RETRY_MS = 1000
 GUARD_MS = 1000
@@ -94,6 +97,7 @@ def install_menu(force=False):
     # The menu is added once per Metashape session (the Metashape API cannot remove or rename an entry). Only the tools that are
     # installed on this computer have an entry; "Install plugins" adds the others as they come.
     setattr(builtins, _TOOLS_FLAG, set())
+    setattr(builtins, _SYNC_FLAG, None)
     added = sum(1 for entry in config.TOOLS if add_tool_menu(entry["id"], arrange=False))
 
     # Three blocks split by a line: the tools, maintenance (install, updates, reload, uninstall), information. A menu that is already
@@ -106,6 +110,7 @@ def install_menu(force=False):
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.update")), update_plugins)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.reload")), reload_all)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.uninstall")), open_uninstall)
+    msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.news")), show_news)
     if fresh:
         msapi.add_menu_separator(MENU)
     msapi.add_menu_item("{}/{}".format(MENU, i18n.t("menu.about")), about)
@@ -117,6 +122,7 @@ def install_menu(force=False):
         print("[AeroTools] menu pin failed: {!r}".format(exc))
     arrange_menu()
     start_guard()
+    start_news()
     setattr(builtins, _MENU_FLAG, True)
     print(
         "[AeroTools] menu \"{}\" installed ({} {}) - root {}".format(
@@ -144,27 +150,80 @@ def add_tool_menu(tool_id, arrange=True):
     if not msapi.add_menu_item("{}/{}".format(MENU, name), _make_launcher(tool_id), entry.get("shortcut")):
         return False
     shown.add(tool_id)
+    labels = getattr(builtins, _LABELS_FLAG, None)
+    if labels is None:
+        labels = {}
+        setattr(builtins, _LABELS_FLAG, labels)
+    labels[tool_id] = name
     if arrange:
         arrange_menu()
     return True
+
+
+def installed_tool_ids():
+    """Ids of the tools of this code that are installed on this computer (a development copy has them all)."""
+    from . import config, updater
+    return {entry["id"] for entry in config.TOOLS if updater.tool_installed(entry["id"])}
+
+
+def sync_menu(force=False):
+    """Brings the tool entries of the Aero menu in line with what is installed, without a restart. Returns True if the menu changed.
+
+    The tools can change without "Install plugins" being involved: an update or a switch of channel brings the files of a tool (or takes
+    them away), and a state left by an older version (the files of a tool downloaded as core files by a channel that did not know it) has
+    the tool installed with no entry. Every installed tool gets its entry; the entry of a tool that is gone, or that this code does not
+    know any more, is hidden (Metashape's API cannot remove an entry; it comes back if the tool does). It only does something when
+    the set of installed tools changed since the last call (`force` skips that check), so the menu guard can call it at every tick."""
+    from . import config, journal, msapi
+    have = installed_tool_ids()
+    if not force and getattr(builtins, _SYNC_FLAG, None) == have:
+        return False
+    shown = getattr(builtins, _TOOLS_FLAG, None)
+    if shown is None:
+        shown = set()
+        setattr(builtins, _TOOLS_FLAG, shown)
+    labels = getattr(builtins, _LABELS_FLAG, None) or {}
+    changed = False
+    for entry in config.TOOLS:
+        if entry["id"] in have and entry["id"] not in shown:
+            if add_tool_menu(entry["id"], arrange=False):
+                journal.write("Menu: {} added (found installed)".format(entry["menu"]))
+                changed = True
+    for tool_id in sorted(shown - have):
+        entry = config.tool(tool_id)
+        label = labels.get(tool_id) or (entry["menu"] if entry else "")
+        if label and msapi.set_menu_item_visible("{}/{}".format(MENU, label), False):
+            journal.write("Menu: {} hidden (not installed)".format(label))
+            changed = True
+        shown.discard(tool_id)
+    setattr(builtins, _SYNC_FLAG, have)
+    if changed:
+        arrange_menu()
+    return changed
 
 
 def arrange_menu():
     """Tools first (in the order of the registry), then maintenance, then information: also for a tool installed during the session."""
     from . import config, i18n, msapi
     tools = [e["menu"] + (" " + i18n.t("menu.soon") if not e.get("ready", False) else "") for e in config.TOOLS]
-    maintenance = [i18n.t(key) for key in ("menu.install", "menu.dependencies", "menu.update", "menu.reload", "menu.uninstall")]
+    maintenance = [i18n.t(key) for key in ("menu.install", "menu.dependencies", "menu.update", "menu.reload", "menu.uninstall", "menu.news")]
     done = msapi.arrange_menu(MENU, [tools, maintenance, [i18n.t("menu.about")]])
-    logo = _logo_button()
-    if not (done and logo):
+    _drop_old_logo()
+    if not done:
         _retry_arrange()
     return done
 
 
-def _logo_button():
-    """The logo in the corner of the menu bar: built, or rebuilt when its menu is not the one in the bar."""
-    from . import i18n, msapi
-    return msapi.add_logo_button(MENU, os.path.join(root(), "assets", "logo", "helix-aero-AERO-blanc-512px.png"), i18n.t("menu.logo_tip"))
+def _drop_old_logo():
+    """Versions up to 0.5.0 put a logo button in the corner of the menu bar; there is none any more. If an older version is still loaded
+    in this session, its button is removed once (as soon as the main window exists)."""
+    if getattr(builtins, _LOGO_FLAG, False):
+        return False
+    from . import msapi
+    if msapi.main_window() is None:
+        return False                                  # not yet: the next arrange / guard tick tries again
+    setattr(builtins, _LOGO_FLAG, True)
+    return msapi.remove_logo_button()
 
 
 def _retry_arrange():
@@ -192,8 +251,7 @@ def _retry_now():
 # Menu guard
 # --------------------------------------------------------------------------
 # The menu is pinned with its QAction by msapi.find_menu (see there for why). The guard is a second line of defence: a timer follows
-# the menu in the bar, pins the current one, brings the menu back if it left for any reason, and rebuilds the logo button if it lost
-# its menu.
+# the menu in the bar, pins the current one and brings the menu back if it left for any reason.
 
 def start_guard():
     """Starts the menu guard once per Metashape session. The first tick runs after every startup script, then one every GUARD_MS. Returns True if it was scheduled now."""
@@ -237,7 +295,7 @@ def _guard_begin():
 
 
 def guard_tick():
-    """One check of the menu: pins the current Aero menu, brings it back if it is gone, rebuilds the logo button if needed.
+    """One check of the menu: pins the current Aero menu, brings it back if it is gone (and drops the logo button of an older version once).
 
     Cheap (it only reads the menu-bar action texts) and exception-proof: it runs from a Qt timer."""
     try:
@@ -252,10 +310,21 @@ def guard_tick():
             journal.write("the Aero menu had left the menu bar: restored")
             install_menu(force=True)
             return True
-        _logo_button()
+        _drop_old_logo()
+        sync_menu()                                   # a tool that appeared or went with an update shows or leaves the menu by itself
     except Exception:
         pass
     return False
+
+
+def start_news():
+    """Plans the startup news check (a few seconds after the launch, in a worker thread): see aerotools/news.py. Never raises."""
+    try:
+        from . import news
+        return news.schedule_startup()
+    except Exception as exc:
+        print("[AeroTools] news check not planned: {!r}".format(exc))
+        return False
 
 
 def open_dependencies():
@@ -269,6 +338,18 @@ def open_dependencies():
     except Exception as exc:
         journal.write("dependencies window failed: {!r}".format(exc))
         msapi.message_box(i18n.t("boot.deps_failed", error=repr(exc)))
+
+
+def show_news():
+    """Aero > News menu: the current news on demand."""
+    ensure_on_path()
+    from . import i18n, journal, msapi
+    try:
+        from . import news
+        news.show_now()
+    except Exception as exc:
+        journal.write("news failed: {!r}".format(exc))
+        msapi.message_box(i18n.t("boot.news_failed", error=repr(exc)))
 
 
 def _make_launcher(tool_id):
@@ -428,6 +509,10 @@ def reload_all():
         print("[AeroTools] cannot reload: {!r}".format(exc))
         return False
     print("[AeroTools] code reloaded from {}".format(here))
+    try:
+        module.sync_menu(force=True)                   # the update may have brought or taken away a tool: its entry follows now
+    except Exception as exc:
+        print("[AeroTools] menu sync failed: {!r}".format(exc))
     if last and module.reopens(last):
         return module.launch(last)
     return True
@@ -501,25 +586,12 @@ def open_uninstall():
 # --------------------------------------------------------------------------
 
 def about():
+    """Aero > About menu: the About window (logo, version, channel, tools, links, paths, "Copy info")."""
     ensure_on_path()
-    from . import __version__, config, i18n, msapi
-
-    soon = i18n.t("menu.soon")
-    tools = "\n".join(
-        "    {}  {}{}".format(
-            entry["title"],
-            i18n.t(entry["subtitle"]),
-            "" if entry.get("ready") else "  " + soon,
-        )
-        for entry in config.TOOLS
-    )
-    msapi.message_box(
-        i18n.t(
-            "boot.about",
-            version=__version__,
-            vendor=config.VENDOR,
-            tools=tools,
-            root=root(),
-            settings=config.settings_path(),
-        )
-    )
+    from . import i18n, journal, msapi
+    try:
+        from . import about_dialog
+        about_dialog.show(msapi.main_window())
+    except Exception as exc:
+        journal.write("about window failed: {!r}".format(exc))
+        msapi.message_box(i18n.t("boot.about_failed", error=repr(exc)))

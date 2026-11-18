@@ -113,18 +113,13 @@ def test_a_bug_of_ours_stays_visible(boot, ms, monkeypatch):
 
 def count_layouts(monkeypatch):
     msapi = sys.modules["aerotools.msapi"]
-    calls = {"arrange": 0, "logo": 0}
+    calls = {"arrange": 0}
 
     def arrange(title, groups):
         calls["arrange"] += 1
         return True
 
-    def logo(*args, **kwargs):
-        calls["logo"] += 1
-        return True
-
     monkeypatch.setattr(msapi, "arrange_menu", arrange)
-    monkeypatch.setattr(msapi, "add_logo_button", logo)
     return calls
 
 
@@ -133,7 +128,7 @@ def test_the_menu_is_arranged_once_however_many_tools_are_installed(boot, ms, mo
     calls = count_layouts(monkeypatch)
     assert boot.install_menu() is True
     assert len(config.TOOLS) >= 3
-    assert calls == {"arrange": 1, "logo": 1}
+    assert calls == {"arrange": 1}
 
 
 def test_a_tool_installed_later_still_arranges_the_menu(boot, ms, monkeypatch):
@@ -153,7 +148,6 @@ def test_a_menu_that_could_not_be_arranged_is_tried_again_a_few_times(boot, ms, 
     import aerotools.msapi  # noqa: F401
     msapi = sys.modules["aerotools.msapi"]
     monkeypatch.setattr(msapi, "arrange_menu", lambda title, groups: False)         # no main window yet
-    monkeypatch.setattr(msapi, "add_logo_button", lambda *a, **k: False)
     scheduled = []
     qt = sys.modules["aerotools.qt"]
     monkeypatch.setattr(qt.QtCore, "QTimer", type("T", (), {"singleShot": staticmethod(lambda ms_, fn: scheduled.append((ms_, fn)))}), raising=False)

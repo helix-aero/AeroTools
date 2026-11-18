@@ -363,57 +363,27 @@ def _fmt_date(day):
 
 
 def _footer(cv, W, H, page, total):
-    y = H - 34.0
-    cv.line(MARGIN, y, W - MARGIN, y, LINE, 0.6)
-    credit = "HELIX AERO {} AeroTools Aero-GCP {} ".format(DOT, DOT)
-    cv.text(MARGIN, y + 15.0, credit, 7.5, MUTED)
-    start = MARGIN + cv.width(credit, 7.5)
-    cv.text(start, y + 15.0, SITE_TEXT, 7.5, GREEN_DEEP, "body", 2)
-    cv.link(start, y + 15.0, SITE_TEXT, 7.5, SITE_URL, "body", 2)
-    cv.text(W - MARGIN, y + 15.0, i18n.t("report.footer.page", page=page, total=total),
-            7.5, MUTED, align="r")
+    pdfkit.footer(cv, W, H, page, total, "Aero-GCP")
 
 
 def _page_background(cv, W, H):
-    cv.rect(0, 0, W, H, fill=PAPER)
+    pdfkit.page_background(cv, W, H)
 
 
 def _page_title(cv, W, data, title, subtitle=None):
-    _rule(cv, W)
-    cv.text(MARGIN, 52.0, title, 17, INK, "display", 2)
-    right = "{}  {}  {}".format(data["chunk"], DOT, _fmt_date(data["date"]))
-    cv.text(W - MARGIN, 52.0, cv.fit(right, 8.5, 260), 8.5, MUTED, align="r")
-    if subtitle:
-        cv.text(MARGIN, 66.0, subtitle, 8.5, MUTED)
+    pdfkit.page_title(cv, W, title, "{}  {}  {}".format(data["chunk"], DOT, _fmt_date(data["date"])), subtitle)
 
 
 def _draw_band(cv, W, data):
     """Title band of page 1."""
-    height = 132.0
-    cv.p.setPen(QtCore.Qt.NoPen)
-    cv.p.setBrush(_gradient_brush(0, height, W, 0))
-    cv.p.drawRect(QtCore.QRectF(0, 0, W, height))
-    cv.text(MARGIN, 36.0, "HELIX AERO", 9, "#ffffff", "display", 2, spacing=1.8)
-    cv.link(MARGIN, 36.0, "HELIX AERO", 9, SITE_URL, "display", 2)
-    cv.text(W - MARGIN, 36.0, "AeroTools {} Aero-GCP".format(DOT), 9, "#ffffff", "display", 1,
-            align="r", alpha=0.85)
-    cv.text(MARGIN, 76.0, i18n.t("report.title"), 29, "#ffffff", "display", 2)
     meta = data["meta"]
-    version = meta.get("metashape") or EM_DASH
     cells = [
         (i18n.t("report.band.project").upper(), meta.get("project") or EM_DASH),
         (i18n.t("report.band.chunk").upper(), data["chunk"] or EM_DASH),
         (i18n.t("report.band.date").upper(), _fmt_date(data["date"])),
-        (i18n.t("report.band.metashape").upper(), version),
+        (i18n.t("report.band.metashape").upper(), meta.get("metashape") or EM_DASH),
     ]
-    inner = W - 2 * MARGIN
-    weights = (0.34, 0.34, 0.16, 0.16)
-    x = MARGIN
-    for (label, value), share in zip(cells, weights):
-        cell_w = inner * share
-        cv.text(x, 104.0, label, 6.8, "#ffffff", "body", 2, alpha=0.72, spacing=1.2)
-        cv.text(x, 119.0, cv.fit(value, 10.5, cell_w - 10), 10.5, "#ffffff", "body", 2)
-        x += cell_w
+    pdfkit.band(cv, W, i18n.t("report.title"), "Aero-GCP", cells, (0.34, 0.34, 0.16, 0.16))
 
 
 def _control_sub(stats, key):
@@ -711,8 +681,7 @@ def _draw_table(cv, x, y, w, rows, stats, first_index):
     cols.reverse()                                    # right edges of the 5 columns
     heads = [i18n.t(key) for key in ("report.table.x", "report.table.y", "report.table.z",
                                      "report.table.total", "report.table.proj")]
-    cv.rect(x + 0.3, y + 0.3, w - 0.6, TABLE_HEAD_H, fill="#ecece8", radius=6.5)
-    cv.rect(x + 0.3, y + TABLE_HEAD_H - 8, w - 0.6, 8.6, fill="#ecece8")
+    pdfkit.table_header(cv, x, y, w)
     cv.text(x + pad, y + 15.5, i18n.t("report.table.id"), 6.9, MUTED, "body", 2, spacing=0.8)
     for edge, head in zip(cols, heads):
         cv.text(edge, y + 15.5, head, 7.0, MUTED, "body", 2, align="r")

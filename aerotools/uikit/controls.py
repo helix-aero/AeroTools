@@ -151,6 +151,80 @@ class WrapLabel(QtWidgets.QLabel):
         return QtCore.QSize(width, max(self.heightForWidth(width), self.minimumSizeHint().height()))
 
 
+def _wrapped_lines(text, font, width):
+    """[(start, length)] of the lines `text` takes in `width` px (a word at a time, a long word anywhere), as a wrapped label draws it."""
+    layout = QtGui.QTextLayout(text, font)
+    option = QtGui.QTextOption()
+    option.setWrapMode(QtGui.QTextOption.WrapAtWordBoundaryOrAnywhere)
+    layout.setTextOption(option)
+    lines = []
+    layout.beginLayout()
+    while True:
+        line = layout.createLine()
+        if not line.isValid():
+            break
+        line.setLineWidth(max(1, width))
+        lines.append((line.textStart(), line.textLength()))
+    layout.endLayout()
+    return lines or [(0, 0)]
+
+
+class ClampedLabel(WrapLabel):
+    """A wrapped text that never takes more than `lines` lines: what does not fit is cut with an ellipsis (the whole text is the tooltip,
+    only when cut). Its height for a width is exact, so a window can reserve the room of its longest case once and never change size for
+    the text."""
+    _max_lines = 2
+    _source = ""
+    _clamped = False
+
+    def __init__(self, text="", lines=2, break_long=False, parent=None):
+        self._max_lines = max(1, int(lines))
+        super(ClampedLabel, self).__init__(text, break_long, parent)
+
+    def setText(self, text):
+        super(ClampedLabel, self).setText(text)
+        self._source = QtWidgets.QLabel.text(self)              # with the break marks: what the label wraps
+        self._clamped = False
+        self._clamp()
+
+    def set_max_lines(self, lines):
+        lines = max(1, int(lines))
+        if lines != self._max_lines:
+            self._max_lines = lines
+            self._clamp()
+            self.updateGeometry()
+
+    def _room(self, width=None):
+        return max(px(24), (self.width() if width is None else width) - 2 * self.margin())
+
+    def heightForWidth(self, width):
+        shown = min(len(_wrapped_lines(self._source, self.font(), self._room(width))), self._max_lines)
+        return shown * self.fontMetrics().lineSpacing() + 2 * self.margin()
+
+    def hasHeightForWidth(self):
+        return True
+
+    def _clamp(self):
+        if self.width() <= 1:
+            return
+        lines = _wrapped_lines(self._source, self.font(), self._room())
+        shown = self._source
+        if len(lines) > self._max_lines:
+            start = lines[self._max_lines - 1][0]
+            tail = self._source[start:].replace("\n", " ")
+            shown = self._source[:start] + self.fontMetrics().elidedText(tail, Qt.ElideRight, self._room())
+        if shown != QtWidgets.QLabel.text(self):
+            QtWidgets.QLabel.setText(self, shown)
+        cut = shown != self._source
+        if cut != self._clamped:
+            self._clamped = cut
+            self.setToolTip(unbreak(self._source) if cut else "")
+
+    def resizeEvent(self, event):
+        super(ClampedLabel, self).resizeEvent(event)
+        self._clamp()
+
+
 def label(text="", type="body", tone=None, wrap=True, selectable=False, break_long=False):
     """A text. `type`: caption, small, body, lead, title, display, strong, field. `tone`: muted, faint, accent, success, warning, danger, info.
     A wrapped one is a `WrapLabel`; `break_long=True` lets it break a file name or a path anywhere."""
@@ -799,6 +873,71 @@ class ChoiceBox(_Ring, QtWidgets.QComboBox):
         p.end()
 
 
+class CappedStack(QtWidgets.QWidget):
+    """The pages of a wizard, one shown at a time (the API of the part of `QStackedWidget` a window uses). Only the page on show counts
+    for the size of the window: a plain QStackedWidget counts the tallest page whatever is shown, so a banner or a list that appears on a short
+    page pushed the window up although the window was tall enough for that page (and a window could not be made smaller than another page)."""
+    currentChanged = QtCore.Signal(int)
+
+    def __init__(self, parent=None):
+        super(CappedStack, self).__init__(parent)
+        self._pages, self._current = [], -1
+        box = QtWidgets.QVBoxLayout(self)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(0)
+        self._box = box
+
+    def addWidget(self, page):
+        self._pages.append(page)
+        self._box.addWidget(page)
+        page.setVisible(False)
+        if self._current < 0:
+            self.setCurrentIndex(0)
+        return len(self._pages) - 1
+
+    def removeWidget(self, page):
+        if page not in self._pages:
+            return
+        was = self._pages.index(page)
+        self._pages.remove(page)
+        self._box.removeWidget(page)
+        page.setVisible(False)
+        if not self._pages:
+            self._current = -1
+        elif was <= self._current:
+            self.setCurrentIndex(max(0, min(self._current - (1 if was < self._current else 0), len(self._pages) - 1)))
+
+    def setCurrentIndex(self, index):
+        if not 0 <= index < len(self._pages):
+            return
+        changed = index != self._current
+        self._current = index
+        for number, page in enumerate(self._pages):
+            page.setVisible(number == index)
+        self.updateGeometry()
+        if changed:
+            self.currentChanged.emit(index)
+
+    def setCurrentWidget(self, page):
+        if page in self._pages:
+            self.setCurrentIndex(self._pages.index(page))
+
+    def currentIndex(self):
+        return self._current
+
+    def currentWidget(self):
+        return self._pages[self._current] if 0 <= self._current < len(self._pages) else None
+
+    def widget(self, index):
+        return self._pages[index] if 0 <= index < len(self._pages) else None
+
+    def indexOf(self, page):
+        return self._pages.index(page) if page in self._pages else -1
+
+    def count(self):
+        return len(self._pages)
+
+
 class Toggle(_Ring, QtWidgets.QAbstractButton):
     """An on / off switch with its text on the right. Same API as a checkbox (`isChecked`, `setChecked`, `toggled`)."""
     ring_radius = tokens.PILL
@@ -832,18 +971,18 @@ class Toggle(_Ring, QtWidgets.QAbstractButton):
         rect = QtCore.QRectF(1, top, track.width(), track.height())
         on, enabled = self.isChecked(), self.isEnabled()
         if on:
-            fill = tokens.ACCENT if enabled else tokens.SURFACE_PRESSED
+            fill = tokens.ACCENT if enabled else tokens.mix(tokens.ACCENT, tokens.SURFACE, 0.55)       # locked and on: still reads as on, only dimmed
             if enabled and self.underMouse():
                 fill = tokens.ACCENT_HOVER
         else:
             fill = tokens.SURFACE_HOVER if self.underMouse() and enabled else tokens.SURFACE
-        p.setPen(QtGui.QPen(_qcolor(tokens.ACCENT if on and enabled else tokens.BORDER_STRONG), 1))
+        p.setPen(QtGui.QPen(_qcolor(fill if on else tokens.BORDER_STRONG), 1))
         p.setBrush(_qcolor(fill))
         p.drawRoundedRect(rect, rect.height() / 2.0, rect.height() / 2.0)
         knob = rect.height() - 2 * px(3)
         x = rect.right() - px(3) - knob if on else rect.left() + px(3)
         p.setPen(Qt.NoPen)
-        p.setBrush(_qcolor(tokens.ON_ACCENT if on and enabled else (tokens.TEXT if enabled else tokens.TEXT_DISABLED)))
+        p.setBrush(_qcolor(tokens.ON_ACCENT if on else (tokens.TEXT if enabled else tokens.TEXT_DISABLED)))
         p.drawEllipse(QtCore.QRectF(x, rect.top() + px(3), knob, knob))
         if self.text():
             p.setFont(metrics.font("body"))

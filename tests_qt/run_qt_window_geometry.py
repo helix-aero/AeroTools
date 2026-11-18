@@ -213,6 +213,9 @@ def main():
     if not fits:
         problems.append("the least size {}x{} does not fit the screen {}x{}".format(box.minimumWidth(), box.minimumHeight(),
                                                                                    area.width(), area.height()))
+    native = native_size(box)
+    if (box.width(), box.height()) != native:
+        problems.append("Aero-Exports: Qt thinks {} but the native window is {}".format((box.width(), box.height()), native))
     box.close()
     return problems + generic_cases()
 

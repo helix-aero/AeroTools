@@ -5,11 +5,13 @@ One window = header (tool mark, title, "i") / optional step bar / content / bann
 Footer order, always: Cancel or Close on the left, Back then the primary button on the right. The primary is the right-most button.
 """
 
+import os
+
 from .. import i18n
 from ..qt import QtCore, QtGui, QtWidgets
 from . import icons, metrics, style, tokens
 from .blocks import Banner, Divider, hbox, vbox
-from .controls import Button, ElidedLabel, FontButton, IconButton, InfoButton, ThemeButton, Toggle, _qcolor, label, set_tone
+from .controls import Button, CappedStack, ElidedLabel, FontButton, IconButton, InfoButton, ThemeButton, Toggle, _qcolor, label, set_tone
 from .metrics import px
 from .progress import ProgressRow
 from .tasks import Cancelled, TaskRunner, describe
@@ -350,6 +352,7 @@ class FooterBar(QtWidgets.QWidget):
         self._extra_at = 1
         self.center = QtWidgets.QStackedWidget()
         self.center.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
+        self.center.setMinimumWidth(px(40))                  # whatever the status or the progress says, the footer asks for the same least width
         self.status = ElidedLabel("", "small", "muted")
         self.progress = ProgressRow()
         self.center.addWidget(self.status)
@@ -360,6 +363,7 @@ class FooterBar(QtWidgets.QWidget):
         self._lay.addWidget(self.back_button)
         self._lay.addWidget(self.next_button)
         self.cancel_mode = "cancel"
+        self._reserved = {self.cancel_button: [i18n.t("ui.cancel"), i18n.t("ui.close")]}       # Cancel and Close are the same width
 
     def set_cancel_mode(self, mode):
         """'cancel' (the window does something) or 'close' (it only shows things): the text of the left button."""
@@ -375,6 +379,21 @@ class FooterBar(QtWidgets.QWidget):
     def set_primary(self, text, role="primary"):
         self.next_button.setText(text)
         self.next_button.set_role(role)
+
+    def reserve_primary(self, texts):
+        """The primary button is as wide as the widest text it will ever show (Stop, Stopping...): a text that changes never cuts, and the
+        least width of the window does not follow the text."""
+        self._reserved[self.next_button] = [str(text) for text in texts]
+        self.refresh_skin()
+
+    def refresh_skin(self):
+        """Measure the reserved buttons again with the font the active style gives them (padding and border of the style counted, bold to be safe)."""
+        for button, texts in self._reserved.items():
+            font = QtGui.QFont(button.font())
+            font.setBold(True)
+            sizes = QtGui.QFontMetrics(font)
+            widest = max([sizes.horizontalAdvance(text) for text in texts] + [0])
+            button.setMinimumWidth(max(px(88), widest + 2 * px(tokens.L) + 2 + px(tokens.S)))
 
     def set_status(self, text, tone=None):
         self.status.setFullText(text)
@@ -456,6 +475,9 @@ class ToolWindow(QtWidgets.QDialog):
     INFO = ""
     DESIGN_SIZE = None          # (width, height) in design px at 100 %, or None to size to the content
     MARK = "mark"
+    CAPPED_STACK = False        # True: only the page on show counts for the size of the window (a banner on a short page does not push it up)
+    BANNER_LINES = None         # n: the banner is at most n lines high and the window always keeps the room of that banner (it never changes size
+                                # when a banner comes, changes or goes); None: the banner is as tall as its text and the window follows it
     CLOSE_ONLY = False          # True: the left button says Close (the window only shows things)
 
     def __init__(self, parent=None, title=None, subtitle=None, info=None, wizard=False, design_size=None, modal=False, mark=None):
@@ -478,6 +500,7 @@ class ToolWindow(QtWidgets.QDialog):
         outer.setSpacing(0)
         outer.setSizeConstraint(QtWidgets.QLayout.SetNoConstraint)     # the minimum size is declared by `_sync_minimum`, which knows the screen
         self._syncing = False
+        self._user_sizing = False                                       # the user drags an edge (WM_ENTERSIZEMOVE .. WM_EXITSIZEMOVE)
         self.root = QtWidgets.QWidget()
         self.root.setAttribute(Qt.WA_StyledBackground, True)
         style.apply(self.root)
@@ -498,10 +521,10 @@ class ToolWindow(QtWidgets.QDialog):
         self.steps = StepBar() if wizard else None
         if self.steps is not None:
             lay.addWidget(self.steps)
-        self.stack = QtWidgets.QStackedWidget()
+        self.stack = CappedStack() if self.CAPPED_STACK else QtWidgets.QStackedWidget()
         self.stack.currentChanged.connect(lambda _i: QtCore.QTimer.singleShot(0, self._sync_minimum))      # another page, another least size
         lay.addWidget(self.stack, 1)
-        self.banner = Banner("info", "")
+        self.banner = Banner("info", "", max_lines=self.BANNER_LINES)
         self.banner.hide()
         self.banner.aboutToChange.connect(self._banner_changing)
         self.banner.changed.connect(lambda: QtCore.QTimer.singleShot(0, self._sync_banner_height))
@@ -850,7 +873,7 @@ class ToolWindow(QtWidgets.QDialog):
         design size.
         A window with a fixed size is left alone."""
         lay = self.layout()
-        if self._syncing or lay is None or (self.minimumSize() == self.maximumSize() and not self.minimumSize().isEmpty()):
+        if self._syncing or self._user_sizing or lay is None or (self.minimumSize() == self.maximumSize() and not self.minimumSize().isEmpty()):
             return
         self._syncing = True
         try:
@@ -860,8 +883,18 @@ class ToolWindow(QtWidgets.QDialog):
             flow = self._flow
             hfw = flow.hasHeightForWidth()
 
+            reserve = self.banner.reserved_height() + px(tokens.L) if self.BANNER_LINES else 0
+            shown = not self.banner.isHidden()
+
             def height_at(wide):
-                return max(need.height(), flow.minimumHeightForWidth(wide)) if hfw else need.height()
+                if not reserve:
+                    return max(need.height(), flow.minimumHeightForWidth(wide)) if hfw else need.height()
+                # The least height is that of the page WITHOUT its banner plus the room of the tallest banner there can be: the banner,
+                # whatever it says, takes that room and the window neither grows nor shrinks when it comes or goes.
+                # (the layout's own height for width is NOT used here: Qt5 counts every widget at its preferred height in it, which made
+                # the least height jump by the height of a whole page as soon as the banner was shown)
+                low = need.height() - ((self.banner.minimumSizeHint().height() + px(tokens.L)) if shown else 0)
+                return low + reserve
 
             width = min(need.width(), room_w)
             least = height_at(width)
@@ -878,7 +911,9 @@ class ToolWindow(QtWidgets.QDialog):
             # width it has, so that narrowing it never asks for more height than was declared. The others follow their width.
             # What is declared never exceeds the work area, whatever the content asks (a window the native one cannot hold is refused by
             # the window system and then drawn at a size its hit areas do not follow).
-            self.setMinimumSize(min(width, room_w), min(height_at(width if self._design else max(self.width(), width)), room_h))
+            wanted = QtCore.QSize(min(width, room_w), min(height_at(width if self._design else max(self.width(), width)), room_h))
+            if wanted != self.minimumSize():                # the same least size is not declared again (the window system hears nothing)
+                self.setMinimumSize(wanted)
             self._keep_on_screen(area)
         finally:
             self._syncing = False
@@ -895,6 +930,67 @@ class ToolWindow(QtWidgets.QDialog):
 
     def _screen_changed(self, *_args):
         self._sync_minimum()
+
+    def nativeEvent(self, event_type, message):
+        """While the user drags an edge the window declares and changes nothing by itself: a least size raised in the middle of the drag made
+        Qt resize the window from its top-left corner, and the window jumped (Windows says when the drag starts and ends)."""
+        try:
+            if os.name == "nt" and bytes(event_type) == b"windows_generic_MSG":
+                from ctypes import wintypes
+                msg = wintypes.MSG.from_address(int(message))
+                code = msg.message
+                if code == 0x0214 and self._stop_at_least(msg.wParam, msg.lParam):          # WM_SIZING
+                    return True, 1
+                if code == 0x0231:                          # WM_ENTERSIZEMOVE
+                    self._user_sizing = True
+                elif code == 0x0232:                        # WM_EXITSIZEMOVE
+                    self._user_sizing = False
+                    QtCore.QTimer.singleShot(0, self._sync_minimum)
+        except Exception:
+            pass
+        return False, 0                                 # not handled here: Qt goes on with the message
+
+    def _stop_at_least(self, edge, rect_address):
+        """WM_SIZING: the rectangle the user's drag asks for (window rectangle, frame included, device pixels). An edge dragged past the least
+        size stops there and the opposite edge stays where it is: otherwise the whole window follows the mouse once it cannot shrink more.
+        True when the rectangle was changed."""
+        from ctypes import wintypes
+        import ctypes
+        user32 = ctypes.windll.user32
+        handle = wintypes.HWND(int(self.winId()))
+        outer, inner = wintypes.RECT(), wintypes.RECT()
+        user32.GetWindowRect(handle, ctypes.byref(outer))
+        user32.GetClientRect(handle, ctypes.byref(inner))
+        ratio = self.devicePixelRatioF()
+        least_w = int(round(self.minimumWidth() * ratio)) + (outer.right - outer.left) - inner.right
+        least_h = int(round(self.minimumHeight() * ratio)) + (outer.bottom - outer.top) - inner.bottom
+        rect = wintypes.RECT.from_address(int(rect_address))
+        before = (rect.left, rect.top, rect.right, rect.bottom)
+        if edge in (1, 4, 7) and rect.right - rect.left < least_w:           # left, top-left, bottom-left
+            rect.left = rect.right - least_w
+        if edge in (2, 5, 8) and rect.right - rect.left < least_w:           # right, top-right, bottom-right
+            rect.right = rect.left + least_w
+        if edge in (3, 4, 5) and rect.bottom - rect.top < least_h:           # top, top-left, top-right
+            rect.top = rect.bottom - least_h
+        if edge in (6, 7, 8) and rect.bottom - rect.top < least_h:           # bottom, bottom-left, bottom-right
+            rect.bottom = rect.top + least_h
+        return before != (rect.left, rect.top, rect.right, rect.bottom)
+
+    def setGeometry(self, *args):
+        """Qt keeps the top-left corner when a geometry is smaller than the least size, so a top or left edge moved past the least size moved
+        the whole window. Here the edge stops and the opposite one stays."""
+        rect = QtCore.QRect(args[0]) if len(args) == 1 else QtCore.QRect(*args)
+        if self.isVisible() and not self.isMaximized() and not self.isFullScreen():
+            current, least = self.geometry(), self.minimumSize()
+            if rect.height() < least.height() and rect.bottom() == current.bottom() and rect.top() != current.top():
+                rect.setTop(rect.bottom() - least.height() + 1)
+            if rect.width() < least.width() and rect.right() == current.right() and rect.left() != current.left():
+                rect.setLeft(rect.right() - least.width() + 1)
+        super(ToolWindow, self).setGeometry(rect)
+
+    def hideEvent(self, event):
+        self._user_sizing = False
+        super(ToolWindow, self).hideEvent(event)
 
     def event(self, event):
         result = super(ToolWindow, self).event(event)
@@ -938,6 +1034,8 @@ class ToolWindow(QtWidgets.QDialog):
 
     def showEvent(self, event):
         style.apply(self.root)
+        self.ensurePolished()
+        self.footer.refresh_skin()
         if not self._fitted:
             self._fitted = True
             self.fit_to_content()

@@ -90,6 +90,19 @@ def geographic_epsg(horizontal_epsg):
         return 4326
 
 
+def first_axis_is_north(epsg):
+    """True when the first axis of an EPSG CRS (projected or geographic) points north (latitude first, or northing first: EPSG:4326,
+    EPSG:3035). cs2cs follows the axis order of the CRS definition, the tools work in (x = east / longitude, y = north / latitude)."""
+    for table in ("projected_crs", "geodetic_crs"):
+        row = proj_db().execute(
+            "select a.orientation from {} c join axis a on a.coordinate_system_auth_name=c.coordinate_system_auth_name and "
+            "a.coordinate_system_code=c.coordinate_system_code where c.auth_name='EPSG' and c.code=? and a.coordinate_system_order=1".format(table),
+            (str(int(epsg)),)).fetchone()
+        if row is not None:
+            return str(row[0]).lower() in ("north", "south")
+    return False
+
+
 class Proj(object):
     """Calls to PROJ. `runner(exe, args, text)` -> text output, replaceable (tests)."""
 
@@ -179,3 +192,15 @@ class Proj(object):
         rows = np.column_stack([lons, lats, np.zeros(len(lons)), np.zeros(len(lons))])
         args = ["-d", "6", "+proj=pipeline", "+step", "+inv", "+proj=vgridshift", "+grids=%s" % grid_file, "+multiplier=1"]
         return self._columns("cct", args, rows, 4)[:, 2]
+
+    def convert(self, src_epsg, dst_epsg, xs, ys):
+        """(X, Y) of the points (xs, ys) of CRS `src_epsg` in CRS `dst_epsg`, both horizontal, always as (x = east or longitude, y = north or
+        latitude) whatever the axis order of the CRS. NaN where PROJ gives up. One call for the whole batch."""
+        np = _numpy()
+        xs, ys = np.asarray(xs, dtype=np.float64).ravel(), np.asarray(ys, dtype=np.float64).ravel()
+        if int(src_epsg) == int(dst_epsg):
+            return xs.copy(), ys.copy()
+        swap_in, swap_out = first_axis_is_north(src_epsg), first_axis_is_north(dst_epsg)
+        rows = np.column_stack([ys, xs, np.zeros(len(xs))] if swap_in else [xs, ys, np.zeros(len(xs))])
+        out = self._columns("cs2cs", ["-d", "9", "EPSG:%d" % int(src_epsg), "EPSG:%d" % int(dst_epsg)], rows, 3)
+        return (out[:, 1], out[:, 0]) if swap_out else (out[:, 0], out[:, 1])

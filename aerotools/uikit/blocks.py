@@ -6,7 +6,7 @@ Layout rule of the kit: 4 px scale, 16 px inside a window, 24 px between section
 from .. import i18n
 from ..qt import QtCore, QtGui, QtWidgets
 from . import icons, metrics, style, tokens
-from .controls import Button, ElidedLabel, IconButton, InfoButton, _Ring, _qcolor, label, set_tone
+from .controls import Button, ClampedLabel, ElidedLabel, IconButton, InfoButton, Popover, _Ring, _qcolor, label, set_tone
 from .metrics import px
 
 Qt = QtCore.Qt
@@ -363,14 +363,20 @@ class FormGrid(QtWidgets.QWidget):
 class Banner(QtWidgets.QFrame):
     """An inline message bar: info, success, warning or danger; an optional action button, an optional "Details" part, a close X.
 
-    The one place errors end up: `show_message(kind, text, title=None, action=("Retry", callback), details=None)`; `clear()` hides it."""
+    The one place errors end up: `show_message(kind, text, title=None, action=("Retry", callback), details=None)`; `clear()` hides it.
+
+    `max_lines=n` makes it a banner of a bounded height: the title and text together at most n lines (cut with an ellipsis, the whole text
+    is the tooltip) and the details open in a bubble instead of making the banner taller. A window can then reserve `reserved_height()` once
+    and never change size for what the banner says."""
     dismissed = QtCore.Signal()
     actionTriggered = QtCore.Signal()
     aboutToChange = QtCore.Signal()            # just before it is shown, changed or hidden (a window notes its height first)
     changed = QtCore.Signal()                  # shown, hidden or its text changed: the window may need another height
 
-    def __init__(self, kind="info", text="", title="", action=None, details="", closable=True, parent=None, actions_below=False):
+    def __init__(self, kind="info", text="", title="", action=None, details="", closable=True, parent=None, actions_below=False, max_lines=None):
         super(Banner, self).__init__(parent)
+        self._max_lines = int(max_lines) if max_lines else None
+        self._details_text = ""
         self.setProperty("ui", "banner")
         self.setProperty("kind", kind)
         self.setAttribute(Qt.WA_StyledBackground, True)
@@ -383,8 +389,14 @@ class Banner(QtWidgets.QFrame):
         self.glyph = Glyph(kind)
         outer.addWidget(self.glyph, 0, Qt.AlignTop)
         column = vbox(spacing=tokens.XS)
-        self.title = label("", "strong", wrap=True)
-        self.message = label("", "body", wrap=True, selectable=True, break_long=True)
+        if self._max_lines:
+            self.title = ElidedLabel("", "strong", fit=True)
+            self.message = ClampedLabel("", self._max_lines, break_long=True)
+            self.message.setProperty("type", "body")
+            self.message.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        else:
+            self.title = label("", "strong", wrap=True)
+            self.message = label("", "body", wrap=True, selectable=True, break_long=True)
         self.details = label("", "small", "muted", wrap=True, selectable=True, break_long=True)
         self.details.hide()
         column.addWidget(self.title)
@@ -420,16 +432,31 @@ class Banner(QtWidgets.QFrame):
         line = max(px(tokens.BUTTON_H), QtGui.QFontMetrics(metrics.font("body")).lineSpacing())
         return QtCore.QSize(px(260), line + margins.top() + margins.bottom())
 
+    def reserved_height(self):
+        """The height of the tallest this banner can be (`max_lines` lines, the title counting as one, or the buttons), 0 for a banner without a bound."""
+        if not self._max_lines:
+            return 0
+        margins = self.layout().contentsMargins()
+        line = max(QtGui.QFontMetrics(metrics.font("body", strong=True)).lineSpacing(), QtGui.QFontMetrics(metrics.font("body")).lineSpacing())
+        body = self._max_lines * line
+        return max(px(tokens.BUTTON_H), body) + margins.top() + margins.bottom() + self.layout().spacing()      # (the row of the layout under the text)
+
     def show_message(self, kind, text, title=None, action=None, details=None, closable=None):
         self.aboutToChange.emit()
         style.set_prop(self, "kind", kind)
         self.glyph.set_kind({"danger": "error", "warning": "warn"}.get(kind, kind))
-        self.title.setText(title or "")
+        if self._max_lines:
+            self.title.setFullText(title or "")
+            self.message.set_max_lines(self._max_lines - (1 if title else 0))
+        else:
+            self.title.setText(title or "")
         self.title.setVisible(bool(title))
         self.message.setText(text or "")
         self.message.setVisible(bool(text))
-        self.details.setText((details or "")[-1200:])
+        self._details_text = (details or "")[-1200:]
+        self.details.setText(self._details_text)
         self.details.hide()
+        self._hide_bubble()
         self.details_button.setText(i18n.t("ui.details"))
         self.details_button.setVisible(bool(details))
         self._action_callback = action[1] if action else None
@@ -456,7 +483,19 @@ class Banner(QtWidgets.QFrame):
         self.hide()
         self.dismissed.emit()
 
+    def _hide_bubble(self):
+        bubble = Popover.peek()
+        if bubble is not None:
+            bubble.hide_for(self.details_button)
+
     def _toggle_details(self):
+        if self._max_lines:                                 # a bounded banner shows its details in a bubble: it never grows
+            bubble = Popover.peek()
+            if bubble is not None and bubble.owner is self.details_button and bubble.isVisible():
+                self._hide_bubble()
+            else:
+                Popover.shared().show_for(self.details_button, self._details_text)
+            return
         on = not self.details.isVisible()
         self.details.setVisible(on)
         self.details_button.setText(i18n.t("ui.hide_details") if on else i18n.t("ui.details"))

@@ -9,7 +9,8 @@ on Windows (`<folder>/python/bin/python3.9` elsewhere). `find_python` looks next
 the places it looked at for the messages.
 
 How it is installed. Metashape's folder is rarely writable without administrator rights, so everything goes to the user's site-packages
-(`pip install --user`). That folder may not exist when Metashape starts: `refresh_modules` puts it on `sys.path` and clears the import caches,
+(`pip install --user`). Metashape 2.4 and later have their own user folder first on sys.path (`metashape_user_base`): pip is pointed at it,
+so nothing lands in the user folder that a Python installed on the computer shares. That folder may not exist when Metashape starts: `refresh_modules` puts it on `sys.path` and clears the import caches,
 so the package works in the running session and no restart is needed. If it still cannot be found afterwards, the row says so.
 
 What this module never does: install anything by itself (the window asks), run a command without a timeout, or open a console window.
@@ -92,9 +93,24 @@ def _is_metashape(path):
 # What is installed
 # --------------------------------------------------------------------------
 
+def metashape_user_base(path=None):
+    """The user packages folder of Metashape 2.4 and later (`...\\Agisoft\\Metashape Pro\\user-packages-py312`), "" for older ones.
+    Metashape puts its site-packages (`<folder>\\Python312\\site-packages`) first on sys.path, even before it exists; `pip install --user`
+    writes there when PYTHONUSERBASE names the folder."""
+    for entry in (sys.path if path is None else path):
+        parts = os.path.normpath(str(entry)).split(os.sep)
+        if not parts or parts[-1].lower() != "site-packages":
+            continue
+        for index, part in enumerate(parts[:-1]):
+            if part.lower().startswith("user-packages-py"):
+                return os.sep.join(parts[:index + 1])
+    return ""
+
+
 def refresh_modules():
     """Make what was just installed importable without restarting Metashape: the user site folder (it may not have existed when Python
-    started, so it is not on sys.path yet) and the import caches."""
+    started, so it is not on sys.path yet), Metashape's own user folder (on sys.path from the start, but remembered as missing) and the
+    import caches."""
     try:
         import site
         folder = site.getusersitepackages()
@@ -102,6 +118,10 @@ def refresh_modules():
             site.addsitedir(folder)
     except Exception:
         pass
+    if metashape_user_base():
+        for entry in sys.path:
+            if metashape_user_base([entry]) and sys.path_importer_cache.get(entry, False) is None:
+                del sys.path_importer_cache[entry]
     importlib.invalidate_caches()
 
 
@@ -194,9 +214,17 @@ def collect(tool_ids=None, only_missing=False, extra_modules=()):
 # What to run
 # --------------------------------------------------------------------------
 
-def pip_command(python, name):
-    """The command that installs one package (pip's own range from config.MODULES): the list of arguments, python first."""
-    return [python] + list(PIP_ARGS) + [config.module_entry(name)["pip"]]
+def pip_command(python, name, over_broken=False):
+    """The command that installs one package (pip's own range from config.MODULES): the list of arguments, python first.
+    `over_broken`: a copy that does not load is in the way (often in Metashape's folder, not writable), so pip must not take it as
+    installed; the new copy goes to the user folder, which comes first on sys.path, and the old one is left where it is."""
+    extra = ["--ignore-installed"] if over_broken else []
+    return [python] + list(PIP_ARGS) + extra + [config.module_entry(name)["pip"]]
+
+
+def broken_copy(name):
+    """True when pip can see the package (its metadata is there) but it cannot be imported in this Metashape."""
+    return name != PIP and bool(distribution_version(name)) and not state_of(name)
 
 
 def ensurepip_commands(python):
@@ -221,6 +249,8 @@ def run_command(args, on_line=None, cancelled=None, timeout=STEP_TIMEOUT_S, pope
     on_line = on_line or (lambda text: None)
     cancelled = cancelled or (lambda: False)
     env = dict(os.environ, PYTHONIOENCODING="utf-8", PIP_DISABLE_PIP_VERSION_CHECK="1", PYTHONUTF8="1")
+    if metashape_user_base():
+        env["PYTHONUSERBASE"] = metashape_user_base()
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     try:
         proc = popen([str(a) for a in args], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
@@ -363,7 +393,10 @@ def install_one(name, python, log, progress=None, cancelled=None, popen=subproce
         attempts, timeout = ensurepip_commands(python), ENSUREPIP_TIMEOUT_S
         progress(0.1, "install", "")
     else:
-        attempts, timeout = [pip_command(python, name)], STEP_TIMEOUT_S
+        over_broken = broken_copy(name)
+        if over_broken:
+            log("a copy of {} {} is there but does not load: installing over it".format(name, distribution_version(name)))
+        attempts, timeout = [pip_command(python, name, over_broken)], STEP_TIMEOUT_S
         progress(0.05, "collect", "")
     code, output = -1, ""
     for args in attempts:

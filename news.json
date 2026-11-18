@@ -1,0 +1,14 @@
+{
+  "_comment": "Startup news (see docs/NEWS.md). The example item below never shows: max_version 0.0.0 is older than any release. Replace it with real items.",
+  "items": [
+    {
+      "id": "example",
+      "date": "2026-01-01",
+      "title": "Example item",
+      "body": "A title, a short text and an optional link. Items appear once, newest first.",
+      "url": "https://docs.helix.aero",
+      "channels": ["main", "dev"],
+      "max_version": "0.0.0"
+    }
+  ]
+}

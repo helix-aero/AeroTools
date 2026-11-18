@@ -14,22 +14,38 @@ TEXTS = {
     "menu.reload": "Reload AeroTools",
     "menu.dependencies": "Dependencies...",
     "menu.about": "About",
-    "menu.logo_tip": "HELIX AERO tools",
+    "menu.news": "News",
+    "boot.news_failed": "AeroTools: the news window could not open.\n\n{error}",
+    "news.title": "News",
+    "news.learn_more": "Learn more",
+    "news.more": "More news",
+    "news.close": "Close",
+    "news.empty": "No news right now.",
+    "news.offline": "The news could not be loaded.",
+    "news.dont_show": "Don't show news again",
+    "news.dont_show_tip": "Turns the startup news off. Turn it back on in Install plugins, or open Aero > News at any time.",
+    "news.setting_caption": "Notifications",
+    "news.setting": "Show news at startup",
+    "news.setting_tip": "A short note when there is something new. Aero > News shows it at any time.",
     "menu.soon": "(coming soon)",
     "boot.unknown_tool": "AeroTools: unknown tool \"{tool}\".",
     "boot.not_ready": "{title} is not available yet.",
     "boot.load_failed": "AeroTools: could not load {tool}.\n\n{error}",
     "boot.start_failed": "AeroTools: {tool} was loaded but did not start.\n\n{error}",
-    "boot.about": (
-        "AeroTools {version}\n"
-        "{vendor} tool suite for Agisoft Metashape.\n\n"
-        "Tools:\n{tools}\n\n"
-        "Shared code: {root}\n"
-        "Workstation settings: {settings}\n\n"
-        "The Aero menu is added at each start by the launcher installed in "
-        "Metashape's scripts folder. \"Reload AeroTools\" re-reads the code "
-        "from the server without restarting Metashape."
-    ),
+    "boot.about_failed": "AeroTools: the About window could not open.\n\n{error}",
+    "about.title": "About",
+    "about.name": "HELIX AERO Tools",
+    "about.version": "Version {version}",
+    "about.channel": "{channel} channel",
+    "about.built": "built {date}",
+    "about.website": "Website",
+    "about.docs": "Documentation",
+    "about.community": "Community & Support",
+    "about.install_folder": "Install folder",
+    "about.settings_file": "Settings file",
+    "about.copy": "Copy info",
+    "about.copy_tip": "Copies the version, channel, Metashape version, system and paths, to paste in a bug report.",
+    "about.copied": "Copied.",
     "tool.fastgcp.subtitle": "GCP marking, by hand or with AI",
     "tool.no_window": (
         "Aero-GCP needs the Metashape interface: the main window was not found."

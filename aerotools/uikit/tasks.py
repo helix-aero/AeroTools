@@ -59,6 +59,13 @@ class Progress(object):
     def is_cancelled(self):
         return bool(self._is_cancelled is not None and self._is_cancelled())
 
+    def poll(self):
+        """Like `check()` but answers instead of raising: let the window breathe (cooperative mode) and say whether the operator asked to
+        stop. For code that has its own way to stop (a `cancelled()` callback), called as often as the work allows."""
+        if self._tick is not None:
+            self._tick()
+        return self.is_cancelled()
+
     def check(self):
         """Let the window breathe (cooperative mode) and raise `Cancelled` if the operator asked to stop."""
         if self._tick is not None:

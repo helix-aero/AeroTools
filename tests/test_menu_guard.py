@@ -1,4 +1,4 @@
-"""The menu guard: it follows the Aero menu of Metashape's menu bar, brings it back if it leaves, and keeps the logo button on it.
+"""The menu guard: it follows the Aero menu of Metashape's menu bar, brings it back if it leaves, and leaves no logo in the corner of the bar.
 
 The guard is a second line of defence (the menu is pinned with its action by msapi.find_menu): if the menu is replaced or leaves the bar anyway, it is pinned again or restored. Real Qt (offscreen), with a
 fake `addMenuItem` that does what Metashape's does: a parentless QMenu per top-level title, filled in call order."""
@@ -76,8 +76,8 @@ class Bar(object):
                 self.window.menuBar().removeAction(action)
 
 
-FLAGS = ("_AEROTOOLS_MENU_INSTALLED", "_AEROTOOLS_MENU_TOOLS", "_AEROTOOLS_MENU_RETRIES", "_AEROTOOLS_MENU_GUARD",
-         "_AEROTOOLS_MENU_RESTORES", msapi.MENUS_FLAG, msapi.ACTIONS_FLAG)
+FLAGS = ("_AEROTOOLS_MENU_INSTALLED", "_AEROTOOLS_MENU_TOOLS", "_AEROTOOLS_MENU_LABELS", "_AEROTOOLS_MENU_SYNCED", "_AEROTOOLS_MENU_RETRIES", "_AEROTOOLS_MENU_GUARD",
+         "_AEROTOOLS_MENU_RESTORES", "_AEROTOOLS_LOGO_CLEANED", "_AEROTOOLS_NEWS_STARTED", msapi.MENUS_FLAG, msapi.ACTIONS_FLAG)
 
 
 @pytest.fixture
@@ -191,22 +191,39 @@ def test_the_first_tick_runs_after_the_startup_scripts(bar):
     assert _pinned() is new
 
 
-def test_the_logo_is_rebuilt_when_its_menu_is_gone(bar):
-    bootstrap.install_menu()
-    old_button = _corner(bar)
-    assert old_button is not None
-    old_button.setMenu(None)                           # the button that lost its menu is dead
-    bootstrap.guard_tick()
-    button = _corner(bar)
-    assert button is not None and button.menu() is _pinned()
-    assert button.objectName() == msapi.LOGO_BUTTON
+def _old_logo(bar):
+    """What AeroTools 0.5.0 left in the corner of the menu bar: a tool button named like msapi.LOGO_BUTTON that opens the Aero menu."""
+    button = QtWidgets.QToolButton(bar.window.menuBar())
+    button.setObjectName(msapi.LOGO_BUTTON)
+    button.setMenu(_pinned())
+    bar.window.menuBar().setCornerWidget(button, QtCore.Qt.TopRightCorner)
+    return button
 
 
-def test_the_logo_follows_a_replaced_menu(bar):
+def test_no_logo_is_built(bar):
     bootstrap.install_menu()
-    new = bar.rebuild()
     bootstrap.guard_tick()
-    assert _corner(bar).menu() is new
+    bar.rebuild()
+    bootstrap.guard_tick()
+    assert _corner(bar) is None
+    assert not bar.window.findChildren(QtWidgets.QToolButton, msapi.LOGO_BUTTON)
+    assert not hasattr(msapi, "add_logo_button")
+
+
+def test_the_logo_of_an_older_version_is_removed_once(bar):
+    bootstrap.install_menu()
+    delattr(builtins, "_AEROTOOLS_LOGO_CLEANED")                              # the menu came from an older version: this code has not looked yet
+    old = _old_logo(bar)
+    assert _corner(bar) is old
+    bootstrap.guard_tick()
+    bar.qapp.processEvents()
+    bar.qapp.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+    assert _corner(bar) is None
+    assert not bar.window.findChildren(QtWidgets.QToolButton, msapi.LOGO_BUTTON)
+    assert msapi.is_valid(_pinned()) and bar.menu_actions() is not None      # the Aero menu itself is untouched
+    assert getattr(builtins, "_AEROTOOLS_LOGO_CLEANED") is True
+    bootstrap.guard_tick()                                                    # once: later ticks do not look again
+    assert _corner(bar) is None
 
 
 def test_the_guard_never_raises(bar, monkeypatch):
