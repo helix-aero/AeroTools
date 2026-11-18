@@ -19,7 +19,6 @@
   <a href="https://www.linkedin.com/company/aero-flight-planner-and-fms"><img alt="LinkedIn HELIX AERO" src="https://img.shields.io/badge/LinkedIn-HELIX%20AERO-0A66C2?style=flat-square&logo=linkedin&logoColor=white"></a>
   <a href="https://www.youtube.com/@HELIX-AERO"><img alt="YouTube @HELIX-AERO" src="https://img.shields.io/badge/YouTube-@HELIX--AERO-FF0000?style=flat-square&logo=youtube&logoColor=white"></a>
   <a href="https://helix.aero"><img alt="helix.aero" src="https://img.shields.io/badge/Web-helix.aero-1eca59?style=flat-square"></a>
-  <a href="https://docs.helix.aero"><img alt="Documentation" src="https://img.shields.io/badge/Docs-docs.helix.aero-1eca59?style=flat-square"></a>
 </p>
 
 <p align="center">

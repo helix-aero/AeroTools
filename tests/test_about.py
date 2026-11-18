@@ -29,11 +29,12 @@ def test_the_old_community_group_is_nowhere_in_the_tree():
     assert found == []
 
 
-def test_the_about_window_names_the_three_links():
+def test_the_about_window_names_the_two_links():
     with open(os.path.join(ROOT, "aerotools", "about_dialog.py"), encoding="utf-8") as handle:
         source = handle.read()
-    for address in ("https://helix.aero\"", "https://docs.helix.aero\"", COMMUNITY + "\""):
+    for address in ("https://helix.aero\"", COMMUNITY + "\""):
         assert address in source
+    assert "docs.helix.aero" not in source
     assert OLD_GROUP not in source
 
 

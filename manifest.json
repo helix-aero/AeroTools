@@ -1,5 +1,5 @@
 {
- "built": "2026-11-18T11:54:36",
+ "built": "2026-11-18T12:02:50",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "258ef4a9be19fad68df99857346e9b9fd6debfd52a2c9c080fa3df2be1fa2a7c",
@@ -10,8 +10,8 @@
    "size": 4628
   },
   "README.md": {
-   "sha256": "5eb2d9c04a2dc3a8cd25fba8f7016f8f529b91900bc2f5e628cb41670462e281",
-   "size": 11443
+   "sha256": "45c4b9bab734a016eeebce61647e642948af329f3db13ba51a3c7ad731014b26",
+   "size": 11296
   },
   "THIRD_PARTY.md": {
    "sha256": "29a7a914d285bb15a492c08d56df3d01c56a2b8ce5484a9a43dca1d050087af8",
@@ -22,8 +22,8 @@
    "size": 590
   },
   "aerotools/about_dialog.py": {
-   "sha256": "0dd3c59eddaadb3d50aefb42c349f4e1489de1f32f430d09f1d7fc6ce32fced4",
-   "size": 7395
+   "sha256": "7586423b74bc10f0ff1c81f92edf550139d11eb3586ebf88545b61a8ec09ab26",
+   "size": 7326
   },
   "aerotools/assets/ui/arrow_down.png": {
    "sha256": "bef7058e31698663eb9bd84ad9b5e0cae63f86a7cbe293c027b4bba975c2d4f0",
@@ -78,16 +78,16 @@
    "size": 257
   },
   "aerotools/lang/en.py": {
-   "sha256": "3905eb629fe45138c9406026d5e6ec5c35dee9575ef71a16ee881baf23ceb012",
-   "size": 75032
+   "sha256": "18e29d51bad90de7bb8aa09addaf1baa5d11027c27205995104be34f07012b68",
+   "size": 74997
   },
   "aerotools/msapi.py": {
    "sha256": "e58e2d3e1cda291ffac41928f5e9da9b9768e707be55d3fe58a44250834a49bc",
    "size": 85402
   },
   "aerotools/news.py": {
-   "sha256": "e994544c5c4e14a42eb125f8534d878683e09f2cce33347168191c2390cc62cf",
-   "size": 10200
+   "sha256": "6d3c6e2ea593ea4e4abed32b0ccc55c3af710a2a85a27406f6c3e37fb4f3c354",
+   "size": 10239
   },
   "aerotools/news_dialog.py": {
    "sha256": "90a95bf75ed3d9cf9bed5fb8941f248983df470e3523f9e5c47321370960a41b",
@@ -710,8 +710,8 @@
    "size": 48361
   },
   "docs/NEWS.md": {
-   "sha256": "d14bcffeff884a3c195d1385edbe1f11dc0ff714d0b0915d00876060d5991bdf",
-   "size": 2363
+   "sha256": "162f5808d769693c3ef098a1b8293d0c8218629e919231ddb3a58ec3a3c5954c",
+   "size": 2358
   },
   "docs/UIKIT.md": {
    "sha256": "763d3139667b5bbe98c41582156f1c71367e0e01936e92fcd6c26bb75e05a40b",
