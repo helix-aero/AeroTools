@@ -5,7 +5,7 @@
 Checks: the window lists at most three items, newest first, bold title, date, text and a "Learn more" button only for an item with a link; no scroll bar; closing
 marks the items shown as seen; the "Don't show news again" switch sets the Notifications setting (and turns it back on from the menu entry); an
 empty or failed fetch says so on demand; the Notifications switch of the Install plugins window follows the setting.
-About: the window builds with the logo, the version, the channel, only the installed tools with their subtitles, the three link buttons (and not the
+About: the window builds with the logo, the version, the channel, only the installed tools with their subtitles, the two link buttons (and not the
 old community group), the two paths and "Copy info", whose clipboard text holds the version, channel, Metashape version, system and paths; fixed size,
 no scroll bar. Screenshots with --shots.
 """
@@ -41,7 +41,7 @@ SKINS = ("dark", "medium", "light")
 
 ITEMS = [
     {"id": "2026-11-14-new-tool", "date": "2026-11-14", "title": "Aero-GCP 0.6 is out",
-     "body": "Marker residuals now show in the report with their date. Update from Aero > Check for updates.", "url": "https://docs.helix.aero"},
+     "body": "Marker residuals now show in the report with their date. Update from Aero > Check for updates.", "url": "https://helix.aero"},
     {"id": "2026-11-02-fix", "date": "2026-11-02", "title": "Faster detection",
      "body": "The light engine starts in about half the time.", "url": ""},
     {"id": "2026-10-20-note", "date": "2026-10-20", "title": "Community group", "body": "", "url": ""},
@@ -178,9 +178,9 @@ def about_checks(skin):
     check(dialog.tool_rows == installed and len(installed) >= 1, skin + ": About: the installed tools only")
     check(all(cfg.tool(t)["title"] in labels and i18n_t(cfg.tool(t)["subtitle"]) in labels for t in installed), skin + ": About: each tool with its subtitle")
     caps = buttons(dialog)
-    check([i18n_t(k).replace("&", "&&") for k in ("about.website", "about.docs", "about.community")] == [b.text() for b in dialog.link_buttons],
-          skin + ": About: three link buttons")
-    check([b.toolTip() for b in dialog.link_buttons] == ["https://helix.aero", "https://docs.helix.aero", "https://www.facebook.com/groups/1852563252425052"],
+    check([i18n_t(k).replace("&", "&&") for k in ("about.website", "about.community")] == [b.text() for b in dialog.link_buttons],
+          skin + ": About: two link buttons")
+    check([b.toolTip() for b in dialog.link_buttons] == ["https://helix.aero", "https://www.facebook.com/groups/1852563252425052"],
           skin + ": About: the links")
     check(i18n_t("about.copy") in caps and i18n_t("ui.close") in caps, skin + ": About: Copy info and Close")
     check(dialog.paths == [about_dialog.install_root(), cfg.settings_path()], skin + ": About: install folder and settings file")

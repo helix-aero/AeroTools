@@ -25,7 +25,7 @@ means no news, silently.
       "date": "2026-11-14",
       "title": "A new tool is available",
       "body": "One or two short sentences.",
-      "url": "https://docs.helix.aero",
+      "url": "https://helix.aero",
       "channels": ["main", "dev"],
       "min_version": "0.5.0",
       "max_version": "0.9.9"

@@ -1,8 +1,8 @@
 """About window (Qt): the logo, the version and channel, the installed tools, the links, and what a bug report needs.
 
 A fixed-size window of the suite (no scroll bar): the HELIX AERO logo (the white one on the dark skins, the gradient one on the light skin),
-"HELIX AERO Tools" with its version, channel and build date, the tools installed on this computer with their one-line description, three
-link buttons (website, documentation, community), the install folder and the settings file in small muted type, and "Copy info", which puts
+"HELIX AERO Tools" with its version, channel and build date, the tools installed on this computer with their one-line description, two
+link buttons (website, community), the install folder and the settings file in small muted type, and "Copy info", which puts
 the version, the channel, the Metashape version, the system and the two paths on the clipboard for a bug report.
 """
 
@@ -17,7 +17,6 @@ LOGO_HEIGHT = 30                                   # design px
 LOGO_DARK = "helix-aero-AERO-blanc-512px.png"      # readable on the dark and the medium skins
 LOGO_LIGHT = "helix-aero-AERO-degrade-512px.png"   # the brand gradient, readable on the light skin
 LINKS = (("about.website", "https://helix.aero"),
-         ("about.docs", "https://docs.helix.aero"),
          ("about.community", "https://www.facebook.com/groups/1852563252425052"))
 
 

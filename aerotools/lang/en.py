@@ -39,7 +39,6 @@ TEXTS = {
     "about.channel": "{channel} channel",
     "about.built": "built {date}",
     "about.website": "Website",
-    "about.docs": "Documentation",
     "about.community": "Community & Support",
     "about.install_folder": "Install folder",
     "about.settings_file": "Settings file",
