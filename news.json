@@ -6,7 +6,7 @@
       "date": "2026-01-01",
       "title": "Example item",
       "body": "A title, a short text and an optional link. Items appear once, newest first.",
-      "url": "https://docs.helix.aero",
+      "url": "https://helix.aero",
       "channels": ["main", "dev"],
       "max_version": "0.0.0"
     }
