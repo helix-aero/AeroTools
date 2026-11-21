@@ -90,3 +90,29 @@ def test_render_can_write_a_jpeg_with_a_world_file_placed_like_the_dem(tmp_path,
     assert saved[0][1:] == ("JPEG", 90, (height, width, width * 3, saved[0][3][3]))
     lines = open(str(tmp_path / "view.jgw")).read().split()
     assert [float(v) for v in lines] == [0.5, 0.0, 0.0, -0.5, pytest.approx(1000.25), pytest.approx(2399.75)]   # centre of the top-left pixel
+
+
+class _Tags(object):
+    def __init__(self, scale, tie):
+        self.tags = {relief.tiffio.T_SCALE: scale, relief.tiffio.T_TIEPOINT: tie}
+
+    def ints(self, tag, default=None):
+        return self.tags.get(tag, default)
+
+
+def test_the_world_file_keeps_the_signs_of_a_system_whose_axes_point_west_and_south():
+    """What Metashape 2.4 wrote for a DEM in Hartebeesthoek94 / Lo19: both scales negative, and beside it a world file with a negative
+    x step and a positive y step. The picture must be placed like that file, not turned by half a turn."""
+    tags = _Tags((-2.017863659, -2.017863659, 0.0), (0.0, 0.0, 0.0, 851614.906297988, -4693711.519569662, 0.0))
+    lines = [float(v) for v in relief.world_file_lines(tags)]
+    assert lines == [pytest.approx(-2.017863659), 0.0, 0.0, pytest.approx(2.017863659), pytest.approx(851613.8973661591),
+                     pytest.approx(-4693710.510637833)]
+
+
+def test_the_world_file_of_a_north_up_dem_is_unchanged_and_a_tie_point_inside_the_image_is_brought_back_to_the_corner():
+    north = [float(v) for v in relief.world_file_lines(_Tags((0.5, 0.5, 0.0), (0.0, 0.0, 0.0, 1000.0, 2400.0, 0.0)))]
+    assert north == [0.5, 0.0, 0.0, -0.5, pytest.approx(1000.25), pytest.approx(2399.75)]
+    inside = [float(v) for v in relief.world_file_lines(_Tags((0.5, 0.5, 0.0), (10.0, 4.0, 0.0, 1005.0, 2398.0, 0.0)))]
+    assert inside == north
+    with pytest.raises(ValueError):
+        relief.world_file_lines(_Tags((0.0, 0.5, 0.0), (0.0, 0.0, 0.0, 1000.0, 2400.0, 0.0)))

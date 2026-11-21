@@ -1288,7 +1288,8 @@ class ExportDialog(uikit.ToolWindow):
             if job.extra and job.extra.get("view_path"):
                 rows.append((os.path.relpath(job.extra["view_path"], folder), i18n.t("export.what_picture")))
                 for name in plan.view_aux_names(job.extra):
-                    rows.append((os.path.relpath(os.path.join(os.path.dirname(job.extra["view_path"]), name), folder), i18n.t("export.what_world")))
+                    rows.append((os.path.relpath(os.path.join(os.path.dirname(job.extra["view_path"]), name), folder),
+                                 i18n.t(WORLD_SIDE.get(os.path.splitext(name)[1], "export.what_world"))))
             for name in plan.aux_names(job.name, job.spec):
                 rows.append((name, i18n.t(WORLD_SIDE.get(os.path.splitext(name)[1], "export.what_prj"))))
         return rows
@@ -1485,7 +1486,8 @@ class ExportDialog(uikit.ToolWindow):
                                 tools=dict(s["tools"]), crs=s["target"], tile_m=s["tile_m"], cad=s["cad"], snap=msapi.snapped_box,
                                 transform=msapi.transform_box, tick=QtWidgets.QApplication.processEvents, vertical=s["vertical"],
                                 proj=projtool.Proj(geoid_dir=crs.own_dir()), epsg=s["epsg"], look=s["look"],
-                                clip_boundary=s["clip_boundary"], log=lambda text: journal.write("Aero-Exports: " + text))
+                                clip_boundary=s["clip_boundary"], log=lambda text: journal.write("Aero-Exports: " + text),
+                                wkt=msapi.raster_wkt)
 
     def _on_export(self):
         """Export / Run all exports: the list runs in order. With an empty list, what is ticked is added first (one format, no Add needed)."""

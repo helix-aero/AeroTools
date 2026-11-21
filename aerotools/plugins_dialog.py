@@ -200,7 +200,7 @@ class PluginsDialog(uikit.ToolWindow):
                     names = ", ".join(config.tool(n)["title"] for n in item["needs"])
                     text += "\n" + i18n.t("plugins.needs", names=names, size=updater.format_size(extra))
                 if self._modules.get(tool_id):
-                    text += "\n" + i18n.t("plugins.module_missing", modules=", ".join(self._modules[tool_id]))
+                    text += "\n" + i18n.t("plugins.module_missing", modules=", ".join(config.module_entry(n).get("title", n) for n in self._modules[tool_id]))
             card.status.setText(text)
             uikit.set_tone(card.status, "success" if item["installed"] and not item["update"] else ("warning" if item["update"] else None))
             card.glyph.set_kind("ok" if item["installed"] and not item["update"] else ("warn" if item["update"] or (not item["installed"] and self._modules.get(tool_id)) else "pending"))

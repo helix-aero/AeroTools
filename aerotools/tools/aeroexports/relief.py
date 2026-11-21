@@ -291,13 +291,15 @@ def render(dem_path, out_path, look=None, tick=None, level=6, jpeg=False, qualit
 
 
 def world_file_lines(tiff):
-    """The six lines of the world file (.jgw) of a north-up GeoTIFF: pixel sizes, rotation terms, centre of the top-left pixel."""
+    """The six lines of the world file (.jgw) of a GeoTIFF: pixel sizes, rotation terms, centre of the top-left pixel. The signs of the
+    pixel sizes are the ones of the file: Metashape writes both scales negative in a system whose axes point west and south (the South
+    African Lo systems), where x decreases to the right and y grows downwards."""
     scale, tie = tiff.ints(tiffio.T_SCALE), tiff.ints(tiffio.T_TIEPOINT)
-    if not scale or not tie or len(tie) < 6:
+    if not scale or not tie or len(tie) < 6 or not scale[0] or not scale[1]:
         raise ValueError("DEM without georeferencing")
-    sx, sy = abs(scale[0]), abs(scale[1])
-    x0, y0 = tie[3] - tie[0] * sx, tie[4] + tie[1] * sy
-    return [repr(float(v)) for v in (sx, 0.0, 0.0, -sy, x0 + sx / 2.0, y0 - sy / 2.0)]
+    step_x, step_y = scale[0], -scale[1]
+    x0, y0 = tie[3] - tie[0] * step_x, tie[4] - tie[1] * step_y
+    return [repr(float(v)) for v in (step_x, 0.0, 0.0, step_y, x0 + step_x / 2.0, y0 + step_y / 2.0)]
 
 
 def _write_jpeg(path, source, parts, quality):

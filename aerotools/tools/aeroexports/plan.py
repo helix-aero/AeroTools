@@ -126,9 +126,10 @@ def aux_names(name, spec):
 
 
 def view_aux_names(extra):
-    """Side files of the coloured DEM picture: the world file of a JPEG picture (the picture is never a source for a .prj)."""
+    """Side files of the coloured DEM picture: the world file of a JPEG picture and its .prj (the coordinate system of the DEM)."""
     if (extra or {}).get("view_ext") == "jpg" and extra.get("view_name"):
-        return [os.path.splitext(extra["view_name"])[0] + ".jgw"]
+        stem = os.path.splitext(extra["view_name"])[0]
+        return [stem + ".jgw", stem + ".prj"]
     return []
 
 
