@@ -191,6 +191,7 @@ TOOLS = (
     "space",
     "exports",
     "l3",
+    "ppk",
     "suite",
 )
 TOOL_NAMES = tuple("tool_" + k for k in TOOLS)       # header version: the rounded gradient tile with the glyph in white
@@ -267,6 +268,25 @@ def _glyph(p, box, key, color, w):
         line(12, 9.5, 3.5, 20.5)
         line(12, 9.5, 20.5, 20.5)
         arc(12, 9.5, 11, 11, 232, 76)
+    elif key == "ppk":
+        p.save()
+        p.translate(g(8.5, 8.5))
+        p.rotate(-45)
+        s = box.side / 24.0
+        p.drawRoundedRect(QtCore.QRectF(-2.5 * s, -2.5 * s, 5 * s, 5 * s), s, s)
+        p.drawRect(QtCore.QRectF(-9.5 * s, -2 * s, 5 * s, 4 * s))
+        p.drawRect(QtCore.QRectF(4.5 * s, -2 * s, 5 * s, 4 * s))
+        p.drawLine(QtCore.QPointF(-7 * s, -2 * s), QtCore.QPointF(-7 * s, 2 * s))
+        p.drawLine(QtCore.QPointF(7 * s, -2 * s), QtCore.QPointF(7 * s, 2 * s))
+        p.drawLine(QtCore.QPointF(-4.5 * s, 0), QtCore.QPointF(-2.5 * s, 0))
+        p.drawLine(QtCore.QPointF(2.5 * s, 0), QtCore.QPointF(4.5 * s, 0))
+        p.restore()
+        ring(17.5, 17.5, 3.4)
+        dot(17.5, 17.5, 1.2)
+        line(17.5, 12, 17.5, 13.6)
+        line(17.5, 21.4, 17.5, 23)
+        line(12, 17.5, 13.6, 17.5)
+        line(21.4, 17.5, 23, 17.5)
 
 
 def _paint_mark(p, box):

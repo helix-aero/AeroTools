@@ -77,6 +77,7 @@ TOOL_GLYPH = {
     "fastspace": "space",
     "aeroexports": "exports",
     "aerol3": "l3",
+    "aeroppk": "ppk",
 }
 
 

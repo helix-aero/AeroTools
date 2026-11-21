@@ -8,6 +8,7 @@ contains or installs, with the licence of each. It lists only what is in this co
 - [AI models](#ai-models)
 - [PROJ and the libraries delivered with it](#proj-and-the-libraries-delivered-with-it)
 - [Test data](#test-data)
+- [RTKLIB and the Compact RINEX decoder](#rtklib-and-the-compact-rinex-decoder)
 - [Software installed on request](#software-installed-on-request)
 
 ## Fonts
@@ -95,6 +96,23 @@ grid server (`cdn.proj.org`), where each grid keeps the licence its publisher ch
   `RAC23.mnt`. The metadata of the file say "Derived from work by IGN France" and give the Licence Ouverte (Open Licence) of
   Etalab as its licence: https://www.etalab.gouv.fr/wp-content/uploads/2014/05/Open_Licence.pdf. The grid is used by the tests
   of Aero-Exports only.
+
+## RTKLIB and the Compact RINEX decoder
+
+Aero-PPK computes its positions with the command line programs in `aerotools/vendor/rtklib/`, copied unchanged from the release
+archive of RTKLIB-EX 2.5.1 (https://github.com/rtklibexplorer/RTKLIB/releases). Aero-PPK runs them as separate programs and
+never modifies them.
+
+| Program | Files | Licence | Text |
+|---|---|---|---|
+| [RTKLIB-EX](https://github.com/rtklibexplorer/RTKLIB) 2.5.1, the "demo5" fork of RTKLIB | `rnx2rtkp.exe`, `convbin.exe` | BSD 2-clause, Copyright (c) 2007-2020 T. Takasu | [LICENSE.txt](aerotools/vendor/rtklib/LICENSE.txt) |
+| RNXCMP, the Compact RINEX (Hatanaka) tools of the Geospatial Information Authority of Japan | `crx2rnx.exe` | RNXCMP licence: redistributed as it is, at no charge | [LICENSE_RNXCMP.txt](aerotools/vendor/rtklib/LICENSE_RNXCMP.txt) |
+
+Reference for RNXCMP: Hatanaka, Y. (2008), A Compression Format and Tools for GNSS Observation Data, Bulletin of the Geospatial
+Information Authority of Japan, 55, 21-30.
+
+The base station data and the satellite orbits are downloaded on request from the public services of each network (RGP of IGN
+France, EPN, IGS, NOAA CORS, Geoscience Australia). They are not part of this repository and keep the terms of their publishers.
 
 ## Software installed on request
 

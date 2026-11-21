@@ -2,3 +2,5 @@ Third party programs shipped in aerotools/vendor. THIRD_PARTY.md at the root of 
 
   proj/    PROJ 9.8.1 (cs2cs, cct, proj.db) - MIT style licence - coordinate systems and heights
            the libraries of proj/bin and the licence text of each one: proj/licenses/
+  rtklib/  RTKLIB-EX 2.5.1 (rnx2rtkp, convbin, crx2rnx) - BSD 2-clause (crx2rnx: RNXCMP licence, see rtklib/LICENSE_RNXCMP.txt)
+           - post processed kinematic GNSS positioning

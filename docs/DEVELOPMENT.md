@@ -31,6 +31,7 @@ AeroTools/
       fastspace/       Aero-Space: scan, lighten or delete old projects
       aeroexports/     Aero-Exports: ortho and DEM exports, AutoCAD drawing, colours
       aerol3/          Aero-L3
+      aeroppk/         Aero-PPK
   assets/fonts/
   install/             launcher template, installer, uninstaller
   tests/               pytest tests, no Metashape needed
@@ -489,3 +490,11 @@ Written by hand in `settings.json`, section `fastgcp`. There is no switch for th
   target (`tools/fastgcp/snap.py`). Off by default: on a test project the manual pins sat
   under 1 px from the reprojected 3D point on average, and the snapped ones about 2 px. When on, the raw click is kept next to the
   snapped position in the training file (`x_click`, `y_click`).
+
+## Aero-PPK
+
+`aerotools/tools/aeroppk/`: PPK positions of Mavic 3 Enterprise photos from public base stations (RGP, EPN, IGS, NOAA CORS, Geoscience Australia), RTKLIB-EX 2.5.1 embedded in
+`aerotools/vendor/rtklib` (BSD 2-clause, licence and SHA-256 listed in its README), PROJ for frames. Architecture, the benchmark of the engine,
+the frame trap, what was verified and what was not: **docs/AEROPPK.md**. Texts are in the catalog (`lang/en.py`, keys `aeroppk.*`).
+The pack `aeroppk` requires no other pack: PROJ (`aerotools/projtool.py`), the PDF drawing kit of its report (`aerotools/pdfkit.py`) and the Outputs folder (`aerotools/outputdir.py`) are in the core. Real-data checks that need local flights are standalone scripts: `tests_qt/run_qt_aeroppk_wizard.py` (whole window, every step and tab, screenshots,
+Metashape's Python, network), `run_qt_aeroppk_map.py`, `run_qt_aeroppk_report.py`, `run_qt_aeroppk_networks.py` (the Base step with several networks, no network needed), `run_qt_aeroppk_orbits.py` (the satellite of the Base step, fake servers) and `run_qt_aeroppk_networks_live.py` (one real file of every network, no Qt, network).

@@ -82,6 +82,10 @@ def title_family():
     return _TITLE_FAMILY
 
 
+def text_family():
+    return _TEXT_FAMILY
+
+
 # --------------------------------------------------------------------------
 # Style sheets (built once per scale, cached, by the kit)
 # --------------------------------------------------------------------------

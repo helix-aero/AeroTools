@@ -4,6 +4,7 @@ window on the screen. The look of every control lives in the UI kit (`aerotools/
 from .qt import QtCore, QtWidgets
 
 
+
 def parse_number(text):
     """Float of a typed value (comma or dot), or None."""
     try:
@@ -28,6 +29,8 @@ def parse_typed(text, low, high, modulo=None):
         return None
     whole = int(round(value))
     return whole % modulo if modulo else whole
+
+
 
 
 def screen_area():
@@ -84,6 +87,35 @@ def area_for(rect, areas):
         if best_gap is None or gap < best_gap:
             best, best_gap = index, gap
     return best
+
+
+
+
+SCREEN_PAD = 8                       # pixels a window leaves free inside the usable area of a screen, frame included
+FRAME_GUESS = (16, 39)               # width and height of the frame of a window (borders, title bar) before the window exists
+
+
+def fit_size(design, area, extra=FRAME_GUESS, pad=SCREEN_PAD):
+    """Size (w, h) of a window: the design size, or less when the usable area of the screen (x, y, w, h) cannot hold it with its frame
+    (`extra` = frame width and height) and `pad` pixels around. Pure."""
+    return (max(200, min(design[0], area[2] - extra[0] - pad)), max(200, min(design[1], area[3] - extra[1] - pad)))
+
+
+def clamp_into(rect, area):
+    """Top-left (x, y) that puts `rect` (x, y, w, h), frame included, inside `area` (x, y, w, h): moved the least possible. What does not
+    fit (a window larger than the area) is aligned on the top left, where the title bar is. Pure."""
+    x, y, w, h = rect
+    ax, ay, aw, ah = area
+    x = ax if w >= aw else min(max(x, ax), ax + aw - w)
+    y = ay if h >= ah else min(max(y, ay), ay + ah - h)
+    return (x, y)
+
+
+def centred_in(size, area):
+    """Top-left (x, y) that centres a rectangle of `size` (w, h), frame included, in `area` (x, y, w, h). Pure."""
+    return clamp_into((area[0] + (area[2] - size[0]) // 2, area[1] + (area[3] - size[1]) // 2, size[0], size[1]), area)
+
+
 
 
 def fit_window(dialog, margin=70, again=True):
@@ -158,3 +190,7 @@ class FollowsText(object):
             layout.activate()
         sync_minimum(self)
         self.resize(self.width(), max(self.height(), self.minimumHeight()))
+
+
+
+

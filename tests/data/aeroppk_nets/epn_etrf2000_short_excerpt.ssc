@@ -1,0 +1,8 @@
+               EPN STATION POSITIONS        (Stations with less than 3 years or with post-seismic deformation )
+               REFERENCE FRAME:    ETRF2000 AT EPOCH OF MINIMAL VARIANCE
+               CUMULATIVE SOLUTION OF GPSWEEKS [ 0834 - 2415 ]
+               RELEASE NAME:       EPN_ETRF2000_C2415_short
+               RELEASED ON 04/09/2026 BY EPN REFERENCE FRAME COORDINATOR (Juliette LEGRAND, ROB, BELGIUM)
+DOMES NB. SITE NAME        TECH. ID.         X              Y              Z.               Sigmas          SOLN  DATA_START     DATA_END   REF. EPOCH
+                                      ------------------------- [ m ] --------------------------------------
+10001M011 IGNP              GPS IGNP  4201788.81237   177946.24045  4779288.15680  0.00012  0.00005  0.00013  1 25:047:00000 26:115:86370 25:244:45951

@@ -27,6 +27,7 @@ EXCLUDED_DIRS = {"vendor", "__pycache__"}
 # inside such an assignment are lists of words that recognise real-world data; they are not scanned.
 ALLOWED_RECOGNITION_LISTS = {
     ("aerotools/tools/aeroexports/naming.py", "GENERIC_TOKENS"),
+    ("aerotools/tools/aeroppk/rinex.py", "RECEIVER_LABEL"),
 }
 
 # Accented letters and guillemets.

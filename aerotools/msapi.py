@@ -2360,3 +2360,174 @@ def worst_projection(marker):
         if worst is None or gap > worst[1]:
             worst = (camera, gap)
     return worst
+
+
+def chunks():
+    """Every chunk of the open document, in the order of the workspace ([] without document)."""
+    doc = document()
+    try:
+        return list(doc.chunks) if doc is not None else []
+    except Exception:
+        return []
+
+
+def chunk_by_key(key):
+    """The chunk with this key (keys do not change, labels may), or None when it is not (or no longer) in the document."""
+    if key is None:
+        return None
+    for chk in chunks():
+        if chunk_key(chk) == key:
+            return chk
+    return None
+
+
+def chunk_camera_count(chk):
+    try:
+        return len(chk.cameras) if chk is not None else 0
+    except Exception:
+        return 0
+
+
+def set_active_chunk(chk):
+    """Make `chk` the active chunk of Metashape. True when it is the active one afterwards."""
+    doc = document()
+    if doc is None or chk is None:
+        return False
+    try:
+        doc.chunk = chk
+        refresh()
+    except Exception:
+        pass
+    return chunk_key(chunk()) == chunk_key(chk)
+
+
+# --------------------------------------------------------------------------
+# Camera positions
+# --------------------------------------------------------------------------
+# Metashape 2.2.1: Camera.reference.location (Vector, in the chunk coordinate system), .location_accuracy (Vector, metres),
+# .location_enabled (bool). Positions are written in the chunk system after a transformation done by Metashape itself
+# (CoordinateSystem.transform) from the geographic system of the positioning solution (EPSG::4258 for RGF93 / ETRS89 bases).
+
+def _vec(vector):
+    try:
+        return [float(vector[0]), float(vector[1]), float(vector[2])] if vector is not None else None
+    except Exception:
+        return None
+
+
+def camera_path_key(path):
+    """Comparable form of a photo path (Windows ignores case, both slashes are the same)."""
+    return str(path or "").replace("\\", "/").lower()
+
+
+def camera_reference_entries(chk=None):
+    """Position data of every camera, as plain dicts: path, label, location, accuracy, enabled (None when Metashape has none)."""
+    chk = chk if chk is not None else chunk()
+    out = []
+    if chk is None:
+        return out
+    for camera in list(getattr(chk, "cameras", [])):
+        try:
+            ref = camera.reference
+            out.append({"path": str(camera.photo.path), "label": str(camera.label), "location": _vec(ref.location),
+                        "accuracy": _vec(getattr(ref, "location_accuracy", None) or getattr(ref, "accuracy", None)),
+                        "enabled": bool(getattr(ref, "location_enabled", getattr(ref, "enabled", True)))})
+        except Exception:
+            continue
+    return out
+
+
+def chunk_crs_name(chk=None):
+    """Name of the chunk coordinate system, or "" (local coordinates)."""
+    chk = chk if chk is not None else chunk()
+    try:
+        return str(chk.crs.name) if chk is not None and chk.crs is not None else ""
+    except Exception:
+        return ""
+
+
+def transform_to_chunk(chk, lat, lon, h, source="EPSG::4258"):
+    """(lat, lon, ellipsoidal h) in the geographic system `source` -> coordinates in the chunk system, or None."""
+    try:
+        if chk.crs is None:
+            return None
+        point = Metashape.CoordinateSystem.transform(Metashape.Vector((float(lon), float(lat), float(h))),
+                                                     Metashape.CoordinateSystem(source), chk.crs)
+        return float(point[0]), float(point[1]), float(point[2])
+    except Exception:
+        return None
+
+
+def set_camera_positions(chk, items, source="EPSG::4258"):
+    """Write positions into the cameras. `items` = dicts with path (or label), lat, lon, h, sd_h, sd_v (metres).
+
+    Returns {"done": n, "missing": [paths not found], "failed": [paths whose transformation failed]}. Nothing is written
+    for a photo that has no position (the caller does not list it).
+    """
+    done, missing, failed = 0, [], []
+    if chk is None:
+        return {"done": 0, "missing": [i.get("path") for i in items], "failed": []}
+    by_path, by_label = {}, {}
+    for camera in list(chk.cameras):
+        try:
+            by_path[camera_path_key(camera.photo.path)] = camera
+            by_label[str(camera.label)] = camera
+        except Exception:
+            continue
+    for item in items:
+        camera = by_path.get(camera_path_key(item.get("path"))) or by_label.get(str(item.get("label", "")))
+        if camera is None:
+            missing.append(item.get("path") or item.get("label"))
+            continue
+        spot = transform_to_chunk(chk, item["lat"], item["lon"], item["h"], source)
+        if spot is None:
+            failed.append(item.get("path"))
+            continue
+        try:
+            camera.reference.location = Metashape.Vector(spot)
+            accuracy = Metashape.Vector((float(item["sd_h"]), float(item["sd_h"]), float(item["sd_v"])))
+            try:
+                camera.reference.location_accuracy = accuracy
+            except Exception:
+                camera.reference.accuracy = accuracy
+            try:
+                camera.reference.location_enabled = True
+            except Exception:
+                camera.reference.enabled = True
+            done += 1
+        except Exception:
+            failed.append(item.get("path"))
+    return {"done": done, "missing": missing, "failed": failed}
+
+
+def restore_camera_references(chk, entries):
+    """Put back what `camera_reference_entries` returned. Returns the number of cameras restored."""
+    count = 0
+    if chk is None:
+        return 0
+    by_path = {}
+    for camera in list(chk.cameras):
+        try:
+            by_path[camera_path_key(camera.photo.path)] = camera
+        except Exception:
+            continue
+    for entry in entries:
+        camera = by_path.get(camera_path_key(entry.get("path")))
+        if camera is None:
+            continue
+        try:
+            ref = camera.reference
+            ref.location = Metashape.Vector(entry["location"]) if entry.get("location") else None
+            if entry.get("accuracy"):
+                try:
+                    ref.location_accuracy = Metashape.Vector(entry["accuracy"])
+                except Exception:
+                    ref.accuracy = Metashape.Vector(entry["accuracy"])
+            try:
+                ref.location_enabled = bool(entry.get("enabled", True))
+            except Exception:
+                ref.enabled = bool(entry.get("enabled", True))
+            count += 1
+        except Exception:
+            continue
+    return count

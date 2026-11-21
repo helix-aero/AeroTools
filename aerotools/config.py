@@ -73,6 +73,15 @@ TOOLS = [
         "ready": True,
         "reopen": False,
     },
+    {
+        "id": "aeroppk",
+        "menu": "Aero-PPK",
+        "title": "Aero-PPK",
+        "subtitle": "tool.aeroppk.subtitle",
+        "shortcut": None,
+        "ready": True,
+        "reopen": False,
+    },
     # The AI detection (formerly AIGCP) is part of Aero-GCP: no menu entry of its own.
 ]
 
@@ -107,6 +116,8 @@ PACKS = [
      "marker": "aerotools/tools/aeroexports/tool.py", "requires": [], "requires_modules": ["numpy"]},
     {"id": "aerol3", "paths": ["aerotools/tools/aerol3/"], "marker": "aerotools/tools/aerol3/tool.py",
      "requires": []},
+    {"id": "aeroppk", "paths": ["aerotools/tools/aeroppk/", "aerotools/vendor/rtklib/"],
+     "marker": "aerotools/tools/aeroppk/tool.py", "requires": [], "requires_modules": ["numpy"]},
 ]
 
 

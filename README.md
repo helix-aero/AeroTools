@@ -103,6 +103,7 @@ menu to Metashape, with one entry per tool.
 | **Aero-Space** | Scan a drive for old Metashape projects, then lighten or delete them to free disk space. | [Aero-Space guide](docs/tools/aero-space.md) |
 | **Aero-Exports** | Export the orthomosaic and the DEM with short file names, in several formats, pixel sizes and coordinate systems. | [Aero-Exports guide](docs/tools/aero-exports.md) |
 | **Aero-L3** | Turn the photos of a DJI Zenmuse L3 into a Metashape chunk ready to align: both lenses, positions with their accuracy, and a starting orientation that keeps the pictures from coming out flipped. | [Aero-L3 guide](docs/tools/aero-l3.md) |
+| **Aero-PPK** | Compute precise (PPK) positions for the photos of a DJI Mavic 3 Enterprise flight from a public base station or your own base, see how reliable they are, write them into the chunk (with an Undo) and export a PDF report. | [Aero-PPK guide](docs/tools/aero-ppk.md) |
 
 <table>
   <tr>
@@ -112,6 +113,10 @@ menu to Metashape, with one entry per tool.
   <tr>
     <td width="50%"><a href="docs/tools/aero-l3.md"><img alt="Aero-L3 reads the flights of a DJI Zenmuse L3 mission" src="docs/images/aero-l3/02-flights.png"></a></td>
     <td width="50%"><a href="docs/tools/aero-l3.md"><img alt="Aero-L3 checks the photos before it creates the chunk" src="docs/images/aero-l3/03-checks.png"></a></td>
+  </tr>
+  <tr>
+    <td width="50%"><a href="docs/tools/aero-ppk.md"><img alt="Aero-PPK picks a base station near the flight" src="docs/images/aero-ppk/05-base.png"></a></td>
+    <td width="50%"><a href="docs/tools/aero-ppk.md"><img alt="Aero-PPK tells how reliable the photo positions are" src="docs/images/aero-ppk/06-result-good.png"></a></td>
   </tr>
 </table>
 

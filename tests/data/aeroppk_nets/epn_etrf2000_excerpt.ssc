@@ -1,0 +1,15 @@
+               EPN STATION POSITIONS AND VELOCITIES        (Stations with more than 3 years and without post-seismic deformation )
+               REFERENCE FRAME:    ETRF2000 AT EPOCH OF 2020.0
+               CUMULATIVE SOLUTION OF GPSWEEKS [ 0834 - 2415 ]
+               RELEASE NAME:             EPN_ETRF2000_C2415
+               RELEASED ON 04/09/2026 BY EPN REFERENCE FRAME COORDINATOR (Juliette LEGRAND, ROB, BELGIUM)
+DOMES NB. SITE NAME        TECH. ID.         X/Vx           Y/Vy           Z/Vz.            Sigmas          SOLN  DATA_START     DATA_END   REF. EPOCH
+              CLASS                   ----------------------------m/m/Y-------------------------------------
+13101M010 BRUX              GPS BRUX  4027881.84304   306998.25852  4919498.64495  0.00015  0.00006  0.00018  1 09:001:00000 10:178:86370 20:001:00000
+13101M010                                  -0.00017       -0.00041       -0.00025  0.00001  0.00001  0.00001
+13101M010 BRUX              GPS BRUX  4027881.84469   306998.25893  4919498.64592  0.00017  0.00007  0.00020  2 10:180:00000 11:065:86370 20:001:00000
+13101M010                                  -0.00017       -0.00042       -0.00025  0.00001  0.00001  0.00001
+13101M010 BRUX              GPS BRUX  4027881.84270   306998.26052  4919498.65145  0.00005  0.00002  0.00006  3 11:067:00000 21:109:86370 20:001:00000
+13101M010                                  -0.00017       -0.00043       -0.00025  0.00001  0.00001  0.00001
+13101M010 BRUX              GPS BRUX  4027881.84155   306998.26152  4919498.64628  0.00006  0.00002  0.00007  4 21:111:00000 26:115:86370 20:001:00000
+13101M010                                  -0.00017       -0.00043       -0.00025  0.00001  0.00001  0.00001
