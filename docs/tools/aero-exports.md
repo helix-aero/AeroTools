@@ -30,7 +30,7 @@ appears. It is off by default: the whole area of the DEM is exported, as you see
 |---|---|
 | **GeoTIFF, full quality** | The raster as it is. |
 | **Client quick view** | A GeoTIFF with JPEG compression, about 10 times smaller. The DEM stays lossless. |
-| **JPEG + world file** | A JPEG and its positioning file. The DEM heights stay a GeoTIFF; the coloured DEM picture, if you ask for it, is a JPEG with its own world file (`..._dtm.jpg` and `..._dtm.jgw`). |
+| **JPEG + world file** | A JPEG and its positioning file. The DEM heights stay a GeoTIFF; the coloured DEM picture, if you ask for it, is a JPEG with its own world file and projection file (`..._dtm.jpg`, `..._dtm.jgw` and `..._dtm.prj`). |
 | **JPEG 2000** | Written with QGIS or Global Mapper. |
 | **ECW** | Written by Global Mapper, which must be installed. |
 | **AutoCAD drawing** | A DXF or DWG with the ortho and the DEM. DWG needs AutoCAD, which converts the DXF in the background. |

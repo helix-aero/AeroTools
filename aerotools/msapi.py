@@ -1969,6 +1969,19 @@ def target_crs(horizontal_epsg):
         return None
 
 
+def raster_wkt(chk, kind, crs=None):
+    """WKT of the horizontal system a raster of the chunk is exported in (the text of a .prj): `crs` when the export reprojects,
+    otherwise the system of the DEM (kind "dem") or of the orthomosaic. "" when it cannot be read."""
+    try:
+        if crs is None:
+            source = chk.elevation if kind == "dem" else chk.orthomosaic
+            crs = source.crs if source is not None else chk.crs
+        part = horizontal_part(crs)
+        return str(part.wkt) if part is not None else ""
+    except Exception:
+        return ""
+
+
 def project_epsg(crs):
     """EPSG code (integer) of the project's horizontal CRS, or None (custom CRS, no code)."""
     try:

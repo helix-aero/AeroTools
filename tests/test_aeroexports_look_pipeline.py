@@ -97,9 +97,10 @@ def test_the_jpeg_preset_adds_the_picture_as_a_jpeg_with_a_world_file_and_keeps_
     job = plan.build_jobs("ClientA", DAY, {"dem": 0.5}, "jpeg", str(tmp_path), version=1, dem_picture=True)[0]
     assert job.name.endswith("_dtm.tif") and job.spec["ext"] == "tif"
     assert job.extra["view_name"] == "ClientA_300704_50cm_dtm.jpg" and job.extra["view_ext"] == "jpg"
-    assert plan.view_aux_names(job.extra) == ["ClientA_300704_50cm_dtm.jgw"]
+    assert plan.view_aux_names(job.extra) == ["ClientA_300704_50cm_dtm.jgw", "ClientA_300704_50cm_dtm.prj"]
     planned = [os.path.basename(p) for p in plan.planned_files([job], "jpeg")]
-    assert planned == ["ClientA_300704_50cm_dtm.tif", "ClientA_300704_50cm_dtm.jpg", "ClientA_300704_50cm_dtm.jgw"]
+    assert planned == ["ClientA_300704_50cm_dtm.tif", "ClientA_300704_50cm_dtm.jpg", "ClientA_300704_50cm_dtm.jgw",
+                       "ClientA_300704_50cm_dtm.prj"]
     (tmp_path / "ClientA_300704_50cm_dtm.jgw").write_text("x")                       # the world file alone makes it a new version
     again = plan.build_jobs("ClientA", DAY, {"dem": 0.5}, "jpeg", str(tmp_path), version=None, dem_picture=True)
     assert again[0].version == 2

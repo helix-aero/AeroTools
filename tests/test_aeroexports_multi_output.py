@@ -44,3 +44,29 @@ def test_second_run_picks_a_new_version_instead_of_overwriting(tmp_path, monkeyp
     only_picture = plan.build_jobs("ClientA", DAY, {"dem": 0.5}, "full", str(tmp_path), version=None, dem_picture=True,
                                    dem_values=False)
     assert only_picture[0].version == 2                    # the picture of v1 exists: no overwrite
+
+
+def test_the_jpeg_picture_of_the_dem_gets_a_prj_with_the_system_of_the_dem(tmp_path, monkeypatch):
+    """Without it a viewer has to be told the coordinate system of the picture, and reads a system whose axes point west and south
+    (the South African Lo systems) as an ordinary one: the picture lands elsewhere, turned by half a turn."""
+    spy(monkeypatch, [])
+    asked = []
+
+    def wkt(chunk, kind, crs):
+        asked.append((kind, crs))
+        return 'PROJCS["Hartebeesthoek94 / Lo19"]'
+    jobs = plan.build_jobs("ClientA", DAY, {"dem": 0.5}, "jpeg", str(tmp_path), version=1, dem_picture=True)
+    ctx = fake_context(tmp_path, Env(tmp_path), "jpeg", tools={"gdal": "G"}, wkt=wkt)
+    result = pipeline.run(ctx, jobs, lambda f, t: None)
+    written = sorted(os.path.basename(p) for p, _s in result.files)
+    assert written == sorted(os.path.basename(p) for p in plan.planned_files(jobs, "jpeg"))
+    assert (tmp_path / "ClientA_300704_50cm_dtm.prj").read_text() == 'PROJCS["Hartebeesthoek94 / Lo19"]'
+    assert asked == [(plan.DEM, None)]
+
+
+def test_no_prj_is_written_when_the_system_cannot_be_read(tmp_path, monkeypatch):
+    spy(monkeypatch, [])
+    jobs = plan.build_jobs("ClientA", DAY, {"dem": 0.5}, "jpeg", str(tmp_path), version=1, dem_picture=True)
+    ctx = fake_context(tmp_path, Env(tmp_path), "jpeg", tools={"gdal": "G"}, wkt=lambda chunk, kind, crs: "")
+    pipeline.run(ctx, jobs, lambda f, t: None)
+    assert not [n for n in os.listdir(tmp_path) if n.endswith(".prj")]

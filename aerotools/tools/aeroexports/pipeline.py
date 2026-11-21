@@ -46,12 +46,13 @@ class Context(object):
 
     def __init__(self, chunk, info, folder, site, date, preset, export, tools=None, crs=None, tile_m=None, cad=None,
                  date_style="short", snap=None, transform=None, tick=None, vertical=None, proj=None, epsg=None,
-                 look=None, clip_boundary=True, log=None):
+                 look=None, clip_boundary=True, log=None, wkt=None):
         self.chunk, self.info, self.folder = chunk, info, folder
         self.clip_boundary = bool(clip_boundary)         # cut every Metashape export to the chunk's boundary shapes (same value everywhere)
         self.log = log or (lambda text: None)            # one line of journal
         self.site, self.date, self.preset, self.cad = site, date, preset, cad or {}
         self.export = export                              # msapi.export_raster or a fake
+        self.wkt = wkt                                    # msapi.raster_wkt or None: the text of the .prj of a JPEG picture
         self.tools = tools or {}                          # {"gm": path, "acad": accoreconsole path, "gdal": folder}
         self.crs, self.tile_m = crs, tile_m
         self.date_style = date_style
@@ -457,6 +458,12 @@ def _dem_image(ctx, job, dem_tif, token, work, date_text, pixel_text, result, im
         world = os.path.splitext(view_final)[0] + ".jgw"
         _commit(os.path.splitext(view_jpg)[0] + ".jgw", world)
         result.files.append((world, os.path.getsize(world)))
+        text = ctx.wkt(ctx.chunk, plan.DEM, ctx.crs) if ctx.wkt is not None else ""
+        if text:                                          # without it a viewer has to be told the system, and guesses the axes
+            prj = os.path.splitext(view_final)[0] + ".prj"
+            with open(prj, "w") as handle:
+                handle.write(text)
+            result.files.append((prj, os.path.getsize(prj)))
         return
     ok, message = relief.render(dem_tif, view_tif, look=_look_for(ctx, result), tick=ctx.tick)
     _drop_sidecar(dem_tif)
