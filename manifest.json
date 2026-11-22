@@ -1,5 +1,5 @@
 {
- "built": "2026-11-21T23:44:30",
+ "built": "2026-11-22T08:34:16",
  "files": {
   "CLICK HERE TO INSTALL.bat": {
    "sha256": "258ef4a9be19fad68df99857346e9b9fd6debfd52a2c9c080fa3df2be1fa2a7c",
@@ -78,8 +78,8 @@
    "size": 257
   },
   "aerotools/lang/en.py": {
-   "sha256": "fc2314311975f1e524de0efd01c930124075409f76ab1495225b095d63302e4e",
-   "size": 131748
+   "sha256": "77f3a9a141772fa3259fccf974eb551b3bb3cf056defe616eb3a39fcb959dd64",
+   "size": 131874
   },
   "aerotools/msapi.py": {
    "sha256": "c5e32617ef35dc02dc5c68c255c01cecf64b5e92db9741fb07e44ce2d333db8f",
@@ -326,8 +326,8 @@
    "size": 3811
   },
   "aerotools/tools/aeroppk/drones/dji_m3e.py": {
-   "sha256": "2c721537340fa240d319a0f1fd4e794d3ca7d021df32149343e62f9f143f485b",
-   "size": 6950
+   "sha256": "ef1ba9f94a3179fb0e93ca3012b05f35a56daba34372953639bfcf26371e826d",
+   "size": 6966
   },
   "aerotools/tools/aeroppk/exportprompt.py": {
    "sha256": "49fbbd08c503a2954c6975a3efa9843db7f0ff5a3119b8c6ce1113b5d4a7c748",

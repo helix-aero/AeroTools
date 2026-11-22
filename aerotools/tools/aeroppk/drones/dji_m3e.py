@@ -26,7 +26,7 @@ from .. import gnsstime
 from .base import FlightFiles, Need, PhotoEvent
 
 READER_ID = "dji_m3e"
-NAME = "DJI Mavic 3 Enterprise"
+NAME = "DJI Mavic 3 Enterprise (or same files)"
 
 # A mission planner may append a waypoint tag after the camera letter: DJI_<time>_<n>_V_point12.JPG
 PHOTO = re.compile(r"^DJI_(\d{14})_(\d{4})_([A-Z])(?:_[A-Za-z0-9-]+)*\.(jpg|jpeg|dng)$", re.IGNORECASE)

@@ -43,9 +43,10 @@ The **Device** card shows the drone that was detected, and whether its antenna i
 nothing else is asked. When a device does not tell where its antenna is, an **Above camera** field appears: type the height of the
 antenna above the camera, in metres.
 
-DJI Mavic 3 Enterprise is the only drone supported today. With photos of another drone the step shows a message with two buttons,
-**Open the user group** and **Send an email**. Tell us the model and send a sample flight (the photos and the GNSS files next to them):
-that is what we need to add a drone.
+The Mavic 3 Enterprise is the only drone tested today. A folder with the same files (`DJI_<date>_<number>_<letter>.JPG`, `_Timestamp.MRK`,
+`_PPKOBS.obs`) is read the same way and is named *DJI Mavic 3 Enterprise (or same files)*. With photos that do not match, the step shows a
+message and keeps the **Device** card: pick that entry and try. If it fails, **Open the user group** or **Send an email**, tell us the
+model and send a sample flight (the photos and the GNSS files next to them): that is what we need to add a drone.
 
 ![Step 1 with the photos of a drone that is not supported](../images/aero-ppk/02-drone-unsupported.png)
 
@@ -182,7 +183,7 @@ were coarse.
 
 ## Limits
 
-- Only the DJI Mavic 3 Enterprise is supported today.
+- Only the DJI Mavic 3 Enterprise is tested today. Other drones that write the same files may work; the position is only as good as the antenna offset in the `.MRK`.
 - The tool needs the `.MRK`, `.obs` and `.nav` files of the drone. A flight without them cannot be computed.
 - A station may have no data for the day of the flight, or files the tool cannot read. The list says so: pick another station.
 - Very short flights give fewer photos to judge the result from: look at the counts and at the Details window before you trust it.
@@ -195,7 +196,7 @@ were coarse.
 |---|---|
 | **Aero-PPK** is missing from the **Aero** menu | It is not installed: **Aero > Install plugins...**, then **Install** on it. |
 | Aero-PPK does not open and NumPy is named as missing | Install NumPy from **Aero > Dependencies...**, then open Aero-PPK again. |
-| *This drone is not supported yet* | Only the Mavic 3 Enterprise is read today. Use **Open the user group** or **Send an email** and tell us the drone. |
+| *This drone is not supported yet* | Pick *DJI Mavic 3 Enterprise (or same files)* in the **Device** card and try. If it fails, use **Open the user group** or **Send an email** and tell us the drone. |
 | A flight says *Missing* in step 2 | Point to the file with **Browse...**. The `.MRK` and `.obs` files are needed. |
 | *No data from this station on the flight day* | Pick another station in the list or on the map, or widen the search radius. |
 | The result says *This result is not reliable* | Click **Try another base** and pick a station that is closer and records every second, or use your own base. Look at the Details window. |

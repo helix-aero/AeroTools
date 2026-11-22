@@ -353,6 +353,15 @@ def test_the_unsupported_state_is_for_photos_no_reader_knows_and_the_supported_n
     assert not st.unsupported()
 
 
+def test_picking_a_reader_by_hand_leaves_the_unsupported_state(tmp_path):
+    st = make_state(tmp_path)
+    st.device_id = devices.OTHER
+    assert st.unsupported()
+    st.device_id = drones.READERS[0].id                                          # the user picks the reader of the Mavic 3 Enterprise
+    assert not st.unsupported() and st.antenna_state() == "known" and st.can_next(state.DRONE)
+    assert "same files" in drones.READERS[0].name
+
+
 def two_flights(tmp_path):
     """A state with two flights read (two copies of the synthetic flight), the second one with a gap when `with_obs` is False."""
     st = state.WizardState()
